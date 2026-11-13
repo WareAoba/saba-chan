@@ -44,8 +44,6 @@ describe('설정 > 연결: 원격 데몬 (/api/remote/*)', () => {
         window.api = {
             remoteSettings: vi.fn().mockResolvedValue(settings),
             remoteSettingsSet: vi.fn(),
-            remoteClients: vi.fn().mockResolvedValue({ clients: [{ hostId: 'host-a', name: '노트북', pairedAt: '' }] }),
-            remoteRevoke: vi.fn().mockResolvedValue({ ok: true }),
             remotePeers: vi.fn().mockResolvedValue({
                 peers: [
                     { hostId: 'host-c', name: '게임 PC', status: 'online', hasEndpoint: true, saved: false, platform: { os: 'windows x86_64' } },
@@ -71,9 +69,13 @@ describe('설정 > 연결: 원격 데몬 (/api/remote/*)', () => {
         expect(within(first).getByText('This PC', { selector: '.remote-pc-name' })).toBeInTheDocument();
         expect(within(first).getByText('125.180.44.17')).toBeInTheDocument();
         expect(within(first).getByText('Listening on port 57480')).toBeInTheDocument();
-        // OS 줄은 OS 이름만 (x86_64는 적지 않는다), 사바쨩 판은 이름 옆에
+        // OS 줄은 OS 이름만 (x86_64는 적지 않는다)
         expect(within(first).getByText('Windows', { selector: '.remote-pc-sub' })).toBeInTheDocument();
-        expect(within(first).getByText('v0.1.13')).toBeInTheDocument();
+        // 이름 줄은 이름이 혼자 쓴다: 상태·OS·판은 그 아래 한 줄 (이름이 잘리지 않게, 사용자 11-13)
+        const meta = first.querySelector('.remote-pc-meta') as HTMLElement;
+        expect(within(meta).getByText('Online')).toBeInTheDocument();
+        expect(within(meta).getByText('v0.1.13')).toBeInTheDocument();
+        expect(first.querySelector('.remote-pc-namerow')?.textContent).not.toMatch(/v0\.1\.13|Online/);
     });
 
     it('연결한 PC 카드는 배포판 로고, 연결한 날, 공인 IP, 직접 연결을 보인다', async () => {
@@ -377,13 +379,38 @@ describe('설정 > 연결: 원격 데몬 (/api/remote/*)', () => {
         expect(screen.getByRole('alert')).toHaveTextContent('The port is already in use');
     });
 
-    it('이 PC에 붙은 PC는 짝을 풀 수 있고, 릴레이에 연결하지 않았으면 안내를 보인다', async () => {
+    // 내 PC 카드 개편 뒤 쓸모가 없어진 "이 PC에 붙은 PC" 목록은 뺐다 (사용자 11-12)
+    it('릴레이에 연결하지 않았으면 안내를 보이고, 이 PC에 붙은 PC 목록은 없다', async () => {
         vi.mocked(window.api.remotePeers).mockResolvedValue({ error: 'relay_not_paired', error_code: 'relay_not_paired' });
         await act(async () => render(<RemoteDaemonSection />));
         expect(screen.getByText('This PC is not connected to Discord yet. Connect it on the Discord page first.')).toBeInTheDocument();
-        const clients = screen.getByRole('list', { name: 'PCs connected to this one' });
-        await act(async () => fireEvent.click(within(clients).getByRole('button', { name: 'Disconnect' })));
-        expect(window.api.remoteRevoke).toHaveBeenCalledWith('host-a');
+        expect(screen.queryByRole('list', { name: 'PCs connected to this one' })).toBeNull();
+    });
+
+    // 사용자 11-12: "연결"을 누르면 결과가 뜰 때까지 화면이 멈췄다 (칸의 모든 버튼이 잠겼다)
+    it('한 PC에 연결하는 동안 그 카드만 진행 중이고 다른 PC·켬 스위치는 그대로 쓸 수 있다', async () => {
+        vi.mocked(window.api.remotePeers).mockResolvedValue({
+            peers: [
+                { hostId: 'host-c', name: '게임 PC', status: 'online', hasEndpoint: true, saved: false },
+                { hostId: 'host-e', name: '거실', status: 'online', hasEndpoint: true, saved: false },
+            ],
+        });
+        let finish: (v: unknown) => void = () => {};
+        vi.mocked(window.api.remoteConnect).mockImplementation(
+            () =>
+                new Promise((r) => {
+                    finish = r as (v: unknown) => void;
+                }),
+        );
+        await act(async () => render(<RemoteDaemonSection />));
+        await act(async () => fireEvent.click(within(card('게임 PC')).getByRole('button', { name: 'Connect' })));
+        expect(within(card('게임 PC')).getByRole('button', { name: /Connect/ })).toBeDisabled();
+        expect(within(card('거실')).getByRole('button', { name: 'Connect' })).toBeEnabled();
+        expect(within(card('거실')).getByRole('button', { name: 'Edit' })).toBeEnabled();
+        expect(screen.getByRole('checkbox', { name: 'Allow remote connections' })).toBeEnabled();
+        await act(async () => fireEvent.click(within(card('거실')).getByRole('button', { name: 'Connect' })));
+        expect(window.api.remoteConnect).toHaveBeenCalledWith('host-e');
+        await act(async () => finish({ hostId: 'host-c', name: '게임 PC' }));
     });
 
     // 어느 PC에서든 내 PC 이름을 바꾼다. 이름은 서버쨩 한 곳에 있다 (사용자 11-12)

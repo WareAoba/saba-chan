@@ -162,9 +162,66 @@
     font-weight: 600;
 }
 
+/* 저장 막대의 "N개 바뀜" 칩과 바뀐 칸 목록 (ChangedFields) */
+.ss-changed-chip {
+    height: 26px;
+    padding: 0 var(--sp-2-5);
+    border: 1px solid color-mix(in oklab, var(--accent) 45%, var(--line));
+    border-radius: var(--r-pill);
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-size: var(--fs-xs);
+    font-weight: 700;
+    cursor: pointer;
+}
+.saba-popover.ss-changed {
+    width: min(360px, calc(100vw - 32px));
+}
+.ss-changed-title {
+    margin: 0 0 var(--sp-2);
+    font-size: var(--fs-sm);
+    font-weight: 700;
+    color: var(--text-1);
+}
+.ss-changed-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+.ss-changed-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0 var(--sp-2);
+    align-items: center;
+    padding: var(--sp-2) 0;
+    border-top: 1px solid var(--line);
+}
+.ss-changed-name {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-1-5);
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    color: var(--text-1);
+}
+.ss-changed-values {
+    grid-column: 1;
+    font-size: var(--fs-sm);
+    color: var(--text-2);
+    overflow-wrap: anywhere;
+}
+.ss-changed-values b {
+    color: var(--text-1);
+}
+.ss-changed-row .icon-btn {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+}
+
 /* 위험 구역 카드 */
 .ss-danger {
-    border-color: color-mix(in oklch, var(--stop) 40%, var(--line));
+    border-color: color-mix(in oklab, var(--stop) 40%, var(--line));
 }
 .ss-danger .ss-card-title {
     color: var(--stop);

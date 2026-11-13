@@ -229,8 +229,7 @@ impl UpdateManager {
             }
             Component::Updater => {
                 // 업데이터 exe 존재 확인
-                let exe_name = if cfg!(windows) { "saba-chan-updater.exe" } else { "saba-chan-updater" };
-                self.install_root.join(exe_name).exists()
+                self.install_root.join(LEGACY_UPDATER_EXE).exists()
             }
             Component::Installer => self.install_root.join(INSTALLER_EXE).exists(),
             Component::Locales => {
@@ -352,21 +351,13 @@ impl UpdateManager {
         Ok(written)
     }
 
-    /// 경로가 saba-chan 바이너리인지 판별 (확장자 없는 비-바이너리 파일 오인 방지)
+    /// 경로가 saba-chan 바이너리인지 판별 (확장자 없는 비-바이너리 파일 오인 방지).
+    /// 이름은 versions.toml `exes`(`versions::exe_stems`)와 0.1.12 전 업데이터다
     pub(crate) fn is_known_binary(path: &Path) -> bool {
-        const KNOWN_BINARIES: &[&str] = &[
-            "saba-core",
-            // saba-core zip에 같이 든다: 코어를 되돌릴 때 함께 되돌린다
-            "saba-runner",
-            "saba-chan-cli",
-            "saba-chan-gui",
-            "saba-chan-updater",
-            "saba-chan-installer",
-        ];
+        let legacy = LEGACY_UPDATER_EXE.trim_end_matches(".exe");
         path.file_name()
             .and_then(|n| n.to_str())
-            .map(|name| KNOWN_BINARIES.contains(&name))
-            .unwrap_or(false)
+            .is_some_and(|name| name == legacy || crate::versions::exe_stems().iter().any(|e| e == name))
     }
 }
 

@@ -6,13 +6,10 @@
 //! 창 설치기는 `installer`를 받지 않고 자기 exe(`InstallOptions.uninstaller_exe`)를 설치 폴더에 복사한다(`registry.rs`).
 //! 자기 사본이 없는 CLI 설치는 릴리즈의 `installer`(업데이트 적용·제거를 맡는 같은 프로그램)를 받는다.
 
-use saba_chan_updater_lib::download::download_verified;
 use saba_chan_updater_lib::relay::{self, ManifestComponent, ReleaseManifest, RelayClient};
-use saba_chan_updater_lib::{Component, DownloadProgress};
+use saba_chan_updater_lib::Component;
 use crate::Profile;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 /// relay 서명을 검증한 릴리즈 manifest. `fetch_latest`만 만들 수 있어, 설치 호출자가 검증을 건너뛸 수 없다
 /// (받은 모듈·익스텐션은 공식으로 기록된다)
@@ -42,19 +39,80 @@ fn relay_url() -> String {
     relay::DEFAULT_RELAY_URL.to_string()
 }
 
-/// 이 플랫폼의 최신 릴리즈 manifest (서명 검증 완료)
-pub async fn fetch_latest() -> Result<VerifiedRelease, String> {
+/// 설치할 때 고를 수 있는 업데이트 채널 (앱 설정의 "업데이트 채널"과 같다)
+pub use saba_chan_updater_lib::relay::SELECTABLE_CHANNELS as CHANNELS;
+
+/// 채널을 고르는 칸에 미리 골라 둘 값: 이미 쓰는 채널(`config.json`의 `updates.channel`), 없거나 고를 수 없는 값이면 설치기 빌드의 채널
+pub fn default_channel(config: &saba_chan_updater_lib::config_file::ConfigFile) -> String {
+    let bundled = &saba_chan_updater_lib::versions::bundled().channel;
+    match config.section("updates").get("channel").and_then(|v| v.as_str()) {
+        Some(used) if CHANNELS.contains(&used) => used.to_string(),
+        _ => bundled.clone(),
+    }
+}
+
+/// `fetch_latest`가 실패한 이유
+#[derive(Debug)]
+pub enum FetchError {
+    /// 고른 채널의 최신 판(`offered`)이 이 설치기의 판(`installer`)보다 옛것이다 (내림 설치는 하지 않는다)
+    ChannelOlder { channel: String, offered: String, installer: String },
+    Other(String),
+}
+
+impl FetchError {
+    /// 화면·CLI가 문구를 고르는 실패 종류 (`InstallProgress.error_code`)
+    pub fn code(&self) -> &'static str {
+        match self {
+            FetchError::ChannelOlder { .. } => "channel_older",
+            FetchError::Other(_) => "fetch_failed",
+        }
+    }
+}
+
+impl std::fmt::Display for FetchError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FetchError::ChannelOlder { channel, offered, installer } => {
+                write!(f, "The latest {} release ({}) is older than this installer ({})", channel, offered, installer)
+            }
+            FetchError::Other(message) => f.write_str(message),
+        }
+    }
+}
+
+impl From<FetchError> for String {
+    fn from(e: FetchError) -> String {
+        e.to_string()
+    }
+}
+
+/// 릴레이 확인 실패를 알릴 이유로 바꾼다: 채널을 골랐는데 내림 설치로 거절됐으면 그 채널의 판이 옛것이다
+fn fetch_error(chosen: Option<&str>, e: relay::RelayError) -> FetchError {
+    match (chosen, e) {
+        (Some(channel), relay::RelayError::Downgrade { current, offered }) => {
+            FetchError::ChannelOlder { channel: channel.to_string(), offered, installer: current }
+        }
+        (_, e) => FetchError::Other(format!("Failed to fetch release: {}", e)),
+    }
+}
+
+/// 이 플랫폼의 최신 릴리즈 manifest (서명 검증 완료). `channel`은 설치할 때 고른 채널(`CHANNELS` 중 하나)이고, 고르지 않았으면 설치기 빌드의 채널이다
+pub async fn fetch_latest(channel: Option<&str>) -> Result<VerifiedRelease, FetchError> {
     let client = RelayClient::new(&relay_url());
     let platform = relay::current_platform();
     let bundled = saba_chan_updater_lib::versions::bundled();
+    if let Some(chosen) = channel.filter(|c| !CHANNELS.contains(c)) {
+        return Err(FetchError::Other(format!("Unknown update channel: {}", chosen)));
+    }
     match client
-        // 설치기 자신의 채널(`versions.toml` `[release] channel`)에서 받는다: 베타 설치기가 정식 채널의 옛 판을 내림 설치로 거절하지 않게
-        .fetch_verified_catalog(&bundled.channel, &platform, &bundled.release, &relay::anon_client_id())
+        // 고르지 않았으면 설치기 자신의 채널(`versions.toml` `[release] channel`)에서 받는다: 베타 설치기가 정식 채널의 옛 판을 내림 설치로 거절하지 않게.
+        // 고른 채널의 최신 판이 이 설치기의 판보다 옛것이면 내림 설치로 거절된다 (그 검사는 풀지 않고 `ChannelOlder`로 알린다)
+        .fetch_verified_catalog(channel.unwrap_or(&bundled.channel), &platform, &bundled.release, &relay::anon_client_id())
         .await
     {
         Ok(Some(release)) => Ok(VerifiedRelease(release.manifest)),
-        Ok(None) => Err(format!("No release is published for {}", platform)),
-        Err(e) => Err(format!("Failed to fetch release: {}", e)),
+        Ok(None) => Err(FetchError::Other(format!("No release is published for {}", platform))),
+        Err(e) => Err(fetch_error(channel, e)),
     }
 }
 
@@ -235,7 +293,7 @@ async fn download_with_limit(
     download_url(&info.url, Some(&info.sha256), dest, max_bytes, on_progress).await
 }
 
-/// `url`을 `dest`로 받는다 (`download_verified`). 받는 동안 `on_progress(received, total)`를 0.2초마다 부른다
+/// `url`을 `dest`로 받는다 (`download_reporting`: 받는 동안 `on_progress(received, total)`를 0.2초마다 부른다)
 pub(crate) async fn download_url(
     url: &str,
     sha256: Option<&str>,
@@ -247,27 +305,24 @@ pub(crate) async fn download_url(
         .user_agent(concat!("saba-chan-installer/", env!("CARGO_PKG_VERSION")))
         .build()
         .map_err(|e| e.to_string())?;
-    let progress = Arc::new(Mutex::new(DownloadProgress::default()));
-    // 같은 작업 안에서 받기와 함께 돈다: 진행 콜백이 호출한 쪽의 것을 빌려 쓸 수 있다
-    let ticker = async {
-        loop {
-            tokio::time::sleep(Duration::from_millis(200)).await;
-            let Ok((received, total)) = progress.lock().map(|p| (p.bytes_received, p.total_bytes)) else {
-                // 진행을 못 읽어도 받기는 끝까지 간다
-                return std::future::pending::<()>().await;
-            };
-            on_progress(received, (total > 0).then_some(total));
-        }
-    };
-    let result = tokio::select! {
-        r = download_verified(&http, url, dest, sha256, max_bytes, Some(&progress)) => r,
-        _ = ticker => unreachable!("the ticker never finishes"),
-    };
-    result.map(|_| ()).map_err(|e| e.to_string())
+    saba_chan_updater_lib::download::download_reporting(&http, url, sha256, dest, max_bytes, on_progress).await.map(|_| ()).map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
 mod tests {
+    /// 고른 채널의 최신 판이 이 설치기보다 옛것이라 받지 못하면 그 이유로 알린다 (일반 받기 실패와 가른다)
+    #[test]
+    fn a_chosen_channel_older_than_this_installer_is_reported_as_such() {
+        use saba_chan_updater_lib::relay::RelayError;
+        let older = || RelayError::Downgrade { current: "0.2.0-beta1".into(), offered: "0.1.9".into() };
+        let e = super::fetch_error(Some("stable"), older());
+        assert_eq!(e.code(), "channel_older");
+        assert!(e.to_string().contains("stable") && e.to_string().contains("0.1.9"), "{}", e);
+        // 고르지 않았으면 채널 탓이 아니다
+        assert_eq!(super::fetch_error(None, older()).code(), "fetch_failed");
+        assert_eq!(super::fetch_error(Some("stable"), RelayError::Status(503)).code(), "fetch_failed");
+    }
+
     // L15(c): 빌드에 담긴 versions.toml을 못 읽으면 필수 목록이 비어 반쪽 릴리스를 막지 못한다
     #[test]
     fn the_bundled_versions_file_names_the_required_components() {

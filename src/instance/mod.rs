@@ -10,6 +10,7 @@
 //! ```
 
 pub mod lock;
+pub mod transition;
 pub mod migration;
 
 use anyhow::{Context, Result};
@@ -73,6 +74,9 @@ pub struct ServerInstance {
     pub module_settings: HashMap<String, serde_json::Value>,
     #[serde(default)]
     pub server_version: Option<String>,
+    /// 설치된 빌드. 설치 방식 익스텐션의 업데이트 확인(`server.check_update`)이 알려 준 것을 적어 두고 다시 묻지 않고 보인다
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub server_build: Option<ServerBuild>,
     /// 범용 익스텐션 확장 데이터 — 각 익스텐션이 필요한 플래그/설정을 저장합니다.
     /// 예: { "<ext>_enabled": true, "<ext>_cpu_limit": 2.0, "<ext>_memory_limit": "4g" }
     #[serde(default)]
@@ -128,6 +132,18 @@ pub struct ServerInstance {
     /// 이 PC(앱·CLI)에서만 바꾼다
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub auto_update: bool,
+    /// 브랜치 서버: 이 서버를 만들 때 설정을 가져온 상위 서버 id. 목록에서 그 서버 아래에 묶일 뿐이고 설정은 따로다.
+    /// 한 단계만 둔다 (브랜치의 브랜치는 만들지 않는다). 상위 서버를 지우면 비운다
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch_of: Option<String>,
+}
+
+/// 설치된 빌드: 설치 방식 익스텐션이 쓰는 빌드 번호와 그 빌드를 받은 때(유닉스 초, 모르면 없음)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ServerBuild {
+    pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub time: Option<i64>,
 }
 
 fn default_protocol_mode() -> String {
@@ -149,6 +165,8 @@ impl ServerInstance {
         if let Some(map) = value.as_object_mut() {
             map.remove("schedule");
             map.remove("backup_keep");
+            // 사용자가 고친 것이 아니다: 업데이트 확인이 적는 동안 열려 있던 설정 화면의 저장을 막지 않는다
+            map.remove("server_build");
         }
         crate::config_store::patch::revision(&value)
     }
@@ -170,6 +188,7 @@ impl ServerInstance {
             protocol_mode: "auto".to_string(),
             module_settings: HashMap::new(),
             server_version: None,
+            server_build: None,
             extension_data: HashMap::new(),
             required_extensions: Vec::new(),
             schedule: Vec::new(),
@@ -187,6 +206,7 @@ impl ServerInstance {
             controllers_only: false,
             kick_players: Vec::new(),
             auto_update: false,
+            branch_of: None,
         }
     }
 
@@ -232,6 +252,21 @@ impl ServerInstance {
             set(format!("{}_{}", method, name), value.clone());
         }
         changed
+    }
+
+    /// 설치한 버전을 적는다. 설치 방식 익스텐션으로 받는 서버에서 고른 버전은 그 방식의 브랜치라
+    /// `<방식>_beta`에 적고(업데이트 확인과 업데이트가 그 브랜치를 쓴다), 그 밖에는 게임 버전으로 적는다
+    pub fn record_installed_version(&mut self, method: &str, version: &str) {
+        if BUILTIN_INSTALL_METHODS.contains(&method) || method.is_empty() {
+            self.server_version = Some(version.to_string());
+        } else {
+            self.apply_install_extension_data(method, &[("beta", serde_json::json!(version))]);
+        }
+    }
+
+    /// 설치 방식 익스텐션으로 받는 서버의 브랜치 (`record_installed_version`이나 모듈 `[install] beta`가 적은 값)
+    pub fn install_branch(&self, method: &str) -> Option<&str> {
+        self.extension_data.get(&format!("{}_beta", method)).and_then(|v| v.as_str()).filter(|b| !b.is_empty())
     }
 
     /// 게임 설정 파일에서 읽어 온 값(`import_settings` 결과)을 반영한다: `module_settings`에 넣고,

@@ -76,6 +76,20 @@ describe('새 디스코드 서버에 서버 열기', () => {
         render(<ConnectionView {...viewProps} />);
         expect(screen.getByRole('checkbox', { name: 'AI moderation reports' })).not.toBeChecked();
         expect(screen.getByRole('checkbox', { name: 'Low disk space' })).toBeChecked();
+        expect(screen.getByRole('checkbox', { name: 'Not responding' })).toBeChecked();
         expect(screen.getByRole('tab', { name: 'Failures' })).toHaveAttribute('aria-selected', 'true');
+    });
+
+    // 사용자 11-12: PC 연결 끊김 알림은 옵션이고 기본은 꺼짐
+    it('PC 연결 끊김 알림은 꺼진 채로 보이고, 켜면 dmNotice 의 그 칸만 저장한다', async () => {
+        await act(() => useDiscordStore.getState().loadConfig());
+        useDiscordStore.setState({ _settingsReady: true });
+        render(<ConnectionView {...viewProps} />);
+        const offline = screen.getByRole('checkbox', { name: 'PC went offline' });
+        expect(offline).not.toBeChecked();
+        fireEvent.click(offline);
+        await waitFor(() =>
+            expect(window.api.botConfigSave).toHaveBeenCalledWith({ dmNotice: { offline: true } }),
+        );
     });
 });

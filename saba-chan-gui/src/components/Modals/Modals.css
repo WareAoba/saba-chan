@@ -88,7 +88,7 @@
     background: var(--bg-2);
     border: 1px solid var(--line);
     border-radius: 8px;
-    box-shadow: 0 4px 16px color-mix(in oklch, var(--shadow-ink) 18%, transparent);
+    box-shadow: 0 4px 16px color-mix(in oklab, var(--shadow-ink) 18%, transparent);
     min-width: 184px;
     padding: var(--sp-1);
     animation: contextMenuIn 0.12s ease-out;
@@ -254,7 +254,7 @@
 .setting-select:focus {
     outline: none;
     border-color: var(--brand-primary);
-    box-shadow: 0 0 0 3px color-mix(in oklch, var(--accent) 10%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 10%, transparent);
 }
 
 /* ===== Discord Bot Modal ===== */
@@ -385,12 +385,12 @@
     font-weight: 600;
     cursor: pointer;
     transition: all 0.3s ease;
-    box-shadow: 0 2px 8px color-mix(in oklch, var(--accent) 30%, transparent);
+    box-shadow: 0 2px 8px color-mix(in oklab, var(--accent) 30%, transparent);
 }
 
 .background-restart-btn:hover:not(:disabled) {
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px color-mix(in oklch, var(--accent) 40%, transparent);
+    box-shadow: 0 4px 12px color-mix(in oklab, var(--accent) 40%, transparent);
 }
 
 .background-restart-btn:active:not(:disabled) {
@@ -698,8 +698,8 @@
 
 /* 업데이트 알림 카드 — 특별 그라데이션 배경 */
 .notice-card.notice-update-card {
-    background: color-mix(in oklch, var(--info) 10%, transparent);
-    border-color: color-mix(in oklch, var(--accent) 30%, transparent);
+    background: color-mix(in oklab, var(--info) 10%, transparent);
+    border-color: color-mix(in oklab, var(--accent) 30%, transparent);
 }
 
 .notice-card.notice-update-card.notice-unread {
@@ -707,9 +707,9 @@
 }
 
 .notice-card.notice-update-card:hover {
-    background: color-mix(in oklch, var(--info) 18%, transparent);
-    border-color: color-mix(in oklch, var(--accent) 50%, transparent);
-    box-shadow: 0 2px 8px color-mix(in oklch, var(--accent) 15%, transparent);
+    background: color-mix(in oklab, var(--info) 18%, transparent);
+    border-color: color-mix(in oklab, var(--accent) 50%, transparent);
+    box-shadow: 0 2px 8px color-mix(in oklab, var(--accent) 15%, transparent);
 }
 
 .notice-action-hint {
@@ -822,7 +822,7 @@
     margin-bottom: var(--sp-3);
     font-size: calc(12px * var(--font-scale));
     color: var(--brand-primary);
-    background: color-mix(in oklch, var(--accent) 8%, transparent);
+    background: color-mix(in oklab, var(--accent) 8%, transparent);
     border-radius: 6px;
 }
 
@@ -835,8 +835,8 @@
     margin-bottom: var(--sp-4);
     font-size: calc(13px * var(--font-scale));
     color: var(--warn);
-    background: color-mix(in oklch, var(--warn) 8%, transparent);
-    border: 1px solid color-mix(in oklch, var(--warn) 25%, transparent);
+    background: color-mix(in oklab, var(--warn) 8%, transparent);
+    border: 1px solid color-mix(in oklab, var(--warn) 25%, transparent);
     border-radius: 8px;
 }
 
@@ -926,7 +926,7 @@
 
 .gui-test-btn:hover {
     transform: translateY(-1px);
-    box-shadow: 0 2px 8px color-mix(in oklch, var(--shadow-ink) 10%, transparent);
+    box-shadow: 0 2px 8px color-mix(in oklab, var(--shadow-ink) 10%, transparent);
 }
 
 .gui-test-btn:active {
@@ -1014,12 +1014,12 @@
 
 .update-mock-label.mock {
     color: var(--warn);
-    background: color-mix(in oklch, var(--warn) 12%, transparent);
+    background: color-mix(in oklab, var(--warn) 12%, transparent);
 }
 
 .update-mock-label.real {
     color: var(--ok);
-    background: color-mix(in oklch, var(--ok) 12%, transparent);
+    background: color-mix(in oklab, var(--ok) 12%, transparent);
 }
 
 /* 상태 바 (로딩/에러) */
@@ -1036,12 +1036,12 @@
 
 .update-modal-status-bar.error {
     color: var(--stop);
-    background: color-mix(in oklch, var(--stop) 6%, transparent);
+    background: color-mix(in oklab, var(--stop) 6%, transparent);
 }
 
 .update-modal-status-bar.success {
     color: var(--ok);
-    background: color-mix(in oklch, var(--ok) 6%, transparent);
+    background: color-mix(in oklab, var(--ok) 6%, transparent);
 }
 
 .update-modal-status {
@@ -1497,7 +1497,7 @@
     display: inline-flex;
     align-items: center;
     height: 20px;
-    background: color-mix(in oklch, var(--accent) 16%, transparent);
+    background: color-mix(in oklab, var(--accent) 16%, transparent);
     color: var(--brand-primary);
     font-size: var(--fs-xs);
     font-weight: 600;
@@ -1538,12 +1538,6 @@
     border-radius: var(--r-sm);
 }
 
-.ss-catalog-top .ss-card-icon img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    border-radius: inherit;
-}
 
 .ss-catalog-title {
     display: flex;
@@ -1701,7 +1695,7 @@
 
 .setting-item-danger:hover {
     border-color: var(--stop);
-    background: color-mix(in oklch, var(--stop) 5%, transparent);
+    background: color-mix(in oklab, var(--stop) 5%, transparent);
 }
 
 .setting-title-danger {
@@ -1742,7 +1736,7 @@
 
 .accent-preset-btn:hover {
     transform: scale(1.15);
-    box-shadow: 0 2px 8px color-mix(in oklch, var(--shadow-ink) 25%, transparent);
+    box-shadow: 0 2px 8px color-mix(in oklab, var(--shadow-ink) 25%, transparent);
 }
 
 .accent-preset-btn.active {
@@ -1785,7 +1779,7 @@
 
 .accent-preset-custom .icon {
     color: var(--text-on-primary);
-    filter: drop-shadow(0 1px 2px color-mix(in oklch, var(--shadow-ink) 50%, transparent));
+    filter: drop-shadow(0 1px 2px color-mix(in oklab, var(--shadow-ink) 50%, transparent));
     pointer-events: none;
 }
 
@@ -1832,7 +1826,7 @@
     font-family: var(--font-mono);
     font-size: calc(12px * var(--font-scale));
     line-height: 1.6;
-    border: 1px solid color-mix(in oklch, var(--text-1) 6%, transparent);
+    border: 1px solid color-mix(in oklab, var(--text-1) 6%, transparent);
     margin-top: var(--sp-1);
 }
 
@@ -1979,38 +1973,6 @@
     font-size: 13px;
     font-weight: 600;
 }
-.remote-daemon-list {
-    margin: 0;
-    padding: 0;
-    list-style: none;
-    display: flex;
-    flex-direction: column;
-    gap: var(--sp-1);
-}
-/* 버튼이 있든 없든 행 높이를 같게 둔다 (작은 버튼 30px + 위아래 여백) */
-.remote-daemon-row {
-    display: flex;
-    align-items: center;
-    gap: var(--sp-2);
-    min-height: 40px;
-    padding: var(--sp-1) var(--sp-1) var(--sp-1) var(--sp-3);
-    border-radius: var(--r-md);
-    background: var(--inset);
-}
-.remote-daemon-row > .muted {
-    padding-right: var(--sp-2);
-}
-.remote-daemon-row .btn {
-    flex-shrink: 0;
-}
-.remote-daemon-name {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
 /* 설정 > 연결: 내 PC 카드 (이 PC가 맨 앞, 강조 테두리) */
 .remote-pc-cards {
     margin: 0;
@@ -2018,14 +1980,14 @@
     list-style: none;
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-    gap: var(--sp-2);
+    gap: var(--sp-3);
 }
 .remote-pc-card {
     display: flex;
     flex-direction: column;
-    gap: var(--sp-2);
-    padding: var(--sp-3);
-    border-radius: var(--r-md);
+    gap: var(--sp-3);
+    padding: var(--sp-4);
+    border-radius: var(--r-lg);
     background: var(--bg-2);
     border: 1px solid var(--line);
 }
@@ -2095,6 +2057,40 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+/* 내 PC 카드 (사용자 11-13): 이름은 한 줄을 혼자 쓰고, 상태·OS·판은 그 아래 한 줄. 값 목록은 가는 선으로 나눈다 */
+.remote-pc-card .remote-pc-top {
+    align-items: flex-start;
+    gap: var(--sp-3);
+}
+.remote-pc-card .remote-pc-os {
+    width: 40px;
+    height: 40px;
+    border-radius: var(--r-lg);
+}
+.remote-pc-card .remote-pc-name {
+    font-size: var(--fs-md);
+}
+.remote-pc-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--sp-1) var(--sp-1-5);
+    margin-top: var(--sp-1-5);
+    min-width: 0;
+}
+.remote-pc-meta .remote-pc-sub {
+    min-width: 0;
+}
+.remote-pc-meta .remote-pc-sub:not(:empty) + .remote-pc-ver::before {
+    content: "·";
+    margin-right: var(--sp-1);
+    color: var(--text-3);
+}
+.remote-pc-card .remote-pc-kv {
+    gap: var(--sp-1-5) var(--sp-3);
+    padding-top: var(--sp-3);
+    border-top: 1px solid var(--line);
 }
 /* 별: 채운 별이 메인 데몬, 빈 별을 누르면 그 PC가 메인이 된다 */
 .remote-pc-star {
@@ -2371,7 +2367,7 @@
     gap: var(--sp-2);
     padding: var(--sp-3);
     border-radius: var(--r-md);
-    background: color-mix(in oklch, var(--warn) 12%, transparent);
+    background: color-mix(in oklab, var(--warn) 12%, transparent);
     color: var(--text-1);
     font-size: var(--fs-sm);
 }
@@ -2494,7 +2490,7 @@
     height: 52px;
     border-radius: var(--r-lg);
     color: var(--tone, var(--accent));
-    background: color-mix(in oklch, var(--tone, var(--accent)) 14%, transparent);
+    background: color-mix(in oklab, var(--tone, var(--accent)) 14%, transparent);
 }
 .saba-confirm-icon.tone-ok {
     --tone: var(--ok);

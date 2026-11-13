@@ -87,7 +87,7 @@ windows-sys = { version = "0.61", features = [
 # 포트·서버별 네트워크 (`system_monitor::net_trace`): Kernel-Network ETW 실시간 세션
 ferrisetw = "1.2"
 
-winreg = "0.55"
+winreg = "0.56"
 windows = { version = "0.62", features = [
     "Win32_Foundation", "Win32_NetworkManagement_WindowsFirewall", "Win32_System_Com", "Win32_System_Ole", "Win32_System_Variant",
 ] }

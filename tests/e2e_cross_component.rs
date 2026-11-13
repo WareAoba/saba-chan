@@ -890,6 +890,72 @@ async fn event_stream_reports_who_ran_what_and_replays_after_reconnect() {
     cleanup_dirs(&m_dir, &i_dir, &d_dir);
 }
 
+/// manifest `hooks`의 `event:<종류>`: 이벤트 버스에 난 일을 익스텐션 Python이 데이터와 함께 받는다
+#[tokio::test]
+async fn extension_event_hook_receives_bus_event_with_its_data() {
+    if find_python().is_none() {
+        eprintln!("SKIP: Python not found");
+        return;
+    }
+    let (base_url, _sup, task, m_dir, i_dir, d_dir) = boot_e2e_ipc().await;
+    let client = saba_chan_updater_lib::tls::http_client_builder().build().unwrap();
+
+    let id = "e2e_event_probe";
+    let ext_dir = saba_chan_updater_lib::constants::resolve_extensions_dir().join(id);
+    fs::create_dir_all(&ext_dir).unwrap();
+    fs::write(
+        ext_dir.join("manifest.json"),
+        json!({
+            "schema_version": 1, "id": id, "name": "Event probe", "version": "0.0.1",
+            "python_modules": { "probe": "probe.py" },
+            "hooks": { "event:e2e.hook_probe": { "module": "probe", "function": "seen" } }
+        })
+        .to_string(),
+    )
+    .unwrap();
+    fs::write(
+        ext_dir.join("probe.py"),
+        r#"import json, os, sys
+
+def seen(ctx):
+    out = os.environ.get("SABA_EXTENSION_DATA_DIR") or os.path.dirname(os.path.abspath(__file__))
+    os.makedirs(out, exist_ok=True)
+    with open(os.path.join(out, "seen.json"), "w", encoding="utf-8") as f:
+        json.dump(ctx, f)
+    return {"success": True}
+
+if __name__ == "__main__":
+    print(json.dumps(globals()[sys.argv[1]](json.load(sys.stdin))))
+"#,
+    )
+    .unwrap();
+    saba_core::sandbox::set_consent(saba_core::sandbox::Consent::Unisolated, &format!("ext-{id}"), true).unwrap();
+    client.post(format!("{}/api/extensions/rescan", base_url)).send().await.unwrap();
+    let enabled = client.post(format!("{}/api/extensions/{}/enable", base_url, id)).send().await.unwrap();
+    assert!(enabled.status().is_success(), "{}", enabled.text().await.unwrap());
+
+    saba_core::events::emit("e2e.hook_probe", json!({ "instanceId": "probe-1", "ok": true }));
+
+    let outputs = [d_dir.join("extension-data").join(id).join("seen.json"), ext_dir.join("seen.json")];
+    let mut seen = None;
+    for _ in 0..600 {
+        if let Some(text) = outputs.iter().find_map(|p| fs::read_to_string(p).ok()) {
+            seen = serde_json::from_str::<Value>(&text).ok();
+            if seen.is_some() {
+                break;
+            }
+        }
+        sleep(Duration::from_millis(100)).await;
+    }
+    let seen = seen.expect("the extension's event hook ran");
+    assert_eq!(seen["event"], "e2e.hook_probe");
+    assert_eq!((seen["data"]["instanceId"].as_str(), seen["data"]["ok"].as_bool()), (Some("probe-1"), Some(true)));
+    assert!(seen["id"].is_u64() && seen["data"]["at"].is_u64(), "{}", seen);
+
+    task.abort();
+    cleanup_dirs(&m_dir, &i_dir, &d_dir);
+}
+
 // ═══════════════════════════════════════════════════════
 // 9. 버전 관리 — 자동 감지·저장·백업·복원 (E2E)
 // ═══════════════════════════════════════════════════════
@@ -1030,41 +1096,20 @@ async fn e2e_version_backfill_on_startup() {
     let (base_url, sup, task, m_dir, i_dir, d_dir) = boot_e2e_ipc().await;
     let client = saba_chan_updater_lib::tls::http_client_builder().build().unwrap();
 
-    // 인스턴스 생성 + working_dir 세팅
+    // 가져온 서버는 설치 때 적어 둔 버전이 없다 (새로 설치한 서버는 설치한 버전을 그때 적는다)
+    let work_dir = std::env::temp_dir().join(format!("saba-e2e-backfill-{}", pick_free_port()));
+    fs::create_dir_all(&work_dir).unwrap();
+    fs::write(work_dir.join("version.txt"), "1.20.4").unwrap();
     let create_resp = client
         .post(format!("{}/api/instances", base_url))
         .json(&json!({
             "name": "BackfillTest",
-            "module_name": "e2e-mock"
+            "module_name": "e2e-mock",
+            "migration_source": work_dir.to_string_lossy(),
         }))
         .send().await.unwrap();
     let created: Value = create_resp.json().await.unwrap();
-    let instance_id = created["id"].as_str().unwrap().to_string();
-    wait_for_provision(&base_url, &client, "BackfillTest").await;
-
-    // 자동 설정된 working_dir에 version.txt 작성
-    let inst_resp = client
-        .get(format!("{}/api/instance/{}", base_url, instance_id))
-        .send().await.unwrap();
-    let inst_data: Value = inst_resp.json().await.unwrap();
-
-    let work_dir = inst_data.get("working_dir")
-        .and_then(|v| v.as_str())
-        .map(|s| std::path::PathBuf::from(s));
-
-    let work_dir = if let Some(wd) = work_dir {
-        fs::create_dir_all(&wd).unwrap();
-        wd
-    } else {
-        let wd = std::env::temp_dir().join(format!("saba-e2e-backfill-{}", pick_free_port()));
-        fs::create_dir_all(&wd).unwrap();
-        let _ = client
-            .patch(format!("{}/api/instance/{}", base_url, instance_id))
-            .json(&json!({ "working_dir": wd.to_string_lossy(), "server_name": "BackfillTest" }))
-            .send().await.unwrap();
-        wd
-    };
-    fs::write(work_dir.join("version.txt"), "1.20.4").unwrap();
+    let instance_id = created["id"].as_str().unwrap_or_else(|| panic!("{created}")).to_string();
 
     // backfill 실행
     saba_core::supervisor::Supervisor::backfill_server_versions(sup.clone()).await;

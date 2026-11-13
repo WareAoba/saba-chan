@@ -28,6 +28,7 @@ pub mod module_support;
 pub mod notify_app_id;
 pub mod process;
 pub mod profile;
+pub mod python_runtime;
 pub mod relay;
 pub mod signature;
 pub mod tls;
@@ -210,6 +211,28 @@ pub struct ComponentVersion {
     pub requires: Option<HashMap<String, String>>,
     /// 해당 컴포넌트가 설치되어 있는지 여부 (false면 미설치 상태)
     pub installed: bool,
+    /// 같은 판으로 다시 받은 복구 (`mark_for_repair`). pending.json에 실어 업데이터 `--apply`가 이미 설치된 판이라고 건너뛰지 않게 한다
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub repair: bool,
+}
+
+/// 설치 점검·복구 계획 (`UpdateManager::repair_plan`)
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct RepairPlan {
+    /// 지금 판 그대로 다시 받을 것
+    pub repair: Vec<RepairItem>,
+    /// 지금 판을 받을 수 없는 것 (릴리즈가 다른 판을 내주거나 없다)
+    pub unavailable: Vec<RepairItem>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct RepairItem {
+    pub component: String,
+    pub display_name: String,
+    /// 설치된 판 (모르면 빈 값)
+    pub installed: String,
+    /// 확인한 릴리즈가 내주는 판
+    pub offered: Option<String>,
 }
 
 /// 전체 업데이트/설치 상태 정보
@@ -715,6 +738,45 @@ impl UpdateManager {
         integrity::verify_installed()
     }
 
+    /// 무결성 검사에서 바뀌었거나(`Tampered`) 파일이 없어진(`FileNotFound`) 구성요소를 지금 설치된 판 그대로 다시 받을 계획.
+    /// 확인한 릴리즈가 그 판을 내주는 것만 고친다. 다른 판을 내주거나(업데이트가 있다) 릴리즈에 없으면 `unavailable`
+    pub fn repair_plan(&self, report: &integrity::IntegrityReport) -> RepairPlan {
+        let mut plan = RepairPlan::default();
+        let broken = report.components.iter().filter(|c| matches!(c.status, integrity::IntegrityStatus::Tampered | integrity::IntegrityStatus::FileNotFound));
+        for c in broken {
+            let status = self.status.components.iter().find(|s| s.component.manifest_key() == c.component && s.installed);
+            let item = RepairItem {
+                component: c.component.clone(),
+                display_name: c.display_name.clone(),
+                installed: status.map(|s| s.current_version.clone()).unwrap_or_default(),
+                offered: status.and_then(|s| s.latest_version.clone()),
+            };
+            if !item.installed.is_empty() && item.offered.as_deref() == Some(item.installed.as_str()) {
+                plan.repair.push(item);
+            } else {
+                plan.unavailable.push(item);
+            }
+        }
+        plan
+    }
+
+    /// 계획의 고칠 것을 다시 받을 수 있게 표시한다 (받기·적용은 업데이트와 같은 `download_component`·`apply_single_component`)
+    pub fn mark_for_repair(&mut self, plan: &RepairPlan) {
+        for comp in &mut self.status.components {
+            if plan.repair.iter().any(|r| r.component == comp.component.manifest_key()) {
+                comp.update_available = true;
+                comp.downloaded = false;
+                comp.downloaded_path = None;
+                comp.repair = true;
+            }
+        }
+    }
+
+    /// `keys`가 모두 복구(`mark_for_repair`)로 받아 둔 것인가 (완료 마커를 `repaired`로 남긴다)
+    pub fn is_repair(&self, keys: &[String]) -> bool {
+        !keys.is_empty() && keys.iter().all(|k| self.status.components.iter().any(|c| c.repair && c.component.manifest_key() == *k))
+    }
+
     fn relay_client(&self) -> relay::RelayClient {
         relay::RelayClient::new(self.config.relay_url.as_deref().unwrap_or(relay::DEFAULT_RELAY_URL))
             .with_manifest_cache(self.staging_dir.join("manifests"))
@@ -820,6 +882,7 @@ impl UpdateManager {
                     staged_sha256: None,
                     requires: info.requires.clone(),
                     installed,
+                    repair: false,
                 });
                 Self::keep_staged(&previous, components.last_mut().expect("just pushed"));
             }
@@ -1312,7 +1375,7 @@ impl UpdateManager {
                 _ => continue,
             };
             let gui = GUI_EXE_NAMES.iter().any(|g| g.trim_end_matches(".exe") == stem);
-            if gui || stem.starts_with("saba-") {
+            if gui || Self::is_known_binary(Path::new(stem)) {
                 found.push((path.clone(), format!("{stem}.exe"), number, gui));
             }
         }
@@ -1350,46 +1413,7 @@ impl UpdateManager {
     /// (`restore_moved_aside_exes`를 넓힌 것. 그쪽은 실행 파일이 아예 없을 때만 되돌린다).
     /// 새 파일은 `<exe>.rolled-back`으로 비켜 두고 지운다(아직 쥐고 있으면 남는다). 되돌린 실행 파일 경로를 돌려준다
     pub fn roll_back_exes_since(&self, before: &live_apply::ExeBackups) -> std::io::Result<live_apply::ExeRollback> {
-        let mut rollback = live_apply::ExeRollback::default();
-        for (backup, target) in self.exe_rollbacks_since(before)? {
-            // 새 판은 비켜 두기만 하고, 백업을 제자리에 놓은 뒤에 지운다: 어느 단계가 실패해도 실행 파일이 없어지지 않는다
-            let mut name = target.file_name().unwrap_or_default().to_os_string();
-            name.push(".rolled-back");
-            let aside = target.with_file_name(name);
-            let moved = if target.exists() {
-                let _ = std::fs::remove_file(&aside);
-                match std::fs::rename(&target, &aside) {
-                    Ok(()) => true,
-                    Err(e) => {
-                        tracing::error!("[Updater] Cannot move {} aside to roll back: {}", target.display(), e);
-                        rollback.pending.push((backup, target));
-                        continue;
-                    }
-                }
-            } else {
-                false
-            };
-            match std::fs::rename(&backup, &target) {
-                Ok(()) => {
-                    tracing::warn!("[Updater] Rolled back {} from {}", target.display(), backup.display());
-                    if moved {
-                        let _ = std::fs::remove_file(&aside);
-                    }
-                    rollback.restored.push(target);
-                }
-                Err(e) => {
-                    tracing::error!("[Updater] Cannot roll back {} from {}: {}", target.display(), backup.display(), e);
-                    if moved {
-                        // 새 판을 제자리에 돌려 둔다 (실행 파일이 없는 것보다 낫다)
-                        if let Err(e) = std::fs::rename(&aside, &target) {
-                            tracing::error!("[Updater] Cannot put {} back from {}: {}", target.display(), aside.display(), e);
-                        }
-                    }
-                    rollback.pending.push((backup, target));
-                }
-            }
-        }
-        Ok(rollback)
+        Ok(live_apply::restore_exes(self.exe_rollbacks_since(before)?))
     }
 
     /// 이번 적용이 비켜 둔 실행 파일마다 (가장 최근 백업, 제자리). 적용 전 목록(`before`)에 있던 백업은 고르지 않는다.
@@ -1447,6 +1471,24 @@ impl UpdateManager {
             satisfied: issues.is_empty(),
             issues,
         }
+    }
+
+    /// `keys`에 코어가 있으면, 그중 지금 설치된 코어로는 `saba-core` requires를 채우지 못하는 모듈·익스텐션
+    pub(crate) fn addons_waiting_for_the_new_core(&self, keys: &[String]) -> Vec<String> {
+        let core = Component::CoreDaemon.manifest_key();
+        if !keys.contains(&core) {
+            return Vec::new();
+        }
+        let installed = self.dependency_versions();
+        keys.iter()
+            .filter(|k| matches!(Component::from_manifest_key(k), Component::Module(_) | Component::Extension(_)))
+            .filter(|k| {
+                let needs: HashMap<String, String> =
+                    self.requires_of(k).and_then(|r| r.get(&core)).map(|min| HashMap::from([(core.clone(), min.clone())])).unwrap_or_default();
+                !unmet_requires(k, &needs, &installed).is_empty()
+            })
+            .cloned()
+            .collect()
     }
 
     /// 받아 둔 상태의 requires (pending.json에서 읽은 업데이터 `--apply`도), 없으면 캐시된 서버 매니페스트

@@ -2,6 +2,7 @@ import type { i18n as I18n, TFunction } from 'i18next';
 import { create } from 'zustand';
 import type { CommandAliasInfo, ModuleInfo, ModuleLoadError, ServerInfo } from '../types/daemon';
 import { createTranslateError, debugWarn, retryWithBackoff, safeShowToast, waitForDaemon } from '../utils/helpers';
+import { branchesUnderParents } from '../utils/serverView';
 import { useUIStore } from './useUIStore';
 
 // i18n translate function — set after store creation
@@ -131,11 +132,12 @@ export const useServerStore = create<ServerState>()((set, get) => ({
 
     // ── Actions ──
 
+    // 브랜치 서버는 늘 상위 서버 바로 아래에 둔다 (목록과 끌어 옮기기가 같은 순서를 본다)
     setServers: (serversOrUpdater) => {
         if (typeof serversOrUpdater === 'function') {
-            set((state) => ({ servers: serversOrUpdater(state.servers) }));
+            set((state) => ({ servers: branchesUnderParents(serversOrUpdater(state.servers)) }));
         } else {
-            set({ servers: serversOrUpdater });
+            set({ servers: branchesUnderParents(serversOrUpdater) });
         }
     },
 

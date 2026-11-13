@@ -203,6 +203,9 @@ pub async fn run(ctx: &Ctx, cmd: BotCmd) -> Result<()> {
             discord_settings(ctx, &resolve::guild(ctx, guild.as_deref()).await?, patch).await
         }
         BotCmd::BigEmoji { guild, on, off } => discord_settings(ctx, &resolve::guild(ctx, guild.as_deref()).await?, big_emoji_patch(on, off)).await,
+        BotCmd::MemberNotice { guild, on, off } => discord_settings(ctx, &resolve::guild(ctx, guild.as_deref()).await?, toggle_patch("memberNotice", on, off)).await,
+        BotCmd::BusyNotice { guild, on, off } => discord_settings(ctx, &resolve::guild(ctx, guild.as_deref()).await?, toggle_patch("busyNotice", on, off)).await,
+        BotCmd::ChatAutoOpen { guild, on, off } => discord_settings(ctx, &resolve::guild(ctx, guild.as_deref()).await?, toggle_patch("gameChatAutoOpen", on, off)).await,
         BotCmd::Confirm { guild, direct, chatbot } => confirm(ctx, &resolve::guild(ctx, guild.as_deref()).await?, direct, chatbot).await,
         BotCmd::Invite => {
             let cfg = ctx.api.bot_config().await?;
@@ -760,12 +763,12 @@ fn backup_notice_text(mode: &str) -> String {
     }
 }
 
-/// 봇 설정의 `dmNotice` → 종류별 켜짐 (빠지거나 모르는 값이면 데몬 기본 켜짐)
+/// 봇 설정의 `dmNotice` → 종류별 켜짐 (빠지거나 모르는 값이면 데몬 기본: PC 연결 끊김만 꺼짐)
 fn dm_notice_states(cfg: &Value) -> Value {
     let set = cfg.get("dmNotice");
     let states: serde_json::Map<String, Value> = crate::cli::DmKind::ALL
         .into_iter()
-        .map(|k| (k.key().to_string(), json!(set.and_then(|s| s.get(k.key())).and_then(Value::as_bool) != Some(false))))
+        .map(|k| (k.key().to_string(), json!(set.and_then(|s| s.get(k.key())).and_then(Value::as_bool).unwrap_or(k.default_on()))))
         .collect();
     Value::Object(states)
 }
@@ -898,7 +901,12 @@ fn sleep_patch(block: Option<Vec<String>>, bedtime: Option<String>, no_bedtime: 
 
 /// 이모지 업스케일 켜기·끄기 (릴레이가 가진 길드 설정, 데몬이 넘긴다). 둘 다 없으면 보기만
 fn big_emoji_patch(on: bool, off: bool) -> Option<Value> {
-    (on || off).then(|| json!({ "bigEmoji": on }))
+    toggle_patch("bigEmoji", on, off)
+}
+
+/// 릴레이가 가진 참·거짓 길드 설정 하나 켜기·끄기 (데몬이 넘긴다). 둘 다 없으면 보기만
+fn toggle_patch(key: &str, on: bool, off: bool) -> Option<Value> {
+    (on || off).then(|| json!({ key: on }))
 }
 
 fn discord_rows(r: &Value) -> Vec<(String, String)> {
@@ -927,9 +935,11 @@ fn discord_rows(r: &Value) -> Vec<(String, String)> {
         let bedtime = r.get("bedtime").filter(|b| b.is_object());
         rows.push((t!("bot.bedtime"), bedtime.map_or_else(|| t!("bot.off"), |b| format!("{} ~ {}", s(b, "start"), s(b, "end")))));
     }
-    // 이모지 업스케일: 릴레이가 가진 값이라 릴레이가 답하지 못하면 없다
-    if let Some(on) = r.get("bigEmoji").and_then(Value::as_bool) {
-        rows.push((t!("bot.big_emoji"), on_off(Some(on))));
+    // 이모지 업스케일·멤버 알림·과부하 공지·채팅 기본으로 열기: 릴레이가 가진 값이라 릴레이가 답하지 못하면 없다
+    for (key, label) in [("bigEmoji", "bot.big_emoji"), ("memberNotice", "bot.member_notice"), ("busyNotice", "bot.busy_notice"), ("gameChatAutoOpen", "bot.chat_auto_open")] {
+        if let Some(on) = r.get(key).and_then(Value::as_bool) {
+            rows.push((t!(label), on_off(Some(on))));
+        }
     }
     rows.extend([
         (t!("bot.music"), on_off(music("enabled").and_then(Value::as_bool))),
@@ -1284,7 +1294,10 @@ mod tests {
         assert_eq!(s["crash"], false);
         assert_eq!(s["disk"], true);
         assert_eq!(s["moderation"], true);
-        assert_eq!(s.as_object().unwrap().len(), 7);
+        assert_eq!(s["unresponsive"], true);
+        assert_eq!(s["offline"], false, "PC 연결 끊김은 켜야 보낸다");
+        assert_eq!(super::dm_notice_states(&json!({ "dmNotice": { "offline": true } }))["offline"], true);
+        assert_eq!(s.as_object().unwrap().len(), 9);
     }
 
     use super::*;
@@ -1332,6 +1345,21 @@ mod tests {
         assert_eq!(big_emoji_patch(true, false), Some(json!({ "bigEmoji": true })));
         assert_eq!(big_emoji_patch(false, true), Some(json!({ "bigEmoji": false })));
         assert_eq!(big_emoji_patch(false, false), None);
+    }
+
+    /// 멤버 알림·과부하 공지·채팅 기본으로 열기 (GUI 봇 설정 탭과 같다): 릴레이 값이 있을 때만 줄을 두고, 켜고 끄면 그 키만 보낸다
+    #[test]
+    fn relay_owned_toggles_are_shown_and_changed_like_the_gui() {
+        crate::i18n::init("ko");
+        let r = json!({ "memberNotice": false, "busyNotice": true, "gameChatAutoOpen": false, "music": {} });
+        let row = |r: &Value, k: &str| discord_rows(r).into_iter().find(|(name, _)| *name == t!(k)).map(|(_, v)| v);
+        assert_eq!(row(&r, "bot.member_notice"), Some(t!("bot.off")));
+        assert_eq!(row(&r, "bot.busy_notice"), Some(t!("bot.on")));
+        assert_eq!(row(&r, "bot.chat_auto_open"), Some(t!("bot.off")));
+        assert_eq!(row(&json!({ "music": {} }), "bot.busy_notice"), None);
+        assert_eq!(toggle_patch("memberNotice", true, false), Some(json!({ "memberNotice": true })));
+        assert_eq!(toggle_patch("gameChatAutoOpen", false, true), Some(json!({ "gameChatAutoOpen": false })));
+        assert_eq!(toggle_patch("busyNotice", false, false), None);
     }
 
     /// 코코낸내 (GUI 봇 설정 탭과 같다): 잠든 동안 끄는 기능, 착한 어린이(자동 코코낸내) 시각

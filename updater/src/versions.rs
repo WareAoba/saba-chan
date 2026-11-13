@@ -18,6 +18,8 @@ pub struct BundledVersions {
     pub components: BTreeMap<String, String>,
     /// 컴포넌트 키 → 드는 설치 구성 (`profiles`. 표시가 있는 것만, `crate::profile`)
     pub profiles: BTreeMap<String, Vec<String>>,
+    /// 사바쨩 실행 파일 이름 (확장자 없이, `exes`). 실행 파일 목록은 여기 하나에 둔다
+    pub exes: Vec<String>,
 }
 
 /// `versions.toml`을 파싱한 결과. 형식은 `scripts/versions.py check`가 CI에서 보장한다.
@@ -44,6 +46,8 @@ fn parse(source: &str) -> Result<BundledVersions, toml::de::Error> {
         version: String,
         #[serde(default)]
         profiles: Option<Vec<String>>,
+        #[serde(default)]
+        exes: Vec<String>,
     }
     fn default_channel() -> String {
         crate::relay::DEFAULT_CHANNEL.to_string()
@@ -54,6 +58,7 @@ fn parse(source: &str) -> Result<BundledVersions, toml::de::Error> {
         release: file.release.version,
         channel: file.release.channel,
         profiles: file.components.iter().filter_map(|(k, c)| Some((k.clone(), c.profiles.clone()?))).collect(),
+        exes: file.components.values().flat_map(|c| &c.exes).map(|e| e.trim_end_matches(".exe").to_string()).collect(),
         components: file.components.into_iter().map(|(k, c)| (k, c.version)).collect(),
     })
 }
@@ -66,6 +71,11 @@ pub fn component(key: &str) -> Option<&'static str> {
 /// 컴포넌트가 드는 설치 구성. 표시가 없으면 `None`(모든 구성)
 pub fn profiles(key: &str) -> Option<&'static [String]> {
     bundled().profiles.get(key).map(Vec::as_slice)
+}
+
+/// 사바쨩 실행 파일 이름 (확장자 없이). 0.1.12 전의 업데이터처럼 지금 릴리즈에 없는 이름은 들지 않는다
+pub fn exe_stems() -> &'static [String] {
+    &bundled().exes
 }
 
 #[cfg(test)]

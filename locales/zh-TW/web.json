@@ -125,7 +125,6 @@
   "detail": {
     "backups": "備份",
     "players": "玩家",
-    "more": "更多",
     "tabs": "伺服器選單",
     "uptime": "已執行 {{time}}",
     "port_check": "埠轉發檢查"
@@ -135,7 +134,9 @@
     "placeholder": "輸入指令",
     "send": "傳送",
     "danger_title": "這是危險指令",
-    "danger_message": "確定要傳送 {{command}} 嗎？"
+    "danger_message": "確定要傳送 {{command}} 嗎？",
+    "danger_again": "「{{command}}」是難以復原的指令。再按一次即可送出。",
+    "danger_again_described": "{{description}}。再按一次即可送出。"
   },
   "settings": {
     "game": "遊戲設定",
@@ -172,7 +173,8 @@
       "manual": "手動",
       "scheduled": "定時",
       "pre-update": "更新前",
-      "pre-restore": "還原前"
+      "pre-restore": "還原前",
+      "imported": "已匯入"
     }
   },
   "agreements": {
@@ -265,8 +267,6 @@
     "update": "更新",
     "update_to": "有 v{{version}}",
     "updated": "已更新。",
-    "check_ok": "檢查結果：只使用已宣告的功能。",
-    "check_failed": "無法獲取檢查結果。",
     "check_undeclared": "檢查結果：使用了模組未宣告的功能（{{perms}}）。請確認這是可信的模組。"
   },
   "plugins": {
@@ -427,6 +427,9 @@
     "off": "關",
     "saved": "已更改。",
     "pc": "PC",
+    "guild_here": "此電腦",
+    "guild_other_pc": "另一臺電腦",
+    "guild_no_pc": "無電腦",
     "no_guilds": "沒有你可以管理的 Discord 伺服器。",
     "other_pc": "此伺服器已連線到另一臺電腦。請通過那臺電腦的 /saba web 連結更改。",
     "err": {
@@ -538,6 +541,7 @@
     "channel_board": "狀態板頻道",
     "sleep_now": "現在睡覺",
     "awake": "醒著",
+    "sleep_needs_pc": "連接電腦後即可使用",
     "basics_desc": "此伺服器使用的語言和表情",
     "music_desc": "在語音頻道播放音樂",
     "reading_desc": "用語音朗讀聊天內容",

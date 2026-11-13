@@ -29,7 +29,7 @@
     --surface-gradient-hover-solid: #1f2025;
     --panel-gradient: #141518;
     --appbar-gradient: #111214;
-    --sheen: linear-gradient(in oklch, transparent, transparent);
+    --sheen: linear-gradient(in oklab, transparent, transparent);
 
     /* 선 (A2) */
     --line: rgba(255, 255, 255, 0.07);
@@ -107,7 +107,7 @@
     --surface-gradient-hover-solid: #fafbfc;
     --panel-gradient: #f3f4f7;
     --appbar-gradient: #eef0f3;
-    --sheen: linear-gradient(in oklch, transparent, transparent);
+    --sheen: linear-gradient(in oklab, transparent, transparent);
 
     --line: rgba(20, 24, 36, 0.08);
     --line-strong: rgba(20, 24, 36, 0.16);
@@ -176,7 +176,7 @@
         --surface-gradient-hover-solid: #fafbfc;
         --panel-gradient: #f3f4f7;
         --appbar-gradient: #eef0f3;
-        --sheen: linear-gradient(in oklch, transparent, transparent);
+        --sheen: linear-gradient(in oklab, transparent, transparent);
         --line: rgba(20, 24, 36, 0.08);
         --line-strong: rgba(20, 24, 36, 0.16);
         --text-1: #1b1d23;
@@ -238,8 +238,8 @@
     /* 첫 색→둘째 색 사이 반씩 섞이는 자리. 기본 둘째 색(보라)이 밝은 첫 색에 묻혀 보여 보라 몫을 66% 로 둔다 */
     --brand-grad-mid: 34%;
     /* 뉴모피즘 볼록면: 강조색에서 밝게→어둡게 (사용자 강조색을 따라간다) */
-    --brand-neu-from: color-mix(in oklch, var(--brand-primary), #ffffff 18%);
-    --brand-neu-to: color-mix(in oklch, var(--brand-primary), #000000 14%);
+    --brand-neu-from: color-mix(in oklab, var(--brand-primary), #ffffff 18%);
+    --brand-neu-to: color-mix(in oklab, var(--brand-primary), #000000 14%);
     /* 뉴모피즘 그림자: 솟음 / 더 솟음(마우스 올림) / 파임(누름·값 담는 칸) */
     --neu-up-solid: 3px 3px 7px var(--neu-dark), -3px -3px 7px var(--neu-light-solid), inset 0 1px 0 var(--neu-hl);
     --neu-up-hi-solid: 5px 5px 12px var(--neu-dark), -4px -4px 10px var(--neu-light-solid), inset 0 1px 0 var(--neu-hl);
@@ -259,7 +259,7 @@
     --neu-up-hi: var(--neu-up-hi-solid);
     --neu-in: var(--neu-in-solid);
     /* 색 버튼 위에 얹는 빛: 왼쪽 위 밝게, 오른쪽 아래 어둡게 */
-    --neu-sheen: linear-gradient(in oklch 160deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0) 45%, rgba(0, 0, 0, 0.12));
+    --neu-sheen: linear-gradient(in oklab 160deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0) 45%, rgba(0, 0, 0, 0.12));
     --neu-press-color: inset 2.5px 2.5px 5px rgba(0, 0, 0, 0.35), inset -2px -2px 5px rgba(255, 255, 255, 0.15);
     --ease-spring: cubic-bezier(0.3, 1.5, 0.5, 1);
     --brand-shadow: rgba(125, 142, 232, 0.3);
@@ -296,6 +296,8 @@
     --tok-uuid: #74c7ec;
     --tok-path: #94e2d5;
     --tok-dim: #6c7086;
+    /* 모듈 아이콘은 칸의 이만큼 크기로 가운데에, 자르지 않고 그린다 (사용자 2026-11-12: 모든 모듈 똑같이 살짝 축소) */
+    --module-icon-size: 80%;
 
     /* 글자 */
     --font-sans: 'Pretendard', 'Pretendard Variable', 'Noto Sans KR', 'Noto Sans', 'Segoe UI', 'Apple SD Gothic Neo',

@@ -1,8 +1,9 @@
 import type { TFunction } from 'i18next';
 import { create } from 'zustand';
-import type { AgentStatus, Json, JsonObject } from '../types/daemon';
+import type { AgentStatus, HeartbeatReject, Json, JsonObject, RelayLink } from '../types/daemon';
 import { readPrefixes } from '../components/discord/prefixes';
 import type { DiscordNode, MembersByGuild } from '../components/discord/types';
+import { eventsLive, subscribeDaemonEvents } from '../utils/daemonEvents';
 import { createTranslateError, safeShowToast } from '../utils/helpers';
 import { mergePatchDiff } from '../utils/mergePatch';
 import { startPoll } from '../utils/poll';
@@ -25,19 +26,23 @@ export type BackupNotice = 'all' | 'failures' | 'off';
 /** PC 주인 DM 알림 종류 (데몬 `config_store::DmNotice`, 백업은 `backupNotice`) */
 export const DM_NOTICE_KINDS = [
     'crash',
+    'unresponsive',
     'externalStart',
     'schedule',
     'update',
     'disk',
+    'offline',
     'chatbotUsage',
     'moderation',
 ] as const;
 export type DmNoticeKind = (typeof DM_NOTICE_KINDS)[number];
 export type DmNotice = Record<DmNoticeKind, boolean>;
-/** 데몬 값 → 종류별 켜짐. 빠지거나 모르는 칸은 데몬 기본(켜짐) */
+/** 데몬 값 → 종류별 켜짐. 빠지거나 모르는 칸은 데몬 기본(켜짐. PC 연결 끊김 `offline`만 켜야 보낸다) */
 export function readDmNotice(raw: unknown): DmNotice {
     const src = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
-    return Object.fromEntries(DM_NOTICE_KINDS.map((k) => [k, src[k] !== false])) as DmNotice;
+    return Object.fromEntries(
+        DM_NOTICE_KINDS.map((k) => [k, k === 'offline' ? src[k] === true : src[k] !== false]),
+    ) as DmNotice;
 }
 const readBackupNotice = (raw: unknown): BackupNotice => (raw === 'failures' || raw === 'off' ? raw : 'all');
 
@@ -69,6 +74,14 @@ let saveQueue: Promise<unknown> = Promise.resolve();
 let statusGeneration = 0;
 // 지금 확인 중인 대상 세대 (겹친 확인은 하나만 돌려 한 번의 실패를 두 번으로 세지 않는다)
 let checkingGeneration: number | null = null;
+/** 확인하는 동안 연결 상태가 바뀌었다 (이벤트): 끝나면 한 번 더 한다 */
+let checkAgain = false;
+/** 데몬이 에이전트의 연결 상태를 알려 준다 (0.1.14~). 그러면 이벤트로 알 수 있어 평소 확인을 느리게 한다 */
+let daemonKnowsLink = false;
+let offStatusEvents: (() => void) | null = null;
+/** 상태 확인 주기: 이벤트로 바뀜을 알 수 있으면 느리게, 아니면(옛 데몬·이벤트 없음) 예전처럼 */
+const STATUS_POLL_MS = 5000;
+const STATUS_SLOW_POLL_MS = 30_000;
 
 // 디스코드 봇 본체는 클라우드(릴레이 서버)에서 돌고, 로컬에서는 데몬 내장
 // 릴레이 에이전트가 명령을 받아 처리한다. 이 스토어는 bot-config와
@@ -97,6 +110,8 @@ export interface DiscordData {
     discordAgentReplaced: boolean;
     discordAgentRelayUrlInvalid: boolean;
     discordAgentMinVersion: string | null;
+    /** 릴레이가 이 PC의 상태 보고를 거절한 이유. 받으면 null */
+    discordHeartbeatReject: HeartbeatReject | null;
     botStatusReady: boolean;
     relayConnected: boolean;
     relayConnecting: boolean;
@@ -161,6 +176,7 @@ const initialState = (): DiscordData => ({
     discordAgentRelayUrlInvalid: false,
     // 릴레이가 이 앱 버전을 받지 않을 때 요구하는 최소 버전. 받으면 null
     discordAgentMinVersion: null,
+    discordHeartbeatReject: null,
     botStatusReady: false,
     relayConnected: false,
     relayConnecting: false,
@@ -421,7 +437,10 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
         if (checkingGeneration === generation) return;
         checkingGeneration = generation;
         try {
-            await get()._checkStatusNow(generation);
+            do {
+                checkAgain = false;
+                await get()._checkStatusNow(generation);
+            } while (checkAgain && generation === statusGeneration);
         } finally {
             if (checkingGeneration === generation) checkingGeneration = null;
         }
@@ -440,14 +459,22 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
             /* unknown */
         }
 
+        // 에이전트가 하트비트로 아는 연결 상태. 돌고 있을 때만 믿는다 (꺼 둔 봇은 릴레이가 닿는지 모른다)
+        const info = typeof agent === 'object' ? agent : null;
+        const link: RelayLink | undefined = info?.link;
+        if (agent !== 'unknown') daemonKnowsLink = !!link;
+        const agentLink = state.discordCloudHostId && link && info?.running ? link : null;
         // 토큰이 거절된 동안은 릴레이를 30초에 한 번만 묻는다 (같은 공유기의 다른 PC와 릴레이 요청 한도를 나눠 쓴다).
         // 그 사이에는 거절을 그대로 두고, 에이전트 상태는 5초마다 반영한다
         const now = Date.now();
-        const holdRejected = state.relayErrorKind === 'rejected' && now - state._relayCheckedAt < REJECTED_RECHECK_MS;
-        let relayOk = false;
+        const holdRejected =
+            !agentLink?.connected && state.relayErrorKind === 'rejected' && now - state._relayCheckedAt < REJECTED_RECHECK_MS;
+        let relayOk = !!agentLink?.connected;
         let relayFailure = holdRejected ? state.relayError : '';
         let failureKind: RelayFailureKind | '' = holdRejected ? 'rejected' : '';
-        if (state.discordCloudHostId && !holdRejected) {
+        // 붙어 있거나 막 켜 하트비트 전(연결 중)이면 릴레이에 묻지 않는다. 끊겼으면 왜인지(토큰 거절·요청 한도) 릴레이에 묻는다
+        const agentConnecting = !!agentLink && !agentLink.connected && !agentLink.error && agentLink.heard === false;
+        if (state.discordCloudHostId && !relayOk && !agentConnecting && !holdRejected) {
             const relayUrl = state.discordCloudRelayUrl || RELAY_URL_FALLBACK;
             set({ _relayCheckedAt: now });
             try {
@@ -472,16 +499,14 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
         const agentFailures = agent === 'unknown' ? get()._agentFailures + 1 : 0;
         const prev = get();
         const keepAgent = agent === 'unknown' && agentFailures < 2;
-        // too_old는 { status, running, minVersion }으로 온다
-        const tooOld = typeof agent === 'object' ? agent : null;
-        const agentRunning = keepAgent
-            ? prev.discordBotStatus !== 'stopped'
-            : tooOld
-              ? tooOld.running
-              : agent === 'running';
+        // too_old는 { status, running, minVersion }으로 온다. 연결 상태를 주는 데몬은 다른 상태도 객체로 준다
+        const kind = info ? info.status : agent;
+        const tooOld = info?.status === 'too_old' ? info : null;
+        const heartbeatReject = info?.status === 'rejected' ? info.reason : null;
+        const agentRunning = keepAgent ? prev.discordBotStatus !== 'stopped' : info ? info.running : agent === 'running';
         const agentMinVersion = keepAgent ? prev.discordAgentMinVersion : tooOld ? tooOld.minVersion || '-' : null;
-        const agentReplaced = keepAgent ? prev.discordAgentReplaced : agent === 'replaced';
-        const agentRelayUrlInvalid = keepAgent ? prev.discordAgentRelayUrlInvalid : agent === 'invalid_relay_url';
+        const agentReplaced = keepAgent ? prev.discordAgentReplaced : kind === 'replaced';
+        const agentRelayUrlInvalid = keepAgent ? prev.discordAgentRelayUrlInvalid : kind === 'invalid_relay_url';
 
         // 두 번 연달아 실패해야 끊김·실패로 본다 (그 전까지는 지금 상태를 유지한다)
         const failures = relayFailure ? get()._relayFailures + 1 : 0;
@@ -502,6 +527,7 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
             discordAgentReplaced: agentReplaced,
             discordAgentRelayUrlInvalid: agentRelayUrlInvalid,
             discordAgentMinVersion: agentMinVersion,
+            discordHeartbeatReject: keepAgent ? prev.discordHeartbeatReject : heartbeatReject,
             discordBotStatus: nextStatus,
             discordReconnecting:
                 // 릴레이가 이 버전이나 이 PC의 열쇠를 거절하면 저절로 다시 붙을 일이 없다 — 복구 중이 아니라 거절로 보인다
@@ -513,21 +539,48 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
     },
 
     startStatusPolling: () => {
-        if (get()._statusInterval) return;
+        if (get()._statusInterval || get()._statusTimeout) return;
+        const generation = statusGeneration;
 
+        // 다음 확인까지. 데몬이 연결 상태를 알려 주고 이벤트를 받으면 바뀔 때 이벤트로 바로 읽으니 평소에는 드물게 본다.
+        // 끊긴 것 같으면(한 번 실패) 끊김을 정하려 곧 다시 본다
+        const statusPollMs = () =>
+            daemonKnowsLink && eventsLive() && get()._relayFailures === 0 ? STATUS_SLOW_POLL_MS : STATUS_POLL_MS;
+        // 창이 가려진 동안은 쉰다 (startPoll)
+        const poll = () => {
+            get()._statusInterval?.();
+            set({ _statusInterval: startPoll(() => get().checkStatus(), statusPollMs, { immediate: false }) });
+        };
+        offStatusEvents = subscribeDaemonEvents((ev) => {
+            if (ev.type !== 'relay.status' && ev.type !== 'resync') return;
+            // 확인하는 중에 바뀌었으면 그 답은 이미 옛것일 수 있다: 끝나고 한 번 더 본다
+            if (checkingGeneration === statusGeneration) {
+                checkAgain = true;
+                return;
+            }
+            get()
+                .checkStatus()
+                .then(() => {
+                    // 끊긴 것 같으면 30초 뒤가 아니라 곧 다시 보고 끊김을 정한다
+                    if (generation !== statusGeneration || get()._relayFailures === 0 || get()._statusTimeout) return;
+                    poll();
+                });
+        });
         // 첫 확인은 잠깐 미룬다. 멈추면 취소되도록 타이머를 들고 있는다
         const timeout = setTimeout(async () => {
             set({ _statusTimeout: null });
-            const generation = statusGeneration;
             await get().checkStatus();
-            if (generation === statusGeneration) set({ botStatusReady: true });
+            if (generation !== statusGeneration) return;
+            set({ botStatusReady: true });
+            poll();
         }, 200);
-        const interval = startPoll(() => get().checkStatus(), 5000, { immediate: false });
-        set({ _statusInterval: interval, _statusTimeout: timeout });
+        set({ _statusTimeout: timeout });
     },
 
     stopStatusPolling: () => {
         const state = get();
+        offStatusEvents?.();
+        offStatusEvents = null;
         state._statusInterval?.();
         clearTimeout(state._statusTimeout ?? undefined);
         statusGeneration += 1;
@@ -545,6 +598,9 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
     // Test-only: reset to initial state
     _resetForTest: () => {
         const state = get();
+        offStatusEvents?.();
+        offStatusEvents = null;
+        daemonKnowsLink = false;
         state._statusInterval?.();
         clearTimeout(state._statusTimeout ?? undefined);
         statusGeneration += 1;

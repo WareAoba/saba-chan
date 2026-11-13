@@ -69,7 +69,7 @@ export function MetricRing({ ring, t, size = 104, inlineNote = true }: MetricRin
     const lastColor = arcs[arcs.length - 1]?.seg;
     const stroke = (seg: RingSegment) => (BASE_KEYS.has(seg.key) ? 'var(--ring-base)' : seg.color);
     const label = (seg: RingSegment) => (seg.labelKey ? t(seg.labelKey) : seg.label);
-    const title = t(ring.titleKey, ring.titleVars);
+    const title = t(ring.titleKey, ring.titleVars ?? {});
 
     return (
         <figure
@@ -117,7 +117,7 @@ export function MetricRing({ ring, t, size = 104, inlineNote = true }: MetricRin
                 <div className="monitor-pills">
                     {ring.pills.map((p) => (
                         <span key={p.key ?? p.text} className={p.unknown ? 'monitor-pill unknown' : 'monitor-pill'}>
-                            {p.key ? t(p.key, p.vars) : p.text}
+                            {p.key ? t(p.key, p.vars ?? {}) : p.text}
                         </span>
                     ))}
                 </div>
@@ -151,7 +151,7 @@ export function MonitorPicker({ groups, items, onChange, t }: MonitorPickerProps
                             onChange={(checked) => onChange(toggleItem(items, r.id, checked))}
                             data-item={r.id}
                         >
-                            <span className="monitor-picker-label">{r.labelKey ? t(r.labelKey, r.labelVars) : r.label}</span>
+                            <span className="monitor-picker-label">{r.labelKey ? t(r.labelKey, r.labelVars ?? {}) : r.label}</span>
                             {r.noteKey && <small className="monitor-picker-note">{t(r.noteKey)}</small>}
                         </SabaCheckbox>
                     ))}

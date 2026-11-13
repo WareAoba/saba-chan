@@ -50,7 +50,7 @@
 | `min_app_version` | `Option<String>` | `None` | enable(`ext/:929-933`), 패키지 설치(`ext/:1405`)에서 강제하고, 목록·원격 목록에 `incompatible`로 표시한다(`ext/:1108,1289`). |
 | `dependencies` | `HashMap<String,String>` | `{}` | 커스텀 디시리얼라이저 `deserialize_dependencies` (`ext/:56-97`): 배열 `["a"]` → `{"a":"*"}`, 맵은 그대로 받는다. 공식 manifest는 맵(`{}`)을 쓰고, 배열은 0.1.13까지 배포한 공식 익스텐션의 설치된 사본(`[]`)을 읽으려고 남긴다. enable/disable/unmount 검증에 쓰인다(아래 3.3). |
 | `python_modules` | `HashMap<String,String>` | `{}` | 모듈 키 → 익스텐션 디렉토리 기준 상대경로. hook 바인딩과 명령이 참조한다(`ext/:1165,1240`). 값은 폴더 안 상대 경로만 받는다(모듈 `entry`와 같은 `utils::is_inner_relative_path`): 빈 값, 절대 경로, `..`·`.`가 든 경로는 `schema_version`과 무관하게 manifest 오류다. 신뢰 판정(`sandbox::component_in`)도 `..`·`.`가 든 진입점은 어느 구성요소에도 넣지 않는다. |
-| `hooks` | `HashMap<String, HookBinding>` | `{}` | hook 이름 → 바인딩. |
+| `hooks` | `HashMap<String, HookBinding>` | `{}` | hook 이름 → 바인딩. 이름은 `FIRED_HOOKS`의 것이거나 이벤트 버스를 따르는 `event:<종류>`(§2.3 끝)다. |
 | `gui` | `Option<GuiManifest>` | `None` | 번들/스타일 서빙에 쓰인다(`handlers/extension.rs:240-334`). `gui.slots`는 GUI가 읽는다(4.2). |
 | `cli` | `Option<CliManifest>` | `None` | `/api/extensions` 응답에 그대로 실린다. `cli.slots`는 데이터 slot 선언이다(4.3). 인터페이스는 이 원본 대신 정규화된 `slots`를 읽는다. |
 | `module_config_section` | `Option<String>` | `None` | **읽는 코드가 없다(dead 필드)**. module.toml의 익스텐션별 설정은 범용 `[extensions.<id>]` 섹션으로 받아 그대로 넘긴다(`supervisor/module_loader.rs:618-622,1139-1144`). |
@@ -147,10 +147,19 @@
 | `server.post_create` | `handlers/instance.rs:357-370` | 인스턴스 생성(`POST /api/instances`), `instance_store.add` 성공 직후 | `tokio::spawn` 백그라운드, 120s. 결과를 기다리지 않고 바로 네이티브 프로비저닝으로 넘어간다 | `instance_id, instance_dir, instance, module, migration`. `instance`의 REST 비밀번호와 비밀 설정 값(모듈이 password로 선언했거나 이름에 pass·token·secret 같은 낱말이 든 것)은 `***`로 가린다(D-E2) | 결과를 버린다. 프로비저닝과 동시에 돈다 |
 | `server.pre_delete` | `handlers/instance.rs:826-846` | 인스턴스 삭제 | 동기, 120s | `instance_id, instance_name, module, extension_data` | `handled`이면 2초 대기한다(파일 잠금 해제용) |
 | `server.settings_changed` | `handlers/instance.rs:1350-1364` | 인스턴스 설정 PATCH, `extension_data`가 비어 있지 않을 때 | 동기, 120s | `instance_id, instance_dir, instance, module_extensions(module.toml [extensions.*] 전체), extension_data, settings`. `instance`와 `settings`의 비밀 값은 `server.post_create`와 같이 `***`로 가린다(D-E2) | 결과를 버린다(`_results`) |
-| `server.check_update` | `handlers/instance.rs` `server_update_status` | `GET /api/instance/:id/check-update`, 그리고 `/api/instance/:id/start`로 새로 켠 뒤 뒤에서(`update_available:true`면 `instance.update_notice {kind:"server"}`, `server.rs` `announce_updates`) | 동기(시작 뒤에는 spawn), 120s | `instance_id, instance_name, module, instance_dir, install_dir, app_id, extension_data` | 설치 방식 익스텐션이 설치한 인스턴스에만 부른다(아니면 hook 없이 `{update_available:false, reason:"update_unsupported"}`, 모듈을 읽지 못했으면 판단하지 않고 아래로). 첫 번째 Ok를 그대로 응답한다. 모두 실패하면 오류 응답에 `update_available:false, reason:"check_failed"`를 붙인다(`update_status_from_hooks`). hook이 없으면 `{update_available:false, reason:"no_hook_handled"}`. `app_id`는 `extension_data["<방식>_app_id"]`, 없으면 module.toml `[install].app_id`(`:1433-1437`) |
+| `server.check_update` | `handlers/instance.rs` `server_update_status` | `GET /api/instance/:id/check-update`, 그리고 `/api/instance/:id/start`로 새로 켠 뒤 뒤에서(`update_available:true`면 `instance.update_notice {kind:"server"}`, `server.rs` `announce_updates`) | 동기(시작 뒤에는 spawn), 120s | `instance_id, instance_name, module, instance_dir, install_dir, app_id, extension_data` | 설치 방식 익스텐션이 설치한 인스턴스에만 부른다(아니면 hook 없이 `{update_available:false, reason:"update_unsupported"}`, 모듈을 읽지 못했으면 판단하지 않고 아래로). 첫 번째 Ok를 그대로 응답한다. 모두 실패하면 오류 응답에 `update_available:false, reason:"check_failed"`를 붙인다(`update_status_from_hooks`). hook이 없으면 `{update_available:false, reason:"no_hook_handled"}`. `app_id`는 `extension_data["<방식>_app_id"]`, 없으면 module.toml `[install].app_id`(`:1433-1437`). 결과에서 데몬과 화면이 읽는 키(모두 선택): `update_available`, `local_buildid`·`remote_buildid`(설치된 빌드와 새 빌드의 번호), `local_build_time`·`remote_build_time`(그 빌드를 받은 때·올라온 때, 유닉스 초), `reason`·`error`. 데몬은 `local_buildid`·`local_build_time`을 인스턴스 `server_build`에 적어 두고(01 인스턴스 필드), GUI는 새 버전 안내 줄과 정보 탭의 새 버전 줄에 `remote_*`를 보인다 |
 | `command.<name>` (익스텐션 명령) | `handlers/command.rs:90-102` | `POST /api/instance/:id/command`에서 모듈에 없는 명령 | 동기, 120s | `instance_id, instance_name, module, extension_data, running, args` | 결과를 명령 응답으로 돌려준다 |
 
 manifest에 발화되지 않는 hook을 새로 선언하면 `parse_manifest`가 v1에서 거부, v0에서 경고한다(`ext/:387-390`).
+
+**이벤트 hook `event:<종류>`** (`extension/event_hooks.rs`): 데몬 이벤트 버스(01 §`GET /api/events`의 종류: `backup.done`, `instance.exit`, `instance.ready`, `instance.player` 등)에 난 일을 익스텐션이 받는다. 데몬은 익스텐션 이름을 모르고, 버스를 듣는 디스패처 하나가 `plan_hook` 경로(`run_hook_to`)로 넘긴다(`IPCServer::start`가 띄운다).
+
+- 이름: `event:` 뒤에 이벤트 종류(영문 소문자·숫자·`_`·`.`). 종류 목록과 대조하지 않으므로 없는 종류는 받을 일이 없을 뿐 오류가 아니다. `event:`만 있거나 모양이 다르면 다른 hook처럼 "never fired"다. `condition`은 쓸 수 없다(이벤트에는 `extension_data`가 없다, v1 오류·v0 경고).
+- context: `{event: <종류>, id: <이벤트 번호>, data: {at, ...이벤트 데이터}}` + 그 익스텐션 자신의 `extension_config`. 결과는 쓰지 않는다. 실패는 다른 hook처럼 로그에만 남는다.
+- 넘기는 것: 버퍼에 남는 이벤트(`emit`)만. 지금 붙은 클라이언트에게만 가는 것(`emit_live`: `provision.progress`, `servers.changed`, `instance.update_checked`, `relay.status`)은 넘기지 않는다.
+- 격리된 익스텐션(확인되지 않았고 비격리 동의가 없는 것, `sandbox::extension_isolated`): 격리는 데이터 폴더·다른 인스턴스를 가리지만 밖으로 나가는 네트워크는 열어 두므로, 릴레이 알림 채널에 올리는 것과 같은 모양(I3, `relay_agent::relay_event`의 `data`)만 넘긴다. 경로·콘솔 줄·오류 원문은 빠지고, 릴레이에 올리지 않는 종류(`action.run`, `instance.player` 등)는 그 익스텐션에 넘기지 않는다. 확인된 익스텐션과 비격리 동의를 받은 익스텐션은 이벤트 데이터를 그대로 받는다.
+- 인스턴스 문맥 없이 부른다: HOST 작업(`instance.stdin`·`instance.rcon`·`instance.rest`)은 `no_instance`다. 그래서 이벤트마다 게임 서버에 명령을 보내지 못한다.
+- 상한: 익스텐션마다 줄 하나와 일꾼 하나. 디스패처는 줄에 넣기만 하므로 버스를 막지 않는다. 한 익스텐션의 hook은 한 번에 하나씩(기본 120s 타임아웃) 돌고, 느리거나 실패하거나 패닉해도 다른 익스텐션의 hook은 기다리지 않는다. 줄은 32건까지, 넘치면 가장 오래된 것을 버리고 줄이 빌 때까지 경고를 한 번 남긴다. 디스패처가 버스(256)에 뒤처지면 놓친 수를 경고로 남긴다.
 
 - 업데이트 적용(`POST /api/instance/:id/apply-update`, `handlers/instance.rs:1477-1761`)과 네이티브 프로비저닝(`:371-624`)은 hook을 거치지 않는다. **module의 `lifecycle.py install_server`를 직접 호출**하고, module이 `from extensions.steamcmd import SteamCMD`로 익스텐션을 Python 라이브러리처럼 import한다. apply-update는 `install_method_<방식>`이 켜진 인스턴스만 받는다(`:1547-1560`).
 
@@ -323,9 +332,9 @@ slot 이름·창·종류는 `SLOT_TABLE` 한 곳에 있다. 종류: `inline`은 
 
 ### 5.2 steamcmd (v0.1.0)
 
-- `SteamCMD` 클래스(`steamcmd.py:151-622`): 포터블 SteamCMD 탐색/설치, `install(...)`, `update`, buildid·브랜치 비교로 `check_update`. 압축 해제는 경로 탈출을 막는다(`:799-827`).
+- `SteamCMD` 클래스(`steamcmd.py:151-622`): 포터블 SteamCMD 탐색/설치, `install(...)`, `update`, buildid·브랜치 비교로 `check_update`. `check_update`는 설치된 빌드를 받은 때(appmanifest `LastUpdated`)와 그 브랜치의 빌드가 올라온 때(`app_info_print` branches의 `timeupdated`)를 `local_build_time`·`remote_build_time`으로 함께 답한다(Steam이 주지 않으면 `null`). 압축 해제는 경로 탈출을 막는다(`:799-827`).
 - daemon hook으로 실제로 쓰이는 것은 `server.check_update` 하나뿐이다. 설치는 module의 `lifecycle.py install_server`가 `from extensions.steamcmd import SteamCMD`로 직접 수행한다(`M:palworld/lifecycle.py:1175`, `M:zomboid/lifecycle.py:1457`).
-- `install_for_module(module_dir, install_dir, beta=None)`(steamcmd 다음 판): 모듈 module.toml `[install]`(`method = "steamcmd"`, `app_id`, `anonymous`, `beta`)을 읽어 SteamCMD를 준비하고 설치·업데이트한다. 앱 ID를 모듈 코드에 다시 적지 않는다. `[install]`에 steamcmd 앱 ID가 없으면 `ValueError`. 반환은 `SteamCMD.install`과 같다.
+- `install_for_module(module_dir, install_dir, beta=None)`(steamcmd 다음 판): 모듈 module.toml `[install]`(`method = "steamcmd"`, `app_id`, `anonymous`, `beta`)을 읽어 SteamCMD를 준비하고 설치·업데이트한다. 앱 ID를 모듈 코드에 다시 적지 않는다. `[install]`에 steamcmd 앱 ID가 없으면 `ValueError`. `beta` 인자(인스턴스가 고른 브랜치, 02 §3.3 `list_versions`)가 있으면 `[install].beta`보다 먼저 쓴다. 반환은 `SteamCMD.install`과 같다.
 - 설치 진행률은 SteamCMD 출력의 `progress:` 줄 → 설치 폴더 appmanifest의 `BytesDownloaded`/`BytesToDownload`(`_manifest_progress`) → 늘어난 디스크 크기와 앱별 어림 총량(`_disk_progress`) 순으로 읽는다. 출력은 파이프에서 버퍼에 묶이기 쉽다. 디스크 크기가 어림 총량을 넘으면(미리 잡은 파일 크기·받기 임시 파일) 진행률을 올리지 않고 직전 값을 유지한다.
 - instance_fields `install_method_steamcmd`, `steamcmd_app_id` 등은 daemon이 module의 `[install] method`를 보고 **범용 규칙**(`install_method_<방식>`, `<방식>_<이름>`)으로 채운다(`src/instance/mod.rs:142-166` `apply_install_extension_data`). core에 steamcmd 이름은 없다.
 

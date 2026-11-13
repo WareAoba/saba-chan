@@ -12,13 +12,15 @@
 #   3. CLI를 ~/.local/bin/saba-chan(짧은 이름)과 saba-chan-cli로 링크한다. 헤드리스면 systemd 사용자 서비스(saba-chan.service)로 데몬을 켜고,
 #      데스크톱이면 앱 메뉴에 사바쨩을 넣고(CLI 설치가 한다) GUI를 띄운다 (GUI가 데몬을 켠다. Windows 데스크톱 설치와 같다)
 #      맥은 ~/Applications/Saba-chan.app에 설치하고(CLI 설치가 앱 묶음을 만든다) 그 앱을 연다
+#   4. 쓰는 셸의 자동 완성을 그 셸이 읽는 자리에 둔다 (`saba-chan completions --install`, 셸 설정 파일은 고치지 않는다)
 #
-# 인자는 `saba-chan-cli install`의 것이다 (--dir, --modules, --components-dir, --gui, --no-gui, --yes).
+# 인자는 `saba-chan-cli install`의 것이다 (--dir, --modules, --components-dir, --channel, --gui, --no-gui, --yes).
 # 이 스크립트만 받는 인자 (다른 PC의 앱이 ssh로 설치할 때 붙인다):
 #   --pair        데몬을 켠 뒤 서버쨩 페어링 코드를 받아 `SABA_PAIR_CODE=<코드>` 줄로 찍고, 누가 받을 때까지 기다린다
 #   --linger      로그아웃해도 데몬이 돌게 한다 (sudo loginctl enable-linger)
 #   --steam-libs  SteamCMD에 필요한 32비트 라이브러리를 설치한다 (sudo, apt·dnf)
-# 정식 채널만 설치한다 (CLI 설치도 정식 채널을 받는다). 채널은 설치 뒤 `saba-chan-cli update config channel=beta`로
+# 채널: 고르지 않으면 정식(stable). `--channel rc`·`--channel beta`를 붙이면 CLI를 그 채널에서 받고, CLI 설치에도 그대로 넘겨
+# 나머지도 그 채널의 최신 판으로 깔고 이후 업데이트도 그 채널로 받는다. 설치 뒤에는 `saba-chan-cli update config channel=beta`로 바꾼다
 # 필요: curl, sha256sum, python3(manifest JSON 읽기, zip 풀기. 클라우드 서버 이미지에는 unzip이 없는 일이 많다).
 # 맥은 OS에 든 것만 쓴다: shasum, osascript(JSON), ditto(zip). 맥의 python3는 개발 도구를 깔라는 창을 띄울 수 있다
 set -eu
@@ -77,9 +79,18 @@ fi
 prev=
 for arg in "$@"; do
     [ "$prev" = --dir ] && DIR=$arg
-    case "$arg" in --dir=*) DIR=${arg#--dir=} ;; esac
+    [ "$prev" = --channel ] && CHANNEL=$arg
+    case "$arg" in
+        --dir=*) DIR=${arg#--dir=} ;;
+        --channel=*) CHANNEL=${arg#--channel=} ;;
+    esac
     prev=$arg
 done
+# 주소에 그대로 들어가는 값이다: 고를 수 있는 채널만 받는다 (CLI 설치의 --channel과 같다)
+case "$CHANNEL" in
+    stable | rc | beta) ;;
+    *) die "채널은 stable, rc, beta 중 하나예요." "The channel must be stable, rc or beta." ;;
+esac
 case " $* " in
     *" --dir "* | *" --dir="*) ;;
     *) set -- --dir "$DIR" "$@" ;;
@@ -255,6 +266,13 @@ if [ -n "$PAIR" ]; then
         say "서버쨩 연결을 마치지 못했어요. 나중에 saba-chan bot pair 로 다시 해 주세요." \
             "Could not finish connecting to Server-chan. Run saba-chan bot pair later."
 fi
+
+# 셸 자동 완성: 쓰는 셸이 스스로 읽는 자리에만 둔다 (셸 설정 파일은 고치지 않는다). 못 해도 설치는 마친다.
+# 파일을 둘 수 있는 셸만 부른다: sh·dash 같은 셸이면 조용히 건너뛴다
+login_shell="${SHELL:-}"
+case "${login_shell##*/}" in
+    bash | zsh | fish) "$CLI" completions --install || true ;;
+esac
 
 case ":$PATH:" in
     *":$HOME/.local/bin:"*) ;;

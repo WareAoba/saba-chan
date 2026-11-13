@@ -98,7 +98,6 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
     const { t, i18n } = useTranslation('gui');
     const [settings, setSettings] = useState<ApiBody | null>(null);
     const [draft, setDraft] = useState<{ enabled: boolean } | null>(null); // 주소는 카드의 게임 서버 주소 줄에서 (PublicAddress)
-    const [clients, setClients] = useState<ApiBody[]>([]);
     const [peers, setPeers] = useState<ApiBody[] | null>(null); // null = 못 읽음
     const [peersError, setPeersError] = useState<string | null>(null);
     // 이 PC 이름 (서버쨩의 PC 이름). 내 PC 목록(`self`)이 먼저, 못 읽으면 데몬이 받아 둔 사본(`thisName`)
@@ -106,7 +105,8 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
     const [daemons, setDaemons] = useState<ApiBody[]>([]);
     // 원격 데몬마다 닿는지 (`/api/remote/servers`의 ok·error_code). 아직 모르면 비어 있다
     const [reach, setReach] = useState<Record<string, string>>({});
-    const [busy, setBusy] = useState<string | null>(null); // 진행 중인 동작 이름
+    // 진행 중인 동작 이름들 (`connect:<hostId>`, `save` …). 한 PC에 붙는 동안에도 다른 PC·설정은 쓸 수 있다 (사용자 11-12)
+    const [pending, setPending] = useState<string[]>([]);
     const [error, setError] = useState<string | null>(null);
     const [notice, setNotice] = useState<string | null>(null);
     const [removing, setRemoving] = useState<PcCard | null>(null);
@@ -123,10 +123,6 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
         if (failed(res)) return;
         setSettings(res);
         setDraft({ enabled: Boolean(res.enabled) });
-    }, []);
-    const loadClients = useCallback(async () => {
-        const res = await window.api.remoteClients();
-        if (!failed(res)) setClients(res.clients || []);
     }, []);
     const loadPeers = useCallback(async () => {
         const res = await window.api.remotePeers();
@@ -154,13 +150,12 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
 
     useEffect(() => {
         loadSettings();
-        loadClients();
         loadPeers();
         loadDaemons();
-    }, [loadSettings, loadClients, loadPeers, loadDaemons]);
+    }, [loadSettings, loadPeers, loadDaemons]);
 
     const run = async (name: string, fn: () => Promise<ApiBody>) => {
-        setBusy(name);
+        setPending((p) => [...p, name]);
         setError(null);
         setNotice(null);
         try {
@@ -171,7 +166,7 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
             setError((e as Error).message);
             return null;
         } finally {
-            setBusy(null);
+            setPending((p) => p.filter((n) => n !== name));
         }
     };
 
@@ -220,10 +215,6 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
     const connect = async (hostId: string) => {
         const res = await run(`connect:${hostId}`, () => window.api.remoteConnect(hostId));
         if (res && !failed(res)) await reloadPcs();
-    };
-    const revoke = async (hostId: string) => {
-        const res = await run(`revoke:${hostId}`, () => window.api.remoteRevoke(hostId));
-        if (res && !failed(res)) await loadClients();
     };
 
     const remove = async (card: PcCard, choice: { uninstall: boolean; keepSettings: boolean; keepInstances: boolean; removePc: boolean }) => {
@@ -310,7 +301,7 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
         const os = platform?.distro?.name || (family ? t(`remote_daemon.os_${family}`) : '');
         return os && /^(aarch64|arm)/i.test(arch) ? `${os} (ARM)` : os;
     };
-    // 사바쨩 판은 PC 이름 옆에. 새 판이 있으면 판 옆에 업데이트 표시를 붙인다
+    // 사바쨩 판은 이름 아래 줄 OS 뒤에. 새 판이 있으면 판 옆에 업데이트 표시를 붙인다
     const versionTag = (version?: string | null, updateTo?: string) =>
         version ? (
             <span
@@ -326,9 +317,12 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
 
     const status = settings?.status || {};
     const statusError = settings?.enabled && status.error ? remoteErrorText({ error_code: status.error }, t) : null;
+    // 그 카드에서 도는 동작이 있거나, 데몬을 바꿔 여는 중(창을 다시 읽는다)이면 잠근다
+    const hostOf = (name: string) => name.slice(name.indexOf(':') + 1);
+    const cardBusy = (key: string) => pending.some((n) => n.startsWith('open:') || (n.includes(':') && hostOf(n) === key));
     const button = (name: string, label: string, onClick: () => void, icon: string, kind = 'btn-ghost', disabled = false) => (
-        <button type="button" className={`btn ${kind} btn-sm`} onClick={onClick} disabled={busy !== null || disabled}>
-            {busy === name ? <SabaSpinner size="xs" /> : <Icon name={icon} size="sm" />} {label}
+        <button type="button" className={`btn ${kind} btn-sm`} onClick={onClick} disabled={cardBusy(hostOf(name)) || disabled}>
+            {pending.includes(name) ? <SabaSpinner size="xs" /> : <Icon name={icon} size="sm" />} {label}
         </button>
     );
     const star = (on: boolean, onClick: () => void) => (
@@ -347,7 +341,7 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
         <StatusChip tone={tone} label={text} className="remote-pc-chip" />
     );
     const editButton = (key: string) => (
-        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing(key)} disabled={busy !== null}>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing(key)} disabled={cardBusy(key)}>
             <Icon name="edit" size="sm" /> {t('pc_settings.edit')}
         </button>
     );
@@ -395,7 +389,7 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
                 hasAddress={Boolean(daemon) && state === null && online}
                 main={daemon ? mainDaemon === card.hostId : undefined}
                 updateTo={needsUpdate ? thisVersion : undefined}
-                canUpdate={online && busy === null}
+                canUpdate={online && !cardBusy(card.hostId)}
                 canRemove
                 onMain={() => updateSettings({ mainDaemon: card.hostId })}
                 onUpdate={() => {
@@ -429,14 +423,16 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
                     <span className="remote-pc-who">
                         <span className="remote-pc-namerow">
                             <b className="remote-pc-name">{name}</b>
+                        </span>
+                        <span className="remote-pc-meta">
+                            {state
+                                ? chip('warn', t(`remote_daemon.state_${state}`))
+                                : peer &&
+                                  chip(online ? 'ok' : 'idle', online ? t('remote_daemon.online') : t('remote_daemon.offline'))}
+                            <span className="remote-pc-sub">{osLine(platform)}</span>
                             {versionTag(peer?.agentVersion, needsUpdate ? thisVersion : undefined)}
                         </span>
-                        <span className="remote-pc-sub">{osLine(platform)}</span>
                     </span>
-                    {state
-                        ? chip('warn', t(`remote_daemon.state_${state}`))
-                        : peer &&
-                          chip(online ? 'ok' : 'idle', online ? t('remote_daemon.online') : t('remote_daemon.offline'))}
                     {daemon && star(mainDaemon === card.hostId, () => updateSettings({ mainDaemon: card.hostId }))}
                 </div>
                 <dl className="remote-pc-kv">
@@ -504,7 +500,7 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
                             </span>
                             <span className="setting-description">{t('remote_daemon.enabled_description')}</span>
                             <span className="setting-description remote-daemon-status" role="status">
-                                {busy === 'save' && <SabaSpinner size="xs" />}
+                                {pending.includes('save') && <SabaSpinner size="xs" />}
                                 {!settings!.enabled && t('remote_daemon.status_off')}
                                 {settings!.enabled &&
                                     status.listening &&
@@ -518,7 +514,7 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
                             id="remote-daemon-enabled"
                             aria-label={t('remote_daemon.enabled')}
                             checked={draft.enabled}
-                            disabled={busy !== null}
+                            disabled={pending.includes('save')}
                             onChange={(enabled) => save({ enabled, port: savedPort })}
                         />
                     </div>
@@ -562,11 +558,13 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
                             <span className="remote-pc-namerow">
                                 <b className="remote-pc-name">{myName || t('daemon_switcher.local')}</b>
                                 {myName && <span className="remote-pc-tag">{t('daemon_switcher.local')}</span>}
+                            </span>
+                            <span className="remote-pc-meta">
+                                {chip('ok', t('remote_daemon.online'))}
+                                <span className="remote-pc-sub">{osLine(thisPc.platform)}</span>
                                 {versionTag(thisVersion)}
                             </span>
-                            <span className="remote-pc-sub">{osLine(thisPc.platform)}</span>
                         </span>
-                        {chip('ok', t('remote_daemon.online'))}
                         {star(!mainIsRemote, () => updateSettings({ mainDaemon: null }))}
                     </div>
                     <dl className="remote-pc-kv">
@@ -599,18 +597,6 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
                         <span>{t('remote_daemon.install_linux')}</span>
                     </button>
                 </li>
-            </ul>
-
-            <h5 className="remote-daemon-subtitle">{t('remote_daemon.clients')}</h5>
-            <ul className="remote-daemon-list" aria-label={t('remote_daemon.clients')}>
-                {clients.length === 0 && <li className="muted">{t('remote_daemon.no_clients')}</li>}
-                {clients.map((c) => (
-                    <li key={c.hostId} className="remote-daemon-row">
-                        <Icon name="desktop" size="sm" />
-                        <span className="remote-daemon-name">{pcName(c)}</span>
-                        {button(`revoke:${c.hostId}`, t('remote_daemon.revoke'), () => revoke(c.hostId), 'close')}
-                    </li>
-                ))}
             </ul>
 
             {daemons.length > 0 && (
@@ -657,7 +643,7 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
                     ]
                         .filter(Boolean)
                         .join(' · ')}
-                    busy={busy === `remove:${removing.hostId}`}
+                    busy={pending.includes(`remove:${removing.hostId}`)}
                     onCancel={() => setRemoving(null)}
                     onConfirm={(choice) => remove(removing, choice)}
                 />

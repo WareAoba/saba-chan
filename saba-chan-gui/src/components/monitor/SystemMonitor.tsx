@@ -257,7 +257,7 @@ export function SystemMonitor({ layout = 'top', servers = [], float }: SystemMon
                     {rings.map((r) => (
                         <span key={r.key} className="monitor-chip">
                             <MiniRing ring={r} />
-                            <span className="muted">{t(r.titleKey, r.titleVars)}</span>{' '}
+                            <span className="muted">{t(r.titleKey, r.titleVars ?? {})}</span>{' '}
                             <strong>
                                 {r.value}
                                 {r.unit}
@@ -406,6 +406,8 @@ export function FloatingMonitor({ servers = [] }: { servers?: Pick<Server, 'id' 
 
     const onPointerDown = (e: ReactPointerEvent<HTMLElement>) => {
         if (e.button !== 0 || (e.target as Element).closest(NO_DRAG)) return;
+        // 판은 user-select: none 이어도 끌면서 아래 콘솔 글자까지 선택이 번지므로 기본 동작을 막는다
+        e.preventDefault();
         const { area, box } = read();
         const from = placeFloat(saved, area, box);
         start.current = { x: e.clientX, y: e.clientY, left: from.left, top: from.top, id: e.pointerId };

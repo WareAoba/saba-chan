@@ -32,7 +32,7 @@ windows-sys = { version = "0.61", features = [
     "Win32_UI_WindowsAndMessaging",
     "Win32_Foundation",
 ] }
-winreg = "0.55"
+winreg = "0.56"
 
 # 맥에는 /proc가 없다: 제거·덮어쓰기 설치가 끌 프로세스를 커널 목록에서 찾는다
 [target.'cfg(target_os = "macos")'.dependencies]

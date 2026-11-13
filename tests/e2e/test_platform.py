@@ -1,6 +1,6 @@
 """운영체제 기능: 메모리 상한(Job Object), 격리 실행(AppContainer), 시스템 모니터, 터미널로 열기.
 
-Windows 전용 시험은 `windows` 표시가 있고 리눅스에서는 건너뛴다. 리눅스에서는 상한이 적용되지 않는다는 안내가 남는지만 본다.
+Windows 전용 시험은 `windows` 표시가 있고 리눅스에서는 건너뛴다. 리눅스에서는 데몬이 상한을 저장하지 않고 적용할 수 없다고 답하는지만 본다.
 """
 
 import json
@@ -89,14 +89,13 @@ def test_memory_limit_typed_in_gigabytes_lets_1g_server_run(mc, cap, mib):
     assert "Memory limit" not in daemon.console_text(iid)
 
 
-@pytest.mark.skipif(IS_WINDOWS, reason="리눅스 안내 문구")
-def test_memory_limit_is_reported_as_not_enforced_off_windows(mc):
+@pytest.mark.skipif(IS_WINDOWS, reason="리눅스 거절")
+def test_memory_limit_is_refused_off_windows(mc):
+    """상한을 걸 수 없는 OS의 데몬은 저장하지 않는다 (저장되면 사용자는 걸린 줄 안다)."""
     daemon, iid, *_ = mc
-    daemon.api.ok("PATCH", f"/api/instance/{iid}", {"memory_limit_mb": 512})
-    daemon.start_instance(iid)
-    daemon.wait_console(iid, DONE)
-    text = daemon.console_text(iid) + _session_log_text(daemon.sb.data) + daemon.log_text()
-    assert "only enforced on Windows" in text, "리눅스에서 상한이 적용되지 않는다는 안내가 없음"
+    r = daemon.api.patch(f"/api/instance/{iid}", {"memory_limit_mb": 512})
+    assert r.status_code == 422 and r.json().get("error_code") == "memory_limit_unsupported", r.text
+    assert daemon.api.ok("GET", f"/api/instance/{iid}").get("memory_limit_mb") is None
 
 
 def test_memory_limit_rejects_tiny_or_malformed_values(mc):

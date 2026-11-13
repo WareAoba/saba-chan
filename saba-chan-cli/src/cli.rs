@@ -180,10 +180,16 @@ pub enum Cmd {
         #[arg(value_name = "COMMAND")]
         command: Vec<String>,
     },
-    /// Print a shell completion script
+    /// Print a shell completion script, or install it for this user (`--install`)
     Completions {
-        #[arg(value_name = "SHELL")]
-        shell: clap_complete::Shell,
+        #[arg(value_name = "SHELL", required_unless_present = "install")]
+        shell: Option<clap_complete::Shell>,
+        /// Put the script where your shell loads it, for both `saba-chan` and `saba-chan-cli`. Shell settings are not changed
+        #[arg(long)]
+        install: bool,
+        /// Shell to install for (default: the shell you use)
+        #[arg(long = "shell", value_name = "SHELL", requires = "install", conflicts_with = "shell")]
+        install_shell: Option<clap_complete::Shell>,
     },
     /// Let an AI agent on this PC (Claude Code, Codex) use every command: a local MCP server on stdin/stdout
     Mcp,
@@ -247,6 +253,9 @@ pub struct InstallArgs {
     /// Folder for modules and extensions (Saba-chan makes `modules` and `extensions` inside it). Installed files are moved
     #[arg(long, value_name = "PATH")]
     pub components_dir: Option<std::path::PathBuf>,
+    /// Update channel to install from and keep updating from: stable, rc (preview) or beta. The installer's own channel when omitted
+    #[arg(long, value_name = "CHANNEL", value_parser = clap::builder::PossibleValuesParser::new(saba_chan_installer_core::release::CHANNELS))]
+    pub channel: Option<String>,
 }
 
 #[derive(Args, Debug)]
@@ -279,6 +288,16 @@ pub enum BackupCmd {
     Delete { server: String, backup: Option<String> },
     /// Put a backup back (the server must be stopped; asks to stop it). No name: pick from the list
     Restore { server: String, backup: Option<String> },
+    /// Write one backup into a single zip you can move to another PC (no name: pick from the list)
+    Export {
+        server: String,
+        backup: Option<String>,
+        /// Where to write the zip (a path on the PC the daemon runs on)
+        #[arg(long, short, value_name = "FILE")]
+        out: std::path::PathBuf,
+    },
+    /// Check a zip made by `backup export` and add it to this server's backups (restore it afterwards)
+    Import { server: String, file: std::path::PathBuf },
 }
 
 #[derive(Subcommand, Debug)]
@@ -601,6 +620,8 @@ pub enum ServerCmd {
     Commands { server: Option<String> },
     /// Who is online
     Players { server: Option<String> },
+    /// Player lists the game keeps (who may join, who is an admin, who is banned)
+    Lists { server: Option<String> },
     /// The address (IP:port) friends connect to
     Address { server: Option<String> },
     /// Check from the internet whether friends can reach this server (port forwarding)
@@ -1193,6 +1214,36 @@ pub enum BotCmd {
         #[arg(long)]
         off: bool,
     },
+    /// Member join and leave notices in the notice channel of a Discord server. No options: show
+    MemberNotice {
+        guild: Option<String>,
+        /// Turn member notices on
+        #[arg(long, conflicts_with = "off")]
+        on: bool,
+        /// Turn member notices off
+        #[arg(long)]
+        off: bool,
+    },
+    /// Overload notice (posted while the PC is overloaded, removed when it clears) on a Discord server. No options: show
+    BusyNotice {
+        guild: Option<String>,
+        /// Turn the overload notice on
+        #[arg(long, conflicts_with = "off")]
+        on: bool,
+        /// Turn the overload notice off
+        #[arg(long)]
+        off: bool,
+    },
+    /// Open the game chat link by itself while someone is on a running server, on a Discord server. No options: show
+    ChatAutoOpen {
+        guild: Option<String>,
+        /// Open the chat link by itself
+        #[arg(long, conflicts_with = "off")]
+        on: bool,
+        /// Leave the chat link closed until someone opens it
+        #[arg(long)]
+        off: bool,
+    },
     /// Singing Saba-chan settings of a Discord server. No options: show
     Music {
         guild: Option<String>,
@@ -1340,6 +1391,10 @@ pub enum UpdateCmd {
     },
     /// Verify installed files against the release
     Integrity,
+    /// Re-download changed or missing parts at the installed version
+    Repair,
+    /// Go back to the version before the last update
+    Rollback,
     /// Show or change update settings: KEY=VALUE ...
     Config {
         #[arg(value_name = "KEY=VALUE")]
@@ -1426,21 +1481,25 @@ pub enum ConfigCmd {
 #[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DmKind {
     Crash,
+    Unresponsive,
     ExternalStart,
     Schedule,
     Update,
     Disk,
+    Offline,
     ChatbotUsage,
     Moderation,
 }
 
 impl DmKind {
-    pub const ALL: [DmKind; 7] = [
+    pub const ALL: [DmKind; 9] = [
         DmKind::Crash,
+        DmKind::Unresponsive,
         DmKind::ExternalStart,
         DmKind::Schedule,
         DmKind::Update,
         DmKind::Disk,
+        DmKind::Offline,
         DmKind::ChatbotUsage,
         DmKind::Moderation,
     ];
@@ -1449,13 +1508,20 @@ impl DmKind {
     pub fn key(self) -> &'static str {
         match self {
             DmKind::Crash => "crash",
+            DmKind::Unresponsive => "unresponsive",
             DmKind::ExternalStart => "externalStart",
             DmKind::Schedule => "schedule",
             DmKind::Update => "update",
             DmKind::Disk => "disk",
+            DmKind::Offline => "offline",
             DmKind::ChatbotUsage => "chatbotUsage",
             DmKind::Moderation => "moderation",
         }
+    }
+
+    /// 설정에 없을 때의 값: PC 연결 끊김만 켜야 보낸다
+    pub fn default_on(self) -> bool {
+        self != DmKind::Offline
     }
 }
 

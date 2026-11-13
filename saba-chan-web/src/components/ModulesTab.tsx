@@ -63,7 +63,7 @@ function UpdatesCard({
     );
 }
 
-/** 모듈 검사 결과: module.toml에 선언하지 않은 기능을 코드에서 쓰는지 (GET /api/module/:name/audit) */
+/** 모듈 검사: module.toml에 선언하지 않은 기능을 코드에서 쓸 때만 경고한다 (GET /api/module/:name/audit, 앱 ModuleAuditNotice와 같다) */
 function ModuleCheck({ api, name }: { api: WebApi; name: string }) {
     const { t } = useTranslation();
     const { t: tg } = useTranslation('gui');
@@ -77,13 +77,15 @@ function ModuleCheck({ api, name }: { api: WebApi; name: string }) {
             alive = false;
         };
     }, [api, name]);
-    if (res === null) return <Loading />;
-    if (!Array.isArray(res.undeclared)) return <p className="hint">{t('modules.check_failed')}</p>;
-    if (res.undeclared.length === 0) return <p className="hint">{t('modules.check_ok')}</p>;
+    if (!Array.isArray(res?.undeclared) || res.undeclared.length === 0) return null;
     const perms = undeclaredPermissions(res.undeclared)
         .map((p) => tg(`module_audit.perm_${p}`, { defaultValue: p }))
         .join(', ');
-    return <p className="hint hint-warn">{t('modules.check_undeclared', { perms })}</p>;
+    return (
+        <div className="row-detail">
+            <p className="hint hint-warn">{t('modules.check_undeclared', { perms })}</p>
+        </div>
+    );
 }
 
 function GameModules({ api }: { api: WebApi }) {
@@ -92,7 +94,6 @@ function GameModules({ api }: { api: WebApi }) {
     const { modules, setModules } = useData();
     const [catalog, setCatalog] = useState<CatalogModule[] | CatalogFailure | null>(null);
     const [busy, setBusy] = useState<string | null>(null);
-    const [open, setOpen] = useState<string | null>(null);
 
     useEffect(() => {
         api.moduleManifest().then((res) => {
@@ -153,17 +154,11 @@ function GameModules({ api }: { api: WebApi }) {
                         {modules.map((m) => {
                             const id = moduleIdOf(m);
                             const latest = latestOf.get(id);
-                            const expanded = open === m.name;
                             return (
                                 <li key={m.name} className="row row-stack">
                                     <div className="row-line">
                                         <ServerIcon module={m.name} moduleData={m} size={36} />
-                                        <button
-                                            type="button"
-                                            className="row-main row-toggle"
-                                            aria-expanded={expanded}
-                                            onClick={() => setOpen(expanded ? null : m.name)}
-                                        >
+                                        <div className="row-main">
                                             <span className="row-title">{gameNameOf(t, m.name, m)}</span>
                                             <span className="row-sub">
                                                 v{m.version}
@@ -173,7 +168,7 @@ function GameModules({ api }: { api: WebApi }) {
                                                     </span>
                                                 )}
                                             </span>
-                                        </button>
+                                        </div>
                                         {latest && (
                                             <Button
                                                 tone="accent"
@@ -185,11 +180,7 @@ function GameModules({ api }: { api: WebApi }) {
                                             </Button>
                                         )}
                                     </div>
-                                    {expanded && (
-                                        <div className="row-detail">
-                                            <ModuleCheck api={api} name={m.name} />
-                                        </div>
-                                    )}
+                                    <ModuleCheck api={api} name={m.name} />
                                 </li>
                             );
                         })}
@@ -408,7 +399,7 @@ export function ModulesTab({ api }: { api: WebApi }) {
     const { t } = useTranslation();
     const [view, setView] = useState('games');
     return (
-        <div className="panel">
+        <div className="panel side-layout">
             <Segments
                 value={view}
                 onChange={setView}
@@ -417,8 +408,10 @@ export function ModulesTab({ api }: { api: WebApi }) {
                     { value: 'plugins', label: t('modules.plugins') },
                 ]}
             />
-            {view === 'games' ? <GameModules api={api} /> : <Plugins api={api} />}
-            <p className="hint">{t('modules.official_only')}</p>
+            <div className="side-main">
+                {view === 'games' ? <GameModules api={api} /> : <Plugins api={api} />}
+                <p className="hint">{t('modules.official_only')}</p>
+            </div>
         </div>
     );
 }

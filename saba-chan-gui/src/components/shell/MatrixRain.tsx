@@ -41,6 +41,11 @@ const HEX = '0123456789abcdef';
 const FONT_PX = 10;
 const STEP_MS = 70;
 const LINE = Math.round(FONT_PX * 1.5);
+/**
+ * 오프닝 동안 캔버스 해상도 배수. 화면 전체 캔버스가 매 프레임 바뀌면 창 합성·표시를 기다리느라 프레임이 밀린다
+ * (PC 실측: 화음 뒤 최대 프레임 24~30ms → 12ms). 글자가 빠르게 움직이는 동안이라 선명도 차이는 눈에 잘 띄지 않는다
+ */
+const OPENING_RESOLUTION = 0.75;
 /** 터질 때 글자 조각의 처음 크기 배수 (조각 그림은 이 크기로 한 번 그려 두고 줄여 찍는다) */
 const SHARD_SCALE = 1.15;
 
@@ -233,6 +238,11 @@ export function MatrixRain({
 
         // 오프닝을 시작할 때 화면에 떠 있던 글자를 낱말 단위로 붙잡는다
         const takeWords = (p: MatrixPull) => {
+            // 오프닝 동안은 캔버스를 낮은 해상도로 다시 잡는다 (글자 자리는 CSS 픽셀이라 그대로다)
+            dpr = Math.min(window.devicePixelRatio || 1, 2) * OPENING_RESOLUTION;
+            canvas.width = Math.round(w * dpr);
+            canvas.height = Math.round(h * dpr);
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
             ctx.font = `${FONT_PX}px ${mono}`;
             const reach = Math.hypot(w, h) * 0.6;
             words = glyphs.map((g) => {
@@ -471,9 +481,14 @@ export function MatrixRain({
 
         resize();
         if (moving) raf = requestAnimationFrame(loop);
-        window.addEventListener('resize', resize);
+        // 창이 아니라 캔버스 자리의 크기를 따른다: 자리가 0이었다가 커지거나(전환 화면) 창 크기와 따로 바뀌면
+        // 예전 크기로 만든 판이 늘어나 글자가 커다랗게 깨져 보인다
+        const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(() => resize()) : null;
+        if (observer) observer.observe(canvas);
+        else window.addEventListener('resize', resize);
         return () => {
             cancelAnimationFrame(raf);
+            observer?.disconnect();
             window.removeEventListener('resize', resize);
         };
     }, []);

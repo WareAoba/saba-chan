@@ -62,7 +62,7 @@ describe('ActivityBar', () => {
         expect(screen.getByText('Failed')).toBeInTheDocument();
     });
 
-    it('누르면 데몬 콘솔을 펼치고, 받은 다음 id부터 이어 받는다', async () => {
+    it('누르면 데몬 콘솔을 펼치고, 받은 다음 id부터 이어 받는다 (새 줄이 없으면 데몬이 붙잡는다)', async () => {
         window.api.auditList = vi.fn().mockResolvedValue({ entries: [] }) as never;
         window.api.daemonConsole = vi
             .fn()
@@ -84,7 +84,36 @@ describe('ActivityBar', () => {
             vi.advanceTimersByTime(1000);
         });
         await flush();
-        expect(window.api.daemonConsole).toHaveBeenNthCalledWith(2, { since: 8 });
+        expect(window.api.daemonConsole).toHaveBeenNthCalledWith(2, { since: 8, wait: 8 });
+    });
+
+    // 사용자 2026-11-12: 줄 전체를 레벨 색으로 칠하지 않는다. 레벨은 배지, 본문은 데몬이 나눈 낱말 조각(spans)으로 칠한다
+    it('데몬 로그 본문은 spans 조각대로 칠하고 레벨은 배지로만 보인다', async () => {
+        window.api.auditList = vi.fn().mockResolvedValue({ entries: [] }) as never;
+        window.api.daemonConsole = vi.fn().mockResolvedValue({
+            lines: [
+                {
+                    id: 1,
+                    timestamp: Date.now(),
+                    level: 'WARN',
+                    target: 'x',
+                    message: '[Heartbeat] Client timed out',
+                    spans: [
+                        [0, 11, 'keyword'],
+                        [19, 28, 'error'],
+                    ],
+                },
+            ],
+        }) as never;
+        render(<ActivityBar />);
+        await flush();
+        fireEvent.click(screen.getByRole('button'));
+        await flush();
+        // 펼친 콘솔은 팝오버(포털)에 뜬다
+        const line = document.querySelector('.daemon-log-line') as HTMLElement;
+        expect(line.querySelector('.tok-keyword')?.textContent).toBe('[Heartbeat]');
+        expect(line.querySelector('.tok-error')?.textContent).toBe('timed out');
+        expect(line.querySelector('.daemon-log-level')?.textContent).toBe('WARN');
     });
 
     // L55: 데몬은 다시 켜질 때마다 로그 id를 1부터 센다. 답의 epoch가 바뀌면 since를 버리고 처음부터 받는다.
@@ -110,7 +139,7 @@ describe('ActivityBar', () => {
             vi.advanceTimersByTime(1000);
         });
         await flush();
-        expect(window.api.daemonConsole).toHaveBeenCalledWith({ since: 51 });
+        expect(window.api.daemonConsole).toHaveBeenCalledWith({ since: 51, wait: 8 });
         expect(window.api.daemonConsole).toHaveBeenLastCalledWith({});
         expect(screen.queryByText('old 50')).toBeNull();
         expect(screen.getByText('new 1')).toBeInTheDocument();

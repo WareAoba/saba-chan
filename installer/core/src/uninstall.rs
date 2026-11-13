@@ -1233,7 +1233,7 @@ const INSTALLED_ENTRIES: &[&str] = &[
     // GUI zip의 리눅스 앱 메뉴 아이콘 (맥 묶음 정보·아이콘은 설치기가 Contents로 옮긴다)
     "saba-chan-gui.png",
     // 설치 폴더에 Python 런타임을 받을 때 내려받는 묶음 (풀고 나면 지우지만 중간에 끊기면 남는다)
-    "_python_download.tar.gz",
+    saba_chan_updater_lib::python_runtime::DOWNLOAD_ARCHIVE,
     INSTALL_MARKER,
 ];
 
@@ -1308,7 +1308,7 @@ fn remove_install_dir(dir: &PathBuf, dedicated: bool) -> Vec<PathBuf> {
 
 /// 표시가 없는 설치 폴더에서 지울 바로 안의 폴더: locales와, 설치 폴더에 쓸 수 있으면 설치기가 두는 Python 런타임
 const INSTALLED_DIRS: &[&str] =
-    &["locales", crate::runtime_bootstrap::PORTABLE_PYTHON_DIR, crate::runtime_bootstrap::VENV_DIR_NAME];
+    &["locales", saba_chan_updater_lib::python_runtime::PORTABLE_DIR, saba_chan_updater_lib::python_runtime::VENV_DIR];
 
 /// 설치 폴더 바로 안의 사바쨩 항목인지. 폴더는 [`INSTALLED_DIRS`]만 사바쨩 것이다 (실행 파일 이름과 같은 사용자 폴더는 남긴다)
 fn is_ours(path: &Path) -> bool {
@@ -1666,6 +1666,20 @@ fn schedule_self_delete(install_dir: Option<&PathBuf>, dedicated: bool) {
 mod tests {
     use super::*;
     use std::time::{Duration, Instant};
+
+    // 실행 파일 목록의 원천은 versions.toml `exes`다: 릴리즈에 든 실행 파일은 모두 제거·덮어쓰기 때 끄고 표시 없는 설치에서도 지운다.
+    // 제거기 자신(설치기)은 끄지 않고, `bin`의 명령 실행기(`saba-chan`)는 따로 끄고 지운다 (`running_launcher`, `install_leftovers`)
+    #[test]
+    fn every_released_exe_is_stopped_and_removed() {
+        for stem in saba_chan_updater_lib::versions::exe_stems() {
+            if stem != "saba-chan" {
+                assert!(INSTALLED_ENTRIES.contains(&stem.as_str()), "{stem} is not removed");
+            }
+            if stem != "saba-chan" && stem != "saba-chan-installer" {
+                assert!(TARGETS.iter().any(|t| t.name == stem), "{stem} is not stopped");
+            }
+        }
+    }
 
     #[test]
     fn moved_component_folders_are_removed_only_when_marked() {

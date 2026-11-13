@@ -58,6 +58,22 @@ fn nat_is_read_from_the_gateway_and_the_route() {
     assert_eq!(classify_nat(observed, Some(lan), None), Nat::Unknown);
 }
 
+/// 친구에게 안내할 IPv4: 통신사가 나눠 쓰는 주소(CGNAT)면 밖에서 닿지 않으므로 없다(IPv6를 그대로 안내한다).
+/// 공유기가 알려 주지 않아 모르면 릴레이가 본 IPv4를 쓴다. 옛 릴레이의 거절은 다시 물어도 같고, 일시 실패는 나중에 다시 묻는다
+#[test]
+fn the_ipv4_for_friends_is_left_out_behind_a_carrier_nat() {
+    let answer = || Ok(RelayAnswer { address: "203.0.114.7".into(), public_address: true, probes: vec![], host: None, host_result: None, resolved: vec![] });
+    let v4: Ipv4Addr = "203.0.114.7".parse().unwrap();
+    assert_eq!(ipv4_lookup(answer(), None), Ipv4Lookup::Found(v4));
+    assert_eq!(ipv4_lookup(answer(), Some(v4.into())), Ipv4Lookup::Found(v4));
+    assert_eq!(ipv4_lookup(answer(), Some("100.72.1.2".parse().unwrap())), Ipv4Lookup::Unusable);
+    assert_eq!(ipv4_lookup(answer(), Some("198.51.101.1".parse().unwrap())), Ipv4Lookup::Unusable);
+    assert_eq!(ipv4_lookup(Err(CheckError::Rejected), None), Ipv4Lookup::Unusable);
+    for transient in [CheckError::RateLimited, CheckError::Busy, CheckError::Relay("timeout".into())] {
+        assert_eq!(ipv4_lookup(Err(transient), None), Ipv4Lookup::Later);
+    }
+}
+
 #[test]
 fn the_verdict_puts_cgnat_and_closed_first() {
     let p = |status| PortResult { field: "port".into(), port: 1, protocol: Protocol::Tcp, status };

@@ -7,6 +7,8 @@ import {
     useMaintenanceOf,
 } from '../../hooks/useInstanceMaintenance';
 import type { useMultiConsole } from '../../hooks/useMultiConsole';
+import { useExtensions } from '../../contexts/ExtensionContext';
+import { extensionInstallMethod } from '../../utils/installMethod';
 import type { useServerSettings } from '../../hooks/useServerSettings';
 import { useConsoleStore } from '../../stores/useConsoleStore';
 import { type Server, useServerStore } from '../../stores/useServerStore';
@@ -21,6 +23,8 @@ import { withCommandAliases } from '../../utils/commandRisk';
 import {
     STATUS_TONE,
     isTransitional,
+    branchParentOf,
+    buildDate,
     consoleQuickCommands,
     defaultServerTab,
     gameNameOf,
@@ -35,7 +39,7 @@ import { dataStatusRows } from '../DataSlots';
 import ExtensionSlot, { SlotView, useSlotPages } from '../ExtensionSlot';
 import { Icon } from '../Icon';
 import { PageFind, PageFindButton } from './PageFind';
-import { PortCheck, PortCheckNotice } from './PortCheck';
+import { PortCheck } from './PortCheck';
 import { ServerAddress } from './ServerAddress';
 import { ServerCheck } from './ServerCheck';
 import CommandModal from '../Modals/CommandModal';
@@ -46,6 +50,7 @@ import { Segmented, StatusChip } from '../ui/StatusChip';
 import { ServerLogs } from './ServerLogs';
 import { InstanceDiscordTab, instanceWordsAvailable } from '../discord/InstanceWordsTab';
 import { MaintenanceTab, maintenanceAvailable } from './MaintenanceTab';
+import { PlayersTab, playerListsAvailable } from './PlayersTab';
 import { ModuleAuditNotice } from './ModuleAuditNotice';
 import { ServerConsole } from './ServerConsole';
 import { StartCoach } from './OnboardingCard';
@@ -100,9 +105,10 @@ export function ServerDetail({
     consoleProps,
     settingsProps,
 }: ServerDetailProps) {
-    const { t } = useTranslation('gui');
+    const { t, i18n } = useTranslation('gui');
     const portConflictCheck = useSettingsStore((s) => s.portConflictCheck);
     const { provisionProgress, cooked, updateInfo, updatingServer } = useMaintenanceOf(server.id);
+    const { extensions } = useExtensions();
     const modulesLoaded = useServerStore((s) => s.modulesLoaded);
     const status = viewStatus(server, moduleData, modulesLoaded);
     const moduleFailure = useServerStore((st) =>
@@ -129,6 +135,11 @@ export function ServerDetail({
             id: 'commands',
             label: t('shell.tab_commands'),
             icon: <Icon name="command" size="sm" />,
+        },
+        playerListsAvailable(moduleData) && {
+            id: 'players',
+            label: t('shell.tab_players'),
+            icon: <Icon name="user" size="sm" />,
         },
         { id: 'settings', label: t('shell.tab_settings'), icon: <Icon name="gamepad" size="sm" /> },
         { id: 'saba', label: t('shell.tab_saba'), icon: <Icon name="sabaFace" size="sm" /> },
@@ -166,8 +177,8 @@ export function ServerDetail({
     const defaultTab = defaultServerTab(interaction, server.status);
     const activeTab = tabs.some((x) => x.id === tab) ? (tab as string) : defaultTab;
     const activeExtTab = extTabs.find((p) => p.id === activeTab);
-    // Ctrl+F 찾기는 칸이 많은 설정·사바쨩·디스코드 탭에서만 (사용자 11-10)
-    const findable = ['settings', 'saba', 'discord'].includes(activeTab);
+    // Ctrl+F 찾기는 칸이 많은 설정·사바쨩·디스코드 탭(사용자 11-10)과 콘솔 탭의 줄(사용자 11-12)에서
+    const findable = ['console', 'settings', 'saba', 'discord'].includes(activeTab);
     const poppedOut = consoleProps.consolePopoutIds.includes(server.id);
     // 콘솔을 PIP 창으로 띄운다 (이미 떠 있으면 그 창을 앞으로). 창이 열리면 셸이 console:popoutOpened로 알려 준다. 못 열면 알린다 (G-C5)
     const popoutConsole = async () => {
@@ -188,22 +199,20 @@ export function ServerDetail({
     const conflicts = portConflictCheck ? server.port_conflicts || [] : [];
     const uptime = status === 'running' && server.start_time ? <Uptime startTime={server.start_time} /> : null;
     const players = playersText(server);
+    const branchParent = branchParentOf(server, servers || []);
+    // 설치 방식 익스텐션으로 받은 서버는 데몬이 적어 둔 빌드 번호가 버전이다
+    const versionTag = server.server_build ? t('shell.build', { id: server.server_build.id }) : server.server_version;
+    // 새 빌드를 알려 준 곳(설치 방식 익스텐션 이름)과 올라온 날
+    const installMethod = extensionInstallMethod(server, moduleData);
+    const updateFrom = [
+        installMethod && extensions.find((e) => e.id === installMethod)?.name,
+        buildDate(updateInfo?.remote_build_time, i18n.language),
+    ]
+        .filter(Boolean)
+        .join(', ');
 
     const primaryButton = (() => {
         if (status === 'missing') return null;
-        if (updateInfo && status === 'stopped') {
-            return (
-                <button
-                    type="button"
-                    className="btn btn-primary"
-                    disabled={updatingServer}
-                    onClick={() => applyInstanceUpdate(server, setServers)}
-                    data-tooltip={`${updateInfo.local_buildid} → ${updateInfo.remote_buildid}`}
-                >
-                    <Icon name="arrowUp" size="sm" /> {updatingServer ? t('shell.updating') : t('shell.update')}
-                </button>
-            );
-        }
         if (action === 'busy') {
             return (
                 <button type="button" className="btn btn-ghost btn-lg" disabled>
@@ -265,7 +274,9 @@ export function ServerDetail({
                     <ServerName server={server} canRename={!!onRename && status === 'stopped'} onRename={onRename} />
                     <div className="detail-sub">
                         <span>{gameName}</span>
-                        {server.server_version && <span className="tag">{server.server_version}</span>}
+                        {versionTag && <span className="tag">{versionTag}</span>}
+                        {updateInfo && <span className="tag tag-accent">{t('shell.update_tag')}</span>}
+                        {branchParent && <span className="tag">{t('branch.tag', { name: branchParent.name })}</span>}
                         {server.port && (
                             <span className="muted">
                                 {t('shell.info_port')} {server.port}
@@ -310,15 +321,73 @@ export function ServerDetail({
             {status !== 'missing' && <ModuleAuditNotice moduleName={server.module} />}
 
             {server.unresponsive && status === 'running' && (
-                <div className="notice tone-warn" role="status">
+                <div className="notice tone-warn idle-stopped-notice" role="status">
                     <Icon name="alertTriangle" size="sm" />
-                    <span>{t('server_status.unresponsive', { reason: server.unresponsive })}</span>
+                    <span>
+                        {server.unresponsive_minutes != null && (
+                            <>
+                                <strong>
+                                    {t('server_status.unresponsive_for', { minutes: server.unresponsive_minutes })}
+                                </strong>{' '}
+                                {t('server_status.unresponsive_detail')}{' '}
+                            </>
+                        )}
+                        <span className="notice-detail">
+                            {t('server_status.unresponsive', { reason: server.unresponsive })}
+                        </span>
+                    </span>
+                    {onRestart && typeof window.api?.instanceRestart === 'function' && (
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => onRestart(server.name)}>
+                            <Icon name="refresh" size="sm" /> {t('shell.restart')}
+                        </button>
+                    )}
+                </div>
+            )}
+
+            {/* 새 빌드가 있다: 무엇에서 무엇으로 바뀌는지와 올라온 날을 보이고 여기서 업데이트한다 */}
+            {updateInfo && status === 'stopped' && (
+                <div className="notice tone-info idle-stopped-notice update-notice" role="status">
+                    <Icon name="info" size="sm" />
+                    <span>
+                        {t('shell.update_notice', { from: updateInfo.local_buildid, to: updateInfo.remote_buildid })}
+                        {updateFrom && ` (${updateFrom})`}
+                    </span>
+                    <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        disabled={updatingServer}
+                        onClick={() => applyInstanceUpdate(server, setServers)}
+                    >
+                        {updatingServer ? t('shell.updating') : t('shell.update')}
+                    </button>
+                </div>
+            )}
+
+            {/* 접속자가 없어 데몬이 자동으로 정지했다 (데몬 idle_stopped: 다시 켜면 사라진다) */}
+            {server.idle_stopped && status === 'stopped' && (
+                <div className="notice tone-info idle-stopped-notice" role="status">
+                    <Icon name="moon" size="sm" />
+                    <span>
+                        <strong>{t('server_settings.idle_stopped', { minutes: server.idle_stopped.minutes })}</strong>{' '}
+                        {new Date(server.idle_stopped.at * 1000).toLocaleString(i18n.language, {
+                            month: 'numeric',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                        })}
+                    </span>
+                    <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        onClick={() => onStart(server.name, server.module)}
+                    >
+                        <Icon name="play" size="sm" /> {t('shell.start')}
+                    </button>
                 </div>
             )}
 
             {status !== 'missing' && <ServerAddress server={server} />}
 
-            {status !== 'missing' && <PortCheckNotice server={server} />}
 
             {conflicts.length > 0 && (
                 <div className="notice tone-warn">
@@ -406,6 +475,7 @@ export function ServerDetail({
                                     <p>{t('shell.commands_offline')}</p>
                                 </div>
                             ))}
+                        {activeTab === 'players' && <PlayersTab server={server} moduleData={moduleData} />}
                         {(activeTab === 'settings' || activeTab === 'saba') && (
                             <SettingsTab
                                 section={activeTab === 'saba' ? 'saba' : 'server'}
@@ -596,11 +666,30 @@ function InfoTab({
     uptime: ReactNode;
     onDelete: (server: Server) => void;
 }) {
-    const { t } = useTranslation('gui');
+    const { t, i18n } = useTranslation('gui');
+    const { updateInfo } = useMaintenanceOf(server.id);
     const workingDir = (server.module_settings?.working_dir || server.working_dir || null) as string | null;
+    // 빌드 번호와 받은(올라온) 날
+    const build = (id: unknown, time: unknown) => {
+        const date = buildDate(time, i18n.language);
+        return (
+            <>
+                {t('shell.build', { id })}
+                {date && <span className="muted"> ({date})</span>}
+            </>
+        );
+    };
     const rows = [
         [t('shell.info_module'), gameName],
-        server.server_version && [t('shell.info_version'), server.server_version],
+        server.server_build
+            ? [t('shell.info_version'), build(server.server_build.id, server.server_build.time)]
+            : server.server_version && [t('shell.info_version'), server.server_version],
+        updateInfo && [
+            t('shell.info_new_version'),
+            <span key="new" className="info-new-version">
+                {build(updateInfo.remote_buildid, updateInfo.remote_build_time)}
+            </span>,
+        ],
         uptime && [t('shell.info_uptime'), uptime],
         server.port && [t('shell.info_port'), server.port],
         server.id && [t('shell.info_id'), <code key="id">{server.id}</code>],

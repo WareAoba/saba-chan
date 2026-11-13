@@ -1,4 +1,5 @@
 import clsx from 'clsx';
+import type { TFunction } from 'i18next';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { type BackupNotice, type DmNoticeKind, useDiscordStore } from '../../stores/useDiscordStore';
@@ -10,6 +11,7 @@ import '../ui/SabaArt.css';
 import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { useContextMenu } from '../ui/ContextMenu';
 import { Segmented, StatusChip } from '../ui/StatusChip';
+import type { HeartbeatReject } from '../../types/daemon';
 import type { DiscordNode } from './types';
 import type { usePairing } from './usePairing';
 import { failed } from '../../utils/apiResult';
@@ -257,6 +259,25 @@ interface ConnectionViewProps {
     onInviteBot?: (() => void) | null;
 }
 
+// 릴레이가 개수 상한으로 거절하는 상태 보고의 칸 → 문구 이름 (`discord.heartbeat_what_<이름>`)
+const HEARTBEAT_COUNTS: Record<string, string> = {
+    'metadata.servers': 'servers',
+    'metadata.serverWords': 'servers',
+    'metadata.moduleDetails': 'modules',
+    'metadata.allowedInstances': 'guilds',
+    'metadata.startNotice': 'guilds',
+    'metadata.fullNotice': 'guilds',
+    'metadata.permissions': 'guilds',
+};
+
+/** 거절 이유 한 줄: 아는 개수 상한이면 지금 값과 상한, 아니면 맞지 않은 칸 이름 */
+function heartbeatRejectText(t: TFunction, reason: HeartbeatReject) {
+    const what = HEARTBEAT_COUNTS[reason.field];
+    if (reason.code === 'TOO_BIG' && what && reason.max != null && reason.actual != null)
+        return t('discord.heartbeat_rejected_too_big', { what: t(`discord.heartbeat_what_${what}`), actual: reason.actual, max: reason.max });
+    return t('discord.heartbeat_rejected_invalid', { what: reason.field });
+}
+
 /**
  * 연결 화면: 아직 연결 안 함 → 시작 안내 / 연결됨 → 연결 정보·에이전트·해제.
  */
@@ -285,6 +306,8 @@ export function ConnectionView({
     const reconnecting = useDiscordStore((s) => s.discordReconnecting);
     // 릴레이 실패 종류: 토큰 거절이면 이 PC를 다시 연결하게 하고, 요청 한도면 곧 다시 붙는다고 알린다
     const relayErrorKind = useDiscordStore((s) => s.relayErrorKind);
+    // 릴레이가 이 PC의 상태 보고를 검증에서 거절했다 (이대로면 디스코드에서 오프라인이 된다)
+    const heartbeatReject = useDiscordStore((s) => s.discordHeartbeatReject);
     const openMenu = useContextMenu();
     // 이 카드의 "다시 연결하기"·⋯ 메뉴로 시작한 페어링은 연결 카드 안에서 보인다
     const [pairInConn, setPairInConn] = useState(false);
@@ -385,7 +408,12 @@ export function ConnectionView({
                     </div>
                     <div className="dc-conn-side">
                         <div className="dc-conn-state">
-                            {connected && <StatusChip tone="ok" label={t('discord.relay_connected')} />}
+                            {connected &&
+                                (heartbeatReject ? (
+                                    <StatusChip tone="stop" label={t('discord.relay_failed')} />
+                                ) : (
+                                    <StatusChip tone="ok" label={t('discord.relay_connected')} />
+                                ))}
                             {cloudState === 'connecting' && (
                                 <StatusChip
                                     tone={reconnecting ? 'warn' : 'idle'}
@@ -447,6 +475,15 @@ export function ConnectionView({
                     </div>
                 </div>
 
+                {heartbeatReject && (
+                    <div className="notice tone-stop">
+                        <Icon name="alertTriangle" size="sm" />
+                        <span className="dc-notice-text">
+                            <strong>{t('discord.heartbeat_rejected_title')}</strong>
+                            <span>{heartbeatRejectText(t, heartbeatReject)}</span>
+                        </span>
+                    </div>
+                )}
                 {/* 거절 이유는 아래 업데이트 안내가 말한다 */}
                 {rejected && (
                     <div className="notice tone-stop dc-conn-rejected">
@@ -634,16 +671,18 @@ export function ConnectionView({
 
 // PC 주인 DM 알림 묶음 (사용자 2026-11-08). 백업은 범위(끄기·실패만·모두), 나머지는 켜고 끈다
 const DM_GROUPS: { label: string; kinds: DmNoticeKind[] }[] = [
-    { label: 'dm_group_server', kinds: ['crash', 'externalStart', 'schedule'] },
-    { label: 'dm_group_pc', kinds: ['update', 'disk'] },
+    { label: 'dm_group_server', kinds: ['crash', 'unresponsive', 'externalStart', 'schedule'] },
+    { label: 'dm_group_pc', kinds: ['update', 'disk', 'offline'] },
     { label: 'dm_group_guild', kinds: ['chatbotUsage', 'moderation'] },
 ];
 const DM_KEYS: Record<DmNoticeKind, string> = {
     crash: 'dm_crash',
+    unresponsive: 'dm_unresponsive',
     externalStart: 'dm_external_start',
     schedule: 'dm_schedule',
     update: 'dm_update',
     disk: 'dm_disk',
+    offline: 'dm_offline',
     chatbotUsage: 'dm_chatbot_usage',
     moderation: 'dm_moderation',
 };

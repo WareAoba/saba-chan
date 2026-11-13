@@ -789,7 +789,7 @@ mod platform {
         let key = winreg::RegKey::predef(HKEY_LOCAL_MACHINE)
             .open_subkey_with_flags(WMI_SECURITY_KEY, KEY_SET_VALUE)
             .map_err(|e| e.to_string())?;
-        key.set_raw_value(KERNEL_NETWORK, &winreg::RegValue { bytes, vtype: RegType::REG_BINARY })
+        key.set_raw_value(KERNEL_NETWORK, &winreg::RegValue { bytes: bytes.into(), vtype: RegType::REG_BINARY })
             .map_err(|e| e.to_string())
     }
 

@@ -177,10 +177,12 @@
     "dm_notice_off": "aus",
     "dm_kind": {
       "crash": "Abstürze",
+      "unresponsive": "Reagiert nicht",
       "externalStart": "Außerhalb von Saba-chan gestartet",
       "schedule": "Vorwarnung für Zeitpläne",
       "update": "Saba-chan-Updates",
       "disk": "Wenig Speicherplatz",
+      "offline": "PC nicht erreichbar",
       "chatbotUsage": "Sprechende Saba-chan: Verbrauch",
       "moderation": "KI-Moderationsmeldungen"
     },
@@ -223,7 +225,10 @@
     "sleep_blocks_none": "Keine",
     "bedtime": "Braver Junge",
     "bedtime_format": "Schreiben Sie --bedtime als Einschlafzeit-Aufwachzeit, z. B. 01:00-08:00.",
-    "big_emoji": "Emoji-Upscaling"
+    "big_emoji": "Emoji-Upscaling",
+    "member_notice": "Hinweise zu Beitritten und Austritten",
+    "busy_notice": "Überlastungshinweis",
+    "chat_auto_open": "Chat-Verbindung mit dem Serverstart einschalten"
   },
   "col": {
     "players": "Spieler",
@@ -245,6 +250,7 @@
     "state": "Status",
     "uptime": "Laufzeit",
     "version": "Version",
+    "build": "Build {{id}}",
     "what": "Beschreibung",
     "when": "Wann",
     "why": "Grund",
@@ -452,8 +458,13 @@
       "dependency_outdated": "Auf neuere Versionen aktualisieren: saba-chan-cli update check",
       "port_conflict": "Gib einem davon andere Ports: saba-chan-cli server set NAME port=PORT",
       "backup_unsupported": "Das Modul dieses Spiels gibt nicht an, was gesichert werden soll. Ein neueres Modul kann es vielleicht: saba-chan-cli update check",
+      "memory_limit_unsupported": "Speicherlimits gelten nur unter Windows. Der PC, auf dem dieser Server läuft, nutzt kein Windows, daher wurde das Limit nicht gespeichert.",
       "nothing_to_back_up": "Die Welt existiert noch nicht. Starte den Server einmal, um sie zu erstellen.",
       "backup_busy": "Für diesen Server läuft bereits ein Backup oder eine Wiederherstellung. Versuche es erneut, wenn es fertig ist.",
+      "import_not_backup": "Diese Datei ist keine von Saba-chan exportierte Sicherung. Gib eine mit `backup export` erstellte zip an.",
+      "import_damaged": "Diese Sicherungsdatei ist beschädigt. Exportiere sie auf dem ursprünglichen PC erneut.",
+      "import_other_module": "Diese Sicherung stammt von einem Server für ein anderes Spiel und kann hier nicht importiert werden.",
+      "export_old_backup": "Diese Sicherung wurde von einer alten Version erstellt und kann nicht exportiert werden.",
       "backup_file_locked": "Der Server benutzt eine Datei ({{file}}). Server stoppen und erneut versuchen: saba-chan-cli stop <Name>",
       "autosave_not_resumed": "Das Backup wurde erstellt, aber das Autospeichern des Servers ließ sich nicht wieder einschalten. Server neu starten: saba-chan-cli restart <name>",
       "backup_failed_autosave_off": "Das Backup ist fehlgeschlagen, und das Autospeichern des Servers ließ sich auch nicht wieder einschalten. Server neu starten: saba-chan-cli restart <name>",
@@ -710,7 +721,15 @@
     "unknown_key": "{{key}} ist ein neuer Schlüssel.",
     "restart_required_mark": "Neustart nötig",
     "restart_required": "Zum Übernehmen den Server neu starten: {{keys}}",
-    "hidden": "Ausgeblendet, weil andere Einstellungen sie gerade nicht nutzen: {{keys}}"
+    "hidden": "Ausgeblendet, weil sie gerade nicht genutzt werden: {{keys}}"
+  },
+  "completions": {
+    "which_shell": "Die verwendete Shell ist nicht erkennbar. Wähle eine: bash, zsh, fish, powershell, elvish (mit `--install` über `--shell`)",
+    "installed": "{{shell}}-Autovervollständigung installiert: {{path}}",
+    "new_terminal": "Öffne ein neues Terminal, damit sie wirkt.",
+    "zsh_fpath": "Sie wirkt, sobald {{rc}} diese Zeile enthält: fpath=(~/.zfunc $fpath)",
+    "by_hand": "{{shell}} lädt Vervollständigungen nur über seine Einstellungsdatei, daher wurde keine Datei geschrieben. Füge diese Zeile zu {{profile}} hinzu: {{line}}",
+    "no_home": "Der Home-Ordner für die Vervollständigung wurde nicht gefunden. Setze HOME."
   },
   "shell": {
     "bad_quotes": "Nicht geschlossenes Anführungszeichen.",
@@ -818,7 +837,22 @@
     "not_checked": "Noch keine Update-Informationen. Jetzt prüfen: saba-chan-cli update check",
     "reinstall_official": "Offizielle Version neu laden",
     "name_module": "Modul {{name}}",
-    "name_extension": "Erweiterung {{name}}"
+    "name_extension": "Erweiterung {{name}}",
+    "rollback_available": "Version, zu der du zurückkehren kannst: {{version}} (jetzt {{current}}, aktualisiert am {{at}})",
+    "rollback_confirm": "Die Rückkehr zu {{version}} startet Saba-chan neu, und seit dem Update geänderte Einstellungen werden auf den Stand vor dem Update zurückgesetzt. Fortfahren?",
+    "rollback_addons": "Module und Erweiterungen bleiben nach dem Zurücksetzen in ihrer aktuellen Version. Diese können unter {{version}} nicht genutzt werden (sie brauchen ein neueres Saba-chan): {{list}}",
+    "rolling_back": "Wird zurückgesetzt...",
+    "rollback_launched": "Updater gestartet. Der Daemon wird für das Zurücksetzen beendet.",
+    "rollback_after": "Saba-chan startet nach dem Zurücksetzen neu. Prüfe dann: saba-chan update last",
+    "no_rollback": "Es gibt keine Version, zu der du zurückkehren kannst. Die vorherige Version wird nach einem Update nur bis zum nächsten Update aufbewahrt.",
+    "last_reverted": "Von {{from}} auf {{version}} zurückgesetzt",
+    "daemon_too_old": "Der laufende Daemon ist älter als dieser Befehl. Aktualisiere zuerst den Daemon: saba-chan update apply",
+    "repair_checking": "Installation wird geprüft...",
+    "repair_list": "Erneut herunterzuladende Teile: {{list}}",
+    "repaired": "Repariert: {{list}}",
+    "nothing_to_repair": "Nichts zu reparieren.",
+    "repair_unavailable": "{{name}}: Die installierte Version kann nicht erneut heruntergeladen werden. Behebe es per Update: saba-chan update download && saba-chan update apply",
+    "repair_failed": "Einige Teile konnten nicht repariert werden. Siehe die Hinweise oben."
   },
   "validate": {
     "blocked": "Der Server kann erst starten, wenn diese Punkte behoben sind.",
@@ -922,6 +956,8 @@
       "update.apply": "Heruntergeladene Updates installieren",
       "update.last": "Ergebnis des letzten Updates",
       "update.integrity": "Installierte Dateien mit dem Release abgleichen",
+      "update.repair": "Geänderte oder fehlende Teile in der installierten Version erneut herunterladen",
+      "update.rollback": "Zur vorherigen Version zurückkehren",
       "update.config": "Update-Einstellungen anzeigen oder ändern: key=value ...",
       "config": "App-Einstellungen",
       "config.show": "Alle Einstellungen",
@@ -931,7 +967,7 @@
       "chat": "Chatbefehl wie in Discord senden (z. B. `chat my-server-1 start`)",
       "version": "Versionen aller installierten Teile",
       "shell": "Interaktive Shell öffnen",
-      "completions": "Skript für Shell-Autovervollständigung ausgeben",
+      "completions": "Skript für Shell-Autovervollständigung ausgeben (mit `--install` für diesen Benutzer installieren)",
       "server.rename": "Server umbenennen",
       "bot.reset": "Bot-Einstellungen auf Standard zurücksetzen (ohne Schlüssel: alle)",
       "config.defaults": "Standardwerte aller Einstellungen",
@@ -941,6 +977,8 @@
       "backup.create": "Jetzt sichern",
       "backup.delete": "Ein Backup löschen (ohne Namen: aus einer Liste wählen)",
       "backup.restore": "Ein Backup wiederherstellen (fragt, ob ein laufender Server gestoppt werden soll). Ohne Namen: aus einer Liste wählen",
+      "backup.export": "Eine Sicherung in eine einzelne zip schreiben, die auf einen anderen PC verschoben werden kann (ohne Namen: aus der Liste wählen)",
+      "backup.import": "Eine mit `backup export` erstellte zip prüfen und zu den Sicherungen dieses Servers hinzufügen (danach wiederherstellen)",
       "schedule": "Geplante Serveraufgaben (Start, Stopp, Neustart, Speichern, Backup, Ankündigung, Update, Spielbefehl)",
       "schedule.show": "Zeitplan anzeigen",
       "schedule.add": "Aufgabe planen: start, stop, restart, save, backup, announce, update, command",
@@ -1003,6 +1041,7 @@
       "config.paths": "Wo Saba-chan Daten, Module und Erweiterungen ablegt, und die Standardordner",
       "config.move": "Module oder Erweiterungen in einen anderen Ordner verschieben. Installierte Dateien werden verschoben; Server müssen gestoppt sein",
       "server.players": "Wer gerade online ist",
+      "server.lists": "Spielerlisten des Spiels (wer beitreten darf, Admins, Sperren)",
       "server.address": "Die Adresse (IP:Port), mit der sich Freunde verbinden",
       "server.port-check": "Prüfen, ob Freunde diesen Server aus dem Internet erreichen (Portweiterleitung)",
       "server.rcon": "Eine Zeile so senden, wie der Server Befehle annimmt (Konsole, sonst RCON), und die Antwort zeigen",
@@ -1036,6 +1075,9 @@
       "bot.clear": "Letzte Nachrichten eines Kanals löschen (angeheftete Nachrichten und Saba-chan-Panels bleiben). Fragt vorher nach",
       "bot.mute": "Chat, Reaktionen und Sprache eines Mitglieds sperren: Dauer (10m, 1h, 7d, bis 28 Tage), forever, aufheben mit off",
       "bot.big-emoji": "Emoji-Upscaling (ein einzelnes eigenes Emoji wird groß gezeigt) auf einem Discord-Server. Ohne Optionen: anzeigen",
+      "bot.member-notice": "Hinweise zu Beitritten und Austritten auf einem Discord-Server (Hinweiskanal). Ohne Optionen: anzeigen",
+      "bot.busy-notice": "Überlastungshinweis auf einem Discord-Server (bei überlastetem PC gepostet, danach entfernt). Ohne Optionen: anzeigen",
+      "bot.chat-auto-open": "Chat-Verbindung auf einem Discord-Server von selbst öffnen, solange jemand auf einem laufenden Server ist. Ohne Optionen: anzeigen",
       "config.net-trace": "Berechtigung für Netzwerk pro Server und Port (erweitert, Windows): ohne Aktion der aktuelle Stand; grant zeigt auf dem Daemon-PC einmal eine Administratorbestätigung, revoke macht es rückgängig. Einschalten mit config set systemMonitorNetTrace=on",
       "mcp": "Ein KI-Agent auf diesem PC (Claude Code, Codex) nutzt alle Befehle: lokaler MCP-Server über stdin/stdout",
       "agent": "Den lokalen MCP-Server (`mcp`) bei KI-Agenten auf diesem PC eintragen",
@@ -1055,6 +1097,7 @@
       "perm.level.add.name": "Name der neuen Stufe (1–32 Zeichen)",
       "perm.level.rename.name": "Neuer Name (1–32 Zeichen)",
       "backup.create.from_snapshot": "Statt die Welt jetzt zu kopieren, das neueste automatische Backup des Spiels behalten (Palworld u. a.)",
+      "backup.export.out": "Wohin die zip geschrieben wird (ein Pfad auf dem PC, auf dem der Daemon läuft)",
       "bot.channels.notify": "Der Benachrichtigungskanal (Abstürze, Backups, Updates, geplante Neustarts), nach Name oder ID",
       "bot.channels.no_notify": "Benachrichtigungskanal entfernen",
       "bot.channels.game_chat": "Der Spielchat-Kanal (Chat der Server mit aktivierter Weiterleitung), per Name oder ID",
@@ -1126,6 +1169,8 @@
       "key": "Einstellungsschlüssel",
       "text": "Zu sendender Text",
       "shell": "bash, zsh, fish, powershell, elvish",
+      "completions.install": "Vervollständigung für `saba-chan` und `saba-chan-cli` dort ablegen, wo deine Shell sie lädt. Shell-Einstellungen bleiben unverändert",
+      "completions.install_shell": "Shell, für die installiert wird (Standard: die verwendete Shell)",
       "game_port": "Spielport",
       "keys": "Einstellungsschlüssel",
       "server.rename.name": "Neuer Name",
@@ -1180,6 +1225,7 @@
       "install.modules": "Zu installierende Spielmodule, durch Kommas getrennt (wird gefragt, wenn weggelassen)",
       "install.gui": "Auch ohne Bildschirm die Desktop-App installieren",
       "install.no_gui": "Auch mit Bildschirm ohne Desktop-App installieren",
+      "install.channel": "Kanal für die Installation und spätere Updates: stable, rc (Vorschau) oder beta. Ohne Angabe der Kanal des Installers",
       "uninstall.remove_settings": "Auch Einstellungen und die Discord-Verbindung entfernen",
       "uninstall.remove_instances": "Auch Server entfernen (Serverdateien, Welten, Backups)",
       "config.move.kind": "Was verschoben wird: modules oder extensions",
@@ -1271,6 +1317,12 @@
       "bot.sleep-mode.no_block": "Im Schlaf keine Funktion ausschalten",
       "bot.big-emoji.on": "Emoji-Upscaling einschalten",
       "bot.big-emoji.off": "Emoji-Upscaling ausschalten",
+      "bot.member-notice.on": "Mitgliederhinweise einschalten",
+      "bot.member-notice.off": "Mitgliederhinweise ausschalten",
+      "bot.busy-notice.on": "Überlastungshinweis einschalten",
+      "bot.busy-notice.off": "Überlastungshinweis ausschalten",
+      "bot.chat-auto-open.on": "Chat-Verbindung von selbst öffnen",
+      "bot.chat-auto-open.off": "Chat-Verbindung geschlossen lassen, bis jemand sie öffnet",
       "config.net-trace.action": "grant oder revoke. Ohne Angabe wird der aktuelle Stand gezeigt",
       "agent.link.claude": "Nur Claude Code",
       "agent.link.codex": "Nur Codex",
@@ -1318,7 +1370,8 @@
       "pre-update": "vor Update",
       "pre-restore": "vor Wiederherstellung",
       "snapshot": "Behaltenes Spiel-Backup",
-      "game-snapshot": "Spiel-Autobackup"
+      "game-snapshot": "Spiel-Autobackup",
+      "imported": "Importiert"
     },
     "none": "{{name}} hat noch keine Backups.",
     "creating": "{{name}} wird gesichert...",
@@ -1330,6 +1383,8 @@
     "confirm_restore_running": "{{name}} läuft. Stoppen und auf Backup {{backup}} zurücksetzen? Die aktuelle Welt wird vorher als Backup gesichert.",
     "restoring": "{{backup}} wird wiederhergestellt...",
     "restored": "{{name}} ist wieder auf dem Stand von {{backup}}.",
+    "exported": "Sicherung exportiert: {{path}} ({{size}}). Nur diese eine Datei auf einen anderen PC verschieben, um sie dort zu importieren.",
+    "imported": "Sicherung {{backup}} wurde zu {{name}} hinzugefügt. Zum Einspielen in den Server wiederherstellen.",
     "pre_restore": "Die vorherige Welt bleibt als Backup {{backup}} erhalten.",
     "links_not_restored": "Die Wiederherstellung ist fertig, aber {{count}} Verknüpfung(en) im Ordner konnten nicht wiederhergestellt werden (z. B. Windows-Berechtigungen). Die Pfade stehen im Daemon-Protokoll.",
     "start_again": "{{name}} wieder starten?",
@@ -1791,6 +1846,7 @@
   "install": {
     "fetching": "Prüfe die neueste Version…",
     "fetch_failed": "Die neueste Version konnte nicht geladen werden: {{reason}}",
+    "channel_older": "Die neueste Version des Kanals {{channel}} ({{offered}}) ist älter als dieses Installationsprogramm ({{installer}}) und lässt sich daher nicht über diesen Kanal installieren. Wähle einen anderen Kanal.",
     "ask_dir": "Installationsordner",
     "unknown_module": "Unbekanntes Modul: {{name}}. Verfügbare Module: {{list}}",
     "ask_module": "Das Modul {{name}} auch installieren?",
@@ -1813,6 +1869,7 @@
     "next_mac_app": "Öffne Saba-chan im Ordner „Programme“ oder mit:\n{{command}}",
     "components_dir": "Module und Erweiterungen kommen nach {{dir}}.",
     "components_dir_invalid": "{{dir}} kann nicht für Module und Erweiterungen verwendet werden: {{reason}}",
+    "channel": "Die neueste Version aus dem Kanal {{channel}} wird installiert; spätere Updates kommen ebenfalls aus diesem Kanal.",
     "invalid_dir": "Installation in {{dir}} nicht möglich. Wähle einen Ordner, der kein Laufwerksstamm, kein Benutzerordner und nicht der Einstellungsordner ist"
   },
   "uninstall": {
@@ -1884,6 +1941,12 @@
   "players": {
     "title": "{{server}}: {{count}} online",
     "none": "Niemand ist online."
+  },
+  "lists": {
+    "title": "{{list}}: {{count}}",
+    "none": "Noch niemand hier.",
+    "unsupported": "Das Spiel dieses Servers stellt keine Spielerlisten bereit.",
+    "edit": "Hinzufügen: {{add}} <Name>   Entfernen: {{remove}} <Name>"
   },
   "log": {
     "none": "Noch kein gespeichertes Log. Es entsteht, nachdem der Server einmal gelaufen ist.",

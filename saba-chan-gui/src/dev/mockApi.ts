@@ -450,6 +450,13 @@ const impl: Record<string, MockFn> = {
     instanceBackupCreate: () => ok({ success: true, backup: { name: 'new-manual.zip' } }),
     instanceBackupDelete: () => ok({ success: true }),
     instanceBackupRestore: () => ok({ success: true, restored: true }),
+    instanceBackupExport: () => ok({ success: true, path: 'D:\\backup\\mock.zip', size: 95_000_000 }),
+    instanceBackupImport: (_id: string, opts?: { preview?: boolean }) =>
+        ok(
+            opts?.preview
+                ? { success: true, path: 'D:\\backup\\mock.zip', preview: { server: 'Mock', module: 'mock', created: now() - 86400, size: 95_000_000 } }
+                : { success: true, backup: { name: 'mock-imported.zip' } },
+        ),
     chatbotGet: () =>
         ok({
             success: true,
@@ -1030,6 +1037,8 @@ const impl: Record<string, MockFn> = {
                     level: content.includes('/WARN]') ? 'warn' : 'info',
                     ...(opts?.spans ? { spans: mockSpans(content) } : {}),
                 }))
+                // 앱에서 보낸 명령 한 줄 (보낸 줄 모양 확인용)
+                .concat({ id: consoleLines.length + 1, content: 'list', source: 'input', level: 'info', by: { source: 'gui' } } as never)
                 .filter((l) => l.id >= since),
             stdin_available: true,
         }),

@@ -4,8 +4,10 @@
 //!
 //! ## 실행
 //! ```text
-//! saba-chan-installer --apply [--wait-pid <pid>] --launch-token <t> [--headless] [--relaunch <exe> [extra...]]
+//! saba-chan-installer --apply [--wait-pid <pid>] --launch-token <t> [--headless] [--rollback] [--relaunch <exe> [extra...]]
 //! ```
+//!
+//! `--rollback`이면 받아 둔 것을 적용하지 않고, 데몬이 끝난 뒤 남겨 둔 직전 판으로 되돌린 다음 다시 띄운다 (`roll_back_to_previous`).
 //!
 //! `--headless`(헤드리스 설치에서 데몬이 붙인다)면 창을 띄우지 않고 바로 적용한 뒤 `--relaunch`만 다시 띄운다.
 //! 설치된 GUI를 찾아 띄우는 예비 동작은 쓰지 않는다. 종료 코드는 적용이 다 됐으면 0, 아니면 1이다.
@@ -605,9 +607,10 @@ pub(crate) fn run(args: &[String]) {
     }
 
     // --relaunch 앞의 인자만 업데이터의 것이다
+    let own = &after_apply[..relaunch_pos.unwrap_or(after_apply.len())];
     // 창 없이 빌드한 업데이터(`window` 기능 없음)는 늘 창 없이 적용한다
-    let headless = cfg!(not(feature = "window"))
-        || after_apply.iter().take(relaunch_pos.unwrap_or(after_apply.len())).any(|a| a == "--headless");
+    let headless = cfg!(not(feature = "window")) || own.iter().any(|a| a == "--headless");
+    let rollback = own.iter().any(|a| a == "--rollback");
 
     // 띄운 쪽(데몬) 종료 대기. PID를 모르면 예전처럼 잠깐만 기다린다.
     // 30초 뒤에도 살아 있으면 파일을 바꾸지 않는다: 받아 둔 것은 그대로 두고, 예전 데몬이 마저 끝나면 다시 띄울 것만 띄운다
@@ -620,6 +623,10 @@ pub(crate) fn run(args: &[String]) {
         .and_then(|p| p.parse::<u32>().ok());
     if !live_apply::wait_for_previous(wait_pid, live_apply::WAIT_PID_TIMEOUT, saba_chan_updater_lib::ProcessChecker::is_pid_running, &UpdateCompletionMarker::path()) {
         std::process::exit(relaunch_unchanged(headless, relaunch_exe, relaunch_extra, wait_pid));
+    }
+
+    if rollback {
+        std::process::exit(roll_back_to_previous(relaunch_exe, relaunch_extra));
     }
 
     // install_root: exe 위치에서 자동 추론
@@ -721,6 +728,32 @@ fn relaunch_unchanged(headless: bool, relaunch_exe: Option<String>, relaunch_ext
         Err(e) => tracing::error!("[Apply] Cannot start the runtime: {}", e),
     }
     1
+}
+
+/// 사용자가 고른 되돌리기 (`--apply --rollback`, 데몬이 `POST /api/updates/rollback`으로 띄운다). 창 없이 남겨 둔 직전 판으로
+/// 되돌리고 다시 띄운다(`live_apply::PreviousVersion::restore`). 다 되돌리지 못했으면 섞인 판을 띄우지 않는다 (되살리는 법은 완료 마커에 남는다)
+fn roll_back_to_previous(relaunch_exe: Option<String>, relaunch_extra: Vec<String>) -> i32 {
+    let restored = match live_apply::PreviousVersion::load(&constants::resolve_data_dir()) {
+        Some(previous) => previous
+            .restore(&saba_chan_updater_lib::config_file::ConfigFile::default_location(), &UpdateCompletionMarker::path())
+            .map_err(|recovery| tracing::error!("[Apply] The rollback is incomplete; not relaunching ({})", recovery.restore_hint())),
+        None => {
+            tracing::error!("[Apply] No previous version is kept; relaunching unchanged");
+            Ok(String::new())
+        }
+    };
+    if restored.is_err() {
+        return 1;
+    }
+    let (exe, extra) = rollback_relaunch(relaunch_exe, relaunch_extra);
+    let relaunched = match tokio::runtime::Runtime::new() {
+        Ok(rt) => rt.block_on(relaunch_now(exe, extra, None, false)).is_some(),
+        Err(e) => {
+            tracing::error!("[Apply] Cannot start the runtime: {}", e);
+            false
+        }
+    };
+    if relaunched && restored.is_ok_and(|v| !v.is_empty()) { 0 } else { 1 }
 }
 
 /// 창 없이 적용한다 (Tauri를 시작하지 않는다). 결과는 창 업데이터와 같은 완료 마커에 남는다
