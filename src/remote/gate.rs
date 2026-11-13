@@ -340,6 +340,10 @@ pub static ROUTES: &[Route] = &[
     deny("POST", "/api/updates/phase/ack"),
     deny("POST", "/api/updates/restart"),
     deny("PUT", "/api/updates/gui-window"),
+    // 모듈·익스텐션 판 고르기: 이 PC의 앱·CLI와, 짝 맺은 PC를 다루는 앱(원격 데몬 중계)이 쓴다
+    not_on_web("GET", "/api/updates/addons/{key}/versions"),
+    not_on_web("POST", "/api/updates/addons/{key}/pin"),
+    not_on_web("DELETE", "/api/updates/addons/{key}/pin"),
     // 이 데몬 자신의 업데이트: 짝 맺은 PC의 앱 카드가 원격 데몬을 고르고 부른다 (자동 업데이트·업데이트 단추)
     not_on_web("GET", "/api/daemon/update"),
     not_on_web("POST", "/api/daemon/update"),

@@ -9,6 +9,7 @@ import { Disclosure } from '../ui/Disclosure';
 import { ModuleMakerCard } from '../ModuleMakerCard';
 import { useContextMenu } from '../ui/ContextMenu';
 import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
+import { type AddonCard, useAddonVersions } from './AddonVersions';
 import { QuestionModal } from './Modals';
 import { localizedDescription, localizedName } from '../../utils/localizedText';
 import { type CatalogModule, unsupportedText } from '../../utils/moduleSupport';
@@ -839,6 +840,8 @@ function ModulesTab() {
         loadInstalledModules();
     }, [loadInstalledModules]);
 
+    const versions = useAddonVersions(loadInstalledModules);
+
     // 받을 수 있는 목록은 탭을 열면 바로 받는다 (예전처럼 ▾ 뒤에 접어 두면 지나치기 쉽다)
     const loadManifest = useCallback(async () => {
         setManifestModules(null);
@@ -941,6 +944,7 @@ function ModulesTab() {
 
     return (
         <div className="saba-storage-tab-content">
+            {versions.banner}
             {/* 설치된 모듈 */}
             <div data-spot="storage.installed" className="ss-store-header">
                 <div className="ss-section-label" style={{ margin: 0 }}>
@@ -964,12 +968,23 @@ function ModulesTab() {
                     {sortedModules.map((m, idx) => {
                         const moduleId = getModuleId(m);
                         const isRemoving = removingIds.has(moduleId);
+                        const card: AddonCard = {
+                            key: `module-${moduleId}`,
+                            name: m.name,
+                            kind: 'module',
+                            version: m.version,
+                            pinned: m.pinned,
+                            pending_version: m.pending_version,
+                        };
+                        const progress = versions.progress(card);
                         return (
                             <div
                                 className="ss-card"
                                 key={m.name || idx}
                                 onContextMenu={(e) =>
                                     openMenu(e, [
+                                        ...versions.menuItems(card, isRemoving),
+                                        'separator',
                                         {
                                             id: 'remove',
                                             label: t('saba_storage.remove', '제거'),
@@ -987,8 +1002,10 @@ function ModulesTab() {
                                         {m.name}
                                         {m.version && <span className="ss-card-version">v{m.version}</span>}
                                         <TrustBadge trust={m.trust} />
+                                        {versions.chip(card)}
                                     </span>
-                                    {m.description && <span className="ss-card-desc">{m.description}</span>}
+                                    {progress || (m.description && <span className="ss-card-desc">{m.description}</span>)}
+                                    {versions.pinNote(card)}
                                 </div>
                                 <div className="ss-card-actions">
                                     <button
@@ -1099,6 +1116,8 @@ function ModulesTab() {
 
             <ModuleMakerCard />
 
+            {versions.dialogs}
+
             {confirmRemoveId && (
                 <QuestionModal
                     title={t('saba_storage.remove_module_confirm_title', '모듈 제거')}
@@ -1143,6 +1162,7 @@ function ExtensionsTab() {
     const [rescanning, setRescanning] = useState(false);
     const [iconUrls, setIconUrls] = useState<Record<string, string>>({}); // { extId: dataUrl }
     const [showStore, setShowStore] = useState(false);
+    const versions = useAddonVersions(refreshExtensions);
 
     // 아이콘 로드: has_icon이 true인 익스텐션의 icon.png를 data URL로 가져옴
     useEffect(() => {
@@ -1225,6 +1245,7 @@ function ExtensionsTab() {
 
     return (
         <div className="saba-storage-tab-content">
+            {versions.banner}
             {/* 설치됨 */}
             <div data-spot="extensions.installed" className="ss-store-header">
                 <div className="ss-section-label" style={{ margin: 0 }}>
@@ -1249,6 +1270,15 @@ function ExtensionsTab() {
                         const updateInfo = availableUpdates.find((u) => u.id === ext.id);
                         const isRemoving = removingIds.has(ext.id);
                         const isBusy = isRemoving || installingIds.has(ext.id);
+                        const card: AddonCard = {
+                            key: `ext-${ext.id}`,
+                            name: ext.name || ext.id,
+                            kind: 'ext',
+                            version: ext.version,
+                            pinned: ext.pinned,
+                            pending_version: ext.pending_version,
+                        };
+                        const progress = versions.progress(card);
                         return (
                             <div
                                 className="ss-card"
@@ -1273,6 +1303,7 @@ function ExtensionsTab() {
                                             disabled: isBusy || togglingIds.has(ext.id),
                                             onSelect: () => handleToggle(ext.id, !ext.enabled),
                                         },
+                                        ...versions.menuItems(card, isBusy),
                                         'separator',
                                         {
                                             id: 'remove',
@@ -1300,10 +1331,13 @@ function ExtensionsTab() {
                                         {updateInfo && (
                                             <span className="ss-update-badge">v{updateInfo.latest_version}</span>
                                         )}
+                                        {versions.chip(card)}
                                     </span>
-                                    {(localizedDescription(ext as Described, i18n.language) || ext.id) && (
-                                        <span className="ss-card-desc">{localizedDescription(ext as Described, i18n.language) || ext.id}</span>
-                                    )}
+                                    {progress ||
+                                        ((localizedDescription(ext as Described, i18n.language) || ext.id) && (
+                                            <span className="ss-card-desc">{localizedDescription(ext as Described, i18n.language) || ext.id}</span>
+                                        ))}
+                                    {versions.pinNote(card)}
                                     <ExtensionAuditNotice extId={ext.id} name={ext.name} />
                                     {ext.enabled && <ExtensionConfigForm ext={ext} />}
                                 </div>
@@ -1425,6 +1459,8 @@ function ExtensionsTab() {
             )}
                 </>
             )}
+
+            {versions.dialogs}
 
             {confirmRemoveId && (
                 <QuestionModal

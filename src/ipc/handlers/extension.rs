@@ -92,6 +92,7 @@ pub async fn list_extensions(
         if let Some(text) = item.descriptions.get(&language).or_else(|| item.descriptions.get(&base)) {
             item.description = text.clone();
         }
+        item.addon = super::server::addon_choice(&format!("ext-{}", item.id), &item.version);
     }
     let failed = mgr.load_errors();
     if failed.is_empty() {

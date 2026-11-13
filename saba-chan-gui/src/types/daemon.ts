@@ -85,6 +85,8 @@ export interface ServerInfo {
     extra_args: string[];
     revision: string;
     memory_limit_mb: number | null;
+    /** 이 서버가 도는 PC의 데몬이 메모리 상한을 걸 수 있는지 (러너가 상한을 거는 곳에서만 참). 싣지 않는 예전 데몬은 걸 수 있다고 본다 */
+    memory_limit_supported?: boolean;
     /** 게임 서버 자동 업데이트 (설치 방식 익스텐션으로 설치한 서버만, PC에서만 바꾼다) */
     auto_update?: boolean;
     /** 브랜치 서버: 만들 때 설정을 가져온 상위 서버 id (목록에서 그 서버 아래에 묶인다) */
@@ -312,6 +314,44 @@ export interface ModuleInfo {
     lists?: ModuleList[];
     /** 모듈이 밝힌 lifecycle 함수. null이면 모른다 (아무 기능도 숨기지 않는다) */
     functions: string[] | null;
+    /** 사용자가 고른 버전 (없으면 자동 업데이트) */
+    pinned?: AddonPin;
+    /** 고른 버전이 켜진 서버가 꺼지기를 기다리는 중 */
+    pending_version?: string;
+}
+
+// ── 모듈·익스텐션 버전 고르기 (/api/updates/addons/{key}, key는 module-<이름>·ext-<id>) ──
+
+/** 고른 버전. 카탈로그가 until_newer_than보다 새 버전을 내면 데몬이 풀고 자동 업데이트로 돌아간다 */
+export interface AddonPin {
+    version: string;
+    until_newer_than: string;
+}
+
+/** GET …/versions 의 한 줄. 내려진(yanked) 것은 고를 수 없다 */
+export interface AddonVersion {
+    version: string;
+    installed: boolean;
+    latest: boolean;
+    yanked: boolean;
+}
+
+/** GET /api/updates/addons/{key}/versions (새 버전부터) */
+export interface AddonVersionsResponse {
+    key: string;
+    core: string;
+    installed: string | null;
+    versions: AddonVersion[];
+    /** 더 새 사바쨩이 필요해 뺀 버전 */
+    excluded: string[];
+    pinned: AddonPin | null;
+}
+
+/** POST·DELETE /api/updates/addons/{key}/pin. waiting이면 waiting_for의 서버가 꺼진 뒤 바꾼다 */
+export interface AddonPinResponse {
+    state: 'applied' | 'waiting';
+    version: string;
+    waiting_for: string[];
 }
 
 /** module_loader::ModuleLoadError */
@@ -377,6 +417,10 @@ export interface ExtensionListItem {
     /** verified · modified · unverified */
     trust: string;
     gui_allowed?: boolean;
+    /** 사용자가 고른 버전 (없으면 자동 업데이트) */
+    pinned?: AddonPin;
+    /** 고른 버전이 켜진 서버가 꺼지기를 기다리는 중 */
+    pending_version?: string;
 }
 
 /** GET /api/extensions */

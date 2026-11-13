@@ -1609,6 +1609,59 @@
     color: var(--stop);
 }
 
+/* 라디오 카드: 제목 줄과 설명을 담는 고르기 버튼 (버전 선택 창, 옮기기 창의 방식) */
+.radio-card {
+    height: auto;
+    min-width: 0;
+    white-space: normal;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--sp-1);
+    padding: var(--sp-2) var(--sp-3);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    background: var(--bg-1);
+    color: var(--text-1);
+    text-align: left;
+    cursor: pointer;
+}
+.radio-card[aria-checked='true'] {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
+}
+.radio-card:disabled {
+    cursor: default;
+}
+.radio-card-title {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+    color: var(--text-1);
+    font-size: var(--fs-sm);
+    font-weight: 700;
+}
+
+/* 모듈·익스텐션 버전 선택 창 (AddonVersions.tsx) */
+.ss-versions {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1-5);
+}
+.ss-version-hint,
+.ss-version-note {
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+}
+.ss-version-note {
+    margin: var(--sp-2) 0 0;
+}
+.ss-card-progress {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1-5);
+}
+
 .ss-empty {
     font-size: var(--fs-sm);
     color: var(--text-3);
@@ -2385,34 +2438,14 @@
     grid-template-columns: 1fr 1fr;
     gap: var(--sp-2);
 }
+/* 방식 고르기는 라디오 카드(.radio-card)에 설명 글자를 더한다 */
 .mg-mode {
-    height: auto;
-    min-width: 0;
-    white-space: normal;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: var(--sp-1);
     padding: var(--sp-2-5) var(--sp-3);
-    border: 1px solid var(--line);
-    border-radius: var(--r-md);
-    background: var(--bg-1);
     color: var(--text-2);
     font-size: var(--fs-xs);
-    text-align: left;
-    cursor: pointer;
-}
-.mg-mode--selected {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 1px var(--accent);
 }
 .mg-mode-title {
-    display: inline-flex;
-    align-items: center;
     gap: var(--sp-1-5);
-    color: var(--text-1);
-    font-size: var(--fs-sm);
-    font-weight: 700;
 }
 .mg-mode-tag {
     padding: 0 var(--sp-1-5);

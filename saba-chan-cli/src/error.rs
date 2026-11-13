@@ -267,6 +267,10 @@ pub fn api_hint(code: &str, body: &Value) -> Option<String> {
         // 모듈이 실행 파일을 못 찾음: executable_not_found (MK7), 옛 모듈은 server_jar_not_found
         "executable_missing" | "executable_not_found" | "server_jar_not_found" => Some(t!("err.hint.executable_missing")),
         "update_unsupported" => Some(t!("err.hint.update_unsupported")),
+        // 모듈·익스텐션 판 고르기 (`update pin`·`unpin`)
+        "relay_unreachable" | "download_failed" | "verify_failed" | "requires_unmet" => crate::i18n::try_t(&format!("err.hint.{code}")),
+        "module_modified" | "extension_modified" => Some(t!("err.hint.addon_modified")),
+        "module_unverified" | "extension_unverified" => Some(t!("err.hint.addon_unverified")),
         "backup_unsupported" => Some(t!("err.hint.backup_unsupported")),
         // 서버가 도는 PC의 OS가 메모리 상한을 걸 수 없다 (러너는 Windows Job으로만 건다)
         "memory_limit_unsupported" => Some(t!("err.hint.memory_limit_unsupported")),

@@ -7,6 +7,7 @@ import { useSettingsStore } from '../stores/useSettingsStore';
 import { useUIStore } from '../stores/useUIStore';
 import type { ModuleInfo, SettingField } from '../types/daemon';
 import { moduleSupports } from '../utils/helpers';
+import { memoryLimitState } from '../utils/serverView';
 import { extensionInstallMethod, versionBranchMethod } from '../utils/installMethod';
 import { checkPortConflicts, hiddenFields, validateAllSettings } from '../utils/validation';
 import { useExtensions } from '../contexts/ExtensionContext';
@@ -336,6 +337,8 @@ interface GeneralTabProps {
     versionInstalling?: boolean;
     handleSettingChange: (name: string, value: unknown) => void;
     handleInstallVersion: () => void;
+    /** 지금 값을 저장한다 (걸리지 않는 메모리 상한 "비우기") */
+    handleSaveSettings?: () => void;
     /** 고른 범위·백업 여부가 오면 묻지 않고 초기화한다 (확인 창이 이미 물었다) */
     handleResetServer: (choice?: ResetChoice) => void;
     resettingServer?: boolean;
@@ -359,6 +362,7 @@ function GeneralTab({
     versionInstalling,
     handleSettingChange,
     handleInstallVersion,
+    handleSaveSettings,
     handleResetServer,
     resettingServer,
     validationErrors,
@@ -417,6 +421,7 @@ function GeneralTab({
     const crashOff = String(settingsValues.auto_restart) === 'false';
     const idleStopOn = String(settingsValues.idle_stop) === 'true';
     const watchAction = String(settingsValues.unresponsive_action ?? 'notify');
+    const memoryLimit = memoryLimitState(settingsServer);
     const autoUpdatable = extensionInstallMethod(settingsServer, module) !== null;
     // 명령 팔레트가 고급 묶음의 칸을 찾아 달라고 하면 펼친다 (칸을 찾아 반짝이는 일은 팔레트가 한다)
     const findField = useUIStore((s) => s.findSettingField);
@@ -670,14 +675,16 @@ function GeneralTab({
                 </Card>
             )}
 
-            {/* 램 상한 (데몬 인스턴스 memory_limit_mb, MiB). 비우면 제한 없음, 다음 시작부터 적용 */}
+            {/* 램 상한 (데몬 인스턴스 memory_limit_mb, MiB). 비우면 제한 없음, 다음 시작부터 적용.
+                데몬이 상한을 걸 수 없다고 알리면(memory_limit_supported 거짓) 칸을 잠그고, 남은 예전 값은 비우게 한다 */}
             {showSaba && (
                 <Card icon="monitor" title={t('memory_limit.title')} desc={t('memory_limit.desc')} className="ss-memory">
                     <SettingRow
                         label={t('memory_limit.label')}
                         findKey="memory_limit_mb"
                         htmlFor={`${rowId}-mem`}
-                        desc={t('memory_limit.hint')}
+                        desc={t(memoryLimit === 'editable' ? 'memory_limit.hint' : 'memory_limit.hint_locked')}
+                        disabled={memoryLimit !== 'editable'}
                         control={
                             <input
                                 id={`${rowId}-mem`}
@@ -687,10 +694,33 @@ function GeneralTab({
                                 value={settingsValues.memory_limit_mb ?? ''}
                                 placeholder={t('memory_limit.placeholder')}
                                 aria-label={t('memory_limit.label')}
+                                disabled={memoryLimit !== 'editable'}
                                 onChange={(e) => handleSettingChange('memory_limit_mb', e.target.value)}
                             />
                         }
                     />
+                    {memoryLimit === 'locked' && (
+                        <div className="notice tone-info">
+                            <Icon name="info" size="sm" />
+                            <span>{t('memory_limit.locked')}</span>
+                        </div>
+                    )}
+                    {memoryLimit === 'stale' && (
+                        <div className="notice tone-warn">
+                            <Icon name="alertTriangle" size="sm" />
+                            <span>{t('memory_limit.stale')}</span>
+                            <button
+                                type="button"
+                                className="btn btn-ghost btn-sm"
+                                onClick={() => {
+                                    handleSettingChange('memory_limit_mb', '');
+                                    handleSaveSettings?.();
+                                }}
+                            >
+                                {t('memory_limit.clear')}
+                            </button>
+                        </div>
+                    )}
                     {settingsServer.status === 'running' &&
                         String(settingsValues.memory_limit_mb ?? '').trim() !==
                             (settingsServer.memory_limit_mb == null ? '' : String(settingsServer.memory_limit_mb)) && (
@@ -1170,6 +1200,7 @@ export function ServerSettingsModal({
                     versionInstalling={versionInstalling}
                     handleSettingChange={handleSettingChange}
                     handleInstallVersion={handleInstallVersion}
+                    handleSaveSettings={handleSaveSettings}
                     handleResetServer={handleResetServer}
                     resettingServer={resettingServer}
                     validationErrors={validationErrors}

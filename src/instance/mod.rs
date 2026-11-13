@@ -44,6 +44,10 @@ fn unlinked_mark(detached: &Path) -> PathBuf {
 /// (instance.json을 고칠 수 있으면 다음 로드 때 실행 파일·사용자 설정까지 바꾼다)
 pub const DAEMON_ENTRIES: &[&str] = &["instance.json", "settings.json", "settings.json.tmp", "managed.pid", "run", "logs", "backups", "rcon.json", "rcon.json.tmp", "migration"];
 
+/// 이 데몬의 러너가 `memory_limit_mb`를 거는가. 러너는 Windows Job으로만 막는다 (`runner/src/job.rs`).
+/// 설정 저장의 422 `memory_limit_unsupported`와 클라이언트에 주는 `memory_limit_supported`가 이 값 하나를 본다
+pub const MEMORY_LIMIT_ENFORCED: bool = cfg!(windows);
+
 // ═══════════════════════════════════════════════════════════════
 //  ServerInstance — 인스턴스 메타데이터
 // ═══════════════════════════════════════════════════════════════
@@ -95,7 +99,7 @@ pub struct ServerInstance {
     /// (`extra_args_placed`가 없으면) 데몬이 실행 인자 끝에 붙인다
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub extra_args: Vec<String>,
-    /// 서버와 그 자식 프로세스의 메모리 상한(MiB). saba-runner가 Windows Job으로 막는다. 없으면 제한 없음
+    /// 서버와 그 자식 프로세스의 메모리 상한(MiB). saba-runner가 Windows Job으로 막는다 (`MEMORY_LIMIT_ENFORCED`). 없으면 제한 없음
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub memory_limit_mb: Option<u64>,
     /// 동의한 모듈 약관 (`[[agreements]]` id → 동의 시각 RFC3339). 선언된 약관을 모두 동의해야 켠다

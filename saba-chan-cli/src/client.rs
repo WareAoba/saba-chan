@@ -1284,6 +1284,18 @@ impl Api {
     pub async fn update_repair(&self) -> Result<Value> {
         self.post_long("/api/updates/repair", json!({})).await
     }
+    /// GET /api/updates/addons/{key}/versions — `{key, core, installed, versions:[{version, installed, latest, yanked}], excluded, pinned}`
+    pub async fn addon_versions(&self, key: &str) -> Result<Value> {
+        self.get_slow(&format!("/api/updates/addons/{}/versions", seg(key))).await
+    }
+    /// POST /api/updates/addons/{key}/pin — 고른 판을 받아 바꾸고 고정한다 `{state: applied|waiting, version, waiting_for}`
+    pub async fn addon_pin(&self, key: &str, version: &str) -> Result<Value> {
+        self.post_long(&format!("/api/updates/addons/{}/pin", seg(key)), json!({ "version": version })).await
+    }
+    /// DELETE /api/updates/addons/{key}/pin — 고정을 풀고 가장 새 판으로 바꾼다 (답은 pin과 같다)
+    pub async fn addon_unpin(&self, key: &str) -> Result<Value> {
+        self.call(Method::DELETE, &format!("/api/updates/addons/{}/pin", seg(key)), None, LONG).await
+    }
     pub async fn update_integrity(&self) -> Result<Value> {
         self.get_slow("/api/updates/integrity").await
     }

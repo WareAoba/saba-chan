@@ -567,6 +567,9 @@ pub struct ExtensionListItem {
     /// `POST /api/sandbox/extension-gui/ext-<id>`로 기록한다
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gui_allowed: Option<bool>,
+    /// 사용자가 고른 판 (`GET /api/extensions`가 채운다)
+    #[serde(flatten)]
+    pub addon: saba_chan_updater_lib::addon_pins::AddonChoice,
 }
 
 /// GUI 번들을 서빙해도 되는가: 확인된 익스텐션이거나, 사용자가 이 PC에서 지금 파일 그대로 허락했다
@@ -1250,6 +1253,7 @@ impl ExtensionManager {
                         .as_ref()
                         .and_then(|g| g.bundle.as_ref())
                         .map(|_| gui_allowed(&format!("ext-{}", m.id), &ext.dir)),
+                    addon: Default::default(),
                 }
             })
             .collect()
