@@ -50,18 +50,12 @@ pub fn write_gui_section(data_dir: &Path, gui: &Value) -> std::io::Result<()> {
     ConfigFile::at(data_dir).set_section("gui", gui.clone())
 }
 
+/// 데몬이 꺼져 있어도 셸이 정해야 하는 값만: 데몬 주소(`ipcPort`)와 언어. 화면 설정의 기본값은 데몬(`GuiSettings::default`)과
+/// 화면 스토어(`useSettingsStore` `SETTINGS_DEFAULTS`)가 정하고, 셸이 읽는 칸(창 크기·소리·OS 알림)은 값이 없으면 기본으로 본다
 pub fn default_settings() -> Map<String, Value> {
     let v = json!({
-        "autoRefresh": true,
-        "refreshInterval": 2000,
-        "windowBounds": { "width": 1200, "height": 840 },
         "language": system_language(),
         "ipcPort": DEFAULT_IPC_PORT,
-        "consoleBufferSize": 2000,
-        "autoGeneratePasswords": true,
-        "portConflictCheck": true,
-        "osNotifications": true,
-        "sounds": { "enabled": true, "serverStart": true, "serverStop": true, "crash": true, "install": true, "update": true, "startup": true },
     });
     match v {
         Value::Object(m) => m,
@@ -216,8 +210,6 @@ mod tests {
         let s = load_settings(dir.path());
         assert_eq!(ipc_port(&s), 60000);
         assert_eq!(s["language"], "ko");
-        // 기본값은 없는 칸만 채운다
-        assert_eq!(s["consoleBufferSize"], 2000);
     }
 
     #[test]
