@@ -26,7 +26,8 @@ export function SabaArt({ kind, className, size, alt = '' }: SabaArtProps) {
             className={clsx('saba-art', `saba-art-${kind}`, className)}
             style={size ? ({ '--art-size': `${size}px` } as CSSProperties) : undefined}
             draggable={false}
-            decoding="async"
+            // 풀린 뒤에 그린다: 비동기 해독이면 탭을 열 때 그림 없는 프레임이 먼저 보인다 (warmTabArt가 미리 풀어 둔다)
+            decoding="sync"
         />
     );
 }
