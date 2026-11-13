@@ -149,6 +149,16 @@ impl Component {
         }
     }
 
+    /// 구성요소 종류: `module`·`extension`(애드온, 사용자가 골라 받는다), 그 밖은 `app`(데몬이 묻지 않고 적용한다).
+    /// `/api/updates/status`·`check`의 `kind`
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Component::Module(_) => "module",
+            Component::Extension(_) => "extension",
+            _ => "app",
+        }
+    }
+
     /// manifest 키로부터 Component 생성 (알 수 없는 키는 None)
     pub fn try_from_manifest_key(key: &str) -> Option<Self> {
         match key {

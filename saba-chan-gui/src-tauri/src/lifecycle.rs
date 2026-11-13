@@ -987,11 +987,8 @@ async fn check_for_updates(app: &AppHandle) {
         .into_iter()
         .flatten()
         .filter(|c| c["update_available"].as_bool().unwrap_or(false))
-        .filter(|c| {
-            c["component"]
-                .as_str()
-                .is_some_and(|k| k.starts_with("module-") || k.starts_with("ext-"))
-        })
+        // 종류는 데몬이 정한다(`kind`, 0.1.14-beta.2~). 셸과 함께 깔린 데몬이라 칸이 없는 데몬은 보지 않는다
+        .filter(|c| matches!(c["kind"].as_str(), Some("module" | "extension")))
         .filter_map(|c| c["display_name"].as_str().map(String::from))
         .collect();
     let addon_key = {

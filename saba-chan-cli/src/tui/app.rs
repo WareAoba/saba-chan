@@ -1796,7 +1796,7 @@ pub fn refuse(words: &[String]) -> Option<String> {
         Cmd::Gui { .. } => Some(t!("tui.use_switch")),
         Cmd::Monitor(a) if a.watch => Some(t!("tui.not_here")),
         // 모듈·익스텐션만 적용하는 것은 업데이터를 띄우지 않는다: 메뉴 안에서 된다
-        Cmd::Update(UpdateCmd::Apply { components }) if components.is_empty() || !components.iter().all(|c| c.starts_with("module-") || c.starts_with("ext-")) => {
+        Cmd::Update(UpdateCmd::Apply { components }) if components.is_empty() || !components.iter().all(|c| saba_chan_updater_lib::Component::try_from_manifest_key(c).is_some_and(|c| c.kind() != "app")) => {
             Some(t!("tui.not_here"))
         }
         _ => None,
