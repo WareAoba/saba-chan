@@ -33,11 +33,7 @@ impl DaemonApi for FakeDaemon {
     async fn start(&self, server: &ServerView) -> InternalResponse {
         self.respond(format!("start {}", server.id))
     }
-    async fn stop(&self, server: &ServerView, force: bool) -> InternalResponse {
-        if force {
-            self.calls.lock().unwrap().push(format!("force stop {}", server.name));
-            return InternalResponse { status: StatusCode::OK, body: json!({"success": true}) };
-        }
+    async fn stop(&self, server: &ServerView) -> InternalResponse {
         self.respond(format!("stop {}", server.name))
     }
     async fn command(&self, id: &str, command: &str, args: Vec<String>) -> InternalResponse {
@@ -538,19 +534,6 @@ async fn help_shows_the_language_default_when_no_prefix_is_set() {
     let req = ChatRequest { text: "".into(), ..req };
     let en = process(&api, &empty, &Catalog::for_language("en"), &req).await.text.plain();
     assert!(en.contains("prefix=Saba-chan"), "{}", en);
-}
-
-/// 콘솔이 없어 저장 후 종료를 못 하는 서버(MK10)도 디스코드에서 정지를 부르면 묻지 않고 바로 강제 정지한다
-#[tokio::test]
-async fn a_stop_that_cannot_save_stops_anyway() {
-    let mut api = fixture();
-    api.reply = Some(InternalResponse {
-        status: StatusCode::OK,
-        body: json!({"success": false, "error_code": "graceful_stop_unavailable", "error": "no console"}),
-    });
-    let out = run(&api, &settings(), "mc stop").await;
-    assert_eq!(api.calls(), vec!["stop survival", "force stop survival"]);
-    assert_eq!(out, key("server.stop_complete", &[("name", "survival")]));
 }
 
 // ── 명령 결과 문구 (사용자 item 4) ──

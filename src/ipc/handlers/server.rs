@@ -1014,7 +1014,7 @@ pub async fn stop_instance_handler(
     LooseJson(body): LooseJson<ServerStopRequest>,
 ) -> axum::response::Response {
     let force = body.map(|Json(b)| b.force).unwrap_or(false);
-    super::answer(stop(&state, &id, force).await)
+    super::answer(user_stop(&state, &id, force).await)
 }
 
 /// POST /api/instance/:id/restart — 정지(`{force?}`) 뒤 시작 (`restart`)
@@ -1024,21 +1024,46 @@ pub async fn restart_instance_handler(
     LooseJson(body): LooseJson<ServerStopRequest>,
 ) -> axum::response::Response {
     let force = body.map(|Json(b)| b.force).unwrap_or(false);
-    super::answer(restart(&state, &id, force).await)
+    super::answer(user_restart(&state, &id, force).await)
 }
 
 /// 정지 뒤 시작. 꺼져 있으면 시작만 한다. 작업 기록에는 `restart` 한 줄로 남는다.
 /// 답은 시작 답에 `stopped`(정지했는가)를 더한 것. 정지가 실패하면 그 답을 그대로 준다
 pub(crate) async fn restart(state: &IPCServer, id: &str, force: bool) -> super::Outcome {
     // 안에서 부르는 정지·시작은 따로 남기지 않는다
-    let result = crate::audit::quietly(restart_unrecorded(state, id, force)).await;
+    let result = crate::audit::quietly(restart_unrecorded(state, id, StopMode::of(force, false))).await;
     super::audited_result(state, "restart", id, result).await
+}
+
+/// 사람이 부른 재시작 (`user_stop`과 같이 저장하지 못하는 서버도 끄고 다시 켠다)
+pub(crate) async fn user_restart(state: &IPCServer, id: &str, force: bool) -> super::Outcome {
+    let result = crate::audit::quietly(restart_unrecorded(state, id, StopMode::of(force, true))).await;
+    super::audited_result(state, "restart", id, result).await
+}
+
+/// 정지 방식. 저장 후 종료를 요청할 길이 없는 서버(MK10)를 사람이 부른 정지는 강제 정지로 잇고(`SaveIfPossible`),
+/// 예약·유휴·업데이트 정지(`Graceful`)는 끄지 않고 그만둔다
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum StopMode {
+    Graceful,
+    SaveIfPossible,
+    Force,
+}
+
+impl StopMode {
+    fn of(force: bool, by_user: bool) -> Self {
+        match (force, by_user) {
+            (true, _) => Self::Force,
+            (false, true) => Self::SaveIfPossible,
+            (false, false) => Self::Graceful,
+        }
+    }
 }
 
 /// 재시작이 정지 뒤 이전 프로세스가 끝나기를 기다리는 최소 시간 (정지 대기 시간이 더 길면 그만큼)
 const RESTART_EXIT_WAIT_FLOOR: std::time::Duration = std::time::Duration::from_secs(if cfg!(test) { 2 } else { 120 });
 
-async fn restart_unrecorded(state: &IPCServer, id: &str, force: bool) -> super::Outcome {
+async fn restart_unrecorded(state: &IPCServer, id: &str, mode: StopMode) -> super::Outcome {
     let picked = {
         let supervisor = state.supervisor.read().await;
         supervisor.instance_store.find(id).map(|i| {
@@ -1057,7 +1082,7 @@ async fn restart_unrecorded(state: &IPCServer, id: &str, force: bool) -> super::
     {
         // 데몬이 추적하지 않아도 익스텐션이 맡은 서버일 수 있다: 정지를 먼저 맡긴다
         let stopping = async {
-            let result = stop(state, &inst_id, force).await;
+            let result = stop_recorded(state, &inst_id, mode).await;
             (result, crate::supervisor::STOPPED_AT.with(|at| at.get()))
         };
         let (stopped, at) = crate::supervisor::STOPPED_AT.scope(std::cell::Cell::new(None), stopping).await;
@@ -1355,7 +1380,23 @@ pub(crate) async fn stop_idle_servers_at(state: &IPCServer, now: u64) {
 
 /// 인스턴스 하나를 id로 정지한다. 이름은 겹칠 수 있으니 정지 경로는 모두 id를 쓴다. 작업 기록에 `stop`으로 남는다
 pub(crate) async fn stop(state: &IPCServer, key: &str, force: bool) -> super::Outcome {
-    let result = stop_unrecorded(state, key, force).await;
+    stop_recorded(state, key, StopMode::of(force, false)).await
+}
+
+/// 사람이 부른 정지 (정지 라우트: 앱·웹·CLI·디스코드·챗봇). 저장 후 종료를 요청할 길이 없는 서버(MK10)도 묻지 않고
+/// 바로 강제 정지한다 (사용자 2026-11-13). 챗봇은 실행 전 되묻기(`actions::needs_confirm`)를 거친다
+pub(crate) async fn user_stop(state: &IPCServer, key: &str, force: bool) -> super::Outcome {
+    stop_recorded(state, key, StopMode::of(force, true)).await
+}
+
+async fn stop_recorded(state: &IPCServer, key: &str, mode: StopMode) -> super::Outcome {
+    let result = match stop_unrecorded(state, key, mode == StopMode::Force).await {
+        Err(failure) if mode == StopMode::SaveIfPossible && failure.body.get("error_code").and_then(Value::as_str) == Some("graceful_stop_unavailable") => {
+            tracing::info!("'{}' has no way to save and exit; stopping it without saving", key);
+            stop_unrecorded(state, key, true).await
+        }
+        result => result,
+    };
     super::audited_result(state, "stop", key, result).await
 }
 
@@ -1651,7 +1692,7 @@ mod tests {
         let restarter = {
             let state = state.clone();
             tokio::spawn(async move {
-                crate::ipc::internal::InternalResponse::from(restart_unrecorded(&state, "stop-during-restart", false).await).body
+                crate::ipc::internal::InternalResponse::from(restart_unrecorded(&state, "stop-during-restart", StopMode::Graceful).await).body
             })
         };
         tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
@@ -1690,7 +1731,7 @@ mod tests {
         let mut child = std::process::Command::new("sleep").arg("30").spawn().unwrap();
         state.supervisor.read().await.tracker.track("slow-save", child.id()).unwrap();
 
-        let restarted = crate::ipc::internal::InternalResponse::from(restart_unrecorded(&state, "slow-save", false).await);
+        let restarted = crate::ipc::internal::InternalResponse::from(restart_unrecorded(&state, "slow-save", StopMode::Graceful).await);
         assert_eq!(restarted.status, StatusCode::CONFLICT, "{}", restarted.body);
         assert_eq!((restarted.body["success"].clone(), restarted.body["error_code"].clone()), (json!(false), json!("still_stopping")), "{}", restarted.body);
         assert!(child.try_wait().unwrap().is_none(), "the old server is left to finish saving");
@@ -1928,6 +1969,26 @@ mod tests {
         assert!(child.try_wait().unwrap().is_none(), "a plain stop does not kill it");
         assert_eq!(stop("no-console-native", true).await["success"], true);
         assert!(child.wait().is_ok());
+
+        // 사람이 부른 정지(정지·재시작 라우트, 디스코드)는 묻지 않고 바로 강제 정지한다 (사용자 2026-11-13). 작업 기록은 정지 한 줄
+        let started = crate::ipc::internal::InternalResponse::from(start_unrecorded(&state, "no-console-managed").await).body;
+        assert_eq!(started["success"], true, "{started}");
+        let stopped = crate::ipc::internal::InternalResponse::from(user_stop(&state, "no-console-managed", false).await).body;
+        assert_eq!(stopped["success"], true, "{stopped}");
+        assert!(state.supervisor.read().await.managed_store.get("no-console-managed").await.is_none_or(|m| !m.is_running()));
+        let mut child = std::process::Command::new("sleep").arg("30").spawn().unwrap();
+        state.supervisor.read().await.tracker.track("no-console-native", child.id()).unwrap();
+        let stopped = crate::ipc::internal::InternalResponse::from(user_stop(&state, "no-console-native", false).await).body;
+        assert_eq!(stopped["success"], true, "{stopped}");
+        assert!(child.wait().is_ok());
+
+        // 재시작도 같다: 저장하지 못해도 끄고 다시 켠다
+        let started = crate::ipc::internal::InternalResponse::from(start_unrecorded(&state, "no-console-managed").await).body;
+        assert_eq!(started["success"], true, "{started}");
+        let restarted = crate::ipc::internal::InternalResponse::from(user_restart(&state, "no-console-managed", false).await).body;
+        assert_eq!(restarted["success"], true, "{restarted}");
+        assert_eq!(restarted["stopped"], true, "{restarted}");
+        assert_eq!(stop("no-console-managed", true).await["success"], true);
     }
 
     /// non-managed 정지에서 모듈 `stop()`은 이번 정지에 쓸 대기 시간(`stop_timeout`)과 그 호출의 한도(`stop_call_limit`,

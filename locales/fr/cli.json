@@ -787,8 +787,6 @@
     "not_yet": "{{name}} pas encore arrêté. Arrêt forcé : saba-chan-cli stop --force {{name}}",
     "requested": "Arrêt de {{name}} demandé",
     "waiting": "Arrêt de {{name}}...",
-    "no_graceful": "Aucune console pour demander à {{name}} de sauvegarder avant l'arrêt. Un arrêt forcé peut faire perdre la progression depuis la dernière sauvegarde.",
-    "force_confirm": "Arrêter sans sauvegarder ?",
     "confirm": "Êtes-vous sûr de vouloir arrêter le serveur {{name}}?"
   },
   "time": {

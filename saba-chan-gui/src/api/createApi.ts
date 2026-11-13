@@ -1228,13 +1228,12 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         // 합쳐 보기 (G1c): 이 PC와 원격 데몬마다의 서버 {daemons:[{hostId(이 PC는 null), name, ok, error_code?, servers}]}
         // 데몬이 원격 데몬 하나를 30초까지 기다린다 (01 §1.4.2 8)
         remoteServers: () => call('get', '/api/remote/servers', undefined, 40000),
-        // 합쳐 보기에서 다른 데몬의 서버 하나를 켜고 끈다. hostId가 없으면 이 PC. `force`: 저장 없이 정지
-        remoteInstanceAction: async (hostId: string | null, id: string, action: string, opts: { force?: boolean } = {}): Promise<ApiBody> => {
+        // 합쳐 보기에서 다른 데몬의 서버 하나를 켜고 끈다. hostId가 없으면 이 PC. 저장하지 못하는 서버도 그 데몬이 바로 정지한다
+        remoteInstanceAction: async (hostId: string | null, id: string, action: string): Promise<ApiBody> => {
             if (!['start', 'stop', 'restart'].includes(action)) return { success: false, error: `unknown action ${action}` };
-            const body = action === 'start' ? {} : { force: !!opts?.force };
             try {
                 return (
-                    await request('post', `/api/instance/${encodeURIComponent(id)}/${action}`, body, {
+                    await request('post', `/api/instance/${encodeURIComponent(id)}/${action}`, {}, {
                         timeout: action === 'start' ? START_TIMEOUT_MS : STOP_TIMEOUT_MS,
                         target: hostId || 'local',
                     })

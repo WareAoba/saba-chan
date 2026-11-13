@@ -1859,11 +1859,10 @@ async fn members_servers_listen_only_to_their_members_and_shared_servers_follow_
     assert_eq!((&start["level"], &start["controllers"]), (&json!(1), &json!(true)));
 }
 
-/// 저장 후 정지를 요청할 길이 없는 서버(MK10)도 디스코드·챗봇의 정지는 묻지 않고 바로 강제 정지한다 (사용자 2026-11-13).
-/// 이 PC 화면(GUI·CLI)은 그대로 `graceful_stop_unavailable`을 받아 사용자에게 묻는다
+/// 저장 후 정지를 요청할 길이 없는 서버(MK10)도 정지를 부르면 묻지 않고 바로 강제 정지한다: 이 PC 화면도 디스코드도 (사용자 2026-11-13)
 #[cfg(unix)]
 #[tokio::test]
-async fn a_discord_stop_of_a_server_that_cannot_save_stops_it_anyway() {
+async fn a_stop_of_a_server_that_cannot_save_stops_it_anyway() {
     let lifecycle = "import json, os, signal, sys\n\
 config = json.load(sys.stdin)\n\
 if sys.argv[1] == 'stop' and not config.get('force'):\n    \
@@ -1872,26 +1871,29 @@ elif sys.argv[1] == 'stop':\n    os.kill(config['pid'], signal.SIGKILL)\n    pri
 else:\n    print(json.dumps({'success': True}))\n";
     let (state, id, _tmp) = server_running(MODULE, lifecycle).await;
     set_node(&state, json!({ "ownerDiscordId": "owner" })).await;
-    let spawn = || std::process::Command::new("sleep").arg("30").spawn().unwrap();
-    let stop = |caller: Caller| {
-        let (state, id) = (state.clone(), id.clone());
-        async move {
-            let planned = plan(&state, "server.stop", Some(&id), &json!({}), &caller).await.unwrap();
-            run(&state, "server.stop", Some(&id), &json!({}), planned["planId"].as_str(), &caller).await.unwrap()
+    for caller in [gui(), relay("owner", false)] {
+        let mut child = std::process::Command::new("sleep").arg("30").spawn().unwrap();
+        state.supervisor.read().await.tracker.track(&id, child.id()).unwrap();
+        let planned = plan(&state, "server.stop", Some(&id), &json!({}), &caller).await.unwrap();
+        let out = run(&state, "server.stop", Some(&id), &json!({}), planned["planId"].as_str(), &caller).await.unwrap();
+        assert_eq!(out["success"], true, "{out}");
+        assert!(child.wait().is_ok());
+    }
+}
+
+/// 챗봇이 고른 정지·재시작은 저장하지 못하는 서버도 바로 끝내므로 되묻기 단계와 상관없이 묻는다. "묻지 않음"이면 묻지 않는다
+#[tokio::test]
+async fn the_chatbot_always_asks_before_a_stop_unless_asking_is_off() {
+    let (state, id, _tmp) = server().await;
+    for level in ["all", "caution", "danger"] {
+        set_confirm(&state, "danger", level).await;
+        for action in ["server.stop", "server.restart"] {
+            assert_eq!(plan(&state, action, Some(&id), &json!({}), &relay("owner", true)).await.unwrap()["needsConfirm"], true, "{level} {action}");
         }
-    };
-
-    let mut local = spawn();
-    state.supervisor.read().await.tracker.track(&id, local.id()).unwrap();
-    let out = stop(gui()).await;
-    assert_eq!(out["result"]["error_code"], "graceful_stop_unavailable", "{out}");
-    assert!(local.try_wait().unwrap().is_none(), "the app asks before stopping without saving");
-    let _ = local.kill();
-    let _ = local.wait();
-
-    let mut child = spawn();
-    state.supervisor.read().await.tracker.track(&id, child.id()).unwrap();
-    let out = stop(relay("owner", false)).await;
-    assert_eq!(out["success"], true, "{out}");
-    assert!(child.wait().is_ok());
+    }
+    set_confirm(&state, "danger", "none").await;
+    assert_eq!(plan(&state, "server.stop", Some(&id), &json!({}), &relay("owner", true)).await.unwrap()["needsConfirm"], false);
+    // 시작은 단계를 따른다
+    set_confirm(&state, "danger", "danger").await;
+    assert_eq!(plan(&state, "server.start", Some(&id), &json!({}), &relay("owner", true)).await.unwrap()["needsConfirm"], false);
 }

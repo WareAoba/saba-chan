@@ -784,8 +784,6 @@
   "stop": {
     "already": "{{name}}: 이미 정지됨",
     "done": "{{name}} 정지됨",
-    "force_confirm": "저장 없이 정지할까요?",
-    "no_graceful": "{{name}}에 저장 후 정지를 요청할 방법(콘솔)이 없습니다. 강제로 정지하면 마지막 저장 뒤의 진행이 사라질 수 있습니다.",
     "not_yet": "{{name}} 아직 정지 안 됨. 강제로: saba-chan-cli stop --force {{name}}",
     "requested": "{{name}} 정지 요청됨",
     "waiting": "{{name}} 정지하는 중...",

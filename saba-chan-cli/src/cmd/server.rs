@@ -1075,13 +1075,7 @@ pub async fn stop_server(ctx: &Ctx, sv: &Server, force: bool, no_wait: bool) -> 
         );
         return Ok(());
     }
-    let r = match ctx.api.stop(&sv.id, force).await {
-        Err(e) if !force && cannot_save_and_exit(&e) => {
-            agree_to_unsaved_stop(ctx, sv, e, "stop")?;
-            ctx.api.stop(&sv.id, true).await?
-        }
-        r => r?,
-    };
+    let r = ctx.api.stop(&sv.id, force).await?;
     if no_wait {
         ctx.out.done(&t!("stop.requested", name = sv.name), &r);
         return Ok(());
@@ -1108,41 +1102,10 @@ pub async fn restart(ctx: &Ctx, a: RestartArgs) -> Result<()> {
     let sv = resolve::server(ctx, a.server.as_deref()).await?;
     ensure_stop(ctx, &sv, "restart").await?;
     let spin = crate::progress::spinner(&t!("restart.waiting", name = sv.name));
-    let mut r = ctx.api.restart(&sv.id, a.force).await;
+    let r = ctx.api.restart(&sv.id, a.force).await;
     spin.finish_and_clear();
-    if let Err(e) = r {
-        r = if !a.force && cannot_save_and_exit(&e) {
-            agree_to_unsaved_stop(ctx, &sv, e, "restart")?;
-            let spin = crate::progress::spinner(&t!("restart.waiting", name = sv.name));
-            let r = ctx.api.restart(&sv.id, true).await;
-            spin.finish_and_clear();
-            r
-        } else {
-            Err(e)
-        };
-    }
     tell_moved_ports(ctx, &r);
     finish_start(ctx, &sv, r, false, t!("restart.done", name = sv.name)).await
-}
-
-/// 모듈이 저장하고 끄라고 알릴 길이 없다며 정지를 거절했다 (서버는 그대로 켜져 있다)
-fn cannot_save_and_exit(e: &anyhow::Error) -> bool {
-    api_code(e) == Some("graceful_stop_unavailable")
-}
-
-/// 저장 없이 강제로 끌지 사람에게 묻는다. `--yes`는 동의로 치지 않고, 물을 수 없으면 데몬의 오류를 그대로 낸다.
-fn agree_to_unsaved_stop(ctx: &Ctx, sv: &Server, e: anyhow::Error, cmd: &str) -> Result<()> {
-    if !ctx.ask.enabled {
-        ctx.out
-            .hint(&format!("saba-chan-cli {cmd} {} --force", shell_word(&sv.name)));
-        return Err(e);
-    }
-    ctx.out.warn(&t!("stop.no_graceful", name = sv.name));
-    if ctx.ask.consent(&t!("stop.force_confirm")) {
-        Ok(())
-    } else {
-        Err(CliError::Cancelled.into())
-    }
 }
 
 pub async fn rename(ctx: &Ctx, query: Option<&str>, new_name: &str) -> Result<()> {
@@ -2547,35 +2510,6 @@ mod tests {
         assert!(provision_lost(&json!({})));
         assert!(!provision_lost(&json!({ "active": true, "done": false })));
         assert!(!provision_lost(&json!({ "active": true, "done": true })));
-    }
-
-    /// 콘솔이 없어 저장 후 종료를 요청할 수 없다는 데몬 답(MK10)만 강제 정지를 물을 거리다. 다른 실패는 그대로 낸다
-    #[test]
-    fn only_a_refused_save_and_exit_offers_a_force_stop() {
-        let refused = crate::client::check(200, json!({ "success": false, "error_code": "graceful_stop_unavailable", "error": "no console" })).unwrap_err();
-        assert!(cannot_save_and_exit(&refused));
-        let other = crate::client::check(500, json!({ "success": false, "error_code": "stop_failed", "error": "x" })).unwrap_err();
-        assert!(!cannot_save_and_exit(&other));
-        assert!(!cannot_save_and_exit(&anyhow::anyhow!("graceful_stop_unavailable")));
-    }
-
-    /// 저장 없이 끄는 것은 사람이 고른다: `--yes`로 대신하지 않고, 물을 수 없으면 원래 오류로 끝낸다
-    #[test]
-    fn an_unsaved_stop_is_never_agreed_on_by_yes() {
-        crate::i18n::init("ko");
-        let ctx = Ctx {
-            api: crate::client::Api::new(1, None),
-            spawn_port: 1,
-            port_fixed: true,
-            out: crate::output::Out::new(true, false),
-            ask: crate::prompt::Prompt { enabled: false, yes: true },
-            in_shell: false,
-            attached: false,
-        };
-        let sv = Server { id: "i".into(), name: "mc".into(), module: "minecraft".into(), raw: json!({}) };
-        let refused = crate::client::check(200, json!({ "success": false, "error_code": "graceful_stop_unavailable" })).unwrap_err();
-        let e = agree_to_unsaved_stop(&ctx, &sv, refused, "stop").unwrap_err();
-        assert!(cannot_save_and_exit(&e), "the daemon's code is kept: {e}");
     }
 
     /// 정지·재시작은 묻고, `--yes`면 묻지 않는다. 물을 수 없는데 `--yes`도 없으면 실행하지 않는다

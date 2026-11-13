@@ -784,8 +784,6 @@
   "stop": {
     "already": "{{name}}: already stopped",
     "done": "{{name}} stopped",
-    "force_confirm": "Stop without saving?",
-    "no_graceful": "{{name}} has no way (console) to request save-then-stop. Forcing it to stop may lose progress since the last save.",
     "not_yet": "{{name}} not stopped yet. Force it: saba-chan-cli stop --force {{name}}",
     "requested": "{{name}} stop requested",
     "waiting": "Stopping {{name}}...",

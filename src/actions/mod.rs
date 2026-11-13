@@ -1451,7 +1451,9 @@ pub async fn needs_confirm(server: &IPCServer, action: &str, instance: Option<&s
     }
     if caller.surface == Chatbot || who.via_chatbot {
         let cfg = server.config_store.get_chatbot().effective(guild);
-        return kind == Kind::Admin || level_asks(cfg.get("confirmLevel").and_then(Value::as_str).unwrap_or("all"), risk);
+        let level = cfg.get("confirmLevel").and_then(Value::as_str).unwrap_or("all");
+        // 정지·재시작은 저장하지 못하는 서버도 바로 끝내므로(MK10) 챗봇은 "묻지 않음"이 아니면 늘 묻는다 (사용자 2026-11-13)
+        return kind == Kind::Admin || (fixed() && level != "none") || level_asks(level, risk);
     }
     level_asks(&settings.confirm_level, risk)
 }
@@ -1923,14 +1925,7 @@ async fn execute(server: &IPCServer, r: &Resolved, caller: &Caller) -> Value {
         ("instance.settings.set", Some(i), Some(_)) => Some((i.clone(), current_values(server, i, r.input.keys()).await)),
         _ => None,
     };
-    let call = |body: Option<Value>| crate::audit::with_origin(caller.origin.clone(), call_as(server, r.method, &r.uri, body, Some(caller.origin.clone())));
-    let mut resp = call(r.body.clone()).await;
-    // 저장 후 정지를 요청할 길이 없는 서버(MK10): 디스코드·챗봇은 묻지 않고 바로 강제 정지한다 (사용자 2026-11-13). 이 PC 화면은 사용자에게 묻는다
-    if r.id == "server.stop" && matches!(caller.surface, Discord | Chatbot) && resp.body.get("error_code").and_then(Value::as_str) == Some("graceful_stop_unavailable") {
-        let mut body = r.body.clone().unwrap_or_else(|| json!({}));
-        body["force"] = json!(true);
-        resp = call(Some(body)).await;
-    }
+    let resp = crate::audit::with_origin(caller.origin.clone(), call_as(server, r.method, &r.uri, r.body.clone(), Some(caller.origin.clone()))).await;
     let mut result = resp.body;
     if chatbot_masked(&r.id) && caller.surface == Chatbot {
         mask_console(&mut result);

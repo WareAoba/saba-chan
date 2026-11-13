@@ -866,7 +866,7 @@ def graceful_stop(config, request, i18n, *, module_dir=None):
     """모듈 `stop()`의 공용 절차. request()는 저장 후 종료를 요청하고 요청이 들어갔으면 True를 돌려준다.
 
     force: 그 PID(와 자식)만 강제 종료. 아니면 request() → 요청할 길이 없으면 끄지 않고
-    `graceful_stop_unavailable`(데몬이 사용자에게 묻는다) → managed면 바로 반환(기다림·강제 종료는 데몬) →
+    `graceful_stop_unavailable`(사람이 부른 정지면 데몬이 force로 다시 부른다) → managed면 바로 반환(기다림·강제 종료는 데몬) →
     stop_timeout만큼 기다린 뒤에만 강제 종료. 문구 키는 공용 문구(common_locales.json)에 있다"""
     pid = config.get("pid")
     if not pid:
