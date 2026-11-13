@@ -407,7 +407,8 @@ pub(crate) async fn begin_server_update_holding(
             };
 
             // 업데이트가 끝날 때까지 모듈·익스텐션 자동 교체를 막는다
-            let _addons = crate::supervisor::Supervisor::hold_addons().await;
+            let gate = supervisor_arc.read().await.addon_gate();
+            let _addons = gate.hold_addons().await;
             crate::plugin::PluginCall::new(&lifecycle_path, "install_server", config)
                 .in_instance(Some(host_context)).timeout(crate::plugin::INSTALL_TIMEOUT_SECS)
                 .run_with_progress(Box::new(on_progress)).await

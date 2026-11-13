@@ -433,7 +433,8 @@ impl Supervisor {
     ///
     /// managed 시작과 같이, 익스텐션 hook과 `get_launch_command`는 데몬 락 밖에서 부른다 (C12).
     pub async fn start_server(sup: &tokio::sync::RwLock<Self>, instance_id: &str, module_name: &str, config: Value) -> Result<Value> {
-        let _swap = ADDON_SWAP_GATE.read().await;
+        let gate = sup.read().await.addon_gate();
+        let _swap = gate.hold_addons().await;
         tracing::info!("Starting server '{}' with module '{}'", instance_id, module_name);
 
         let moved = {
@@ -898,7 +899,8 @@ impl Supervisor {
         module_name: &str,
         config: Value,
     ) -> Result<Value> {
-        let _swap = ADDON_SWAP_GATE.read().await;
+        let gate = sup.read().await.addon_gate();
+        let _swap = gate.hold_addons().await;
         let moved = sup.write().await.move_reserved_default_rest_port(instance_id);
         let result = Self::start_managed_server_inner(sup, instance_id, module_name, config).await;
         Self::announce_ready(sup, instance_id, &result).await;

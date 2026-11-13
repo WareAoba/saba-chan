@@ -102,6 +102,7 @@ pub struct Supervisor {
     /// 인스턴스를 지우면 `Runtimes::forget`으로 한 번에 버린다
     pub runtime: runtime::Runtimes,
     pub(crate) host_runtime: std::sync::OnceLock<crate::plugin::host::Runtime>,
+    addon_swap_gate: AddonSwapGate,
 }
 
 tokio::task_local! {
@@ -194,8 +195,23 @@ impl std::fmt::Display for PutBackFailed {
     }
 }
 
-/// 서버 시작·설치와 모듈·익스텐션 자동 교체가 겹치지 않게 하는 문 (`Supervisor::try_hold_starts`)
-static ADDON_SWAP_GATE: tokio::sync::RwLock<()> = tokio::sync::RwLock::const_new(());
+/// 서버 시작·설치와 모듈·익스텐션 자동 교체가 겹치지 않게 하는 문. 감독자마다 하나다: 다른 감독자(테스트가 따로 만든 것)의 시작은 이 문을 쥐지 않는다
+#[derive(Clone, Default)]
+pub struct AddonSwapGate(std::sync::Arc<tokio::sync::RwLock<()>>);
+
+impl AddonSwapGate {
+    /// 서버 시작·설치를 막는다: 모듈·익스텐션 자동 교체가 사용 확인부터 교체까지 쥔다.
+    /// 시작(`start_server`·`start_managed_server`)과 서버 설치·업데이트(`hold_addons`)가 진행 중이면 기다리지 않고 None:
+    /// 기다리면 그 뒤로 새 시작이 줄 서고, 시작 안에서 다시 읽기를 잡는 경로가 멈춘다. 교체는 다음 차례에 다시 본다
+    pub fn try_hold_starts(&self) -> Option<tokio::sync::OwnedRwLockWriteGuard<()>> {
+        self.0.clone().try_write_owned().ok()
+    }
+
+    /// 모듈·익스텐션을 쓰는 작업(서버 시작·설치·업데이트)이 끝날 때까지 자동 교체를 막는다. 여럿이 함께 쥘 수 있다
+    pub async fn hold_addons(&self) -> tokio::sync::OwnedRwLockReadGuard<()> {
+        self.0.clone().read_owned().await
+    }
+}
 
 impl Supervisor {
     /// 인스턴스를 지운다: 저장소의 기록·폴더와 그 런타임 상태를 함께 (지운 인스턴스의 상태가 데몬이 끝날 때까지 남지 않게)
@@ -235,6 +251,7 @@ impl Supervisor {
             pending_restarts: Vec::new(),
             runtime: Default::default(),
             host_runtime: Default::default(),
+            addon_swap_gate: AddonSwapGate::default(),
         }
     }
 
@@ -613,16 +630,9 @@ impl Supervisor {
         self.tracker.get_pid(instance_id).is_ok() || self.managed_store.running_instance_ids().await.iter().any(|id| id == instance_id)
     }
 
-    /// 서버 시작·설치를 막는다: 모듈·익스텐션 자동 교체가 사용 확인부터 교체까지 쥔다.
-    /// 시작(`start_server`·`start_managed_server`)과 서버 설치·업데이트(`hold_addons`)가 진행 중이면 기다리지 않고 None:
-    /// 기다리면 그 뒤로 새 시작이 줄 서고, 시작 안에서 다시 읽기를 잡는 경로가 멈춘다. 교체는 다음 차례에 다시 본다
-    pub fn try_hold_starts() -> Option<tokio::sync::RwLockWriteGuard<'static, ()>> {
-        ADDON_SWAP_GATE.try_write().ok()
-    }
-
-    /// 모듈·익스텐션을 오래 쓰는 작업(서버 설치·업데이트)이 끝날 때까지 자동 교체를 막는다. 시작과 같이 읽기로 잡는다
-    pub async fn hold_addons() -> tokio::sync::RwLockReadGuard<'static, ()> {
-        ADDON_SWAP_GATE.read().await
+    /// 이 감독자의 시작·설치와 자동 교체 사이의 문. 감독자 락을 놓은 뒤에 쥔다(문을 기다리는 동안 락을 잡고 있지 않게)
+    pub fn addon_gate(&self) -> AddonSwapGate {
+        self.addon_swap_gate.clone()
     }
 
     /// 인스턴스가 쓰는 익스텐션: 인스턴스의 목록, 비어 있으면(옛 인스턴스) 모듈의 `[install] requires_extensions`
@@ -1560,14 +1570,8 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let mut supervisor = Supervisor::new_with_instances_dir(tmp.path().join("modules").to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
         supervisor.initialize().await.unwrap();
+        let gate = supervisor.addon_gate().try_hold_starts().expect("no one else starts on this supervisor");
         let sup = std::sync::Arc::new(tokio::sync::RwLock::new(supervisor));
-        let gate = loop {
-            // 다른 테스트의 시작이 문을 읽기로 쥐고 있을 수 있다
-            match Supervisor::try_hold_starts() {
-                Some(gate) => break gate,
-                None => tokio::time::sleep(Duration::from_millis(10)).await,
-            }
-        };
         let managed = tokio::spawn({
             let sup = sup.clone();
             async move { Supervisor::start_managed_server(&sup, "none", "game", json!({})).await }
@@ -1586,9 +1590,13 @@ mod tests {
     /// 시작·설치가 문을 읽기로 쥔 동안 자동 교체는 기다리지 않고 미룬다: 기다리는 교체 뒤에 다른 시작·설치가 줄 서지 않는다
     #[tokio::test]
     async fn an_addon_swap_gives_up_instead_of_queueing_ahead_of_starts() {
-        let install = Supervisor::hold_addons().await;
-        assert!(Supervisor::try_hold_starts().is_none(), "a swap does not run under an install");
-        let another = tokio::time::timeout(Duration::from_millis(500), Supervisor::hold_addons()).await;
+        let tmp = tempfile::tempdir().unwrap();
+        let supervisor = || Supervisor::new_with_instances_dir(tmp.path().join("modules").to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        let gate = supervisor().addon_gate();
+        let install = gate.hold_addons().await;
+        assert!(gate.try_hold_starts().is_none(), "a swap does not run under an install");
+        assert!(supervisor().addon_gate().try_hold_starts().is_some(), "another supervisor's install does not hold this one's swaps");
+        let another = tokio::time::timeout(Duration::from_millis(500), gate.hold_addons()).await;
         assert!(another.is_ok(), "nothing waits behind a swap that gave up");
         drop((install, another));
     }

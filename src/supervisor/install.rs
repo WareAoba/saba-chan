@@ -122,7 +122,8 @@ impl Supervisor {
         commit: Option<&InstallCommit<'_>>,
     ) -> Result<Value> {
         // 설치가 끝날 때까지 모듈·익스텐션 자동 교체를 막는다
-        let _addons = Self::hold_addons().await;
+        let gate = sup.read().await.addon_gate();
+        let _addons = gate.hold_addons().await;
         let module = sup.read().await.module_loader.get_module(module_name)?;
         let module_path = module.entry_path();
 
