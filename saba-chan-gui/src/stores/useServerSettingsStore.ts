@@ -6,6 +6,7 @@ import { versionBranchMethod } from '../utils/installMethod';
 import { launchDraft } from '../utils/launchDraft';
 import { installFailure } from '../utils/serverControl';
 import { gameNameOf } from '../utils/serverView';
+import { storedValue } from '../utils/storedValue';
 import { blockedText } from '../utils/trustNotice';
 import { listItems } from '../utils/validation';
 import { t, translateError } from './serverI18n';
@@ -66,26 +67,8 @@ const stopTimeoutOf = (server: Server | null | undefined) =>
 const fieldValue = (v: unknown): string | string[] | null =>
     v === undefined || v === null ? null : Array.isArray(v) ? v.map(String) : String(v);
 
-/** 데몬이 인스턴스 최상위에 저장하는 공통 필드 (updater constants::INSTANCE_FIELDS 중 설정 칸이 되는 것. 어긋나면 그쪽 테스트가 실패한다). 이 값들은 module_settings가 낡았을 수 있다 */
-const TOP_LEVEL_FIELDS = new Set([
-    'port',
-    'rest_host',
-    'rest_port',
-    'rest_username',
-    'rest_password',
-    'executable_path',
-    'working_dir',
-    'protocol_mode',
-    'server_version',
-    'extra_args',
-]);
-
-/** 저장된 값: 공통 필드는 최상위가, 나머지는 module_settings가 진짜다 */
-const savedValue = (server: Server, name: string) => {
-    const top = fieldValue(server[name as keyof Server]);
-    const cached = fieldValue(server.module_settings?.[name]);
-    return TOP_LEVEL_FIELDS.has(name) ? (top ?? cached) : (cached ?? top);
-};
+/** 저장된 값 (데몬이 칸마다 정한 `stored`) */
+const savedValue = (server: Server, name: string) => fieldValue(storedValue(server, name));
 
 /**
  * 실제 설정 값을 칸 값으로. 문자열 칸에 숫자가 오면 (모듈이 "000123"을 123으로 바꾼 경우)

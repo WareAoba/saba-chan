@@ -5,6 +5,7 @@ import { Dropdown } from './Dropdown';
 import { Icon } from './icons';
 import { Button, Empty, errorText, failed, Section } from './ui';
 import type { SettingField } from '@gui/types/daemon';
+import { storedValue } from '@gui/utils/storedValue';
 import type { ApiBody, Json, Server, ServerPanelProps, TFn } from '../types';
 
 /** 설정 칸 (module.toml `[[settings.fields]]`) */
@@ -23,28 +24,11 @@ const PC_ONLY = new Set([
     'extension_data',
 ]);
 
-/** 데몬이 인스턴스 최상위에 두는 공통 칸 (GUI useServerSettingsStore 와 같다): 최상위가 진짜다 */
-const TOP_LEVEL = new Set([
-    'port',
-    'rest_host',
-    'rest_port',
-    'rest_username',
-    'rest_password',
-    'executable_path',
-    'working_dir',
-    'protocol_mode',
-    'server_version',
-    'extra_args',
-]);
-
 const typeOf = (f: Field) => f.field_type || 'text';
 const pcOnly = (f: Field) => PC_ONLY.has(f.name) || ['file', 'path', 'password'].includes(typeOf(f)) || f.format === 'path';
 
 export function savedValue(server: Partial<Server> | ApiBody, field: Pick<Field, 'name' | 'default'>): Json {
-    const top = (server as ApiBody)[field.name];
-    const cached = server.module_settings?.[field.name];
-    const v = TOP_LEVEL.has(field.name) ? (top ?? cached) : (cached ?? top);
-    return v ?? field.default ?? '';
+    return storedValue(server, field.name) ?? field.default ?? '';
 }
 
 /** 스키마 2 visible_when: {field, equals} | {field, in:[...]} (값 비교는 글자로) */

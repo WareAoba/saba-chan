@@ -70,6 +70,8 @@ export interface ServerInfo {
     rest_password: string | null;
     protocol_mode: string;
     module_settings: Record<string, Json>;
+    /** 모듈 설정 칸마다 저장된 값 (0.1.15~, 데몬이 공통 칸·module_settings 중 진짜를 고른다. 값이 없는 칸은 없다) */
+    stored?: Record<string, Json>;
     server_version: string | null;
     /** 설치된 빌드: 설치 방식 익스텐션의 업데이트 확인이 알려 준 번호와 받은 때(유닉스 초). 데몬이 적어 둔 값 */
     server_build?: { id: string; time?: number } | null;

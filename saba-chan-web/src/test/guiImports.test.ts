@@ -37,8 +37,10 @@ const ALLOWED = new Set([
     '@gui/utils/languages',
     // 콘솔 글꼴 후보·기본값과 글꼴 묶음 (이 화면 설정, 앱 설정과 같은 목록)
     '@gui/utils/consoleFonts',
-    // 새 서버 만들기 규칙 (설치할 수 있는 값, 기본 이름, 이름 겹침)
+    // 새 서버 만들기 규칙 (설치할 수 있는 값, 데몬 확인 답의 이름 판정)
     '@gui/utils/installFields',
+    // 설정 칸의 저장된 값 (데몬 `stored`, 앱 설정 화면과 같다)
+    '@gui/utils/storedValue',
     // 권한 단계 계산과 사다리 편집 (화면 없는 순수 함수)
     '@gui/components/discord/levels',
     // 칩이 자리를 바꾸는 움직임 (권한 맞바꾸기, 앱 사다리와 같은 움직임)

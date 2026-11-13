@@ -210,6 +210,10 @@ async fn server_list(state: &IPCServer, notices: Notices) -> axum::response::Res
                     // 폴더 판정은 아래 락 밖에서
                     linked_folder: None,
                     restorable_settings: false,
+                    stored: module
+                        .and_then(|m| m.metadata.settings.as_ref())
+                        .map(|s| super::instance::stored_settings(instance, &s.fields))
+                        .unwrap_or_default(),
                 },
                 instance_dir: supervisor.instance_store.instance_dir(&instance.id).to_string_lossy().to_string(),
                 process_patterns,
@@ -2162,6 +2166,39 @@ mod tests {
         };
         assert_eq!(managed("default"), json!(true), "managed is the default (C8b)");
         assert_eq!(managed("direct"), json!(false));
+    }
+
+    /// 설정 칸마다 저장된 값(`stored`)은 데몬이 고른다: 공통 칸(port)은 인스턴스 칸, 나머지는 module_settings (F12)
+    #[tokio::test]
+    async fn server_list_and_instance_carry_the_stored_value_of_each_setting() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n\
+             [[settings.fields]]\nname = \"port\"\ntype = \"number\"\n\n[[settings.fields]]\nname = \"motd\"\ntype = \"text\"\n\n\
+             [[settings.fields]]\nname = \"seed\"\ntype = \"text\"\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("a", "game");
+        inst.port = Some(26000);
+        // 낡은 사본: 공통 칸은 인스턴스 칸이 진짜다
+        inst.module_settings.insert("port".into(), json!(25565));
+        inst.module_settings.insert("motd".into(), json!("hi"));
+        let id = inst.id.clone();
+        sup.instance_store.add(inst).unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+
+        let expected = json!({ "port": 26000, "motd": "hi" });
+        let list = crate::ipc::internal::into_internal(list_servers(State(state.clone()), Query(ListServersQuery::default())).await).await.body;
+        assert_eq!(list["servers"][0]["stored"], expected, "seed has no stored value");
+        let one = crate::ipc::internal::into_internal(crate::ipc::handlers::instance::get_instance(axum::extract::Path(id), State(state)).await.into_response()).await.body;
+        assert_eq!(one["stored"], expected);
     }
 
     /// 캐시에 답이 없는 서버들의 `server.list_enrich`는 함께 돈다 (차례로 돌면 목록이 서버 수만큼 늦는다).
