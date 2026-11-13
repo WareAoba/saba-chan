@@ -22,10 +22,7 @@ pub use provision::{dismiss_provision_progress, get_provision_progress};
 use settings::extra_args_from;
 pub(crate) use settings::settings_rejection;
 pub use settings::update_instance_settings;
-pub(crate) use update::{begin_server_update_holding, emit_update_failed, updatable, update_blocked_by_shared_folder};
-pub use update::{apply_server_update, check_server_update, server_update_status};
-#[cfg(test)]
-pub(crate) use update::begin_server_update;
+pub use update::{apply_server_update, cancel_server_update, check_server_update};
 
 /// GET /api/instances - 모든 인스턴스 목록
 pub async fn list_instances(State(state): State<IPCServer>) -> impl IntoResponse {

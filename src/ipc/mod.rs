@@ -874,7 +874,7 @@ impl IPCServer {
             .route("/api/provision-progress/{name}", get(handlers::instance::get_provision_progress).delete(handlers::instance::dismiss_provision_progress))
             // ── Server update ──
             .route("/api/instance/{id}/check-update", get(handlers::instance::check_server_update))
-            .route("/api/instance/{id}/apply-update", post(handlers::instance::apply_server_update).delete(handlers::server_update::cancel_server_update))
+            .route("/api/instance/{id}/apply-update", post(handlers::instance::apply_server_update).delete(handlers::instance::cancel_server_update))
             // ── Command execution ──
             .route("/api/instance/{id}/command", post(handlers::command::execute_command))
             .route("/api/instance/{id}/commands", get(handlers::command::list_instance_commands))

@@ -115,7 +115,7 @@ pub(crate) async fn list(state: &IPCServer, notices_after: u64) -> axum::respons
                     revision: instance.settings_revision(),
                     port_conflicts: vec![],
                     slots: Default::default(),
-                    update_check: crate::ipc::handlers::server_update::last_check(&instance.id),
+                    update_check: crate::service::server_update::last_check(&instance.id),
                     transition: crate::instance::transition::of(&instance.id).map(|k| k.as_str().to_string()),
                     players: None,
                     unresponsive: None,

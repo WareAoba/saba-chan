@@ -12,7 +12,7 @@ use crate::backup::{self, BackupKind};
 use crate::instance::lock::InstanceLock;
 use crate::service::backup::{announce, backups_dir, is_running, run_command, take_backup};
 use super::save_command_of;
-use crate::ipc::handlers::server_update;
+use crate::service::server_update;
 use crate::ipc::IPCServer;
 
 /// 실행기의 시계와 데몬 시작 시각 (화면에 다음 실행 시각을 보일 때 읽는다)
@@ -489,7 +489,7 @@ async fn run_task_now(state: &IPCServer, id: &str, task: &ScheduledTask, fire: c
 /// 꺼져 있어도 정한 시각까지는 기다린다 (예고 시각에 바로 시작하지 않게)
 async fn run_update(state: &IPCServer, id: &str, task: &ScheduledTask, fire: chrono::NaiveDateTime, key: &str) -> Option<TaskOutcome> {
     // 인스턴스가 없으면 업데이트할 것도 없다
-    let check = crate::ipc::handlers::instance::server_update_status(state, id).await.unwrap_or_default();
+    let check = crate::service::server_update::apply::server_update_status(state, id).await.unwrap_or_default();
     if check.get("update_available").and_then(Value::as_bool) != Some(true) {
         if check.get("reason").and_then(Value::as_str) == Some("check_failed") {
             tracing::warn!("Scheduled update of '{}': update check failed: {}", id, check["error"]);

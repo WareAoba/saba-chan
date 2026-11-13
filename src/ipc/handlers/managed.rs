@@ -391,7 +391,7 @@ pub async fn reset_properties_handler(
     };
     // 켜진 서버의 파일을 기본값으로 바꾸면 서버가 쓰는 값과 어긋난다
     if crate::service::backup::is_running(&state, &id).await {
-        return server_running().into_response();
+        return crate::service::shared_folder::server_running().into_response();
     }
     let resp = match Supervisor::manage_properties(&state.supervisor, &id, "reset", None).await {
         Ok(result) => {
@@ -416,51 +416,6 @@ async fn sync_after_file_change(state: &IPCServer, id: &str, result: &Value) {
     if let Err(e) = crate::service::settings::refresh_from_files(state, id).await {
         tracing::warn!("Settings refresh after a game file change failed for {}: {}", id, e);
     }
-}
-
-/// 켜져 있는 서버의 파일을 바꾸는 작업을 거절하는 409
-fn server_running() -> super::Failure {
-    super::Failure::running(json!({ "success": false, "error": "Stop the server first", "error_code": "server_running" }))
-}
-
-/// `dir`과 겹치는 폴더(working_dir 또는 인스턴스 폴더, 그 안이나 바깥)를 쓰는 인스턴스 (`except`는 뺀다)
-async fn other_instances_using(state: &IPCServer, dir: &str, except: Option<&str>) -> Vec<String> {
-    let supervisor = state.supervisor.read().await;
-    let dir = std::path::Path::new(dir);
-    supervisor.instance_store.list().iter()
-        .filter(|i| {
-            i.working_dir.as_deref().is_some_and(|d| saba_chan_updater_lib::paths_overlap(std::path::Path::new(d), dir))
-                || saba_chan_updater_lib::paths_overlap(&supervisor.instance_store.instance_dir(&i.id), dir)
-        })
-        .filter(|i| except != Some(i.id.as_str()))
-        .map(|i| i.id.clone())
-        .collect()
-}
-
-/// `hold_other_instances_using`이 지금 거절할지를 잠금을 잡지 않고 본다: 그 인스턴스 중 작업 중이거나 켜진 것이 있다
-pub(super) async fn other_instances_busy(state: &IPCServer, dir: &str, except: Option<&str>) -> bool {
-    for id in other_instances_using(state, dir, except).await {
-        if crate::instance::lock::InstanceLock::held(&id) || crate::service::backup::is_running(state, &id).await {
-            return true;
-        }
-    }
-    false
-}
-
-/// `dir`과 겹치는 폴더(working_dir 또는 인스턴스 폴더, 그 안이나 바깥)를 쓰는 인스턴스의 작업 잠금을 모두 잡는다.
-/// `except`(이미 잠금을 쥔 인스턴스)는 건너뛴다. 다른 작업 중이면 409 `instance_busy`, 켜져 있으면 409 `server_running`
-pub(super) async fn hold_other_instances_using(state: &IPCServer, dir: &str, except: Option<&str>) -> Result<Vec<crate::instance::lock::InstanceLock>, super::Failure> {
-    let mut guards = Vec::new();
-    for id in other_instances_using(state, dir, except).await {
-        let Some(guard) = crate::instance::lock::InstanceLock::take_for_writes(&id).await else {
-            return Err(super::Failure::busy());
-        };
-        guards.push(guard);
-        if crate::service::backup::is_running(state, &id).await {
-            return Err(server_running());
-        }
-    }
-    Ok(guards)
 }
 
 /// GET /api/instance/:id/server/reset — 초기화가 지울 것. 모듈 `reset_preview`가 범위마다 밝힌 항목 가운데
@@ -539,7 +494,7 @@ pub async fn reset_server_handler(
         return super::backup::instance_busy();
     };
     if crate::service::backup::is_running(&state, &id).await {
-        return server_running().into_response();
+        return crate::service::shared_folder::server_running().into_response();
     }
     // 요청이 끊겨도 모듈이 파일을 지우는 동안 잠금을 쥔다
     let reset = {
@@ -804,7 +759,7 @@ pub async fn install_server_handler(
                 return super::backup::instance_busy();
             };
             if crate::service::backup::is_running(&state, id).await {
-                return server_running().into_response();
+                return crate::service::shared_folder::server_running().into_response();
             }
             let sup = state.supervisor.read().await;
             // 잡기 전에 지워졌을 수 있다
@@ -867,7 +822,7 @@ pub async fn install_server_handler(
 
     // 이 폴더를 쓰는 서버가 켜져 있거나 백업·복원 중이면 파일을 덮어쓰지 않는다.
     // 설치를 마칠 때까지 잡고, 요청이 끊겨도 잠금이 설치와 함께 남게 따로 돌린다
-    let others = match hold_other_instances_using(&state, &install_dir, instance_id.as_deref()).await {
+    let others = match crate::service::shared_folder::hold_other_instances_using(&state, &install_dir, instance_id.as_deref()).await {
         Ok(guards) => guards,
         Err(failure) => return failure.into_response(),
     };
@@ -939,7 +894,7 @@ pub async fn install_server_handler(
             if result.as_ref().is_ok_and(|r| r.get("success").and_then(Value::as_bool) == Some(true)) {
                 // 받은 빌드를 적어 둔다 (확인은 오래 걸릴 수 있어 뒤에서)
                 let (state, id) = (state.clone(), id.to_string());
-                tokio::spawn(async move { super::instance::server_update_status(&state, &id).await });
+                tokio::spawn(async move { crate::service::server_update::apply::server_update_status(&state, &id).await });
                 return result;
             }
             let mut result = result;
@@ -1803,7 +1758,7 @@ mod tests {
 
         // 업데이트는 고른 브랜치로 받는다
         std::fs::remove_file(files.join("branch.txt")).unwrap();
-        let updated = super::super::instance::begin_server_update(&state, &id).await.ok().expect("the update starts").await.unwrap();
+        let updated = crate::service::server_update::apply::begin_server_update(&state, &id).await.ok().expect("the update starts").await.unwrap();
         assert!(updated);
         assert_eq!(std::fs::read_to_string(files.join("branch.txt")).unwrap(), "unstable");
     }

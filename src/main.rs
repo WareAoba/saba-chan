@@ -522,9 +522,9 @@ async fn main() -> anyhow::Result<()> {
     // 인스턴스 예약 작업: 백업·재시작·공지·업데이트 (A3)
     saba_core::scheduler::runner::spawn_scheduler(ipc_server.clone());
     // 인스턴스별 게임 서버 자동 업데이트 (auto_update)
-    ipc::handlers::server_update::spawn_auto_updater(ipc_server.clone());
+    service::server_update::spawn_auto_updater(ipc_server.clone());
     // 나머지 서버의 게임 서버 업데이트 확인 (화면은 목록의 결과만 읽는다)
-    ipc::handlers::server_update::spawn_update_checks(ipc_server.clone());
+    service::server_update::spawn_update_checks(ipc_server.clone());
     controllers::spawn_gate(ipc_server.clone());
 
     // 접속자 수 (Q-5): 모듈이 `[status] players`를 선언한 켜진 서버만 1분마다 묻는다

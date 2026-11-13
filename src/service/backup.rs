@@ -1428,7 +1428,7 @@ else:
         let managed = crate::service::lifecycle::launch(&state, &id, "plain", true).await.unwrap_err();
         assert!(managed.is_busy(), "a retrying start must tell the lock apart from other refusals");
         assert_eq!(code(managed).await, "instance_busy");
-        let update = crate::ipc::handlers::instance::begin_server_update(&state, &id).await.err().expect("update must wait");
+        let update = crate::service::server_update::apply::begin_server_update(&state, &id).await.err().expect("update must wait");
         assert_eq!(code(update).await, "instance_busy");
         let removed = crate::ipc::handlers::instance::delete_instance(Path(id.clone()), State(state.clone()), axum::extract::Query(Default::default())).await.into_response();
         assert_eq!(code(removed).await, "instance_busy");

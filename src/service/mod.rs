@@ -6,8 +6,10 @@ pub(crate) mod backup;
 pub(crate) mod command;
 pub mod lifecycle;
 pub(crate) mod onboarding;
+pub mod server_update;
 pub(crate) mod servers;
 pub(crate) mod settings;
+pub(crate) mod shared_folder;
 
 /// 서비스 함수(시작·정지·재시작·백업·복원)의 결과. 성공이면 응답 본문
 pub(crate) type Outcome = Result<serde_json::Value, Failure>;

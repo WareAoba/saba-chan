@@ -373,7 +373,7 @@ async fn announce_updates(state: &IPCServer, id: &str, mut result: Value) -> Val
     }
     let (state, id) = (state.clone(), id.to_string());
     tokio::spawn(async move {
-        let found = crate::ipc::handlers::instance::server_update_status(&state, &id).await;
+        let found = crate::service::server_update::apply::server_update_status(&state, &id).await;
         if found.and_then(|s| s.get("update_available").and_then(Value::as_bool)) == Some(true) {
             crate::events::emit("instance.update_notice", json!({ "instanceId": id, "instance": name, "kind": "server" }));
         }
