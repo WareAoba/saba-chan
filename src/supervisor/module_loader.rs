@@ -1603,12 +1603,12 @@ pub(crate) fn parse_module_toml(content: &str) -> Result<ModuleMetadata> {
     // 모르는 키(더 새 데몬의 키나 오타)는 거부하지 않고 경고만 남긴다. 꼭 필요한 기능은 `saba-core` 버전 조건으로 막는다
     let unknown: Vec<String> = unknown.into_iter().map(|k| format!("unknown key '{}' (ignored)", k)).collect();
     // 정규식 키의 `{이름}`은 값을 검사하기 전에 `[patterns]` 조각으로 바꾼다
-    let (fragments, mut problems) = resolve_pattern_fragments(&toml_data.patterns);
-    toml_data.expand_pattern_refs(&fragments);
+    let (mut fragments, mut problems) = resolve_pattern_fragments(&toml_data.patterns);
+    problems.extend(toml_data.expand_pattern_refs(&mut fragments));
     problems.extend(toml_data.value_problems());
 
     let mut meta = toml_data.into_metadata();
-    let daemon_warnings = read_daemon_table(&mut meta, &fragments);
+    let daemon_warnings = read_daemon_table(&mut meta, &mut fragments);
     if meta.schema_version >= 2 {
         problems.extend(list_default_problems(&meta));
     }
@@ -1741,36 +1741,52 @@ fn pattern_refs(pattern: &str, is_declared: impl Fn(&str) -> bool) -> Vec<(std::
     refs
 }
 
-/// 정규식 안의 `{이름}`을 풀어 둔 `[patterns]` 조각 `(?:조각)`으로 바꾼다. 조각에 없는 이름은 그대로 둔다
-fn expand_pattern_refs(pattern: &str, fragments: &std::collections::HashMap<String, String>) -> String {
-    let mut out = String::with_capacity(pattern.len());
-    let mut last = 0;
-    for (range, name) in pattern_refs(pattern, |n| fragments.contains_key(n)) {
-        out.push_str(&pattern[last..range.start]);
-        out.push_str("(?:");
-        out.push_str(&fragments[name]);
-        out.push(')');
-        last = range.end;
+/// 한 모듈에서 `[patterns]` 조각을 풀어 넣을 수 있는 글자 수 (조각끼리 풀 때와 정규식 키에서 풀 때를 모두 센다)
+const PATTERN_EXPANSION_LIMIT: usize = 1 << 20;
+
+/// 풀어 둔 `[patterns]` 조각과, 이 모듈에서 더 풀어 넣을 수 있는 글자 수
+struct PatternFragments {
+    resolved: std::collections::HashMap<String, String>,
+    budget: usize,
+}
+
+impl PatternFragments {
+    /// 정규식 안의 `{이름}`을 풀어 둔 조각 `(?:조각)`으로 바꾼다. 조각에 없는 이름은 그대로 둔다.
+    /// 풀어 넣을 글자가 남은 한도를 넘으면 바꾸지 않고 그 까닭을 돌려준다
+    fn expand(&mut self, pattern: &str) -> Result<String, String> {
+        let refs = pattern_refs(pattern, |n| self.resolved.contains_key(n));
+        let inserted: usize = refs.iter().map(|(_, name)| self.resolved[*name].len() + 4).sum();
+        if inserted > self.budget {
+            return Err(format!("[patterns] expand to more than {} bytes in this module", PATTERN_EXPANSION_LIMIT));
+        }
+        self.budget -= inserted;
+        let mut out = String::with_capacity(pattern.len() + inserted);
+        let mut last = 0;
+        for (range, name) in refs {
+            out.push_str(&pattern[last..range.start]);
+            out.push_str("(?:");
+            out.push_str(&self.resolved[name]);
+            out.push(')');
+            last = range.end;
+        }
+        out.push_str(&pattern[last..]);
+        Ok(out)
     }
-    out.push_str(&pattern[last..]);
-    out
 }
 
 /// `[patterns]` 조각을 서로의 참조까지 풀어 둔다. 이름이 틀렸거나, 자기 자신을 (다른 조각을 거쳐서라도) 참조하거나,
-/// 풀어도 정규식이 아닌 조각과 그런 조각을 쓰는 조각은 빼고 그 까닭을 돌려준다: 빠진 조각의 `{이름}`은 글자 그대로 남는다
-fn resolve_pattern_fragments(
-    raw: &std::collections::BTreeMap<String, String>,
-) -> (std::collections::HashMap<String, String>, Vec<String>) {
+/// 풀어도 정규식이 아니거나 한도를 넘는 조각과 그런 조각을 쓰는 조각은 빼고 그 까닭을 돌려준다: 빠진 조각의 `{이름}`은 글자 그대로 남는다
+fn resolve_pattern_fragments(raw: &std::collections::BTreeMap<String, String>) -> (PatternFragments, Vec<String>) {
     use std::collections::HashMap;
     /// `name`을 풀어 `fragments`에 넣는다. 못 쓰는 조각은 까닭과 함께 `failed`에 넣는다
     fn resolve(
         name: &str,
         raw: &std::collections::BTreeMap<String, String>,
-        fragments: &mut HashMap<String, String>,
+        fragments: &mut PatternFragments,
         failed: &mut HashMap<String, String>,
         stack: &mut Vec<String>,
     ) -> Result<(), String> {
-        if fragments.contains_key(name) {
+        if fragments.resolved.contains_key(name) {
             return Ok(());
         }
         if let Some(problem) = failed.get(name) {
@@ -1784,7 +1800,7 @@ fn resolve_pattern_fragments(
         let text = &raw[name];
         let deps = pattern_refs(text, |n| raw.contains_key(n) && is_pattern_name(n));
         let result = deps.iter().try_for_each(|(_, dep)| resolve(dep, raw, fragments, failed, stack)).and_then(|()| {
-            let expanded = expand_pattern_refs(text, fragments);
+            let expanded = fragments.expand(text).map_err(|e| format!("patterns.{}: {}", name, e))?;
             match regex::Regex::new(&format!("(?:{})", expanded)) {
                 Ok(_) => Ok(expanded),
                 Err(e) => Err(format!("patterns.{} is not a valid regex ({})", name, e)),
@@ -1793,7 +1809,7 @@ fn resolve_pattern_fragments(
         stack.pop();
         match result {
             Ok(expanded) => {
-                fragments.insert(name.to_string(), expanded);
+                fragments.resolved.insert(name.to_string(), expanded);
                 Ok(())
             }
             Err(problem) => {
@@ -1806,7 +1822,8 @@ fn resolve_pattern_fragments(
     let mut problems: Vec<String> = raw.keys().filter(|n| !is_pattern_name(n))
         .map(|n| format!("patterns.{}: a name is letters, digits and _, not starting with a digit", n))
         .collect();
-    let (mut fragments, mut failed) = (HashMap::new(), HashMap::new());
+    let mut fragments = PatternFragments { resolved: HashMap::new(), budget: PATTERN_EXPANSION_LIMIT };
+    let mut failed = HashMap::new();
     for name in raw.keys().filter(|n| is_pattern_name(n)) {
         if let Err(problem) = resolve(name, raw, &mut fragments, &mut failed, &mut Vec::new()) {
             if !problems.contains(&problem) {
@@ -1819,10 +1836,10 @@ fn resolve_pattern_fragments(
 
 impl ModuleToml {
     /// 데몬이 읽는 정규식 키의 `{이름}`을 `[patterns]` 조각으로 바꾼다.
-    /// `[extensions.saba-core]`의 정규식 목록은 `read_daemon_table`이 읽으면서 바꾼다
-    fn expand_pattern_refs(&mut self, fragments: &std::collections::HashMap<String, String>) {
-        if fragments.is_empty() {
-            return;
+    /// `[extensions.saba-core]`의 정규식 목록은 `read_daemon_table`이 읽으면서 바꾼다. 한도를 넘는 키는 쓴 그대로 두고 그 까닭을 돌려준다
+    fn expand_pattern_refs(&mut self, fragments: &mut PatternFragments) -> Vec<String> {
+        if fragments.resolved.is_empty() {
+            return Vec::new();
         }
         let mut regexes: Vec<&mut String> = Vec::new();
         regexes.extend(self.module.log_pattern.as_mut());
@@ -1845,9 +1862,14 @@ impl ModuleToml {
         if let Some(highlight) = self.syntax_highlight.as_mut() {
             regexes.extend(highlight.rules.iter_mut().map(|r| &mut r.pattern));
         }
+        let mut problems = Vec::new();
         for pattern in regexes {
-            *pattern = expand_pattern_refs(pattern, fragments);
+            match fragments.expand(pattern) {
+                Ok(expanded) => *pattern = expanded,
+                Err(e) => problems.push(format!("'{}': {}", pattern, e)),
+            }
         }
+        problems
     }
 }
 
@@ -1856,7 +1878,7 @@ fn read_pattern_list(
     table: &serde_json::Value,
     key: &str,
     groups: &[&str],
-    fragments: &std::collections::HashMap<String, String>,
+    fragments: &mut PatternFragments,
     warnings: &mut Vec<String>,
 ) -> Vec<String> {
     let mut out = Vec::new();
@@ -1868,7 +1890,13 @@ fn read_pattern_list(
                     warnings.push(format!("extensions.{}.{} must hold strings; ignored {}", DAEMON_TABLE, key, item));
                     continue;
                 };
-                let pattern = expand_pattern_refs(p, fragments);
+                let pattern = match fragments.expand(p) {
+                    Ok(pattern) => pattern,
+                    Err(e) => {
+                        warnings.push(format!("extensions.{}.{} '{}': {}; ignored", DAEMON_TABLE, key, p, e));
+                        continue;
+                    }
+                };
                 match regex::Regex::new(&pattern) {
                     Ok(re) => match groups.iter().find(|g| !re.capture_names().any(|n| n == Some(**g))) {
                         None => out.push(pattern),
@@ -1887,7 +1915,7 @@ fn read_pattern_list(
 
 /// `[extensions.saba-core]`의 `ready_patterns`·`ready_timeout`(R39), `player_join_patterns`·`player_leave_patterns`(MK8), `chat_patterns`(게임 채팅), `progress_patterns`를 읽는다.
 /// 틀린 값은 그 값만 빼고 경고로 남긴다
-fn read_daemon_table(meta: &mut ModuleMetadata, fragments: &std::collections::HashMap<String, String>) -> Vec<String> {
+fn read_daemon_table(meta: &mut ModuleMetadata, fragments: &mut PatternFragments) -> Vec<String> {
     let Some(table) = meta.extensions.get(DAEMON_TABLE).cloned() else { return Vec::new() };
     let mut warnings = Vec::new();
     // 이 표는 버전 사이를 잇는 자리라, 더 새 데몬의 키가 있어도 모듈을 거부하지 않는다
@@ -3579,6 +3607,25 @@ progress_patterns = ['{{head}}{{progress}}']
         let legacy = parse_module_toml(&format!("{V1}\n{fragments}").replacen("schema_version = 1\n", "", 1)).unwrap();
         assert!(legacy.warnings.iter().any(|w| w.contains("patterns.loop refers to itself")), "{:?}", legacy.warnings);
         assert_eq!(legacy.ready_patterns, vec!["(?:ok)".to_string()]);
+    }
+
+    /// 조각을 풀어 늘어나는 글자는 모듈마다 `PATTERN_EXPANSION_LIMIT`까지다. 넘기는 조각과 키는 다른 조각 오류처럼 다룬다
+    #[test]
+    fn pattern_fragments_stop_growing_at_the_limit() {
+        // 조각마다 앞 조각을 두 번 써서 단계마다 두 배가 된다
+        let mut doubling = "[patterns]\np0 = 'aaaaaaaaaaaaaaaa'\n".to_string();
+        for i in 1..=20 {
+            doubling.push_str(&format!("p{i} = '{{p{}}}{{p{}}}'\n", i - 1, i - 1));
+        }
+        let err = parse_module_toml(&format!("{V1}\n{doubling}")).unwrap_err();
+        let failed = ModuleLoadError::new(Path::new("m"), &err);
+        assert!(failed.problems.iter().any(|p| p.starts_with("patterns.p") && p.contains("expand to more than")), "{:?}", failed.problems);
+
+        // 조각 하나는 작아도 여러 키에서 거듭 쓰면 같은 한도에 걸린다
+        let wide = format!("[patterns]\nbig = '{}'\n\n[extensions.saba-core]\nready_patterns = [{}]\n", "a".repeat(4096), vec!["'{big}'"; 300].join(", "));
+        let legacy = parse_module_toml(&format!("{V1}\n{wide}").replacen("schema_version = 1\n", "", 1)).unwrap();
+        assert!(legacy.ready_patterns.len() < 300 && !legacy.ready_patterns.is_empty(), "{}", legacy.ready_patterns.len());
+        assert!(legacy.warnings.iter().any(|w| w.contains("ready_patterns '{big}'") && w.contains("expand to more than")), "{:?}", legacy.warnings.first());
     }
 
     /// MK8 §8.3: 접속·퇴장 문구도 `[extensions.saba-core]`에 둔다. `(?P<name>…)`이 없거나 정규식이 아니면 그 항목만 버린다

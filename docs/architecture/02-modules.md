@@ -333,6 +333,7 @@ persistent = true
 - 바뀌는 키: `[module] log_pattern`, `[launch] line_start`, `[detection] graceful_exit_patterns`, `[backup] save_done_pattern`, `[[settings.fields]] pattern`, `[commands] failure_patterns`, `[[commands.fields]] reply_pattern`, `[[syntax_highlight.rules]] pattern`, `[extensions.saba-core]`의 `ready_patterns`·`player_join_patterns`·`player_leave_patterns`·`chat_patterns`·`progress_patterns`. 정규식이 아닌 키(`[backup] paths`·`data_roots`의 `{설정 이름}` 등)는 바꾸지 않는다. `[[diagnose]] patterns`는 모듈 Python(`load_diagnose_rules`)이 module.toml에서 직접 읽으므로 바꾸지 않는다.
 - 참조 규칙: `{이름}`은 `[patterns]`에 선언한 이름일 때만 바뀐다. 이름은 글자·숫자·`_`이고 숫자로 시작하지 않으므로 반복 횟수 `{2}`·`{1,16}`은 그대로이고, 선언하지 않은 이름도 쓴 그대로 남는다. 선언한 이름을 글자로 쓰려면 `\{이름}`처럼 여는 괄호를 막는다.
 - 조각은 다른 조각을 참조할 수 있다. 자기 자신을 (다른 조각을 거쳐서라도) 참조하는 조각, 이름이 틀린 조각, 풀어서 `(?:…)`로 감싸도 정규식이 아닌 조각은 스키마 오류(`module_schema_invalid`의 `problems`: `patterns.<이름> refers to itself (a -> b -> a)` 등)이고, 스키마 이전 모듈은 경고만 남기고 그 조각을 쓰지 않는다(참조가 글자 그대로 남는다).
+- 한 모듈에서 조각을 풀어 넣는 글자는 조각끼리와 정규식 키를 합쳐 1 MiB까지다(`PATTERN_EXPANSION_LIMIT`). 넘기는 조각과 키는 위 오류처럼 다룬다(`patterns.<이름>: [patterns] expand to more than … bytes in this module`). 스키마 이전 모듈에서 넘긴 키는 쓴 그대로 남고, `[extensions.saba-core]` 목록의 그 항목은 버린다.
 - 이 키를 모르는 데몬은 `[patterns]`를 모르는 키 경고로 넘기고 `{이름}`을 글자 그대로 읽어 준비 문구 같은 것을 찾지 못한다. 그래서 `[patterns]`를 쓰는 모듈은 `[module.dependencies] saba-core`로 이 기능이 실린 버전 이상을 요구한다.
 
 ```toml
