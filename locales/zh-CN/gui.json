@@ -838,6 +838,7 @@
     "version_yanked": "已撤回",
     "version_yanked_hint": "此版本因问题已停止发布，无法选择。",
     "version_excluded": "已排除 {{count}} 个需要更新版 Saba-chan 的版本（{{versions}}）。",
+    "version_none": "没有可供本机 Saba-chan 选择的版本。",
     "version_install": "安装此版本",
     "version_confirm_title": "切换到 {{version}}？",
     "version_confirm_message": "将 {{name}} {{kind}}从 {{from}} 切换到 {{version}}。在比 {{until}} 更新的版本发布之前，自动更新不会更改它。",
@@ -857,7 +858,11 @@
       "version_unavailable": "无法选择此版本",
       "requires_unmet": "已安装的其他组件不满足此版本的要求",
       "download_failed": "无法下载文件",
-      "verify_failed": "无法验证下载的文件"
+      "verify_failed": "无法验证下载的文件",
+      "modified": "有手动修改过的文件。请还原或移走修改过的文件后重试",
+      "unverified": "该模块或扩展不是从官方列表获取的",
+      "apply_failed": "安装时出了问题，已还原",
+      "other": "出现了未知问题"
     }
   },
   "validation": {

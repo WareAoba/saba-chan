@@ -106,11 +106,11 @@ function VersionDialog({
                                 type="button"
                                 role="radio"
                                 aria-checked={chosen === v.version}
-                                className="ss-version"
+                                className="radio-card"
                                 disabled={v.yanked || v.installed}
                                 onClick={() => setChosen(v.version)}
                             >
-                                <span className="ss-version-top">
+                                <span className="radio-card-title">
                                     {v.version}
                                     {v.installed && <StatusChip tone="ok" label={t('saba_storage.version_installed')} />}
                                     {v.latest && <StatusChip tone="info" label={t('saba_storage.version_latest')} />}
@@ -120,6 +120,7 @@ function VersionDialog({
                             </button>
                         ))}
                     </div>
+                    {versions.length === 0 && <p className="ss-version-note">{t('saba_storage.version_none')}</p>}
                     {excluded.length > 0 && (
                         <p className="ss-version-note">
                             {t('saba_storage.version_excluded', { count: excluded.length, versions: excluded.join(', ') })}
@@ -136,9 +137,16 @@ type T = ReturnType<typeof useTranslation>['t'];
 const kindWord = (t: T, card: AddonCard) =>
     card.kind === 'module' ? t('saba_storage.version_kind_module') : t('saba_storage.version_kind_ext');
 
-/** 데몬이 준 error_code를 문장으로. 모르는 것은 원문을 번역한다 */
+/**
+ * 데몬이 준 error_code를 문장으로. 직접 고친 폴더 거절은 모듈·익스텐션이 같은 문장을 쓰고(`module_modified` → `modified`),
+ * 모르는 코드는 일반 실패 문장으로. 코드가 없으면(데몬에 닿지 못함) 원문을 번역한다
+ */
 const reasonOf = (t: T, res: ApiBody) =>
-    t(`saba_storage.version_error.${res.error_code}`, { defaultValue: createTranslateError(t)(res.error) });
+    res.error_code
+        ? t(`saba_storage.version_error.${res.error_code.replace(/^(module|extension)_/, '')}`, {
+              defaultValue: t('saba_storage.version_error.other'),
+          })
+        : createTranslateError(t)(res.error);
 
 /**
  * 모듈 탭·익스텐션 탭이 같이 쓴다. reload는 바꾼 뒤 목록(버전·고정·기다림)을 다시 받는다.

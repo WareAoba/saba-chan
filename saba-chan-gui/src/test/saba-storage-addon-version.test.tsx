@@ -156,6 +156,30 @@ describe('모듈 버전 선택', () => {
         );
     });
 
+    it('직접 고친 폴더라 거절하면 데몬의 영어 원문 대신 앱 문장으로 알리고, 모르는 코드는 일반 실패 문장으로 알린다', async () => {
+        const addonPin = vi
+            .fn()
+            .mockResolvedValueOnce({ ok: false, error: 'module-minecraft was changed by hand; it is not replaced', error_code: 'module_modified' })
+            .mockResolvedValueOnce({ ok: false, error: 'something new went wrong', error_code: 'brand_new_code' });
+        fakeApi({ addonPin });
+        await openTab(1);
+        const failedWith = (reason: string) =>
+            tr('version_failed', { name: '마인크래프트', kind: kind(), version: '0.1.12', reason, from: '0.1.13' });
+        await pick012();
+        await screen.findByText(failedWith(tr('version_error.modified')));
+        expect(document.body.textContent).not.toContain('it is not replaced');
+        await pick012();
+        await screen.findByText(failedWith(tr('version_error.other')));
+        expect(document.body.textContent).not.toContain('something new went wrong');
+    });
+
+    it('고를 버전이 하나도 없으면 빈 창 대신 그렇다고 알린다', async () => {
+        fakeApi({ addonVersions: vi.fn().mockResolvedValue({ ...VERSIONS, installed: null, versions: [], excluded: [] }) });
+        await openTab(1);
+        await chooseFromMenu(tr('version_choose'));
+        await screen.findByText(tr('version_none'));
+    });
+
     it('고정된 카드는 고정 표시와 설명을 보이고, 자동 업데이트로 돌아가기를 확인받아 데몬에 보낸다', async () => {
         const pinned = { ...MINECRAFT, version: '0.1.12', pinned: { version: '0.1.12', until_newer_than: '0.1.13' } };
         fakeApi({

@@ -838,6 +838,7 @@
     "version_yanked": "Retirada",
     "version_yanked_hint": "Esta versão foi retirada por um problema e não pode ser escolhida.",
     "version_excluded": "{{count}} versão(ões) que precisam de um Saba-chan mais novo ficaram de fora ({{versions}}).",
+    "version_none": "Nenhuma versão pode ser escolhida para o Saba-chan neste PC.",
     "version_install": "Instalar esta versão",
     "version_confirm_title": "Mudar para {{version}}?",
     "version_confirm_message": "{{name}} ({{kind}}) muda de {{from}} para {{version}}. As atualizações automáticas não vão mudá-lo até sair uma versão mais nova que {{until}}.",
@@ -857,7 +858,11 @@
       "version_unavailable": "Esta versão não pode ser escolhida",
       "requires_unmet": "Outros componentes instalados não atendem aos requisitos desta versão",
       "download_failed": "Não foi possível baixar o arquivo",
-      "verify_failed": "Não foi possível verificar o arquivo baixado"
+      "verify_failed": "Não foi possível verificar o arquivo baixado",
+      "modified": "Há arquivos alterados à mão. Desfaça as alterações ou mova esses arquivos e tente de novo",
+      "unverified": "Este módulo ou extensão não veio da lista oficial",
+      "apply_failed": "Algo deu errado na instalação, então foi revertida",
+      "other": "Ocorreu um problema desconhecido"
     }
   },
   "validation": {

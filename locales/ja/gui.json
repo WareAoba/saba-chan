@@ -783,6 +783,7 @@
     "version_yanked": "取り下げ",
     "version_yanked_hint": "問題があって配布を止めたバージョンのため選べません。",
     "version_excluded": "より新しいサバちゃんが必要なバージョン {{count}} 個（{{versions}}）は除きました。",
+    "version_none": "この PC のサバちゃんで選べるバージョンがありません。",
     "version_install": "このバージョンをインストール",
     "version_confirm_title": "{{version}} に変えますか？",
     "version_confirm_message": "{{name}} {{kind}}を {{from}} から {{version}} に変えます。{{until}} より新しいバージョンが出るまで、自動更新はこれを変えません。",
@@ -802,7 +803,11 @@
       "version_unavailable": "選べないバージョンです",
       "requires_unmet": "インストール済みのほかの構成要素がこのバージョンの要件を満たしていません",
       "download_failed": "ファイルをダウンロードできませんでした",
-      "verify_failed": "ダウンロードしたファイルを確認できませんでした"
+      "verify_failed": "ダウンロードしたファイルを確認できませんでした",
+      "modified": "手動で変更されたファイルがあります。変更したファイルを元に戻すか移動してから、もう一度お試しください",
+      "unverified": "公式の一覧から入手していないモジュール・拡張機能です",
+      "apply_failed": "インストール中に問題が起きたため元に戻しました",
+      "other": "不明な問題が起きました"
     }
   },
   "add_instance_modal": {

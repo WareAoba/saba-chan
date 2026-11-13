@@ -459,10 +459,10 @@ export function AddInstanceMigration({
                                             type="button"
                                             role="radio"
                                             aria-checked={mode === id}
-                                            className={`mg-mode ${mode === id ? 'mg-mode--selected' : ''}`}
+                                            className="radio-card mg-mode"
                                             onClick={() => !submitting && setMode(id)}
                                         >
-                                            <span className="mg-mode-title">
+                                            <span className="radio-card-title mg-mode-title">
                                                 {t(`migration_modal.mode_${id}`)}
                                                 {id === 'link' && <span className="mg-mode-tag">{t('migration_modal.recommended')}</span>}
                                             </span>

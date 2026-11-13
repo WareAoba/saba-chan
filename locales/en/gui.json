@@ -838,6 +838,7 @@
     "version_yanked": "Withdrawn",
     "version_yanked_hint": "This version was withdrawn because of a problem, so you can't choose it.",
     "version_excluded": "Left out {{count}} version(s) that need a newer saba-chan ({{versions}}).",
+    "version_none": "No version can be chosen for Saba-chan on this PC.",
     "version_install": "Install this version",
     "version_confirm_title": "Change to {{version}}?",
     "version_confirm_message": "Changes the {{name}} {{kind}} from {{from}} to {{version}}. Automatic updates won't change it until a version newer than {{until}} comes out.",
@@ -857,7 +858,11 @@
       "version_unavailable": "This version can't be chosen",
       "requires_unmet": "Other installed components don't meet this version's requirements",
       "download_failed": "Couldn't download the file",
-      "verify_failed": "Couldn't verify the downloaded file"
+      "verify_failed": "Couldn't verify the downloaded file",
+      "modified": "Some files were changed by hand. Undo or move the changed files and try again",
+      "unverified": "This module or extension didn't come from the official list",
+      "apply_failed": "Something went wrong while installing it, so it was rolled back",
+      "other": "Something went wrong"
     }
   },
   "validation": {
