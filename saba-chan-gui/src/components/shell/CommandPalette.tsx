@@ -33,10 +33,19 @@ import {
     type PaletteCommand,
     type PaletteData,
     type PaletteItem,
+    type Translate,
     visibleItems,
 } from './paletteModel';
-
-type Translate = (key: string, options?: Record<string, unknown>) => string;
+import {
+    commandPreview,
+    iconOf,
+    inputChoices,
+    itemPreview,
+    type Mode,
+    optional,
+    paletteFoot,
+    statusText,
+} from './paletteView';
 
 /** plan이 돌려주는 요약 한 줄 */
 interface PlanSummary {
@@ -65,7 +74,6 @@ const CONTROL_ACTION: Record<Control, string> = {
     restart: 'server.restart',
     backup: 'backup.create',
 };
-const CONTROL_ICON: Record<Control, string> = { start: 'play', stop: 'stop', restart: 'refresh', backup: 'save' };
 
 function errorText(res: ApiBody | null | undefined, t: Translate) {
     if (res?.error_code === 'invalid_input') {
@@ -132,20 +140,6 @@ function paletteCommands(list: ApiBody[], module: ModuleInfo | undefined, t: Tra
     });
 }
 
-const optional = (i: CommandInput) => !i.required || i.default != null;
-
-/** 입력 칸 후보 (고르는 칸만) */
-function inputChoices(i: CommandInput, t: Translate) {
-    if (i.type === 'boolean') {
-        return [
-            { value: 'true', label: t('palette.bool_on') },
-            { value: 'false', label: t('palette.bool_off') },
-        ];
-    }
-    if (Array.isArray(i.options) && i.options.length) return i.options.map((o) => ({ value: o, label: o }));
-    return null;
-}
-
 interface Picked {
     serverId: string;
     command: PaletteCommand;
@@ -154,7 +148,6 @@ interface ArgValue {
     value: string;
     label: string;
 }
-type Mode = 'list' | 'entities' | 'args' | 'confirm' | 'controlConfirm' | 'busy' | 'done';
 
 function Magnifier() {
     return (
@@ -567,14 +560,6 @@ function Palette({ onClose, busyRef }: { onClose: () => void; busyRef: MutableRe
         }
     };
 
-    const statusText = (status?: string) =>
-        tr(
-            status === 'running'
-                ? 'palette.status_running'
-                : status === 'stopped'
-                  ? 'palette.status_stopped'
-                  : 'palette.status_busy',
-        );
     const placeholder =
         mode === 'entities'
             ? tr('palette.placeholder_entities')
@@ -595,11 +580,11 @@ function Palette({ onClose, busyRef }: { onClose: () => void; busyRef: MutableRe
             case 'eguild':
                 return tr('palette.discord_server');
             case 'esrv':
-                return `${tr('palette.game_server')} · ${statusText(s?.status)}`;
+                return `${tr('palette.game_server')} · ${statusText(tr, s?.status)}`;
             case 'xcmd':
-                return `${s?.name ?? ''} · ${statusText(s?.status)}`;
+                return `${s?.name ?? ''} · ${statusText(tr, s?.status)}`;
             case 'ctl':
-                return statusText(s?.status);
+                return statusText(tr, s?.status);
             case 'cmd':
                 return it.command?.inputs.length
                     ? it.command.inputs
@@ -620,205 +605,11 @@ function Palette({ onClose, busyRef }: { onClose: () => void; busyRef: MutableRe
         esrv: 'palette.act.scope',
         eguild: 'palette.act.scope',
     };
-    const iconOf = (it: PaletteItem, big = false) => {
-        const cls = (...c: (string | false | undefined)[]) => clsx('palette-ico', { big }, ...c);
-        switch (it.group) {
-            case 'ctl':
-                return (
-                    <span className={cls('ctl', it.control === 'stop' && 'stop')}>
-                        <Icon name={CONTROL_ICON[it.control as Control]} size="sm" />
-                    </span>
-                );
-            case 'cmd':
-            case 'xcmd':
-                return (
-                    <span className={cls('cmd')}>
-                        <Icon name="terminal" size="sm" />
-                    </span>
-                );
-            case 'setting':
-                return (
-                    <span className={cls('set')}>
-                        <Icon name="settings" size="sm" />
-                    </span>
-                );
-            case 'esrv':
-                return (
-                    <span className={cls('srv')}>
-                        <span className={clsx('palette-dot', serverOf(it.serverId)?.status)} />
-                    </span>
-                );
-            case 'eguild':
-                return <span className={cls('gld')}>{Array.from(it.title)[0]}</span>;
-            default:
-                return (
-                    <span className={cls(it.serverId || it.guildId ? 'jump' : 'app')}>
-                        <Icon name={it.icon ?? (it.action === 'newServer' ? 'plus' : 'externalLink')} size="sm" />
-                    </span>
-                );
-        }
-    };
-
-    const commandPreview = (c: PaletteCommand, serverName?: string) => (
-        <>
-            <span className="palette-ico big cmd">
-                <Icon name="terminal" size="sm" />
-            </span>
-            <h3>{c.label}</h3>
-            {c.description && <p>{c.description}</p>}
-            <div className="palette-cmdline">
-                {c.name}
-                {c.inputs.map((i) => (
-                    <span key={i.name} className="ph">
-                        {` <${i.label}>`}
-                    </span>
-                ))}
-            </div>
-            {c.inputs.length ? (
-                <dl>
-                    {c.inputs.map((i) => (
-                        <div key={i.name} className="palette-dl-row">
-                            <dt>{i.label}</dt>
-                            <dd>
-                                {inputChoices(i, tr)
-                                    ?.map((o) => o.label)
-                                    .join(' · ') ||
-                                    (i.placeholder
-                                        ? tr('palette.example', { value: i.placeholder })
-                                        : tr('palette.free_input'))}
-                                {optional(i) ? ` · ${tr('palette.optional')}` : ''}
-                            </dd>
-                        </div>
-                    ))}
-                </dl>
-            ) : (
-                <p>{tr('palette.no_inputs_hint')}</p>
-            )}
-            {serverName && (
-                <div className="palette-why">
-                    <Icon name="check" size="xs" /> {tr('palette.pv_ready', { name: serverName })}
-                </div>
-            )}
-        </>
-    );
 
     const preview = (it?: PaletteItem | null) => {
-        if (picked && mode === 'args') return commandPreview(picked.command, pickServer?.name);
+        if (picked && mode === 'args') return commandPreview(picked.command, pickServer?.name, tr);
         if (!it) return null;
-        const s = serverOf(it.serverId);
-        if (it.group === 'eguild' || it.group === 'esrv') {
-            const cmds = s ? (s.commands || []).filter((c) => c.ready).length : 0;
-            return (
-                <>
-                    {iconOf(it, true)}
-                    <h3>{it.title}</h3>
-                    {s && (
-                        <dl>
-                            <div className="palette-dl-row">
-                                <dt>{tr('palette.status')}</dt>
-                                <dd>
-                                    <span className={clsx('palette-pill', { ok: s.status === 'running' })}>
-                                        {statusText(s.status)}
-                                    </span>
-                                </dd>
-                            </div>
-                            <div className="palette-dl-row">
-                                <dt>{tr('palette.group.cmd')}</dt>
-                                <dd>
-                                    {cmds ? tr('palette.commands_count', { count: cmds }) : tr('palette.commands_none')}
-                                </dd>
-                            </div>
-                        </dl>
-                    )}
-                    <p>{tr('palette.pv_scope')}</p>
-                </>
-            );
-        }
-        if (it.group === 'xcmd' && it.command && s) {
-            return (
-                <>
-                    {iconOf(it, true)}
-                    <h3>{it.title}</h3>
-                    {it.command.description && <p>{it.command.description}</p>}
-                    <p>{tr('palette.pv_switch', { name: s.name })}</p>
-                    <div className="palette-why">
-                        <Icon name="check" size="xs" /> {tr('palette.pv_ready', { name: s.name })}
-                    </div>
-                </>
-            );
-        }
-        if (it.group === 'cmd' && it.command) return commandPreview(it.command, s?.name);
-        if (it.group === 'ctl') {
-            return (
-                <>
-                    {iconOf(it, true)}
-                    <h3>
-                        {s?.name} {it.title}
-                    </h3>
-                    <p>{tr(`palette.control_desc.${it.control}`)}</p>
-                    <dl>
-                        <div className="palette-dl-row">
-                            <dt>{tr('palette.status')}</dt>
-                            <dd>
-                                <span className={clsx('palette-pill', { ok: s?.status === 'running' })}>
-                                    {statusText(s?.status)}
-                                </span>
-                            </dd>
-                        </div>
-                    </dl>
-                </>
-            );
-        }
-        return (
-            <>
-                {iconOf(it, true)}
-                <h3>{it.title}</h3>
-                {it.path && (
-                    <div className="palette-crumb">
-                        {it.path.map((p, i) => (
-                            // biome-ignore lint/suspicious/noArrayIndexKey: 고정된 경로 조각
-                            <span key={i}>{p}</span>
-                        ))}
-                    </div>
-                )}
-                <p>{tr(it.group === 'setting' ? 'palette.pv_setting' : 'palette.pv_jump')}</p>
-            </>
-        );
-    };
-
-    const foot = () => {
-        const k = (key: string, label: string) => (
-            <span key={key + label}>
-                <kbd>{key}</kbd>
-                {label}
-            </span>
-        );
-        if (mode === 'args')
-            return [
-                k('↵', tr('palette.foot.next_field')),
-                k('⌫', tr('palette.foot.prev_field')),
-                k('Esc', tr('palette.foot.to_list')),
-            ];
-        if (mode === 'confirm' || mode === 'controlConfirm')
-            return [k('↵', tr('palette.foot.run')), k('Esc', tr('palette.foot.back'))];
-        if (mode === 'busy' || mode === 'done') return [];
-        if (mode === 'entities')
-            return [
-                k('↑↓', tr('palette.foot.move')),
-                k('↵', tr('palette.foot.to_scope')),
-                k('Esc', tr('palette.foot.keep')),
-            ];
-        return [
-            k('↑↓', tr('palette.foot.move')),
-            k('↵', tr('palette.foot.open')),
-            k('Tab', tr('palette.foot.pick_scope')),
-            ...(scope ? [k('⌫', tr('palette.foot.clear_scope'))] : []),
-            k('Ctrl 1·2·3', tr('palette.foot.categories')),
-            k('Esc', tr('palette.foot.close')),
-            <span key="cho" className="r">
-                {tr('palette.foot.choseong')}
-            </span>,
-        ];
+        return itemPreview(it, serverOf(it.serverId), tr);
     };
 
     const stage = mode === 'confirm' || mode === 'controlConfirm' || mode === 'busy' || mode === 'done';
@@ -1126,7 +917,7 @@ function Palette({ onClose, busyRef }: { onClose: () => void; busyRef: MutableRe
                                                         i,
                                                         it.key,
                                                         <>
-                                                            {iconOf(it)}
+                                                            {iconOf(it, serverOf(it.serverId)?.status)}
                                                             <span className="palette-txt">
                                                                 <b>{it.title}</b>
                                                                 <small>{subOf(it)}</small>
@@ -1186,7 +977,7 @@ function Palette({ onClose, busyRef }: { onClose: () => void; busyRef: MutableRe
                             </aside>
                         </>
                     )}
-                    <footer className="palette-foot">{foot()}</footer>
+                    <footer className="palette-foot">{paletteFoot(mode, !!scope, tr)}</footer>
                 </div>
             </div>
         </div>

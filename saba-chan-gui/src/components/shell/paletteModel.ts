@@ -11,7 +11,7 @@ import type { CommandInput } from '../../types/daemon';
 import { matchScore } from '../../utils/hangul';
 import { SETTINGS_TAB_LABELS, SETTINGS_TABS } from '../Modals/settingsTabs';
 
-type Translate = (key: string, options?: Record<string, unknown>) => string;
+export type Translate = (key: string, options?: Record<string, unknown>) => string;
 
 export type Group = 'ctl' | 'cmd' | 'xcmd' | 'jump' | 'setting' | 'esrv' | 'eguild';
 export type Category = 'ctl' | 'cmd' | 'jump';
