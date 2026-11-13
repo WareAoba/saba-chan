@@ -1904,10 +1904,11 @@ mod tests {
     async fn a_real_child_is_found_stopped_and_waited_for() {
         let mut sh = std::process::Command::new("sh").args(["-c", "sleep 30; true"]).spawn().unwrap();
         let root = sh.id();
+        // 셸이 fork한 직후의 자식은 아직 exec 전이라 이름이 `sh`다. `sleep`이 보일 때까지 기다린다
         let mut kids = Vec::new();
-        for _ in 0..50 {
+        for _ in 0..250 {
             kids = tree_of(&list_all().unwrap(), &[root], std::process::id());
-            if !kids.is_empty() {
+            if kids.iter().any(|(_, name, _)| name == "sleep") {
                 break;
             }
             std::thread::sleep(Duration::from_millis(20));

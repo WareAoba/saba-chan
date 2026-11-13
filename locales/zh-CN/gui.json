@@ -391,7 +391,6 @@
     "title": "设置",
     "general_tab": "常规设置",
     "protocol_title": "服务器控制方式",
-    "protocol_single_only": "此游戏仅支持 <strong>{{protocol}}</strong> 方式控制。",
     "no_settings": "此模块没有额外设置项",
     "module_aliases_title": "模块别名（在 Discord 中称呼此服务器的名称）",
     "module_aliases_hint": "用空格分隔多个条目。例如：{{module}} pw palworld",

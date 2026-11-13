@@ -391,7 +391,6 @@
     "title": "Einstellungen",
     "general_tab": "Allgemeine Einstellungen",
     "protocol_title": "Server-Steuerungsmethode",
-    "protocol_single_only": "Dieses Spiel wird nur über das Protokoll <strong>{{protocol}}</strong> bedient.",
     "no_settings": "Dieses Modul hat keine zusätzlichen Einstellungen",
     "module_aliases_title": "Modul-Aliase (Namen für diesen Server in Discord)",
     "module_aliases_hint": "Mehrere Aliase mit Leerzeichen trennen. z.B.: {{module}} pw palworld",

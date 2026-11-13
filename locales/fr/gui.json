@@ -391,7 +391,6 @@
     "title": "Paramètres",
     "general_tab": "Paramètres généraux",
     "protocol_title": "Méthode de contrôle du serveur",
-    "protocol_single_only": "Ce jeu se contrôle uniquement via <strong>{{protocol}}</strong>.",
     "no_settings": "Aucun paramètre supplémentaire pour ce module",
     "module_aliases_title": "Alias du module (Noms pour appeler ce serveur sur Discord)",
     "module_aliases_hint": "Séparez plusieurs alias par des espaces. Ex : {{module}} pw palworld",

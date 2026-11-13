@@ -391,7 +391,6 @@
     "title": "설정",
     "general_tab": "일반 설정",
     "protocol_title": "서버 조작 방식",
-    "protocol_single_only": "이 게임은 <strong>{{protocol}}</strong> 방식으로만 조작합니다.",
     "no_settings": "이 모듈에는 추가 설정 항목 없음",
     "module_aliases_title": "모듈 별명 (Discord에서 이 서버를 부를 이름)",
     "module_aliases_hint": "여러 개는 공백으로 구분해 입력해 주세요. 예: {{module}} pw palworld",

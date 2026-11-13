@@ -391,7 +391,6 @@
     "title": "Параметры",
     "general_tab": "Общие настройки",
     "protocol_title": "Метод управления сервером",
-    "protocol_single_only": "Эта игра управляется только по протоколу <strong>{{protocol}}</strong>.",
     "no_settings": "Дополнительных настроек у модуля нет",
     "module_aliases_title": "Псевдонимы модуля (Имена для вызова этого сервера в Discord)",
     "module_aliases_hint": "Разделяйте пробелами несколько записей. Напр.: {{module}} pw palworld",

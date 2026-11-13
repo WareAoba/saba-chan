@@ -391,7 +391,6 @@
     "title": "Settings",
     "general_tab": "General Settings",
     "protocol_title": "Server Control Method",
-    "protocol_single_only": "This game is controlled only via <strong>{{protocol}}</strong>.",
     "no_settings": "No additional settings in this module",
     "module_aliases_title": "Module Aliases (Names to call this server on Discord)",
     "module_aliases_hint": "Separate several aliases with spaces. e.g., {{module}} pw palworld",
