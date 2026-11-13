@@ -9,7 +9,8 @@ use std::sync::Mutex;
 
 use super::{Clock, ScheduledTask, TaskAction};
 use crate::backup::{self, BackupKind};
-use crate::ipc::handlers::backup::{announce, backups_dir, is_running, run_command, save_command_of, take_backup, InstanceLock};
+use crate::ipc::handlers::backup::{announce, backups_dir, is_running, run_command, take_backup, InstanceLock};
+use crate::ipc::handlers::schedule::save_command_of;
 use crate::ipc::handlers::{server, server_update};
 use crate::ipc::IPCServer;
 
@@ -515,7 +516,7 @@ async fn run_update(state: &IPCServer, id: &str, task: &ScheduledTask, fire: chr
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ipc::handlers::backup::get_schedule;
+    use crate::ipc::handlers::schedule::get_schedule;
     use crate::ipc::handlers::backup::tests::{live_module, server_with, NO_BACKUP};
     #[cfg(unix)]
     use crate::ipc::handlers::backup::tests::{run_fake_server, WORK_DEADLINE};

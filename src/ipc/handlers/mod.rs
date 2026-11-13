@@ -14,6 +14,7 @@ pub mod port_check;
 pub mod remote_daemon;
 pub mod chat;
 pub mod backup;
+pub mod schedule;
 pub mod server_update;
 pub mod logs;
 pub mod chatbot;
