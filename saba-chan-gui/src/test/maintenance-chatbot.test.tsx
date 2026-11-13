@@ -246,7 +246,7 @@ describe('MaintenanceTab', () => {
         expect(await screen.findByRole('button', { name: 'Restore' })).toBeDisabled();
     });
 
-    it('게임 자동 백업: 보관 버튼은 스냅샷 원본으로 만들고, 목록의 게임 백업은 되돌리기만 된다', async () => {
+    it('게임 자동 백업: 보관 버튼은 스냅샷 원본으로 만들고, 목록의 게임 백업은 되돌리기와 삭제가 된다', async () => {
         window.api.instanceScheduleGet = vi
             .fn()
             .mockResolvedValue({ success: true, schedule: [], backup_supported: true });
@@ -260,10 +260,16 @@ describe('MaintenanceTab', () => {
         render(<MaintenanceTab server={stopped} />);
         expect(await screen.findByText(/Automatic backup made by the game/)).toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'Restore' })).toBeEnabled();
-        expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
         fireEvent.click(screen.getByRole('button', { name: /Keep game backup/ }));
         await waitFor(() =>
             expect(window.api.instanceBackupCreate).toHaveBeenCalledWith('srv1', { source: 'snapshot' }),
+        );
+        // 다른 백업과 같이 한 번 눌러 확인 상태로 바꾸고, 한 번 더 눌러 지운다
+        window.api.instanceBackupDelete = vi.fn().mockResolvedValue({ success: true });
+        fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+        fireEvent.click(await screen.findByRole('button', { name: 'Click to delete' }));
+        await waitFor(() =>
+            expect(window.api.instanceBackupDelete).toHaveBeenCalledWith('srv1', 'game-snapshot:S1'),
         );
     });
 });
