@@ -65,8 +65,6 @@ pub const PORT_CONFLICT_STOPS_TTL_MS: u64 = 10 * 60 * 1000;
 pub struct PortConflictStops {
     events: Vec<PortConflictStopEvent>,
     last_id: u64,
-    /// 매개변수 없이 읽는 옛 클라이언트에게 마지막으로 보인 번호 (한 번 읽으면 비던 예전 동작을 지운 것 없이 흉내 낸다)
-    legacy_seen: u64,
 }
 
 impl PortConflictStops {
@@ -1156,21 +1154,6 @@ impl Supervisor {
             .map(|mut stops| {
                 stops.forget_old();
                 stops.events.iter().filter(|e| e.id > after).cloned().collect()
-            })
-            .unwrap_or_default()
-    }
-
-    /// 매개변수 없이 읽는 옛 클라이언트용: 아직 이 방식으로 보이지 않은 알림만 주고 본 것으로 적는다.
-    /// 알림은 지우지 않으므로 `notices_after`로 읽는 클라이언트는 그대로 본다
-    pub fn drain_port_conflict_stops(&self) -> Vec<PortConflictStopEvent> {
-        self.port_conflict_stops
-            .lock()
-            .map(|mut stops| {
-                stops.forget_old();
-                let seen = stops.legacy_seen;
-                let unseen: Vec<_> = stops.events.iter().filter(|e| e.id > seen).cloned().collect();
-                stops.legacy_seen = stops.last_id;
-                unseen
             })
             .unwrap_or_default()
     }
