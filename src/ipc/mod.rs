@@ -1182,6 +1182,10 @@ impl IPCServer {
     }
 }
 
+/// 데몬이 시작한 시각 (Unix ms). `main`이 맨 먼저 잰다. 업데이터가 서비스 관리자·GUI가 다시 띄운 데몬을
+/// PID 대신 판과 이 시각으로 새 데몬인지 가린다 (`live_apply::HealthRule::StartedAfter`)
+pub static STARTED_AT_MS: std::sync::LazyLock<u64> = std::sync::LazyLock::new(saba_chan_updater_lib::live_apply::now_ms);
+
 // ── Tests ──────────────────────────────────────────────────
 
 #[cfg(test)]

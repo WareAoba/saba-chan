@@ -6,6 +6,7 @@ pub(crate) mod backup;
 pub(crate) mod chatbot;
 pub(crate) mod command;
 pub(crate) mod discord;
+pub mod extensions;
 pub mod lifecycle;
 pub(crate) mod onboarding;
 pub mod server_update;

@@ -218,7 +218,7 @@ async fn main() -> anyhow::Result<()> {
         }
     }
     // 기동 시각 (`/health`의 `started_at_ms`)
-    std::sync::LazyLock::force(&ipc::handlers::server::STARTED_AT_MS);
+    std::sync::LazyLock::force(&ipc::STARTED_AT_MS);
     let spawned = args.iter().any(|a| a == "--spawned");
     let interactive =
         std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
@@ -447,7 +447,7 @@ async fn main() -> anyhow::Result<()> {
         let server = ipc_server.clone();
         tokio::spawn(async move {
             loop {
-                ipc::handlers::extension::prepare_after_update(&server, &saba_chan_updater_lib::UpdateCompletionMarker::path()).await;
+                service::extensions::prepare_after_update(&server, &saba_chan_updater_lib::UpdateCompletionMarker::path()).await;
                 server.update_state.modules_updated.notified().await;
             }
         });

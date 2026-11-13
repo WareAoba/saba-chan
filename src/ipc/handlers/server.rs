@@ -21,12 +21,8 @@ pub async fn health_check(headers: axum::http::HeaderMap) -> impl IntoResponse {
     let token = super::super::auth::token_status(&headers);
     let challenge = headers.get("X-Saba-Challenge").and_then(|v| v.to_str().ok());
     let proof = challenge.and_then(crate::ipc::auth::identity_proof);
-    (StatusCode::OK, Json(json!({ "ok": true, "version": version, "pid": std::process::id(), "started_at_ms": *STARTED_AT_MS, "token": token, "proof": proof, "stops_with_launcher": stops_with_launcher() })))
+    (StatusCode::OK, Json(json!({ "ok": true, "version": version, "pid": std::process::id(), "started_at_ms": *crate::ipc::STARTED_AT_MS, "token": token, "proof": proof, "stops_with_launcher": stops_with_launcher() })))
 }
-
-/// 데몬이 시작한 시각 (Unix ms). `main`이 맨 먼저 잰다. 업데이터가 서비스 관리자·GUI가 다시 띄운 데몬을
-/// PID 대신 판과 이 시각으로 새 데몬인지 가린다 (`live_apply::HealthRule::StartedAfter`)
-pub static STARTED_AT_MS: std::sync::LazyLock<u64> = std::sync::LazyLock::new(saba_chan_updater_lib::live_apply::now_ms);
 
 /// 데몬이 닫히면 함께 끝내는 job 안에 있는가 (L46). GUI가 job breakaway를 거절당해 그대로 띄우면, GUI를 띄운 프로그램이
 /// 끝날 때 데몬도 끝날 수 있다. 시작 뒤 바뀌지 않으므로 한 번만 본다. 바로 위 job만 본다 (중첩 job의 바깥 job은 알 수 없다)
@@ -479,7 +475,7 @@ async fn install_module_locked(state: IPCServer, module_id: String) -> axum::res
         supervisor.module_loader.get_module(&module_id).ok().as_ref().map(crate::supervisor::module_loader::LoadedModule::required_extensions).unwrap_or_default()
     };
     // 이 모듈이 쓰는 익스텐션을 받고 켠다 (새로 필요해진 것만 켠다: 예전 판부터 쓰던 것은 사용자가 껐을 수 있다)
-    let extensions = super::extension::prepare_for_module(&state, &required, &previously_required).await;
+    let extensions = crate::service::extensions::prepare_for_module(&state, &required, &previously_required).await;
     (StatusCode::OK, Json(json!({ "ok": true, "module_id": module_id, "version": comp.version, "extensions": extensions })))
         .into_response()
 }
