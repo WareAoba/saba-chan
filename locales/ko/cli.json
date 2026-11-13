@@ -18,7 +18,7 @@
     "ask_source": "어떻게 준비할까요?",
     "ask_preset": "추천 설정으로 시작할까요?",
     "no_preset": "기본 설정",
-    "agreements_declined": "약관에 동의하지 않아 서버 생성 취소됨",
+    "agreements_declined": "서버를 생성하려면 약관에 동의해 주세요.",
     "not_installable": "{{key}}: 이 값으로는 새 서버 설치 불가. 고를 수 있는 값: {{choices}}",
     "set_needs_wait": "새로 설치하는 서버의 설정(--set)은 설치가 끝난 뒤 저장됩니다. --no-wait 없이 실행하거나, 설치가 끝난 뒤 server set으로 바꿔 주세요.",
     "created_installing": "{{name}} 생성됨. 서버 파일 설치 중...",
@@ -254,7 +254,6 @@
     "what": "설명",
     "when": "언제",
     "why": "이유",
-    "rcon_port": "RCON 포트",
     "rest_port": "REST 포트",
     "author": "만든이",
     "mode": "방식",
@@ -724,7 +723,6 @@
     "restart_hint": "적용하려면 {{name}}을(를) 재시작해 주세요: saba-chan-cli restart {{name}}",
     "sync_failed": "저장은 했지만 게임 설정 파일 쓰기 실패: {{error}}",
     "ignored": "사바쨩이 쓰지 않는 설정이라 무시함: {{keys}}",
-    "unknown_key": "{{key}}는 새 키입니다.",
     "restart_required_mark": "바꾸면 다시 시작",
     "restart_required": "재시작해야 적용됨: {{keys}}",
     "hidden": "지금 쓰지 않아 숨긴 설정: {{keys}}"
@@ -784,7 +782,6 @@
     "preflight_failed": "게임 모듈 실행 환경 준비 실패: {{error}}. 다음 서버 작업 때 다시 시도합니다."
   },
   "stop": {
-    "confirm": "“{{name}}” 서버를 정지할까요?",
     "already": "{{name}}: 이미 정지됨",
     "done": "{{name}} 정지됨",
     "force_confirm": "저장 없이 정지할까요?",
@@ -1056,7 +1053,6 @@
       "bot.wake": "디스코드 서버에서 봇 깨우기",
       "bot.music": "디스코드 서버의 노래하는 사바쨩 설정. 옵션이 없으면 보기",
       "bot.allow": "디스코드 서버가 보고 부를 수 있는 서버. 서버 없이: 보기, `--all`: 모든 서버",
-      "bot.link": "디스코드에서 코드 없이 /사바쨩 연결로 온 연결 요청. ID 없이: 보기, ID: 수락, `--decline`: 거절",
       "help": "명령 도움말 보기. --json이면 명령 트리·인자·종료 코드",
       "events": "데몬 이벤트를 실시간으로 따라가기 (--json이면 한 줄에 JSON 하나). Ctrl+C로 정지",
       "tui": "전체 화면 메뉴 열기",
@@ -1128,7 +1124,6 @@
       "bot.channels.no_game_chat": "게임 채팅 채널 해제",
       "bot.channels.board": "상황판 채널 (실행 중인 서버마다 배너·접속자·가동 시간 카드), 이름이나 id",
       "bot.channels.no_board": "상황판 채널 해제",
-      "bot.link.decline": "이 연결 요청 거절",
       "bot.allow.all": "제한 없음: 이 PC의 모든 서버",
       "sandbox.allow.component": "격리 없이 실행할 구성요소",
       "sandbox.revoke.component": "허용을 거둘 구성요소",
@@ -1180,9 +1175,7 @@
       "executable": "받을 서버 실행 파일 이름 (기본: 모듈의 server_executable)",
       "accept": "동의할 약관 id (읽은 것만)",
       "relay_url": "서버쨩 주소",
-      "token": "노드 토큰",
       "value": "새 값",
-      "alias": "별명",
       "guild": "디스코드 서버 id",
       "member": "디스코드 사용자 ID",
       "level": "레벨 (admin·user·chatbot·banned 또는 관리자·유저·말하는 사바쨩·금지, 이 서버에 더한 단계 이름)",
@@ -1375,7 +1368,6 @@
     "after": "이름은 일부만 적어도 됩니다 (예: start pal). 인자 없이 터미널에서 실행하면 전체 화면 메뉴가 열립니다(SABA_NO_TUI=1이면 대화형 셸).\n스크립트에서는 --json과 --yes를 써 주세요. 종료 코드: 0 성공 · 1 실패 · 2 사용법 · 3 데몬 연결 실패 · 4 없음 · 130 취소"
   },
   "restart": {
-    "confirm": "'{{name}}' 서버를 재시작할까요?",
     "waiting": "{{name}} 다시 시작하는 중...",
     "done": "{{name}} 재시작됨"
   },
@@ -1520,7 +1512,6 @@
     "credit_exhausted": "크레딧 소진 ({{time}}). 충전 전까지 대답할 수 없습니다.",
     "tool_on": "켜짐",
     "tool_off": "꺼짐",
-    "tool_blocked": "공통에서 막힘",
     "tool_unavailable": "지금 쓸 수 없음"
   },
   "trust": {
@@ -1734,8 +1725,6 @@
     },
     "col": {
       "name": "이름",
-      "game": "게임",
-      "players": "접속",
       "port": "포트",
       "uptime": "가동",
       "about": "설명",
@@ -1748,7 +1737,6 @@
     "no_servers": "아직 서버 없음. n을 눌러 새 서버를 만들어 주세요.",
     "empty": "(없음)",
     "detail": "자세히",
-    "server_console": "콘솔",
     "console_empty": "아직 출력 없음",
     "discord": {
       "relay": "서버쨩",
@@ -1771,7 +1759,6 @@
     "pick_first": "먼저 목록에서 하나를 골라 주세요.",
     "gui_switch": "GUI로 전환",
     "output": "출력",
-    "daemon_log": "데몬 로그",
     "use_switch": "여기서는 F9(GUI로 전환)를 눌러 주세요.",
     "console_input_hint": "서버 명령 입력 · Enter로 보내기",
     "keys_tabs": "←→ 쪽 옮기기 · ↓ 들어가기 · 1-5 쪽 · Ctrl+K 찾기 · : 명령 · ? 도움말 · q 나가기",

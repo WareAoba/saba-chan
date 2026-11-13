@@ -22,7 +22,7 @@ describe('웹 메모리 상한 저장', () => {
             fireEvent.click(screen.getByRole('button', { name: 'Save' }));
         });
         expect(instanceUpdateSettings).toHaveBeenCalledWith('a', { memory_limit_mb: '4096' });
-        expect(useApp.getState().toasts.at(-1)).toMatchObject({ message: expect.stringMatching(/only apply on Windows/), tone: 'error' });
+        expect(useApp.getState().toasts.at(-1)).toMatchObject({ message: expect.stringMatching(/apply only on Windows/), tone: 'error' });
     });
 
     // 데몬이 이 서버에 상한을 걸 수 없다고 알리면(memory_limit_supported:false) 칸을 잠그고 이유를 알린다
@@ -30,7 +30,7 @@ describe('웹 메모리 상한 저장', () => {
         const server = asServer({ id: 'a', name: 'S', memory_limit_mb: null, memory_limit_supported: false });
         render(<SabaSettings api={mockApi({})} server={server} running={false} />);
         expect((screen.getByPlaceholderText('No limit') as HTMLInputElement).disabled).toBe(true);
-        expect(screen.getByText(/can't use a memory limit/)).toBeTruthy();
+        expect(screen.getByText(/memory limit cannot be used/)).toBeTruthy();
         expect(screen.queryByText(/Applies on Windows only/)).toBeNull();
     });
 
@@ -38,7 +38,7 @@ describe('웹 메모리 상한 저장', () => {
         const instanceUpdateSettings = vi.fn(async () => ({ success: true }));
         const server = asServer({ id: 'a', name: 'S', memory_limit_mb: 4096, memory_limit_supported: false });
         render(<SabaSettings api={mockApi({ instanceUpdateSettings })} server={server} running={false} />);
-        expect(screen.getByText(/isn't being applied/)).toBeTruthy();
+        expect(screen.getByText(/not applied now/)).toBeTruthy();
         await act(async () => {
             fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
         });

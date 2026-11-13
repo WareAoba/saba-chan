@@ -16,7 +16,7 @@ describe('화면 링크', () => {
             </small>,
         );
         expect(document.querySelector('small')?.textContent).toBe(
-            'Assign the channel as Game chat in Discord↗, or with /saba assign → Game chat.',
+            'Assign the channel as Game chat in Discord↗, or with /saba assign.',
         );
         fireEvent.click(screen.getByRole('button', { name: 'Open Discord' }));
         expect(useApp.getState().tab).toBe('discord');

@@ -103,7 +103,7 @@ describe('웹 레벨별 명령 계단', () => {
         expect(within(step('Lv 1 · User')).getByRole('button', { name: 'Say' }).classList.contains('is-changed')).toBe(
             true,
         );
-        expect(screen.getByRole('status').textContent).toContain('unsaved');
+        expect(screen.getByRole('status').textContent).toContain('Unsaved');
         pick('Say', 'Lv 0 · Guest');
         expect(within(step('Lv 0 · Guest')).getByRole('button', { name: 'Say' }).classList.contains('is-changed')).toBe(
             false,

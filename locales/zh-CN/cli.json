@@ -18,7 +18,7 @@
     "ask_source": "要如何准备？",
     "ask_preset": "要使用推荐设置开始吗？",
     "no_preset": "默认设置",
-    "agreements_declined": "未同意协议，服务器创建已取消",
+    "agreements_declined": "要创建服务器，请同意条款。",
     "not_installable": "{{key}}：此值无法用于安装新服务器。可选值：{{choices}}",
     "set_needs_wait": "安装中的新服务器的设置（--set）会在安装完成后保存。请不带 --no-wait 运行，或安装完成后用 server set 修改。",
     "created_installing": "已创建 {{name}}。正在安装服务器文件...",
@@ -254,7 +254,6 @@
     "what": "说明",
     "when": "时间",
     "why": "原因",
-    "rcon_port": "RCON 端口",
     "rest_port": "REST 端口",
     "author": "作者",
     "mode": "模式",
@@ -724,7 +723,6 @@
     "restart_hint": "重启 {{name}} 后生效：saba-chan-cli restart {{name}}",
     "sync_failed": "已保存，但游戏设置文件写入失败：{{error}}",
     "ignored": "Saba-chan 不使用的设置，已忽略：{{keys}}",
-    "unknown_key": "{{key}} 是新键。",
     "restart_required_mark": "修改后需重启",
     "restart_required": "重启后生效：{{keys}}",
     "hidden": "因当前未使用而隐藏的设置: {{keys}}"
@@ -784,7 +782,6 @@
     "preflight_failed": "游戏模块运行环境准备失败：{{error}}。下次服务器操作时重试。"
   },
   "stop": {
-    "confirm": "确定要停止 “{{name}}”服务器吗？",
     "already": "{{name}}：已停止",
     "done": "{{name}} 已停止",
     "force_confirm": "不保存就停止吗？",
@@ -1056,7 +1053,6 @@
       "bot.wake": "唤醒 Discord 服务器中的机器人",
       "bot.music": "Discord 服务器的会唱歌的 Saba-chan 设置。不带选项则查看",
       "bot.allow": "Discord 服务器可以查看和调用的服务器。不指定服务器：查看，`--all`：所有服务器",
-      "bot.link": "在 Discord 中不带代码使用 /saba connect 发来的连接请求。不带 ID：查看，ID：接受，`--decline`：拒绝",
       "help": "显示命令帮助。加 --json 时输出命令树、参数和退出码",
       "events": "实时跟踪守护进程事件（加 --json 时每行一个 JSON）。Ctrl+C 停止",
       "tui": "打开全屏菜单",
@@ -1128,7 +1124,6 @@
       "bot.channels.no_game_chat": "取消游戏聊天频道",
       "bot.channels.board": "状态看板频道（每个运行中的服务器一张卡片：横幅、玩家、运行时间），按名称或 ID 指定",
       "bot.channels.no_board": "取消分配状态看板频道",
-      "bot.link.decline": "拒绝此连接请求",
       "bot.allow.all": "不限制: 此电脑上的所有服务器",
       "sandbox.allow.component": "不隔离运行的组件",
       "sandbox.revoke.component": "撤销许可的组件",
@@ -1180,9 +1175,7 @@
       "executable": "要下载的服务器可执行文件名（默认：模块的 server_executable）",
       "accept": "要同意的条款 id（仅限已阅读的）",
       "relay_url": "中继地址",
-      "token": "节点令牌",
       "value": "新值",
-      "alias": "别名",
       "guild": "Discord 服务器 id",
       "member": "Discord 用户 ID",
       "level": "等级（admin·user·chatbot·banned，或此服务器添加的等级名称）",
@@ -1375,7 +1368,6 @@
     "after": "名称写一部分即可（例：start pal）。在终端不带参数运行会打开全屏菜单（SABA_NO_TUI=1 时为交互式 shell）。\n脚本中请使用 --json 和 --yes。退出码：0 成功 · 1 失败 · 2 用法错误 · 3 守护进程连接失败 · 4 未找到 · 130 已取消"
   },
   "restart": {
-    "confirm": "重启服务器“{{name}}”吗？",
     "waiting": "正在重启 {{name}}...",
     "done": "{{name}} 已重启"
   },
@@ -1520,7 +1512,6 @@
     "credit_exhausted": "额度已用完（{{time}}）。充值前无法回复。",
     "tool_on": "开",
     "tool_off": "关",
-    "tool_blocked": "已在通用设置中阻止",
     "tool_unavailable": "暂时无法使用"
   },
   "trust": {
@@ -1734,8 +1725,6 @@
     },
     "col": {
       "name": "名称",
-      "game": "游戏",
-      "players": "在线",
       "port": "端口",
       "uptime": "运行",
       "about": "说明",
@@ -1748,7 +1737,6 @@
     "no_servers": "尚无服务器。按 n 新建服务器。",
     "empty": "（无）",
     "detail": "详情",
-    "server_console": "控制台",
     "console_empty": "尚无输出",
     "discord": {
       "relay": "中继",
@@ -1771,7 +1759,6 @@
     "pick_first": "请先从列表中选择一项。",
     "gui_switch": "切换到 GUI",
     "output": "输出",
-    "daemon_log": "守护进程日志",
     "use_switch": "在这里请按 F9(切换到 GUI)。",
     "console_input_hint": "输入服务器命令 · Enter 发送",
     "keys_tabs": "←→ 切换页面 · ↓ 进入 · 1-5 页面 · Ctrl+K 查找 · : 命令 · ? 帮助 · q 退出",

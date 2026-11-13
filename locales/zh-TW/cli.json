@@ -18,7 +18,7 @@
     "ask_source": "要如何準備？",
     "ask_preset": "要以推薦設定開始嗎？",
     "no_preset": "預設設定",
-    "agreements_declined": "未同意條款，伺服器建立已取消",
+    "agreements_declined": "要建立伺服器，請同意條款。",
     "not_installable": "{{key}}：此值無法安裝新伺服器。可選的值：{{choices}}",
     "set_needs_wait": "新安裝伺服器的設定（--set）會在安裝完成後儲存。請不加 --no-wait 執行，或安裝完成後以 server set 變更。",
     "created_installing": "已建立 {{name}}。正在安裝伺服器檔案...",
@@ -254,7 +254,6 @@
     "what": "說明",
     "when": "時間",
     "why": "原因",
-    "rcon_port": "RCON 連接埠",
     "rest_port": "REST 連接埠",
     "author": "作者",
     "mode": "模式",
@@ -724,7 +723,6 @@
     "restart_hint": "重新啟動 {{name}} 以套用：saba-chan-cli restart {{name}}",
     "sync_failed": "已儲存，但遊戲設定檔寫入失敗：{{error}}",
     "ignored": "Saba-chan 不使用的設定，已忽略：{{keys}}",
-    "unknown_key": "{{key}} 是新的鍵",
     "restart_required_mark": "修改後需重新啟動",
     "restart_required": "重新啟動後生效：{{keys}}",
     "hidden": "因目前未使用而隱藏的設定: {{keys}}"
@@ -784,7 +782,6 @@
     "preflight_failed": "遊戲模組執行環境準備失敗：{{error}}。下次伺服器操作時重試。"
   },
   "stop": {
-    "confirm": "確定要停止 「{{name}}」伺服器嗎？",
     "already": "{{name}}：已停止",
     "done": "{{name}} 已停止",
     "not_yet": "{{name}} 尚未停止。強制停止：saba-chan-cli stop --force {{name}}",
@@ -1056,7 +1053,6 @@
       "bot.wake": "喚醒 Discord 伺服器中的機器人",
       "bot.music": "Discord 伺服器的會唱歌的 Saba-chan 設定。不帶選項則檢視",
       "bot.allow": "Discord 伺服器可以檢視和呼叫的伺服器。不指定伺服器：檢視，`--all`：所有伺服器",
-      "bot.link": "在 Discord 中不帶代碼使用 /saba connect 發來的連線請求。不帶 ID：檢視，ID：接受，`--decline`：拒絕",
       "help": "顯示命令說明。加 --json 時輸出命令樹、參數與結束代碼",
       "events": "即時追蹤常駐程式事件（加 --json 時每行一個 JSON）。Ctrl+C 停止",
       "tui": "開啟全螢幕選單",
@@ -1128,7 +1124,6 @@
       "bot.channels.no_game_chat": "取消遊戲聊天頻道",
       "bot.channels.board": "狀態看板頻道（每個執行中的伺服器一張卡片：橫幅、玩家、運作時間），可用名稱或 ID 指定",
       "bot.channels.no_board": "取消指派狀態看板頻道",
-      "bot.link.decline": "拒絕此連線請求",
       "bot.allow.all": "不限制: 此電腦上的所有伺服器",
       "sandbox.allow.component": "不隔離執行的元件",
       "sandbox.revoke.component": "撤銷許可的元件",
@@ -1180,9 +1175,7 @@
       "executable": "要下載的伺服器可執行檔名（預設：模組的 server_executable）",
       "accept": "要同意的條款 id（僅限已閱讀的）",
       "relay_url": "中繼網址",
-      "token": "節點權杖",
       "value": "新值",
-      "alias": "別名",
       "guild": "Discord 伺服器 id",
       "member": "Discord 使用者 ID",
       "level": "等級（admin·user·chatbot·banned，或此伺服器新增的等級名稱）",
@@ -1375,7 +1368,6 @@
     "after": "名稱可只寫一部分（例：start pal）。在終端機不帶參數執行會開啟全螢幕選單（SABA_NO_TUI=1 時為互動式 shell）。\n指令碼請用 --json 和 --yes。結束代碼：0 成功 · 1 失敗 · 2 用法 · 3 常駐程式連線失敗 · 4 找不到 · 130 已取消"
   },
   "restart": {
-    "confirm": "要停止並重新啟動 '{{name}}' 嗎？",
     "waiting": "正在重新啟動 {{name}}...",
     "done": "{{name}} 已重新啟動"
   },
@@ -1520,7 +1512,6 @@
     "credit_exhausted": "額度已用完（{{time}}）。儲值前無法回答。",
     "tool_on": "開",
     "tool_off": "關",
-    "tool_blocked": "已在共用設定中封鎖",
     "tool_unavailable": "暫時無法使用"
   },
   "trust": {
@@ -1688,8 +1679,6 @@
     },
     "col": {
       "name": "名稱",
-      "game": "遊戲",
-      "players": "線上",
       "port": "連接埠",
       "uptime": "運作",
       "about": "說明",
@@ -1702,7 +1691,6 @@
     "no_servers": "還沒有伺服器。按 n 建立新伺服器。",
     "empty": "（無）",
     "detail": "詳細資料",
-    "server_console": "主控台",
     "console_empty": "尚無輸出",
     "discord": {
       "relay": "中繼",
@@ -1725,7 +1713,6 @@
     "pick_first": "請先從清單中選擇一項。",
     "gui_switch": "切換到 GUI",
     "output": "輸出",
-    "daemon_log": "背景服務日誌",
     "use_switch": "在這裡請按 F9(切換到 GUI)。",
     "console_input_hint": "輸入伺服器指令 · Enter 送出",
     "keys_tabs": "←→ 切換頁面 · ↓ 進入 · 1-5 頁面 · Ctrl+K 搜尋 · : 指令 · ? 說明 · q 離開",

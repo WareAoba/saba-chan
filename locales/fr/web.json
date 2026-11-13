@@ -286,8 +286,6 @@
   "more": {
     "metrics": "État du PC",
     "daemon_log": "Journal du daemon",
-    "cpu": "CPU",
-    "memory": "Mémoire",
     "servers_usage": "Utilisation par serveur",
     "none_running": "Aucun serveur en marche",
     "pc_only_note": "Mises à jour, chemins, connexion Discord et paramètres de Saba-chan qui parle : dans l'app Saba-chan sur le PC.",
@@ -395,9 +393,7 @@
     "big_emoji": "Agrandissement des émojis",
     "big_emoji_hint": "Un message contenant seulement un émoji personnalisé est republié en grand",
     "game_chat_guard": "Bloquer les messages quand le lien de chat est désactivé",
-    "game_chat_guard_hint": "Supprime les messages ordinaires du salon de chat du jeu (réponses et messages avec mot d'appel conservés)",
     "game_chat_clear_on_stop": "Effacer le chat à l'arrêt du serveur",
-    "game_chat_clear_on_stop_hint": "Supprime le chat du jeu pendant l'exécution du serveur",
     "music": "Saba-chan qui chante",
     "enabled": "Activé",
     "music_ui": "Panneau du lecteur",

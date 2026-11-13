@@ -18,7 +18,7 @@
     "ask_source": "どの方法で準備しますか？",
     "ask_preset": "おすすめ設定で始めますか？",
     "no_preset": "標準の設定",
-    "agreements_declined": "規約に同意しなかったため、サーバーの作成をキャンセルしました",
+    "agreements_declined": "サーバーを作成するには規約に同意してください。",
     "not_installable": "{{key}}: この値では新しいサーバーをインストールできません。選べる値: {{choices}}",
     "set_needs_wait": "新規インストールするサーバーの設定（--set）は、インストール完了後に保存されます。--no-wait なしで実行するか、インストール後に server set で変更してください。",
     "created_installing": "{{name}} を作成。サーバーファイルをインストール中...",
@@ -254,7 +254,6 @@
     "what": "説明",
     "when": "日時",
     "why": "理由",
-    "rcon_port": "RCON ポート",
     "rest_port": "REST ポート",
     "author": "作者",
     "mode": "モード",
@@ -724,7 +723,6 @@
     "restart_hint": "反映するには {{name}} を再起動してください: saba-chan-cli restart {{name}}",
     "sync_failed": "保存したが、ゲーム設定ファイルへの書き込みに失敗: {{error}}",
     "ignored": "サバちゃん が使わない設定のため無視: {{keys}}",
-    "unknown_key": "{{key}} は新しいキーです。",
     "restart_required_mark": "変更後に再起動",
     "restart_required": "再起動すると反映されます: {{keys}}",
     "hidden": "現在使われないため非表示の設定: {{keys}}"
@@ -784,7 +782,6 @@
     "preflight_failed": "ゲームモジュールの実行環境の準備失敗: {{error}}。次のサーバー操作時に再試行します。"
   },
   "stop": {
-    "confirm": "「{{name}}」サーバーを停止してもよろしいですか?",
     "already": "{{name}}: 既に停止済み",
     "done": "{{name}} 停止済み",
     "force_confirm": "保存せずに停止しますか？",
@@ -1056,7 +1053,6 @@
       "bot.wake": "Discord サーバーでボットを起こす",
       "bot.music": "Discord サーバーのうたうサバちゃんの設定。オプションなし: 表示",
       "bot.allow": "Discord サーバーが見て操作できるサーバー。サーバーなし: 表示。`--all`: すべてのサーバー",
-      "bot.link": "Discord でコードなしの /saba connect から届いた接続要求。ID なし: 表示、ID: 承認、`--decline`: 拒否",
       "help": "コマンドのヘルプを表示。--json ならコマンドツリー・引数・終了コード",
       "events": "デーモンのイベントをリアルタイムで追跡 (--json なら 1 行に JSON 1 つ)。Ctrl+C で終了",
       "tui": "全画面メニューを開く",
@@ -1128,7 +1124,6 @@
       "bot.channels.no_game_chat": "ゲームチャットチャンネルを解除",
       "bot.channels.board": "状況板チャンネル (稼働中のサーバーごとにカード: バナー・接続者・稼働時間)。名前かIDで",
       "bot.channels.no_board": "状況板チャンネルを解除",
-      "bot.link.decline": "この接続リクエストを拒否",
       "bot.allow.all": "制限なし: このPCのすべてのサーバー",
       "sandbox.allow.component": "分離せずに実行するコンポーネント",
       "sandbox.revoke.component": "許可を取り消すコンポーネント",
@@ -1180,9 +1175,7 @@
       "executable": "ダウンロードするサーバー実行ファイル名（既定: モジュールの server_executable）",
       "accept": "同意する規約の ID (読んだものだけ)",
       "relay_url": "リレーのアドレス",
-      "token": "ノードトークン",
       "value": "新しい値",
-      "alias": "別名",
       "guild": "Discord サーバーの ID",
       "member": "Discord のユーザー ID",
       "level": "レベル (admin・user・chatbot・banned、またはこのサーバーに追加した段階名)",
@@ -1375,7 +1368,6 @@
     "after": "名前は一部のみでも指定可 (例: start pal)。引数なしで端末から実行すると全画面メニューが開きます (SABA_NO_TUI=1 なら対話シェル)。\nスクリプトでは --json と --yes を使用してください。終了コード: 0 成功 · 1 失敗 · 2 使い方の誤り · 3 デーモン接続失敗 · 4 なし · 130 キャンセル"
   },
   "restart": {
-    "confirm": "'{{name}}' を再起動しますか？",
     "waiting": "{{name}} を再起動しています...",
     "done": "{{name}} 再起動済み"
   },
@@ -1520,7 +1512,6 @@
     "credit_exhausted": "クレジット切れ ({{time}})。チャージするまで応答できません。",
     "tool_on": "オン",
     "tool_off": "オフ",
-    "tool_blocked": "共通設定でブロック",
     "tool_unavailable": "今は使えません"
   },
   "trust": {
@@ -1738,8 +1729,6 @@
     },
     "col": {
       "name": "名前",
-      "game": "ゲーム",
-      "players": "接続",
       "port": "ポート",
       "uptime": "稼働",
       "about": "説明",
@@ -1752,7 +1741,6 @@
     "no_servers": "サーバーなし。n を押して新しいサーバーを作成してください。",
     "empty": "(なし)",
     "detail": "詳細",
-    "server_console": "コンソール",
     "console_empty": "出力なし",
     "discord": {
       "relay": "リレー",
@@ -1771,7 +1759,6 @@
     "enter_text": "入力",
     "gui_switch": "GUIに切り替え",
     "output": "出力",
-    "daemon_log": "デーモンログ",
     "use_switch": "ここでは F9 (GUIに切り替え) を押してください。",
     "console_input_hint": "サーバーコマンドを入力 · Enter で送信",
     "keys_tabs": "←→ ページ移動 · ↓ 入る · 1-5 ページ · Ctrl+K 検索 · : コマンド · ? ヘルプ · q 終了",

@@ -286,8 +286,6 @@
   "more": {
     "metrics": "Status do PC",
     "daemon_log": "Log do daemon",
-    "cpu": "CPU",
-    "memory": "Memória",
     "servers_usage": "Uso por servidor",
     "none_running": "Nenhum servidor em execução",
     "pc_only_note": "Atualizações, caminhos, conexão com o Discord e configurações do chatbot são feitos no app Saba-chan do PC.",
@@ -395,9 +393,7 @@
     "big_emoji": "Ampliação de emojis",
     "big_emoji_hint": "Uma mensagem só com emoji personalizado é postada em tamanho maior",
     "game_chat_guard": "Bloquear mensagens com a ligação de chat desligada",
-    "game_chat_guard_hint": "Apaga mensagens comuns do canal de chat do jogo (respostas e mensagens com palavra de chamada permanecem)",
     "game_chat_clear_on_stop": "Limpar o chat quando o servidor parar",
-    "game_chat_clear_on_stop_hint": "Apaga o chat do jogo do período em que o servidor esteve em execução",
     "music": "Saba-chan cantora",
     "enabled": "Ligado",
     "music_ui": "Painel do player",

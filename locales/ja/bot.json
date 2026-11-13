@@ -4,17 +4,8 @@
     "help": "help",
     "list": "list"
   },
-  "commands": {
-    "start": "サーバーを起動",
-    "stop": "サーバーを停止",
-    "status": "サーバーステータス",
-    "restart": "サーバーを再起動"
-  },
   "help": {
-    "available_modules": "**利用可能なモジュール:** {{modules}}",
-    "no_modules": "なし",
     "module_title": "**{{module}} コマンド**",
-    "available_commands": "{{commands}}",
     "usage_format": "`{{prefix}} <サーバー> <コマンド>`",
     "modules_header": "🎮 **サーバー:**",
     "slash_hint": "💡 再起動・バックアップ・ポート開放チェックは `<サーバー> 再起動` のように使えます。権限・言語・おやすみ・Web・アップデートはスラッシュコマンド(`/`)でどうぞ。"
@@ -27,7 +18,7 @@
   },
   "list": {
     "title": "🎮 **サーバーリスト**",
-    "empty": "📭 登録されたサーバーなし",
+    "empty": "📭 登録されたサーバーがありません",
     "item": "• **{{name}}** ({{module}}) - {{status}}"
   },
   "status": {
@@ -36,10 +27,8 @@
     "stopped": "⚪ 停止中"
   },
   "server": {
-    "start_request": "⏳ **{{name}}** サーバーを起動しています...",
     "start_complete": "✅ **{{name}}** · 起動",
     "already_running": "ℹ️ **{{name}}** は既に実行中",
-    "stop_request": "⏳ **{{name}}** サーバーを停止しています...",
     "stop_complete": "✅ **{{name}}** · 停止",
     "graceful_stop_unavailable": "⚠️ **{{name}}** は保存して停止を依頼する手段 (コンソール・REST) がないため停止しませんでした。保存せずに終了するには、この PC の サバちゃん で強制終了を選んでください。",
     "status_check": "📊 **{{name}}** · {{status}}",
@@ -54,11 +43,7 @@
     "rest_port_closed": "REST ポート {{port}} 接続失敗"
   },
   "command": {
-    "executing": "⏳ **{{name}}** - `{{command}}` 実行中...",
     "missing_required": "❌ 必須引数がありません: `{{arg_name}}`\n使用方法: `{{prefix}} {{alias}} {{command}} <{{arg_name}}>`\n説明: {{description}}",
-    "execute_failed": "❌ **{{name}}** 実行失敗\n{{error}}",
-    "unknown_command": "❓ 不明なコマンド: \"{{command}}\" ({{resolved}})",
-    "no_available": "❓ 不明なコマンド: \"{{command}}\" ({{resolved}})",
     "done": "✅ **{{name}}** · {{label}}",
     "failed": "❌ **{{name}}** · {{label}}: {{reason}}",
     "players": "プレイヤー",
@@ -80,32 +65,22 @@
   },
   "errors": {
     "error_title": "コマンド実行エラー",
-    "unknown": "不明なエラー",
     "agreement_required": "サーバーを起動するには{{names}}への同意が必要です。PC の サバちゃん で同意してください。",
     "memory_limit_at_start": "起動中にメモリ上限 ({{limit}} MiB) に達したためサーバーが停止しました。上限を RAM 設定より高くするか、空にしてください。",
     "runner_missing": "saba-runner がないため管理型起動は使用不可。このサーバーの管理型起動をオフにするか、サバちゃん を再インストールしてください。",
     "preflight_failed": "起動前の点検に失敗したため起動しませんでした ({{code}})。詳細は PC の サバちゃん で確認してください。",
-    "agreement_local_only": "規約への同意はこの PC の サバちゃん でのみ可能",
     "no_command_path": "「{{name}}」に サバちゃん のコンソールが接続されていないためコマンドを受け付けられません。PC の サバちゃん で管理モードでサーバーを再起動してください。",
     "auth_failed": "認証失敗",
-    "player_not_found": "プレイヤーが見つかりません",
     "internal_server_error": "内部サーバーエラー",
-    "rest_api_disabled": "REST API が無効です",
-    "rcon_disabled": "RCON が無効です",
     "not_found": "要求されたリソースが見つかりません",
-    "connection_refused": "サーバー接続失敗",
-    "timeout": "リクエストのタイムアウト",
-    "host_not_found": "サーバーホストが見つかりません",
-    "service_unavailable": "サービス利用不可",
     "unknown_input": "❌ 不明なコマンドです。",
     "command_not_found": "❌ 存在しないコマンドです。",
     "permission_denied": "❌ このコマンドを使用する権限がありません",
-    "members_only": "❌ 専用メンバーのみ使用できるサーバーです。サーバーの所有者に専用メンバー名簿への追加を依頼してください。",
-    "local_single_guild_only": "⚠️ ローカルボットは 1 つのサーバーでのみ使用できます。現在 {{count}} 個のサーバーに所属中。使用しないサーバーからボットを削除してください。",
-    "alias_conflict": "❌ エイリアス '{{alias}}' が複数のモジュールに重複登録されています: {{modules}}。より具体的なエイリアスを使用してください。",
-    "multiple_instances": "⚠️ '{{module}}' モジュールが複数あるためエイリアスでは区別できません。インスタンス名を使用してください。",
+    "members_only": "❌ 専用メンバーのみ使用できるサーバーです。サーバーの所有者に招待を依頼してください。",
+    "alias_conflict": "❌ エイリアス '{{alias}}' が複数のモジュールに重複登録されています: {{modules}}。別のエイリアスを使用してください。",
+    "multiple_instances": "⚠️ '{{module}}' のインスタンスが複数あります。インスタンス名を使用してください。",
     "danger_needs_name": "⚠️ 危険なコマンドはゲーム名では実行できません。サーバー名「{{name}}」で呼んでください。",
-    "slash_only": "🔒 「{{command}}」は呼び出した人にだけ見えるよう、スラッシュコマンドで通知します。チャット欄に `/` を入力して **{{name}}** › {{command}} を選んでください。"
+    "slash_only": "🔒 このコマンドはスラッシュコマンドで入力してください: `/{{name}} {{command}}`"
   },
   "messages": {
     "command_error": "コマンド実行エラー"
@@ -113,15 +88,10 @@
   "relay": {
     "command_complete": "✅ 完了"
   },
-  "cloud": {
-    "status_online": "🟢 オンライン",
-    "status_offline": "⚪ オフライン",
-    "status_check_failed": "❌ ステータス確認失敗: {{error}}"
-  },
   "schedule": {
     "restart_warning": "{{minutes}}分後にサーバーを再起動します。",
     "update_warning": "{{minutes}}分後にアップデートのためサーバーを再起動します。",
-    "update_cancelled": "予定されたアップデートを取り消しました。サーバーは実行を続けます。",
+    "update_cancelled": "アップデートを取り消しました。",
     "stop_warning": "{{minutes}}分後にサーバーを停止します。"
   },
   "provision": {
@@ -137,7 +107,7 @@
     "save_failed": "サーバーファイルは取得したが、サーバー情報の保存に失敗。詳細はデーモンのログを確認してください。",
     "backup_failed": "アップデート前のバックアップ失敗: {{reason}}",
     "version_installing": "バージョン {{version}} をインストールしています…",
-    "version_installed": "バージョンのインストール完了",
+    "version_installed": "{{version}} のインストール完了!",
     "install_backup_failed": "インストール前のバックアップに失敗したためインストールしません: {{reason}}"
   },
   "actions": {
@@ -443,9 +413,9 @@
         "item": "• `{{address}}`",
         "item_named": "• {{label}} `{{address}}`",
         "stopped": "💤 サーバー停止中。起動すると接続できます。",
-        "unknown": "❔ サーバーちゃん がこの PC のグローバルアドレスを確認できません。しばらくしてから再試行してください。",
-        "no_ports": "📭 このゲームは接続ポート情報なし",
-        "hidden": "🔒 サーバーの所有者が Discord でアドレスを公開しない設定にしています。所有者に直接お問い合わせください。"
+        "unknown": "❔ アドレスが見つかりません。しばらくしてから再試行してください。",
+        "no_ports": "📭 ポートが不明です。",
+        "hidden": "🔒 アドレスが非公開のサーバーです。サーバーの所有者に直接お問い合わせください。"
       },
       "port_check": {
         "open": "✅ 外部から接続可能",
@@ -454,9 +424,9 @@
         "closed": "🚫 外部から接続不可",
         "cgnat": "⚠️ ルーターがグローバル IP を取得できていません (CGNAT)",
         "unknown": "❔ 一部のポートの確認失敗",
-        "no_ports": "📭 このゲームは確認するポート情報なし",
-        "host_mismatch": "🌐 公開アドレスがこの PC を指していません",
-        "host_unresolved": "🌐 公開アドレスが見つかりません"
+        "no_ports": "📭 確認するポートが不明です。",
+        "host_mismatch": "🌐 アドレスが正しくありません。",
+        "host_unresolved": "🌐 アドレスが見つかりません。"
       },
       "port_status": {
         "open": "開放",
@@ -468,20 +438,20 @@
       },
       "port_item": "• {{port}}/{{protocol}} · {{status}}",
       "port_hint": {
-        "closed": "ルーターでこのポートをこの PC に転送しているか、PC のファイアウォールで許可しているか確認してください。",
-        "firewall": "Windows ファイアウォールがこのポートへの受信接続をブロックしています。現在接続中のネットワーク (プライベート・パブリック) で、サーバーが停止中なら saba-core を、実行中ならゲームサーバーのプログラムを Windows ファイアウォールの設定で許可してから、再確認してください。",
-        "router": "PC のファイアウォールはこのポートを許可しています。ルーターの設定でこのポートをこの PC に転送してから、再確認してください。",
-        "cgnat": "プロバイダーが 1 つのグローバル IP を複数の家庭で共有しているため、ポート開放では開けません。プロバイダーにグローバル IP を依頼するか、Tailscale などの VPN を使ってください。",
+        "closed": "ポート開放とファイアウォールの設定を確認してください。",
+        "firewall": "ファイアウォールで saba-core とゲームサーバーを許可してください。",
+        "router": "ポート開放の設定を確認してください。",
+        "cgnat": "共有 IP です。プロキシや VPN を使ってください。",
         "unknown": "実行中のサーバーの UDP ポートと、他のプログラムが使用中のポートは確認できません。サーバーを停止して再確認してください。"
       },
       "server_update": {
-        "available": "新バージョンあり (ビルド {{local}} → {{remote}})",
+        "available": "新バージョン発見! (ビルド {{local}} → {{remote}})",
         "latest": "最新 (ビルド {{build}})",
         "check_failed": "アップデート確認失敗: {{error}}",
-        "unsupported": "サバちゃん がアップデートしないサーバー (手動インストール)",
+        "unsupported": "アップデートできないサーバーです。",
         "unchecked": "アップデートを確認できないサーバー",
-        "started": "アップデートを開始済み。完了したら通知します。",
-        "cancelled": "予告中のアップデートを取り消しました。サーバーは実行を続けます。",
+        "started": "アップデート中です。",
+        "cancelled": "アップデートを取り消しました。",
         "scheduled": "ゲーム内で {{minutes}} 分前から予告した後、保存・停止・アップデートして再起動します。",
         "players": "現在の接続者 {{count}} 人"
       }
@@ -498,7 +468,7 @@
     "players_failed": "接続者の取得失敗",
     "backup_file_locked": "サーバーが使用中のファイル ({{file}}) があるためバックアップ失敗。サーバーを停止してから再試行してください。",
     "backup_failed": "バックアップ失敗",
-    "backup_unsupported": "このゲームはバックアップ非対応",
+    "backup_unsupported": "バックアップできないサーバーです",
     "nothing_to_back_up": "バックアップするワールドなし",
     "backup_limit": "リモートバックアップの数が上限超過。PC で古いバックアップを削除してください。",
     "backup_busy": "別のバックアップまたは復元が進行中",
@@ -510,7 +480,7 @@
     "backup_save_rejected": "サーバーが保存コマンドを拒否したためバックアップしませんでした。サーバーを停止してから再度バックアップしてください。",
     "backup_save_unconfirmed": "サーバーから保存完了の応答がなくバックアップしませんでした。しばらくしてから再試行するか、サーバーを停止してからバックアップしてください。",
     "backup_server_stopped": "バックアップ中にサーバーが停止したため、そのバックアップを削除しました。サーバーの状態を確認してから再度バックアップしてください。",
-    "snapshot_not_found": "ゲームの自動バックアップなし",
+    "snapshot_not_found": "自動バックアップがありません",
     "snapshot_not_deletable": "ゲームの自動バックアップは サバちゃん から削除できません"
   },
   "chatbot": {

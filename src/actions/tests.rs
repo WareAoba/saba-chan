@@ -388,8 +388,8 @@ async fn remote_results_carry_a_readable_summary() {
     let listed = query(&state, "instance.list", None, &json!({}), &relay("someone", false)).await.unwrap();
     let text = listed["text"].as_str().unwrap();
     assert!(text.contains("srv") && text.contains("정지됨"), "{text}");
-    assert!(query(&state, "backup.list", Some(&id), &json!({}), &relay("someone", false)).await.unwrap()["text"].as_str().unwrap().contains("백업 없음"));
-    assert!(query(&state, "instance.events", Some(&id), &json!({}), &relay("someone", true)).await.unwrap()["text"].as_str().unwrap().contains("기록 없음"));
+    assert!(query(&state, "backup.list", Some(&id), &json!({}), &relay("someone", false)).await.unwrap()["text"].as_str().unwrap().contains("백업이 없습니다"));
+    assert!(query(&state, "instance.events", Some(&id), &json!({}), &relay("someone", true)).await.unwrap()["text"].as_str().unwrap().contains("기록이 없습니다"));
     assert!(query(&state, "monitor.summary", None, &json!({}), &relay("someone", false)).await.unwrap()["text"].as_str().unwrap().contains("CPU"));
     // GUI·CLI는 자기 화면으로 그린다
     assert!(run(&state, "instance.list", None, &json!({}), None, &gui()).await.unwrap().get("text").is_none());
@@ -1273,7 +1273,7 @@ async fn a_failed_remote_action_carries_a_short_reason() {
     set_node(&state, json!({ "ownerDiscordId": "owner" })).await;
     let out = query(&state, "server.query:players", Some(&id), &json!({}), &relay("owner", false)).await.unwrap();
     assert_eq!(out["success"], false, "{out}");
-    assert_eq!(out["reason"], "이 게임은 지원하지 않음", "{out}");
+    assert_eq!(out["reason"], "이 게임은 지원하지 않습니다", "{out}");
     // 이 PC 화면은 원문을 그대로 쓴다
     let local = query(&state, "server.query:players", Some(&id), &json!({}), &gui()).await.unwrap();
     assert!(local.get("reason").is_none(), "{local}");
@@ -1723,7 +1723,7 @@ async fn server_address_is_offered_only_where_the_reply_stays_with_the_caller() 
     for text in ["srv 주소", "srv address"] {
         let hint = plan_text(&state, text, &relay("owner", false)).await.unwrap();
         assert!(hint.get("planId").is_none() && hint.get("code").is_none(), "{text}: {hint}");
-        assert!(hint["text"].as_str().is_some_and(|t| t.contains("`/`") && t.contains("srv")), "{text}: {hint}");
+        assert!(hint["text"].as_str().is_some_and(|t| t.contains("`/srv ")), "{text}: {hint}");
         assert_eq!(check_text(&state, text, &relay("owner", false)).await.unwrap()["text"], hint["text"], "{text}");
     }
 }

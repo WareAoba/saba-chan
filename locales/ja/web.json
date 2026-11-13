@@ -286,8 +286,6 @@
   "more": {
     "metrics": "PC の状態",
     "daemon_log": "デーモンログ",
-    "cpu": "CPU",
-    "memory": "メモリ",
     "servers_usage": "サーバーごとの使用量",
     "none_running": "実行中のサーバーなし",
     "pc_only_note": "アップデート、パス、Discord 接続、チャットボット設定は PC の サバちゃん アプリで行ってください。",
@@ -395,9 +393,7 @@
     "big_emoji": "絵文字アップスケール",
     "big_emoji_hint": "カスタム絵文字のみの投稿を大きく表示します",
     "game_chat_guard": "チャット連動がオフのとき書き込みを止める",
-    "game_chat_guard_hint": "ゲームチャットチャンネルの通常の投稿を削除します (返信・呼び出し語の投稿は残ります)",
     "game_chat_clear_on_stop": "サーバーが止まったらチャットを消す",
-    "game_chat_clear_on_stop_hint": "サーバーが実行中だった間のゲームチャットを削除します",
     "music": "うたうサバちゃん",
     "enabled": "オン",
     "music_ui": "プレイヤー画面",

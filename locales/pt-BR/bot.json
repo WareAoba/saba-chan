@@ -4,17 +4,8 @@
     "help": "help",
     "list": "list"
   },
-  "commands": {
-    "start": "Iniciar servidor",
-    "stop": "Parar servidor",
-    "status": "Status do servidor",
-    "restart": "Reiniciar servidor"
-  },
   "help": {
-    "available_modules": "**Módulos disponíveis:** {{modules}}",
-    "no_modules": "Nenhum",
     "module_title": "**Comandos {{module}}**",
-    "available_commands": "{{commands}}",
     "usage_format": "`{{prefix}} <servidor> <comando>`",
     "modules_header": "🎮 **Servidores:**",
     "slash_hint": "💡 Reiniciar, backups e a verificação de portas funcionam como `<servidor> reiniciar`. Permissões, idioma, modo dormir, web e atualizações são comandos de barra (`/`)."
@@ -36,10 +27,8 @@
     "stopped": "⚪ Parado"
   },
   "server": {
-    "start_request": "⏳ Iniciando servidor **{{name}}**...",
     "start_complete": "✅ **{{name}}** · Iniciar",
     "already_running": "ℹ️ **{{name}}** já em execução",
-    "stop_request": "⏳ Parando servidor **{{name}}**...",
     "stop_complete": "✅ **{{name}}** · Parar",
     "graceful_stop_unavailable": "⚠️ O servidor **{{name}}** não foi parado: sem como (console ou REST) pedir salvamento antes de parar. Para encerrar sem salvar, escolha a parada forçada no Saba-chan deste PC.",
     "status_check": "📊 **{{name}}** · {{status}}",
@@ -54,11 +43,7 @@
     "rest_port_closed": "Falha ao conectar à porta REST {{port}}"
   },
   "command": {
-    "executing": "⏳ **{{name}}** - `{{command}}` executando...",
     "missing_required": "❌ Argumento obrigatório ausente: `{{arg_name}}`\nUso: `{{prefix}} {{alias}} {{command}} <{{arg_name}}>`\nDescrição: {{description}}",
-    "execute_failed": "❌ Falha na execução em **{{name}}**\n{{error}}",
-    "unknown_command": "❓ Comando desconhecido: \"{{command}}\" ({{resolved}})",
-    "no_available": "❓ Comando desconhecido: \"{{command}}\" ({{resolved}})",
     "done": "✅ **{{name}}** · {{label}}",
     "failed": "❌ **{{name}}** · {{label}}: {{reason}}",
     "players": "Jogadores",
@@ -80,40 +65,25 @@
   },
   "errors": {
     "error_title": "Erro ao executar comando",
-    "unknown": "Erro desconhecido",
     "agreement_required": "Aceite {{names}} para iniciar o servidor. Aceite no Saba-chan do PC.",
     "memory_limit_at_start": "O servidor foi encerrado ao atingir o limite de memória ({{limit}} MiB) durante a inicialização. Defina o limite acima da configuração de RAM ou deixe-o vazio.",
     "runner_missing": "saba-runner ausente; início gerenciado impossível. Desative o início gerenciado deste servidor ou reinstale o Saba-chan.",
     "preflight_failed": "Início cancelado por falha na verificação prévia ({{code}}). Veja os detalhes no Saba-chan do PC.",
-    "agreement_local_only": "Termos só podem ser aceitos no Saba-chan deste PC",
     "no_command_path": "'{{name}}' não tem console do Saba-chan conectado e não recebe comandos. Reinicie o servidor no modo gerenciado, no Saba-chan do PC.",
-    "alias_conflict": "❌ O alias '{{alias}}' está duplicado em vários módulos: {{modules}}. Use um alias mais específico.",
-    "multiple_instances": "⚠️ Há vários servidores do módulo '{{module}}'; o alias não distingue. Use o nome da instância.",
+    "alias_conflict": "❌ O apelido '{{alias}}' está registrado em vários módulos: {{modules}}. Use outro apelido.",
+    "multiple_instances": "⚠️ Há várias instâncias de '{{module}}'. Use o nome da instância.",
     "danger_needs_name": "⚠️ Comandos perigosos não rodam pelo nome do jogo. Use o nome do servidor '{{name}}'.",
-    "slash_only": "🔒 {{command}} é mostrado só a quem o chamou, por isso é um comando de barra. Digite `/` e escolha **{{name}}** › {{command}}.",
+    "slash_only": "🔒 Digite este comando como comando de barra: `/{{name}} {{command}}`",
     "auth_failed": "Falha na autenticação",
-    "player_not_found": "Jogador não encontrado",
     "internal_server_error": "Erro interno do servidor",
-    "rest_api_disabled": "API REST desabilitada",
-    "rcon_disabled": "RCON desabilitado",
     "not_found": "Recurso solicitado não encontrado",
-    "connection_refused": "Falha ao conectar ao servidor",
-    "timeout": "Tempo esgotado",
-    "host_not_found": "Host do servidor não encontrado",
-    "service_unavailable": "Serviço indisponível",
     "unknown_input": "❌ Comando desconhecido.",
     "command_not_found": "❌ O comando não existe.",
     "permission_denied": "❌ Sem permissão para usar este comando",
-    "members_only": "❌ Servidor exclusivo para membros. Peça ao dono do servidor para incluir você na lista de membros.",
-    "local_single_guild_only": "⚠️ O bot local só funciona em um servidor, mas está em {{count}}. Remova o bot dos servidores que não usa."
+    "members_only": "❌ Este servidor é só para membros designados. Peça um convite ao dono do servidor."
   },
   "messages": {
     "command_error": "Erro ao executar comando"
-  },
-  "cloud": {
-    "status_online": "🟢 Online",
-    "status_offline": "⚪ Offline",
-    "status_check_failed": "❌ Falha na verificação de status: {{error}}"
   },
   "relay": {
     "command_complete": "✅ Concluído"
@@ -121,7 +91,7 @@
   "schedule": {
     "restart_warning": "O servidor será reiniciado em {{minutes}} min.",
     "update_warning": "O servidor será reiniciado para atualização em {{minutes}} min.",
-    "update_cancelled": "Atualização agendada cancelada. O servidor continua em execução.",
+    "update_cancelled": "Atualização cancelada.",
     "stop_warning": "O servidor será desligado em {{minutes}} min."
   },
   "provision": {
@@ -137,7 +107,7 @@
     "save_failed": "Arquivos do servidor baixados, mas falha ao salvar os dados do servidor. Detalhes no log do daemon.",
     "backup_failed": "Falha no backup antes da atualização: {{reason}}",
     "version_installing": "Instalando a versão {{version}}…",
-    "version_installed": "Versão instalada",
+    "version_installed": "{{version}} instalada!",
     "install_backup_failed": "Falha no backup antes da instalação; nada instalado: {{reason}}"
   },
   "actions": {
@@ -443,9 +413,9 @@
         "item": "• `{{address}}`",
         "item_named": "• {{label}} `{{address}}`",
         "stopped": "💤 Servidor parado. Inicie-o para permitir conexões.",
-        "unknown": "❔ O Server-chan não conseguiu obter o endereço público deste PC. Tente de novo em instantes.",
-        "no_ports": "📭 Este jogo não informa porta de conexão",
-        "hidden": "🔒 O dono do servidor definiu no Discord não divulgar o endereço. Pergunte diretamente a ele."
+        "unknown": "❔ Endereço não encontrado. Tente novamente em instantes.",
+        "no_ports": "📭 Porta desconhecida.",
+        "hidden": "🔒 O endereço deste servidor é privado. Pergunte diretamente ao dono do servidor."
       },
       "port_check": {
         "open": "✅ Acessível pela internet",
@@ -454,9 +424,9 @@
         "closed": "🚫 Inacessível pela internet",
         "cgnat": "⚠️ Roteador sem IP público (CGNAT)",
         "unknown": "❔ Falha ao verificar algumas portas",
-        "no_ports": "📭 Este jogo não informa portas a verificar",
-        "host_mismatch": "🌐 O endereço público não aponta para este PC",
-        "host_unresolved": "🌐 Endereço público não encontrado"
+        "no_ports": "📭 Nenhuma porta conhecida para verificar.",
+        "host_mismatch": "🌐 Endereço incorreto.",
+        "host_unresolved": "🌐 Endereço não encontrado."
       },
       "port_status": {
         "open": "Aberta",
@@ -468,20 +438,20 @@
       },
       "port_item": "• {{port}}/{{protocol}} · {{status}}",
       "port_hint": {
-        "closed": "Confira se o roteador redireciona esta porta para este PC e se o firewall do PC a permite.",
-        "firewall": "O Firewall do Windows bloqueia conexões de entrada nesta porta. Na rede atual (privada ou pública), permita nas configurações do Firewall do Windows o saba-core (servidor parado) ou o programa do servidor de jogo (em execução) e verifique de novo.",
-        "router": "O firewall do PC permite esta porta. Redirecione esta porta para este PC nas configurações do roteador e verifique de novo.",
-        "cgnat": "A operadora divide um IP público entre várias casas, então o redirecionamento de portas não abre. Peça um IP público à operadora ou use uma VPN como o Tailscale.",
+        "closed": "Verifique o redirecionamento de portas e as configurações do firewall.",
+        "firewall": "Permita o saba-core e o servidor do jogo no firewall.",
+        "router": "Verifique as configurações de redirecionamento de portas.",
+        "cgnat": "É um IP compartilhado. Use um proxy ou uma VPN.",
         "unknown": "Portas UDP de servidor em execução e portas usadas por outros programas não são verificáveis. Pare o servidor e verifique de novo."
       },
       "server_update": {
-        "available": "Nova versão disponível (build {{local}} → {{remote}})",
+        "available": "Nova versão encontrada! (build {{local}} → {{remote}})",
         "latest": "Versão mais recente (build {{build}})",
         "check_failed": "Falha ao verificar atualização: {{error}}",
-        "unsupported": "Servidor não atualizado pelo Saba-chan (instalado manualmente)",
+        "unsupported": "Este servidor não pode ser atualizado.",
         "unchecked": "Servidor sem verificação de atualização",
-        "started": "Atualização iniciada. Avisa ao terminar.",
-        "cancelled": "Atualização anunciada cancelada. O servidor continua em execução.",
+        "started": "Atualizando.",
+        "cancelled": "Atualização cancelada.",
         "scheduled": "Avisa no jogo a partir de {{minutes}} minutos antes; depois salva, para, atualiza e reinicia.",
         "players": "{{count}} jogadores online agora"
       }
@@ -498,7 +468,7 @@
     "players_failed": "Falha ao consultar jogadores",
     "backup_file_locked": "Backup falhou: o servidor está usando um arquivo ({{file}}). Pare o servidor e tente de novo.",
     "backup_failed": "Falha no backup",
-    "backup_unsupported": "Este jogo não suporta backup",
+    "backup_unsupported": "Este servidor não pode ser copiado em backup",
     "nothing_to_back_up": "Nenhum mundo para backup",
     "backup_limit": "Limite de backups remotos excedido. Apague backups antigos no PC.",
     "backup_busy": "Outro backup ou restauração em andamento",
@@ -510,7 +480,7 @@
     "backup_save_rejected": "O servidor recusou o comando de salvar; sem backup. Pare o servidor e refaça o backup.",
     "backup_save_unconfirmed": "Sem confirmação de salvamento do servidor; sem backup. Tente de novo em instantes ou pare o servidor antes do backup.",
     "backup_server_stopped": "O servidor parou durante o backup; backup descartado. Verifique o estado do servidor e refaça o backup.",
-    "snapshot_not_found": "Nenhum backup automático do jogo",
+    "snapshot_not_found": "Nenhum backup automático",
     "snapshot_not_deletable": "Backups automáticos do jogo não podem ser apagados pelo Saba-chan"
   },
   "chatbot": {

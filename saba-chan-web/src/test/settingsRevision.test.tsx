@@ -67,7 +67,7 @@ describe('웹 서버 설정 저장의 revision', () => {
         await flush();
         const confirm = useApp.getState().confirm;
         expect(confirm?.message).toBe(
-            'The settings were changed elsewhere in the meantime. Load the new values, then make your change again.',
+            'Settings changed elsewhere. Load the new values, then edit again.',
         );
         expect(motd().value).toBe('mine');
         await act(async () => confirm?.done(true));

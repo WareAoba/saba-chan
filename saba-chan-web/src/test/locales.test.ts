@@ -96,7 +96,6 @@ const SAME_AS_EN: Record<string, string[]> = {
         'gui.json:settings_modal.console_token_error',
         'gui.json:settings_modal.console_token_selector',
         'gui.json:settings_modal.toast_duration_normal',
-        'gui.json:background_modal.status_error',
         'gui.json:shell.tab_info',
         'gui.json:shell.daemon_short',
         'gui.json:discord.level_admin',

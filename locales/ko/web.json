@@ -286,8 +286,6 @@
   "more": {
     "metrics": "PC 상태",
     "daemon_log": "데몬 로그",
-    "cpu": "CPU",
-    "memory": "메모리",
     "servers_usage": "서버별 사용량",
     "none_running": "실행 중인 서버 없음",
     "pc_only_note": "업데이트, 경로, 디스코드 연결, 챗봇 설정은 PC의 사바쨩 앱에서 해 주세요.",
@@ -395,9 +393,7 @@
     "big_emoji": "이모지 업스케일",
     "big_emoji_hint": "커스텀 이모지만 보내면 크게 바꿔 올립니다",
     "game_chat_guard": "채팅 연동이 꺼져 있을 때 글 막기",
-    "game_chat_guard_hint": "게임 채팅 채널의 일반 글을 지웁니다 (답장·호출어 글은 남김)",
     "game_chat_clear_on_stop": "서버가 정지되면 채팅 지우기",
-    "game_chat_clear_on_stop_hint": "서버가 실행 중이던 동안의 게임 채팅을 지웁니다",
     "music": "노래하는 사바쨩",
     "enabled": "켜기",
     "music_ui": "플레이어 화면",

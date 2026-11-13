@@ -18,7 +18,7 @@
     "ask_source": "How do you want to set it up?",
     "ask_preset": "Start with the recommended settings?",
     "no_preset": "No preset",
-    "agreements_declined": "Server creation canceled: agreements not accepted",
+    "agreements_declined": "Agree to the terms to create the server.",
     "not_installable": "{{key}}: a new server can't be installed with this value. Choices: {{choices}}",
     "set_needs_wait": "Settings (--set) for a server being installed are saved after the install finishes. Run without --no-wait, or change them with server set once it is installed.",
     "created_installing": "{{name}} created. Installing server files...",
@@ -254,7 +254,6 @@
     "what": "Description",
     "when": "When",
     "why": "Why",
-    "rcon_port": "RCON port",
     "rest_port": "REST port",
     "author": "Author",
     "mode": "Mode",
@@ -724,7 +723,6 @@
     "restart_hint": "Restart {{name}} to apply: saba-chan-cli restart {{name}}",
     "sync_failed": "Saved, but writing the game settings file failed: {{error}}",
     "ignored": "Ignored: Saba-chan doesn't use these settings: {{keys}}",
-    "unknown_key": "{{key}} is a new key",
     "restart_required_mark": "restart to apply",
     "restart_required": "Applies after restart: {{keys}}",
     "hidden": "Hidden because they aren't used now: {{keys}}"
@@ -784,7 +782,6 @@
     "preflight_failed": "Runtime setup for game modules failed: {{error}}. Retried on the next server action."
   },
   "stop": {
-    "confirm": "Are you sure you want to stop “{{name}}” server?",
     "already": "{{name}}: already stopped",
     "done": "{{name}} stopped",
     "force_confirm": "Stop without saving?",
@@ -915,7 +912,6 @@
       "bot.wake": "Wake the bot on a Discord server",
       "bot.music": "Singing Saba-chan settings of a Discord server. No options: show",
       "bot.allow": "Servers a Discord server can see and run. No servers: show. `--all`: every server",
-      "bot.link": "Connection requests sent from Discord with /saba connect and no code. No id: show, ID: accept, `--decline`: refuse",
       "help": "Show help for a command. With --json: the command tree, arguments and exit codes",
       "events": "Follow daemon events in real time (with --json, one JSON per line). Stop with Ctrl+C",
       "install": "Install Saba-chan on this PC without the window installer",
@@ -954,7 +950,6 @@
       "bot.channels.no_game_chat": "Unassign the game chat channel",
       "bot.channels.board": "The status board channel (a card per running server: banner, players, uptime), by name or id",
       "bot.channels.no_board": "Unassign the status board channel",
-      "bot.link.decline": "Refuse this connection request",
       "bot.allow.all": "No limit: every server of this PC",
       "sandbox.allow.component": "Component to run without isolation",
       "sandbox.revoke.component": "Component to take the permission back from",
@@ -1061,7 +1056,6 @@
     "after": "Names can be partial (e.g. start pal). Running with no arguments in a terminal opens the full-screen menu (SABA_NO_TUI=1: interactive shell).\nIn scripts, use --json and --yes. Exit codes: 0 success · 1 failure · 2 usage · 3 daemon connection failed · 4 not found · 130 canceled"
   },
   "restart": {
-    "confirm": "Restart server '{{name}}'?",
     "waiting": "Restarting {{name}}...",
     "done": "{{name}} restarted"
   },
@@ -1206,7 +1200,6 @@
     "credit_exhausted": "Credit exhausted ({{time}}). No replies until it is topped up.",
     "tool_on": "on",
     "tool_off": "off",
-    "tool_blocked": "blocked in shared settings",
     "tool_unavailable": "unavailable now"
   },
   "trust": {
@@ -1420,8 +1413,6 @@
     },
     "col": {
       "name": "Name",
-      "game": "Game",
-      "players": "Players",
       "port": "Port",
       "uptime": "Up",
       "about": "About",
@@ -1434,7 +1425,6 @@
     "no_servers": "No servers yet. Press n to create one.",
     "empty": "(none)",
     "detail": "Details",
-    "server_console": "Console",
     "console_empty": "No output yet",
     "discord": {
       "relay": "Server-chan",
@@ -1457,7 +1447,6 @@
     "pick_first": "Pick one from the list first.",
     "gui_switch": "Switch to GUI",
     "output": "Output",
-    "daemon_log": "Daemon log",
     "use_switch": "Here, press F9 (Switch to GUI).",
     "console_input_hint": "Enter a server command · Enter to send",
     "keys_tabs": "←→ pages · ↓ enter · 1-5 page · Ctrl+K find · : command · ? help · q quit",

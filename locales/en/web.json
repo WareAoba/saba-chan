@@ -286,8 +286,6 @@
   "more": {
     "metrics": "PC status",
     "daemon_log": "Daemon log",
-    "cpu": "CPU",
-    "memory": "Memory",
     "servers_usage": "Usage by server",
     "none_running": "No servers running",
     "pc_only_note": "Do updates, paths, Discord connection, and chatbot settings in the Saba-chan app on the PC.",
@@ -395,9 +393,7 @@
     "big_emoji": "Emoji upscale",
     "big_emoji_hint": "A message with only a custom emoji is reposted larger",
     "game_chat_guard": "Block messages while chat link is off",
-    "game_chat_guard_hint": "Deletes plain messages in the game chat channel (replies and call-word messages are kept)",
     "game_chat_clear_on_stop": "Clear chat when the server stops",
-    "game_chat_clear_on_stop_hint": "Deletes the game chat from while the server was running",
     "music": "Singing Saba-chan",
     "enabled": "On",
     "music_ui": "Player panel",

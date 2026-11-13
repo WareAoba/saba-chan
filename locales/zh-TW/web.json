@@ -286,8 +286,6 @@
   "more": {
     "metrics": "電腦狀態",
     "daemon_log": "常駐程式記錄",
-    "cpu": "CPU",
-    "memory": "記憶體",
     "servers_usage": "各伺服器使用量",
     "none_running": "沒有執行中的伺服器",
     "pc_only_note": "更新·路徑·Discord 連線·聊天機器人設定請在電腦的 Saba-chan 應用程式中進行。",
@@ -395,9 +393,7 @@
     "big_emoji": "表情符號放大",
     "big_emoji_hint": "只傳自訂表情符號時會放大後發佈",
     "game_chat_guard": "聊天連接關閉時阻止發言",
-    "game_chat_guard_hint": "刪除遊戲聊天頻道的一般訊息（回覆·呼叫詞訊息保留）",
     "game_chat_clear_on_stop": "伺服器關閉時清除聊天",
-    "game_chat_clear_on_stop_hint": "刪除伺服器執行期間的遊戲聊天",
     "music": "會唱歌的 Saba-chan",
     "enabled": "開",
     "music_ui": "播放器面板",

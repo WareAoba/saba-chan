@@ -18,7 +18,7 @@
     "ask_source": "¿Cómo quieres prepararlo?",
     "ask_preset": "¿Empezar con la configuración recomendada?",
     "no_preset": "Ajustes predeterminados",
-    "agreements_declined": "Creación del servidor cancelada: términos no aceptados",
+    "agreements_declined": "Acepta los términos para crear el servidor.",
     "not_installable": "{{key}}: no se puede instalar un servidor nuevo con este valor. Opciones: {{choices}}",
     "set_needs_wait": "Los ajustes (--set) de un servidor nuevo se guardan al terminar la instalación. Ejecuta sin --no-wait o cámbialos después con server set.",
     "created_installing": "{{name}} creado. Instalando archivos del servidor...",
@@ -254,7 +254,6 @@
     "what": "Descripción",
     "when": "Cuándo",
     "why": "Motivo",
-    "rcon_port": "Puerto RCON",
     "rest_port": "Puerto REST",
     "author": "Autor",
     "mode": "Modo",
@@ -724,7 +723,6 @@
     "restart_hint": "Reinicia {{name}} para aplicar: saba-chan-cli restart {{name}}",
     "sync_failed": "Guardado, pero error al escribir el archivo de configuración del juego: {{error}}",
     "ignored": "Ajustes ignorados por no ser usados por Saba-chan: {{keys}}",
-    "unknown_key": "{{key}} es una clave nueva.",
     "restart_required_mark": "requiere reinicio",
     "restart_required": "Se aplican al reiniciar: {{keys}}",
     "hidden": "Ocultos porque no se usan ahora: {{keys}}"
@@ -784,7 +782,6 @@
     "preflight_failed": "Error al preparar el entorno de ejecución de los módulos de juego: {{error}}. Se reintentará en la próxima acción del servidor."
   },
   "stop": {
-    "confirm": "¿Está seguro de que desea detener el servidor {{name}}?",
     "already": "{{name}}: ya detenido",
     "done": "{{name}} detenido",
     "not_yet": "{{name}} aún no detenido. Forzar: saba-chan-cli stop --force {{name}}",
@@ -1056,7 +1053,6 @@
       "bot.wake": "Despertar el bot en un servidor de Discord",
       "bot.music": "Ajustes de Saba-chan cantante de un servidor de Discord. Sin opciones: mostrar",
       "bot.allow": "Servidores que un servidor de Discord puede ver y ejecutar. Sin servidores: mostrar. `--all`: todos",
-      "bot.link": "Solicitudes de conexión enviadas desde Discord con /saba connect sin código. Sin id: mostrar, ID: aceptar, `--decline`: rechazar",
       "help": "Muestra la ayuda de un comando. Con --json: el árbol de comandos, los argumentos y los códigos de salida",
       "events": "Seguir los eventos del daemon en vivo (con --json: un JSON por línea). Ctrl+C para parar",
       "tui": "Abrir el menú a pantalla completa",
@@ -1128,7 +1124,6 @@
       "bot.channels.no_game_chat": "Quitar el canal de chat del juego",
       "bot.channels.board": "El canal del panel de estado (una tarjeta por servidor en marcha: banner, jugadores, tiempo activo), por nombre o id",
       "bot.channels.no_board": "Quitar la asignación del canal del panel de estado",
-      "bot.link.decline": "Rechazar esta solicitud de conexión",
       "bot.allow.all": "Sin límite: todos los servidores de este PC",
       "sandbox.allow.component": "Componente que se ejecuta sin aislamiento",
       "sandbox.revoke.component": "Componente al que se retira el permiso",
@@ -1180,9 +1175,7 @@
       "executable": "Nombre del ejecutable del servidor que descargar (predeterminado: server_executable del módulo)",
       "accept": "Id de los términos que aceptar (solo los que hayas leído)",
       "relay_url": "Dirección del relé",
-      "token": "Token de nodo",
       "value": "Valor nuevo",
-      "alias": "Alias",
       "guild": "Id del servidor de Discord",
       "member": "ID de usuario de Discord",
       "level": "Nivel (admin, user, chatbot, banned o el nombre de un nivel añadido a este servidor)",
@@ -1375,7 +1368,6 @@
     "after": "Los nombres pueden ser parciales (p. ej. start pal). Sin argumentos en una terminal se abre el menú a pantalla completa (con SABA_NO_TUI=1, la shell interactiva).\nEn scripts usa --json y --yes. Códigos de salida: 0 correcto · 1 error · 2 uso · 3 daemon inaccesible · 4 no encontrado · 130 cancelado"
   },
   "restart": {
-    "confirm": "¿Reiniciar el servidor '{{name}}'?",
     "waiting": "Reiniciando {{name}}...",
     "done": "{{name}} reiniciado"
   },
@@ -1520,7 +1512,6 @@
     "credit_exhausted": "Crédito agotado ({{time}}). Sin respuestas hasta recargar.",
     "tool_on": "activada",
     "tool_off": "desactivada",
-    "tool_blocked": "bloqueada en los ajustes comunes",
     "tool_unavailable": "no disponible ahora"
   },
   "trust": {
@@ -1687,8 +1678,6 @@
     },
     "col": {
       "name": "Nombre",
-      "game": "Juego",
-      "players": "Jugadores",
       "port": "Puerto",
       "uptime": "Activo",
       "about": "Descripción",
@@ -1701,7 +1690,6 @@
     "no_servers": "Sin servidores. Pulsa n para crear uno.",
     "empty": "(ninguno)",
     "detail": "Detalles",
-    "server_console": "Consola",
     "console_empty": "Sin salida",
     "discord": {
       "relay": "Server-chan",
@@ -1725,7 +1713,6 @@
     "question": "Confirmar",
     "gui_switch": "Cambiar a la GUI",
     "output": "Salida",
-    "daemon_log": "Registro del daemon",
     "use_switch": "Aquí, pulsa F9 (Cambiar a la GUI).",
     "console_input_hint": "Escribe un comando del servidor · Enter para enviar",
     "keys_tabs": "←→ páginas · ↓ entrar · 1-5 página · Ctrl+K buscar · : comando · ? ayuda · q salir",
