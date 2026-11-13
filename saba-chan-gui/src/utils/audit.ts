@@ -86,7 +86,7 @@ const argsText = (args: string | undefined) => {
 /** 동작 이름: 기본 동작은 audit.action_*, 데몬 액션(instance.settings.set 등)은 액션 표의 제목. 모르면 그대로 */
 const actionText = (action: string, t: TFunction) => {
     if (ACTIONS.includes(action)) return t(`audit.action_${action}`);
-    return t(`bot:actions.${action}.title`, { defaultValue: '' }) || action;
+    return t(`daemon:actions.${action}.title`, { defaultValue: '' }) || action;
 };
 
 /** 한 건 → "무엇을" 한 줄 (명령이면 명령 이름과 인자, 원격 데몬에 중계한 조작이면 그 데몬과 요청) */

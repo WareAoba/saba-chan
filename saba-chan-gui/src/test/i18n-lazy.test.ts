@@ -13,7 +13,7 @@ describe('언어 파일 지연 로드', () => {
         await i18n.changeLanguage('ja');
         expect(i18n.t('discord.agent_stopped')).toBe('オフ');
         expect(i18n.hasResourceBundle('ja', 'common')).toBe(true);
-        expect(i18n.hasResourceBundle('ja', 'bot')).toBe(true);
+        expect(i18n.hasResourceBundle('ja', 'daemon')).toBe(true);
     });
 
     it('없는 키는 영어로 떨어진다', async () => {

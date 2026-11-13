@@ -1071,12 +1071,12 @@ impl Session {
                 let locale = payload.get("locale").and_then(Value::as_str).unwrap_or("en").to_string();
                 let caller = match mcp_caller(cmd, &payload, locale.clone()) {
                     Ok(caller) => caller,
-                    Err(e) => return action_result(Err(e), &locale),
+                    Err(e) => return action_result(Err(e)),
                 };
                 // 문장 계획은 디스코드 채팅 경로다 (MCP는 액션 id로만 부른다)
                 if payload.get("text").is_some() {
                     let e = crate::actions::ActionError { status: 400, code: "invalid_input", message: "Text plans are not taken from MCP".into(), data: json!({ "field": "text" }) };
-                    return action_result(Err(e), &locale);
+                    return action_result(Err(e));
                 }
                 let result = match action {
                     "catalog" => {
@@ -1085,7 +1085,7 @@ impl Session {
                     }
                     _ => crate::audit::with_origin(caller.origin.clone(), action_request(&self.server, action, &payload, &caller)).await,
                 };
-                action_result(result, &caller.locale)
+                action_result(result)
             }
             // 액션 카탈로그 (P2·P3): 계획·확인한 계획 실행·읽기 전용 조회·확인 전 권한 검사
             "plan" | "run_plan" | "query" | "check" => {
@@ -1106,7 +1106,7 @@ impl Session {
                     locale: text("locale").unwrap_or_else(|| "en".into()),
                 };
                 let result = crate::audit::with_origin(origin, action_request(&self.server, action, &payload, &caller)).await;
-                action_result(result, &caller.locale)
+                action_result(result)
             }
             // 사바쨩 웹: 릴레이에 웹 세션이 열렸다. 릴레이 웹소켓에 붙는다 (세션이 없어지면 데몬이 끊는다)
             "web_session" => {
@@ -1615,16 +1615,14 @@ fn mcp_caller(cmd: &Value, payload: &Value, locale: String) -> Result<crate::act
     }
 }
 
-/// 릴레이 결과 모양: 성공 `{success:true, data}`, 실패 `{success:false, data:{code, error, args?, field?, reason?}}`
-/// `locale`: 요청 언어. 문구가 있는 실패 코드면 짧은 이유(`reason`)를 함께 준다
-fn action_result(result: Result<Value, crate::actions::ActionError>, locale: &str) -> Value {
+/// 릴레이 결과 모양: 성공 `{success:true, data}`, 실패 `{success:false, data:{code, error, args?, field?, reason}}`.
+/// `reason`은 그 실패 코드의 짧은 이유(`Text`)이고, 릴레이에 그 문구가 없으면 `error`를 보인다
+fn action_result(result: Result<Value, crate::actions::ActionError>) -> Value {
     let mut out = match result {
         Ok(v) => json!({ "success": v.get("success").and_then(Value::as_bool).unwrap_or(true), "data": v }),
         Err(e) => {
             let mut data = json!({ "code": e.code, "error": e.message });
-            if let Some(reason) = crate::chat::known_reason(&crate::chat::i18n::Catalog::for_language(locale), e.code, &e.data) {
-                data["reason"] = json!(reason);
-            }
+            data["reason"] = crate::chat::reason_or(e.code, &e.data, e.message.clone()).to_json();
             if let Value::Object(extra) = &e.data {
                 for (k, v) in extra {
                     data[k] = v.clone();
@@ -3471,7 +3469,7 @@ mod tests {
         let out = action_result(Err(crate::actions::ActionError {
             status: 500, code: "module_exception", message: "peer 203.0.113.7 token=hunter2".into(),
             data: json!({ "success": false, "module": "plain", "function": "start", "path": "/home/me/server", "stderr_tail": ["private traceback"] }),
-        }), "en");
+        }));
         assert!(out["data"].get("stderr_tail").is_none());
         assert_eq!(out["data"]["error"], "peer x.x.x.x token=***");
         assert_eq!(out["data"]["path"], "<path>");

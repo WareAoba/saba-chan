@@ -739,7 +739,7 @@
     "bad_quotes": "Anführungszeichen nicht geschlossen",
     "bye": "Tschüss. Daemon und Server laufen weiter.",
     "ctrl_c": "(drücke erneut Strg+C oder gib exit ein, um zu beenden)",
-    "help_line": "Befehl eingeben (help, Tab zum Vervollständigen). Auch wie in Discord möglich (z. B. \"my-server-1 start\"). Beenden: exit.",
+    "help_line": "Befehl eingeben (help, Tab zum Vervollständigen). Beenden: exit.",
     "welcome": "Saba-chan CLI {{version}}",
     "lang_fixed": "Sprache in der Shell nicht änderbar, bleibt {{lang}}."
   },
@@ -986,7 +986,6 @@
       "config.get": "Eine Einstellung",
       "config.set": "Einstellungen ändern: key=value ... (nur für die CLI: `cli.key`)",
       "config.reset": "Auf Standardwerte zurücksetzen (ohne Schlüssel: alle)",
-      "chat": "Chatbefehl wie in Discord senden (z. B. `chat my-server-1 start`)",
       "version": "Versionen aller installierten Teile",
       "shell": "Interaktive Shell öffnen",
       "completions": "Skript für Shell-Autovervollständigung ausgeben (mit `--install` für diesen Benutzer installieren)",

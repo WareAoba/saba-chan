@@ -739,7 +739,7 @@
     "bad_quotes": "따옴표가 닫히지 않음",
     "bye": "안녕히. 데몬과 서버는 계속 실행됩니다.",
     "ctrl_c": "(나가려면 Ctrl+C를 한 번 더 누르거나 exit)",
-    "help_line": "명령을 입력해 주세요 (help, Tab으로 채우기). 디스코드처럼 말해도 됩니다 (예: \"my-server-1 시작\"). 나가기 exit.",
+    "help_line": "명령을 입력해 주세요 (help, Tab으로 채우기). 나가기 exit.",
     "welcome": "사바쨩 CLI {{version}}",
     "lang_fixed": "셸 안에서는 언어 변경 불가. 지금 언어({{lang}})로 표시합니다."
   },
@@ -986,7 +986,6 @@
       "config.get": "설정 하나",
       "config.set": "설정 바꾸기: 키=값 ... (CLI 전용은 `cli.키`)",
       "config.reset": "기본값으로 되돌리기 (키가 없으면 전부)",
-      "chat": "디스코드처럼 채팅 명령 보내기 (예: `chat my-server-1 시작`)",
       "version": "설치된 모든 부분의 버전",
       "shell": "대화형 셸 열기",
       "completions": "셸 자동 완성 스크립트 출력, `--install`이면 이 사용자 자리에 설치",

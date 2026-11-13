@@ -739,7 +739,7 @@
     "bad_quotes": "Unclosed quote",
     "bye": "Bye. The daemon and servers keep running.",
     "ctrl_c": "(press Ctrl+C again or type exit to leave)",
-    "help_line": "Enter a command (help; Tab to complete). You can also talk like in Discord (e.g. \"my-server-1 start\"). Leave with exit.",
+    "help_line": "Enter a command (help; Tab to complete). Leave with exit.",
     "welcome": "Saba-chan CLI {{version}}",
     "lang_fixed": "Language can't be changed inside the shell. Showing in {{lang}}."
   },

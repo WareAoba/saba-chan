@@ -1,11 +1,11 @@
-//! 데몬이 쓰는 번역 파일(common.json, bot.json)은 모든 언어가 en과 같은 키와 같은 자리 표시자를 가진다.
+//! 데몬이 쓰는 번역 파일(common.json, daemon.json)은 모든 언어가 en과 같은 키와 같은 자리 표시자를 가진다.
 //! gui.json, cli.json은 각 화면을 만드는 쪽이 채운다.
 
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-const FILES: &[&str] = &["common.json", "bot.json"];
+const FILES: &[&str] = &["common.json", "daemon.json"];
 
 fn flatten(prefix: &str, v: &Value, out: &mut BTreeMap<String, String>) {
     match v {

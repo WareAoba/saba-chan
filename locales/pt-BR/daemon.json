@@ -1,0 +1,320 @@
+{
+  "default_prefix": "Saba-chan",
+  "top_level_words": {
+    "help": "help",
+    "list": "list"
+  },
+  "schedule": {
+    "restart_warning": "O servidor será reiniciado em {{minutes}} min.",
+    "update_warning": "O servidor será reiniciado para atualização em {{minutes}} min.",
+    "update_cancelled": "Atualização cancelada.",
+    "stop_warning": "O servidor será desligado em {{minutes}} min."
+  },
+  "provision": {
+    "installing": "Instalando o servidor…",
+    "install_failed": "Falha na instalação",
+    "installed": "Servidor instalado",
+    "updating": "Atualizando o servidor…",
+    "update_failed": "Falha na atualização",
+    "updated": "Servidor atualizado",
+    "module_missing": "Módulo não encontrado: {{error}}",
+    "no_latest_version": "Falha ao obter a versão mais recente do servidor",
+    "script_failed": "Erro no script de instalação. Detalhes no log do daemon.",
+    "save_failed": "Arquivos do servidor baixados, mas falha ao salvar os dados do servidor. Detalhes no log do daemon.",
+    "backup_failed": "Falha no backup antes da atualização: {{reason}}",
+    "version_installing": "Instalando a versão {{version}}…",
+    "version_installed": "{{version}} instalada!",
+    "install_backup_failed": "Falha no backup antes da instalação; nada instalado: {{reason}}"
+  },
+  "server": {
+    "rest_port_closed": "Falha ao conectar à porta REST {{port}}"
+  },
+  "errors": {
+    "agreement_required": "Aceite {{names}} para iniciar o servidor. Aceite no Saba-chan do PC.",
+    "memory_limit_at_start": "O servidor foi encerrado ao atingir o limite de memória ({{limit}} MiB) durante a inicialização. Defina o limite acima da configuração de RAM ou deixe-o vazio.",
+    "runner_missing": "saba-runner ausente; início gerenciado impossível. Desative o início gerenciado deste servidor ou reinstale o Saba-chan."
+  },
+  "chatbot": {
+    "memo_template": "<!-- Linhas de ajuda como esta e títulos vazios não são enviados à Saba-chan falante. Preencha só o que precisar. -->\n\n## Clima do servidor\n<!-- Descreva como as pessoas conversam aqui e até onde as piadas podem ir. Vazio = personalidade padrão. -->\n\n## Como chamar as pessoas\n<!-- Escreva nomes especiais que a Saba-chan deve usar para alguém. Exemplo: chama a pessoa marcada (dono) de \"mestre\". -->\n\n## Palavras deste servidor\n<!-- Apelidos, memes e abreviações que só este servidor usa, com o significado. -->\n\n## Informações do servidor de jogo\n<!-- Regras, horários e outras coisas que a Saba-chan pode contar a quem perguntar. -->\n"
+  },
+  "controllers": {
+    "kick_reason": "Servidor exclusivo para pessoas registradas."
+  },
+  "backups": {
+    "kind": {
+      "manual": "manual",
+      "scheduled": "agendado",
+      "pre-update": "antes da atualização",
+      "pre-restore": "antes da restauração",
+      "snapshot": "Backup do jogo guardado",
+      "game-snapshot": "Backup automático do jogo",
+      "imported": "Importado"
+    },
+    "unreadable": "⚠️ não pode ser aberto"
+  },
+  "actions": {
+    "instance": {
+      "list": {
+        "title": "Lista de servidores",
+        "description": "Servidores registrados e seu estado"
+      },
+      "events": {
+        "title": "Histórico de inícios e paradas",
+        "description": "Quando e por que iniciou ou parou"
+      },
+      "create": {
+        "title": "Criar servidor"
+      },
+      "settings": {
+        "set": {
+          "title": "Alterar configurações do servidor"
+        }
+      },
+      "schedule": {
+        "set": {
+          "title": "Alterar tarefas agendadas"
+        },
+        "get": {
+          "title": "Ver tarefas agendadas"
+        }
+      },
+      "delete": {
+        "title": "Excluir servidor"
+      },
+      "start_notice": {
+        "set": {
+          "title": "Alerta de início",
+          "description": "Avisa o canal de avisos deste servidor do Discord quando este servidor inicia ou para fora do Discord (crash incluído)",
+          "name": "Alerta de início"
+        }
+      },
+      "full_notice": {
+        "set": {
+          "title": "Aviso de servidor cheio",
+          "description": "Avisa o canal de avisos deste servidor do Discord quando este servidor lota ou abre vaga",
+          "name": "Aviso cheio"
+        }
+      },
+      "get": {
+        "title": "Ver configurações do servidor"
+      },
+      "rename": {
+        "title": "Renomear servidor"
+      },
+      "properties": {
+        "get": {
+          "title": "Ver arquivo de configurações do jogo"
+        },
+        "set": {
+          "title": "Alterar arquivo de configurações do jogo"
+        }
+      }
+    },
+    "server": {
+      "status": {
+        "title": "Status do servidor",
+        "description": "O estado de um servidor",
+        "name": "Status"
+      },
+      "start": {
+        "title": "Iniciar servidor",
+        "name": "Iniciar"
+      },
+      "stop": {
+        "title": "Parar servidor",
+        "name": "Parar"
+      },
+      "restart": {
+        "title": "Reiniciar servidor",
+        "name": "Reiniciar"
+      },
+      "console": {
+        "tail": {
+          "title": "Final do console",
+          "description": "Últimas 20 linhas do console"
+        },
+        "send": {
+          "title": "Enviar comando de console"
+        }
+      },
+      "logs": {
+        "read": {
+          "title": "Ler logs",
+          "description": "Lê uma sessão de log do servidor a partir do fim"
+        },
+        "export": {
+          "title": "Exportar logs",
+          "description": "Exporta uma sessão de log do servidor como arquivo .log"
+        }
+      },
+      "players": {
+        "title": "Jogadores",
+        "description": "Quem está online"
+      },
+      "address": {
+        "title": "Endereço do servidor",
+        "name": "Endereço",
+        "description": "Mostra só para você o endereço (IP:porta) que os amigos usam para entrar"
+      },
+      "port_check": {
+        "title": "Verificar redirecionamento de portas",
+        "description": "O relay verifica se este servidor é acessível pela internet"
+      },
+      "chat": {
+        "title": "Enviar chat do jogo",
+        "description": "Envia uma mensagem do Discord para o chat do jogo"
+      },
+      "chat_link": {
+        "title": "Ligação de chat"
+      },
+      "update": {
+        "check": {
+          "title": "Verificar atualização do servidor de jogo",
+          "name": "Verificar atualização",
+          "description": "Verifica se há uma nova versão do servidor de jogo no Steam"
+        },
+        "apply": {
+          "title": "Atualizar servidor de jogo",
+          "name": "Atualizar",
+          "description": "Atualiza o servidor de jogo. Se estiver ligado, avisa no jogo 5 minutos antes, para, atualiza e liga de novo"
+        },
+        "cancel": {
+          "title": "Cancelar a atualização prevista",
+          "name": "cancelar-atualizacao",
+          "description": "Cancela uma atualização do servidor de jogo que ainda está no aviso (antes de desligar)"
+        }
+      },
+      "diagnose": {
+        "title": "Diagnosticar servidor"
+      }
+    },
+    "monitor": {
+      "summary": {
+        "title": "Uso de recursos",
+        "description": "CPU, memória, disco e rede"
+      }
+    },
+    "backup": {
+      "list": {
+        "title": "Backups"
+      },
+      "create": {
+        "title": "Backup"
+      },
+      "restore": {
+        "title": "Restaurar backup",
+        "description": "Sobrescreve os arquivos atuais do servidor com o backup"
+      },
+      "delete": {
+        "title": "Excluir backup"
+      }
+    },
+    "module": {
+      "install": {
+        "title": "Instalar módulo",
+        "description": "Baixa do catálogo oficial e instala"
+      },
+      "list": {
+        "title": "Módulos instalados"
+      },
+      "available": {
+        "title": "Módulos disponíveis"
+      }
+    },
+    "extension": {
+      "enable": {
+        "title": "Ativar extensão"
+      },
+      "disable": {
+        "title": "Desativar extensão"
+      },
+      "list": {
+        "title": "Extensões instaladas"
+      },
+      "available": {
+        "title": "Extensões disponíveis"
+      },
+      "install": {
+        "title": "Instalar extensão"
+      }
+    },
+    "update": {
+      "check": {
+        "title": "Verificar atualizações"
+      },
+      "apply": {
+        "title": "Aplicar atualização",
+        "description": "Baixa e instala a nova atualização e reinicia o app"
+      }
+    },
+    "discord": {
+      "settings": {
+        "set": {
+          "title": "Alterar configurações do Discord",
+          "description": "Idioma, repouso e Saba-chan cantora"
+        }
+      }
+    },
+    "chatbot": {
+      "settings": {
+        "get": {
+          "title": "Ver configurações da Saba-chan falante",
+          "description": "Ligar, palavras de chamada, confirmação, ferramentas"
+        },
+        "set": {
+          "title": "Alterar configurações da Saba-chan falante",
+          "description": "Ligar, palavras de chamada, confirmação, ferramentas"
+        }
+      },
+      "common": {
+        "set": {
+          "title": "Alterar configurações da Saba-chan falante comuns ao meu PC",
+          "description": "Modelo e chave de API (todos os servidores deste PC)"
+        }
+      }
+    },
+    "field": {
+      "action": "Ação",
+      "instance": "Servidor",
+      "name": "Nome",
+      "module_name": "Módulo",
+      "module_settings": "Configurações do módulo",
+      "schedule": "Agendamento",
+      "backup_keep": "Backups a manter",
+      "module": "Módulo",
+      "extension": "Extensão",
+      "backup": "Backup",
+      "overwrites": "Substitui",
+      "overwrites_instance": "arquivos atuais do servidor",
+      "source": "Origem",
+      "lines": "Linhas",
+      "before": "Antes de",
+      "since": "Desde",
+      "until": "Até",
+      "trust": "Confiança",
+      "version": "Versão a instalar",
+      "installed": "Versão instalada",
+      "official_catalog": "catálogo oficial",
+      "guild": "Servidor do Discord",
+      "locale": "Idioma",
+      "sleeping": "Repouso",
+      "music": "Saba-chan cantora",
+      "enabled": "Ligado",
+      "model": "Modelo",
+      "memo": "Prompt do servidor",
+      "effort": "Esforço de raciocínio na conversa",
+      "ambient": "Entrar na conversa",
+      "ambientMinutes": "Intervalo para entrar (minutos)",
+      "ambientEffort": "Esforço ao decidir entrar",
+      "confirmLevel": "Nível de confirmação antes de executar",
+      "memory": "Memória",
+      "tools": "Ferramentas ativadas",
+      "step": "Etapa",
+      "from_snapshot": "Do backup automático do jogo",
+      "text": "Mensagem",
+      "apiKey": "Chave de API",
+      "command": "Comando",
+      "settings": "Configurações"
+    }
+  }
+}

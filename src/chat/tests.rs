@@ -109,9 +109,14 @@ fn discord(user: &str) -> Option<permissions::Requester> {
     Some(permissions::Requester { guild_id: Some("g1".into()), user_id: Some(user.into()), owner_id: Some("owner".into()), via_chatbot: false, ..Default::default() })
 }
 
+/// 시험에서 본 답: 문구는 `[키 이름=값]`으로 펼친다 (문장은 릴레이가 만든다)
+fn key(k: &str, vars: &[(&str, &str)]) -> String {
+    vars.iter().fold(Text::key(k), |t, (n, v)| t.var(n, *v)).plain()
+}
+
 async fn run(api: &FakeDaemon, s: &ChatSettings, text: &str) -> String {
     let req = ChatRequest { text: text.into(), guild_id: Some("g1".into()), user_id: Some("u1".into()), remote: discord("u1"), ..Default::default() };
-    process(api, s, &Catalog::for_language("en"), &req).await.text
+    process(api, s, &Catalog::for_language("en"), &req).await.text.plain()
 }
 
 #[tokio::test]
@@ -124,7 +129,7 @@ async fn an_empty_text_is_the_help() {
 /// 문장 명령으로 못 하는 일(권한·언어·코코낸내·웹·업데이트)은 도움말이 슬래시 명령으로 안내한다. 서버가 없어도
 #[tokio::test]
 async fn help_points_to_slash_commands_for_what_sentences_cannot_do() {
-    let hint = Catalog::for_language("en").t("help.slash_hint", &[]);
+    let hint = key("help.slash_hint", &[]);
     assert_ne!(hint, "help.slash_hint");
     assert!(run(&fixture(), &settings(), "help").await.ends_with(&hint));
     assert!(run(&FakeDaemon::default(), &settings(), "help").await.ends_with(&hint));
@@ -133,10 +138,10 @@ async fn help_points_to_slash_commands_for_what_sentences_cannot_do() {
 #[tokio::test]
 async fn list_shows_status() {
     let out = run(&fixture(), &settings(), "list").await;
-    assert!(out.contains("survival") && out.contains("🟢"), "{}", out);
-    assert!(out.contains("pal1") && out.contains("⚪"), "{}", out);
-    // 실사용: 상태 문구에 이미 아이콘이 있어 "🟢 실행 중 🟢"처럼 두 번 찍혔다
-    assert_eq!(out.matches('🟢').count(), 1, "{}", out);
+    assert!(out.contains("[list.item name=survival module=minecraft status=[status.running]]"), "{}", out);
+    assert!(out.contains("name=pal1") && out.contains("[status.stopped]"), "{}", out);
+    // 실사용: 상태 문구에 이미 아이콘이 있어 "🟢 실행 중 🟢"처럼 두 번 찍혔다 (아이콘은 상태 문구에만 있다)
+    assert_eq!(out.matches("status.running").count(), 1, "{}", out);
 }
 
 #[tokio::test]
@@ -161,7 +166,7 @@ async fn remote_module_failure_text_hides_addresses_secrets_and_paths() {
             assert!(!remote.contains(private), "{remote}");
         }
         let req = ChatRequest { text: command.into(), ..Default::default() };
-        let local = process(&api, &settings(), &Catalog::for_language("en"), &req).await.text;
+        let local = process(&api, &settings(), &Catalog::for_language("en"), &req).await.text.plain();
         assert!(local.contains("203.0.113.7") && local.contains("hunter2") && local.contains("Users"), "{local}");
     }
 }
@@ -210,8 +215,7 @@ async fn command_to_a_server_without_console_says_why() {
         body: json!({"error": "no console", "error_code": "no_command_path"}),
     });
     let out = run(&api, &settings(), "mc say hi").await;
-    assert!(out.contains("survival") && out.contains("managed mode") && !out.contains("no console"), "{}", out);
-    assert!(!out.contains("Internal server error"), "{}", out);
+    assert_eq!(out, format!("❌ {}", key("errors.no_command_path", &[("name", "survival")])));
 }
 
 #[tokio::test]
@@ -243,11 +247,10 @@ async fn module_command_reply_shows_the_module_message() {
 async fn unknown_inputs() {
     let api = fixture();
     let s = settings();
-    let cat = Catalog::for_language("en");
-    assert_eq!(run(&api, &s, "nothing").await, cat.t("errors.unknown_input", &[]));
+    assert_eq!(run(&api, &s, "nothing").await, key("errors.unknown_input", &[]));
     let reply = run(&api, &s, "mc dance").await;
-    assert!(reply.starts_with(&cat.t("errors.command_not_found", &[])), "{}", reply);
-    assert!(reply.contains(&cat.t("modules.help_start", &[])), "{}", reply);
+    assert!(reply.starts_with(&key("errors.command_not_found", &[])), "{}", reply);
+    assert!(reply.contains(&key("modules.help_start", &[])), "{}", reply);
     assert!(run(&api, &s, "nothing start").await.contains("nothing"));
 }
 
@@ -263,7 +266,7 @@ async fn start_waiting_on_an_agreement_carries_the_list_for_the_relay() {
     let r = process(&api, &settings(), &Catalog::for_language("en"), &req).await;
     assert_eq!(r.code, Some("AGREEMENT_REQUIRED"));
     assert_eq!(r.args["agreements"], agreements);
-    assert!(r.text.contains("Accept Minecraft EULA first"), "{}", r.text);
+    assert!(r.text.plain().contains("Accept Minecraft EULA first"), "{}", r.text.plain());
 }
 
 /// 시작 전에 예약 범위를 피해 옮긴 포트는 디스코드 답에도 알린다 (M13. 저장값만 조용히 바뀌지 않게)
@@ -315,8 +318,8 @@ async fn unrecognized_input_carries_a_code_for_the_interpreter() {
     assert_eq!((r.code, r.args["command"].as_str()), (Some("UNKNOWN_COMMAND"), Some("nothing")));
     let r = reply("mc dance").await;
     assert_eq!((r.code, r.args["command"].as_str()), (Some("UNKNOWN_COMMAND"), Some("dance")));
-    assert!(r.text.starts_with(&cat.t("errors.command_not_found", &[])), "{}", r.text);
-    assert!(r.args["help"].as_str().is_some_and(|h| h.contains(&cat.t("modules.help_start", &[]))), "{}", r.args);
+    assert!(r.text.plain().starts_with(&key("errors.command_not_found", &[])), "{}", r.text.plain());
+    assert!(r.args["help"].to_string().contains("modules.help_start"), "{}", r.args);
     // 모듈 이름만 쓰면 명령 안내, 권한 거부도 처리한 응답이다
     assert_eq!(reply("survival").await.code, None);
     assert_eq!(reply("help").await.code, None);
@@ -337,8 +340,7 @@ async fn node_settings_filter_instances() {
             "allowedInstances": ["i-mc"]
         }
     });
-    let cat = Catalog::for_language("en");
-    assert_eq!(run(&api, &s, "팰월드 start").await, cat.t("errors.unknown_input", &[]));
+    assert_eq!(run(&api, &s, "팰월드 start").await, key("errors.unknown_input", &[]));
     assert!(!run(&api, &s, "list").await.contains("pal1"));
     assert!(api.calls().is_empty());
 }
@@ -395,7 +397,7 @@ async fn members_servers_listen_only_to_their_members_and_shared_servers_follow_
     assert_eq!(ask(&api, &s, "mc stop", "u1").await.code, Some("PERMISSION_DENIED"), "banned stays banned");
     let r = ask(&api, &s, "mc stop", "admin").await;
     assert_eq!((r.code, r.args["members_only"].clone()), (Some("PERMISSION_DENIED"), json!(true)), "admins are not members");
-    assert_eq!(r.text, Catalog::for_language("en").t("errors.members_only", &[]));
+    assert_eq!(r.text.plain(), key("errors.members_only", &[]));
     let mut bot = discord("u2");
     bot.as_mut().unwrap().via_chatbot = true;
     let req = ChatRequest { text: "mc stop".into(), guild_id: Some("g1".into()), remote: bot, ..Default::default() };
@@ -416,8 +418,7 @@ async fn ambiguous_alias_is_rejected() {
 async fn two_instances_of_one_module_need_instance_name() {
     let mut api = fixture();
     api.servers.push(server("i-mc2", "creative", "minecraft", "running"));
-    let cat = Catalog::for_language("en");
-    assert_eq!(run(&api, &settings(), "mc start").await, cat.t("errors.multiple_instances", &[("module", "minecraft")]));
+    assert_eq!(run(&api, &settings(), "mc start").await, key("errors.multiple_instances", &[("module", "minecraft")]));
     run(&api, &settings(), "creative start").await;
     assert_eq!(api.calls(), vec!["start i-mc2"]);
 }
@@ -432,8 +433,7 @@ async fn game_name_calls_the_only_instance_of_that_game() {
     assert_eq!(api.calls(), vec!["start i-pal", "start i-pal"]);
 
     api.servers.push(server("i-pal2", "pal2", "palworld", "stopped"));
-    let cat = Catalog::for_language("en");
-    assert_eq!(run(&api, &settings(), "パルワールド start").await, cat.t("errors.multiple_instances", &[("module", "palworld")]));
+    assert_eq!(run(&api, &settings(), "パルワールド start").await, key("errors.multiple_instances", &[("module", "palworld")]));
     assert_eq!(api.calls().len(), 2);
 }
 
@@ -449,8 +449,7 @@ async fn danger_commands_need_the_instance_name_not_the_game_name() {
     let mut s = settings();
     s.node_settings = json!({ "g1": { "members": { "u1": 2 } } });
     s.server_words = serde_json::from_value(serde_json::json!({ "i-mc": { "words": ["야생"] } })).unwrap();
-    let cat = Catalog::for_language("en");
-    let want = cat.t("errors.danger_needs_name", &[("name", "survival")]);
+    let want = key("errors.danger_needs_name", &[("name", "survival")]);
     for by_game in ["마인크래프트 wipe", "mc wipe", "minecraft wipe"] {
         assert_eq!(run(&api, &s, by_game).await, want, "{by_game}");
     }
@@ -493,8 +492,7 @@ async fn instance_words_pick_one_of_several_instances() {
     assert_eq!(api.calls()[3], "start i-mc2");
     // 두 인스턴스가 같은 낱말을 쓰면 고르지 않는다
     s.server_words.insert("i-mc".into(), serde_json::from_value(serde_json::json!({ "words": ["cr"] })).unwrap());
-    let cat = Catalog::for_language("en");
-    assert_eq!(run(&api, &s, "cr start").await, cat.t("errors.multiple_instances", &[("module", "minecraft")]));
+    assert_eq!(run(&api, &s, "cr start").await, key("errors.multiple_instances", &[("module", "minecraft")]));
 }
 
 #[test]
@@ -531,11 +529,11 @@ async fn help_shows_the_language_default_when_no_prefix_is_set() {
     let api = fixture();
     let empty = ChatSettings::default();
     let req = ChatRequest { text: "사바쨩 help".into(), guild_id: Some("g1".into()), user_id: Some("u1".into()), remote: discord("u1"), ..Default::default() };
-    let ko = process(&api, &empty, &Catalog::for_language("ko"), &req).await.text;
-    assert!(ko.contains("사바쨩 <"), "{}", ko);
+    let ko = process(&api, &empty, &Catalog::for_language("ko"), &req).await.text.plain();
+    assert!(ko.contains("**사바쨩**") && ko.contains("prefix=사바쨩"), "{}", ko);
     let req = ChatRequest { text: "".into(), ..req };
-    let en = process(&api, &empty, &Catalog::for_language("en"), &req).await.text;
-    assert!(en.contains("Saba-chan <"), "{}", en);
+    let en = process(&api, &empty, &Catalog::for_language("en"), &req).await.text.plain();
+    assert!(en.contains("prefix=Saba-chan"), "{}", en);
 }
 
 /// 콘솔이 없어 저장 후 종료를 못 하는 서버는 정지가 거절된다(MK10): 디스코드에서는 강제 종료하지 않고 그 이유와 이 PC에서 할 일을 알린다
@@ -547,8 +545,7 @@ async fn a_stop_that_cannot_save_explains_itself() {
         body: json!({"success": false, "error_code": "graceful_stop_unavailable", "error": "no console"}),
     });
     let out = run(&api, &settings(), "mc stop").await;
-    let cat = Catalog::for_language("en");
-    assert_eq!(out, cat.t("server.graceful_stop_unavailable", &[("name", "survival")]));
+    assert_eq!(out, key("server.graceful_stop_unavailable", &[("name", "survival")]));
     assert!(!out.contains("no console"), "{out}");
 }
 
@@ -573,7 +570,7 @@ async fn a_console_command_reply_is_just_success_and_its_label() {
     api.modules[0].commands[1].label = "Send Chat Message".into();
     api.reply = Some(console_reply("[12:00:00] [Server thread/INFO]: [Server] hi"));
     let out = run(&api, &settings(), "mc say hi").await;
-    assert!(out.starts_with('✅') && out.contains("survival") && out.contains("Send Chat Message"), "{out}");
+    assert_eq!(out, key("command.done", &[("name", "survival"), ("label", "Send Chat Message")]), "{out}");
     assert!(!out.contains('`') && !out.contains("Server thread") && !out.contains('{'), "{out}");
 }
 
@@ -585,7 +582,7 @@ async fn a_module_defines_the_reply_from_the_console_answer() {
     api.modules[0].locale_dir = Some(texts.path().to_path_buf());
     api.modules[0].commands[1].reply_pattern = Some(r"Seed: \[(?P<seed>-?\d+)\]".into());
     api.reply = Some(console_reply("[12:00:00] [Server thread/INFO]: Seed: [-42]"));
-    assert_eq!(run(&api, &settings(), "mc say hi").await, "✅ **survival** · Seed is -42");
+    assert_eq!(run(&api, &settings(), "mc say hi").await, key("command.done", &[("name", "survival"), ("label", "Seed is -42")]));
     // 답이 모양과 맞지 않으면 기본 성공 문구
     api.reply = Some(console_reply("something else"));
     assert!(run(&api, &settings(), "mc say hi").await.contains("Chat"));
@@ -598,7 +595,7 @@ async fn a_console_answer_matching_a_failure_pattern_is_a_failure() {
     api.modules[0].failure_patterns = vec![r"(?P<reason>No player was found)".into()];
     api.reply = Some(console_reply("[12:00:00] [Server thread/INFO]: No player was found"));
     let out = run(&api, &settings(), "mc kick Steve").await;
-    assert!(out.starts_with('❌') && out.contains("No player was found") && !out.contains("Server thread"), "{out}");
+    assert!(out.starts_with("[command.failed") && out.contains("reason=No player was found") && !out.contains("Server thread"), "{out}");
 }
 
 /// 틀린 인자는 무엇이 틀렸는지 응답 언어로 알린다 (데몬 검사 결과의 `rule`, 모델 해석 없이)
@@ -610,7 +607,7 @@ async fn an_invalid_argument_is_explained_in_the_reply_language() {
         body: json!({ "error": "'amount' must be between 1 and 64", "error_code": "invalid_argument", "field": "reason", "rule": "out_of_range", "params": { "value": "99", "min": 1.0, "max": 64.0 } }),
     });
     let req = ChatRequest { text: "mc kick Steve 99".into(), guild_id: Some("g1".into()), user_id: Some("u1".into()), remote: discord("u1"), ..Default::default() };
-    let out = process(&api, &settings(), &Catalog::for_language("ko"), &req).await.text;
+    let out = process(&api, &settings(), &Catalog::for_language("ko"), &req).await.text.plain();
     assert!(out.starts_with('❌') && out.contains("reason") && out.contains("99") && out.contains('1') && out.contains("64"), "{out}");
     assert!(!out.contains("must be"), "the English check message stays out: {out}");
 }
@@ -624,11 +621,11 @@ async fn players_is_a_built_in_query_for_modules_that_count_players() {
     api.reply = Some(InternalResponse { status: StatusCode::OK, body: json!({ "success": true, "online": 1, "max": 20, "players": [{ "name": "Steve" }] }) });
     let out = run(&api, &settings(), "mc 플레이어").await;
     assert_eq!(api.calls(), vec!["players i-mc"]);
-    assert!(out.contains("1/20") && out.contains("Steve"), "{out}");
+    assert!(out.contains("online=1 max=20") && out.contains("name=Steve"), "{out}");
     // 꺼진 서버는 짧은 이유로
     api.reply = Some(InternalResponse { status: StatusCode::CONFLICT, body: json!({ "success": false, "error_code": "server_not_running", "error": "The server is not running" }) });
     let out = run(&api, &settings(), "mc players").await;
-    assert!(out.starts_with('❌') && !out.contains("The server is not running"), "{out}");
+    assert!(out.starts_with("[command.failed") && out.contains("reasons.server_not_running") && !out.contains("The server is not running"), "{out}");
 }
 
 /// `remote = false` 명령은 디스코드·챗봇에서 부를 수 없다 (같은 일을 하는 데몬 기능이 있는 명령). PC에서는 그대로
@@ -689,8 +686,8 @@ async fn interpreting_answers_what_needs_no_run() {
             }
         }
     };
-    assert_eq!(answer("help").await.text, run(&api, &settings(), "help").await);
-    assert_eq!(answer("list").await.text, run(&api, &settings(), "list").await);
+    assert_eq!(answer("help").await.text.plain(), run(&api, &settings(), "help").await);
+    assert_eq!(answer("list").await.text.plain(), run(&api, &settings(), "list").await);
     assert_eq!(answer("mc dance").await.code, Some("UNKNOWN_COMMAND"));
     assert_eq!(answer("zzz start").await.code, Some("INSTANCE_NOT_FOUND"));
     assert!(api.calls().is_empty());
@@ -706,13 +703,13 @@ async fn running_an_interpreted_command_answers_like_the_whole_command() {
     let done = execute(&api, &settings(), &cat, &req, &target).await;
     assert!(done.ok);
     assert_eq!(api.calls(), vec![r#"command i-mc kick ["Steve"]"#]);
-    assert_eq!(done.reply.text, run(&api, &settings(), "mc 추방 Steve").await);
+    assert_eq!(done.reply.text.plain(), run(&api, &settings(), "mc 추방 Steve").await);
 
     api.reply = Some(InternalResponse { status: StatusCode::INTERNAL_SERVER_ERROR, body: json!({ "success": false, "error": "boom" }) });
     let req = remote_req("mc stop");
     let Interpreted::Run(target) = interpret(&api, &settings(), &cat, &req).await else { panic!() };
     let done = execute(&api, &settings(), &cat, &req, &target).await;
-    assert!(!done.ok && done.reply.text.starts_with('❌'), "{:?}", done.reply);
+    assert!(!done.ok && done.reply.text.plain().starts_with('❌'), "{:?}", done.reply);
 }
 
 /// 이미 켜져 있는 서버의 시작은 그렇게 답하고, 다 켜졌다는 알림을 기다릴 일이 아니라고 표시한다
@@ -725,8 +722,8 @@ async fn starting_a_running_server_says_it_is_already_on() {
     let Interpreted::Run(target) = interpret(&api, &settings(), &cat, &req).await else { panic!() };
     let done = execute(&api, &settings(), &cat, &req, &target).await;
     assert!(done.ok && done.already_running);
-    assert_eq!(done.reply.text, cat.t("server.already_running", &[("name", "survival")]));
-    assert_ne!(done.reply.text, "server.already_running");
+    assert_eq!(done.reply.text.plain(), key("server.already_running", &[("name", "survival")]));
+    assert_ne!(done.reply.text.plain(), "server.already_running");
 }
 
 /// 값으로 답하는 REST 조회(지표·설정 보기·목록)는 "실행됨"이 아니라 그 값을 보인다. 칸 이름은 모듈 locales
@@ -747,7 +744,7 @@ async fn a_rest_query_reply_shows_the_returned_values() {
     };
     api.reply = Some(rest(json!({ "players": [{ "name": "Kim", "level": 24 }] })));
     let out = run(&api, &settings(), "팰월드 metrics").await;
-    assert!(out.starts_with('✅') && out.contains("**Players** (1)") && out.contains("Kim") && out.contains("Level: 24"), "{out}");
+    assert!(out.starts_with("[command.done") && out.contains("**Players** (1)") && out.contains("Kim") && out.contains("Level: 24"), "{out}");
     assert!(!out.contains("8212") && !out.contains("response_text"), "{out}");
 
     api.reply = Some(rest(json!({ "serverfps": 59, "AdminPassword": "hunter2" })));
@@ -785,8 +782,7 @@ async fn the_spaced_name_a_danger_refusal_suggests_works() {
     api.servers[0].name = "우리 마크 서버".into();
     let mut s = settings();
     s.node_settings = json!({ "g1": { "members": { "u1": 2 } } });
-    let cat = Catalog::for_language("en");
-    assert_eq!(run(&api, &s, "mc wipe").await, cat.t("errors.danger_needs_name", &[("name", "우리 마크 서버")]));
+    assert_eq!(run(&api, &s, "mc wipe").await, key("errors.danger_needs_name", &[("name", "우리 마크 서버")]));
     run(&api, &s, "우리 마크 서버 wipe").await;
     assert_eq!(api.calls(), vec![r#"command i-mc wipe []"#]);
 }
@@ -821,8 +817,8 @@ async fn module_help_uses_the_words_people_can_type() {
     api.modules[0].commands.push(stop);
     let req = ChatRequest { text: "survival".into(), ..Default::default() };
     let cat = Catalog::for_language("ko");
-    let out = process(&api, &settings(), &cat, &req).await.text;
-    assert!(out.contains(&cat.t("help.module_title", &[("module", "survival")])), "{out}");
+    let out = process(&api, &settings(), &cat, &req).await.text.plain();
+    assert!(out.contains(&key("help.module_title", &[("module", "survival")])), "{out}");
     assert!(out.contains("`!saba survival 공지 <메시지>` - 모두에게 말해요"), "{out}");
     assert_eq!(out.matches("`!saba survival 정지`").count(), 1, "{out}");
     assert!(!out.contains("survival stop") && !out.contains("REST") && !out.contains("minecraft"), "{out}");
@@ -846,10 +842,10 @@ async fn status_shows_players_and_uptime_not_the_pid() {
     api.reply = Some(InternalResponse { status: StatusCode::OK, body: json!({ "success": true, "online": 2, "max": 10, "players": [] }) });
     let cat = Catalog::for_language("ko");
     let req = remote_req("survival 상태");
-    let out = process(&api, &settings(), &cat, &req).await.text;
+    let out = process(&api, &settings(), &cat, &req).await.text.plain();
     assert!(!out.contains("PID"), "{out}");
-    assert!(out.contains(&cat.t("actions.summary.players_max", &[("online", "2"), ("max", "10")])), "{out}");
-    assert!(out.contains(&cat.t("server.uptime_hm", &[("h", "1"), ("m", "2")])), "{out}");
+    assert!(out.contains(&key("actions.summary.players_max", &[("online", "2"), ("max", "10")])), "{out}");
+    assert!(out.contains(&key("server.uptime_hm", &[("h", "1"), ("m", "2")])), "{out}");
 }
 
 /// 켜지는 중에 접속자를 물으면 실패가 아니라 켜지는 중이라고 답한다
@@ -860,8 +856,8 @@ async fn players_while_starting_says_it_is_still_starting() {
     api.servers[0].starting = true;
     api.reply = Some(InternalResponse { status: StatusCode::OK, body: json!({ "success": false, "error_code": "players_failed" }) });
     let cat = Catalog::for_language("ko");
-    let out = process(&api, &settings(), &cat, &remote_req("survival players")).await.text;
-    assert_eq!(out, cat.t("server.still_starting", &[("name", "survival")]));
+    let out = process(&api, &settings(), &cat, &remote_req("survival players")).await.text.plain();
+    assert_eq!(out, key("server.still_starting", &[("name", "survival")]));
 }
 
 /// 별명·게임명·내장 명령 이름은 답하는 언어(길드 언어)의 것만 받는다. module.toml의 언어 없는 낱말과 명령 이름은 늘 받는다
@@ -879,25 +875,23 @@ async fn only_the_reply_language_words_call_servers_and_commands() {
     api.modules[1].locale_dir = Some(tmp.path().to_path_buf());
     let say = |lang: &'static str, text: &'static str| {
         let api = &api;
-        async move { process(api, &settings(), &Catalog::for_language(lang), &remote_req(text)).await.text }
+        async move { process(api, &settings(), &Catalog::for_language(lang), &remote_req(text)).await.text.plain() }
     };
 
     say("ko", "!saba 팰 시작").await;
     say("ko", "!saba 팰 접속자").await;
     assert_eq!(api.calls(), vec!["start i-pal", "command i-pal players []"], "Korean words in a Korean guild");
 
-    let ja = Catalog::for_language("ja");
     let out = say("ja", "!saba 팰 起動").await;
-    assert!(out.contains(&ja.t("server.not_found", &[("alias", "팰"), ("resolved", "팰")])), "Korean alias in a Japanese guild: {out}");
+    assert!(out.contains(&key("server.not_found", &[("alias", "팰"), ("resolved", "팰")])), "Korean alias in a Japanese guild: {out}");
     say("ja", "!saba 팰월드 시작").await;
     say("ja", "!saba パル 起動").await;
     say("ja", "!saba pal1 start").await;
     assert_eq!(api.calls().len(), 4, "module.toml words and the command name still work, the Korean builtin name does not");
     assert_eq!(api.calls()[3], "start i-pal");
 
-    let ko = Catalog::for_language("ko");
     let out = say("ko", "!saba パル 시작").await;
-    assert!(out.contains(&ko.t("server.not_found", &[("alias", "パル"), ("resolved", "パル")])), "Japanese alias in a Korean guild: {out}");
+    assert!(out.contains(&key("server.not_found", &[("alias", "パル"), ("resolved", "パル")])), "Japanese alias in a Korean guild: {out}");
     say("ko", "!saba 팰월드 게임 시작").await;
     assert_eq!(api.calls().len(), 5, "the Korean game name calls the server in a Korean guild");
 }
@@ -908,7 +902,7 @@ async fn top_level_words_follow_the_reply_language() {
     let api = fixture();
     let ask = |lang: &'static str, text: &'static str| {
         let api = &api;
-        async move { process(api, &settings(), &Catalog::for_language(lang), &remote_req(text)).await.text }
+        async move { process(api, &settings(), &Catalog::for_language(lang), &remote_req(text)).await.text.plain() }
     };
     assert_eq!(ask("ko", "!saba 도움말").await, ask("ko", "!saba help").await);
     assert_eq!(ask("ko", "!saba 목록").await, ask("ko", "!saba list").await);

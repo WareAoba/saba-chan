@@ -55,7 +55,7 @@ class WindowsAssets(unittest.TestCase):
             made = package_windows.package_locales(d / "out")
             self.assertEqual([p.name for p in d.joinpath("out").iterdir()], ["locales.zip"])
             with zipfile.ZipFile(made) as zf:
-                self.assertIn("ko/bot.json", zf.namelist())
+                self.assertIn("ko/daemon.json", zf.namelist())
 
 
 if __name__ == "__main__":

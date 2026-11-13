@@ -739,7 +739,7 @@
     "bad_quotes": "Comilla sin cerrar",
     "bye": "Adiós. El daemon y los servidores siguen en ejecución.",
     "ctrl_c": "(pulsa Ctrl+C otra vez o escribe exit para salir)",
-    "help_line": "Escribe un comando (help; Tab para completar) o habla como en Discord (p. ej. \"my-server-1 start\"). exit para salir.",
+    "help_line": "Escribe un comando (help; Tab para completar). exit para salir.",
     "welcome": "Saba-chan CLI {{version}}",
     "lang_fixed": "El idioma no se puede cambiar dentro del shell. Se muestra en el idioma actual ({{lang}})."
   },
@@ -986,7 +986,6 @@
       "config.get": "Un ajuste",
       "config.set": "Cambiar ajustes: clave=valor ... (solo para la CLI: `cli.clave`)",
       "config.reset": "Volver a los valores predeterminados (sin clave: todos)",
-      "chat": "Enviar un comando de chat como en Discord (p. ej. `chat my-server-1 start`)",
       "version": "Versiones de todas las partes instaladas",
       "shell": "Abrir la shell interactiva",
       "completions": "Mostrar el script de autocompletado de la shell (con `--install`, instalarlo para este usuario)",

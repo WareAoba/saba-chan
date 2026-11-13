@@ -45,7 +45,7 @@ describe('작업 기록 한 줄', () => {
     });
 
     it('데몬 액션 이름은 액션 표의 제목으로 보인다', () => {
-        const bot = i18n.getFixedT('en', 'bot');
+        const bot = i18n.getFixedT('en', 'daemon');
         expect(auditWhat({ ...base, action: 'instance.settings.set', args: '{"players":4}' }, t)).toBe(
             `${bot('actions.instance.settings.set.title')} · 4`,
         );

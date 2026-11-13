@@ -739,7 +739,7 @@
     "bad_quotes": "引用符が閉じられていません",
     "bye": "さようなら。デーモンとサーバーは実行を続けます。",
     "ctrl_c": "（もう一度 Ctrl+C を押すか exit と入力すると終了します）",
-    "help_line": "コマンドを入力してください (help、Tab で補完)。Discord のように話しかけても構いません (例: \"my-server-1 start\")。終了は exit。",
+    "help_line": "コマンドを入力してください (help、Tab で補完)。終了は exit。",
     "welcome": "サバちゃん CLI {{version}}",
     "lang_fixed": "シェル内では言語を変更できません。現在の言語 ({{lang}}) で表示します。"
   },
@@ -986,7 +986,6 @@
       "config.get": "設定 1 つ",
       "config.set": "設定を変える: キー=値 ... (CLI 専用は `cli.キー`)",
       "config.reset": "既定値に戻す (キーを省くとすべて)",
-      "chat": "Discord と同じようにチャットコマンドを送る (例: `chat my-server-1 start`)",
       "version": "インストールされたすべての部分のバージョン",
       "shell": "対話シェルを開く",
       "completions": "シェル補完スクリプトを出力（`--install` でこのユーザーの場所にインストール）",

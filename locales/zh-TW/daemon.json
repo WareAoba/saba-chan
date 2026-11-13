@@ -1,0 +1,320 @@
+{
+  "default_prefix": "Saba-chan",
+  "top_level_words": {
+    "help": "help",
+    "list": "list"
+  },
+  "schedule": {
+    "restart_warning": "伺服器將在 {{minutes}} 分鐘後重新啟動。",
+    "update_warning": "伺服器將在 {{minutes}} 分鐘後重新啟動以進行更新。",
+    "update_cancelled": "已取消更新。",
+    "stop_warning": "伺服器將在 {{minutes}} 分鐘後停止。"
+  },
+  "provision": {
+    "installing": "正在安裝伺服器…",
+    "install_failed": "安裝失敗",
+    "installed": "伺服器安裝完成",
+    "updating": "正在更新伺服器…",
+    "update_failed": "更新失敗",
+    "updated": "伺服器更新完成",
+    "module_missing": "找不到模組：{{error}}",
+    "no_latest_version": "最新伺服器版本確認失敗",
+    "script_failed": "安裝腳本錯誤。詳情見常駐程式記錄。",
+    "save_failed": "伺服器檔案已下載，但伺服器資訊儲存失敗。詳情見常駐程式記錄。",
+    "backup_failed": "更新前備份失敗：{{reason}}",
+    "version_installing": "正在安裝版本 {{version}}…",
+    "version_installed": "{{version}} 安裝完成！",
+    "install_backup_failed": "安裝前備份失敗，未安裝：{{reason}}"
+  },
+  "server": {
+    "rest_port_closed": "REST 連接埠 {{port}} 連線失敗"
+  },
+  "errors": {
+    "agreement_required": "需同意{{names}}才能啟動伺服器。請在電腦的 Saba-chan 同意。",
+    "memory_limit_at_start": "啟動時達到記憶體上限（{{limit}} MiB），伺服器已停止。請把上限設得比 RAM 設定高，或清空上限。",
+    "runner_missing": "找不到 saba-runner，無法託管啟動。請關閉此伺服器的託管啟動，或重新安裝 Saba-chan。"
+  },
+  "chatbot": {
+    "memo_template": "<!-- 這樣的說明行和沒有填寫的標題不會傳送給會說話的 Saba-chan。只填寫需要的項目即可。 -->\n\n## 聊天氛圍\n<!-- 寫下這個伺服器的聊天氛圍，以及可以接受的玩笑尺度。留空則依預設個性聊天。 -->\n\n## 稱呼\n<!-- 如果 Saba-chan 要用特別的稱呼叫某人，請寫在這裡。例：標有 (擁有者) 的人稱為「主人」。 -->\n\n## 本伺服器的用語\n<!-- 寫下只在本伺服器通用的暱稱、梗、縮寫及其含義。 -->\n\n## 遊戲伺服器說明\n<!-- 寫下伺服器規則、開放時間等 Saba-chan 可以告訴提問者的內容。 -->\n"
+  },
+  "controllers": {
+    "kick_reason": "此伺服器僅限已登記的玩家進入。"
+  },
+  "backups": {
+    "kind": {
+      "manual": "手動",
+      "scheduled": "排程",
+      "pre-update": "更新前",
+      "pre-restore": "還原前",
+      "snapshot": "保留的遊戲備份",
+      "game-snapshot": "遊戲自動備份",
+      "imported": "已匯入"
+    },
+    "unreadable": "⚠️ 無法開啟"
+  },
+  "actions": {
+    "instance": {
+      "list": {
+        "title": "伺服器列表",
+        "description": "已登錄的伺服器及其狀態"
+      },
+      "events": {
+        "title": "啟動與停止紀錄",
+        "description": "何時以及為何啟動或停止"
+      },
+      "create": {
+        "title": "建立伺服器"
+      },
+      "settings": {
+        "set": {
+          "title": "變更伺服器設定"
+        }
+      },
+      "schedule": {
+        "set": {
+          "title": "變更排程工作"
+        },
+        "get": {
+          "title": "查看排程工作"
+        }
+      },
+      "delete": {
+        "title": "刪除伺服器"
+      },
+      "start_notice": {
+        "set": {
+          "title": "啟動通知",
+          "description": "此伺服器在 Discord 以外啟動·停止時（含當機），通知此 Discord 伺服器的通知頻道",
+          "name": "啟動通知"
+        }
+      },
+      "full_notice": {
+        "set": {
+          "title": "滿員提醒",
+          "description": "此伺服器滿員或重新有空位時，通知此 Discord 伺服器的通知頻道",
+          "name": "滿員提醒"
+        }
+      },
+      "get": {
+        "title": "查看伺服器設定"
+      },
+      "rename": {
+        "title": "重新命名伺服器"
+      },
+      "properties": {
+        "get": {
+          "title": "查看遊戲設定檔"
+        },
+        "set": {
+          "title": "變更遊戲設定檔"
+        }
+      }
+    },
+    "server": {
+      "status": {
+        "title": "伺服器狀態",
+        "description": "單一伺服器的狀態",
+        "name": "狀態"
+      },
+      "start": {
+        "title": "啟動伺服器",
+        "name": "啟動"
+      },
+      "stop": {
+        "title": "停止伺服器",
+        "name": "停止"
+      },
+      "restart": {
+        "title": "重新啟動伺服器",
+        "name": "重新啟動"
+      },
+      "console": {
+        "tail": {
+          "title": "主控台末尾",
+          "description": "主控台最後 20 行"
+        },
+        "send": {
+          "title": "傳送主控台指令"
+        }
+      },
+      "logs": {
+        "read": {
+          "title": "讀取日誌",
+          "description": "從結尾讀取伺服器日誌工作階段"
+        },
+        "export": {
+          "title": "匯出日誌",
+          "description": "將一個伺服器日誌工作階段匯出為 .log 檔案"
+        }
+      },
+      "players": {
+        "title": "玩家",
+        "description": "在線玩家及名字"
+      },
+      "address": {
+        "title": "伺服器位址",
+        "name": "位址",
+        "description": "只向你顯示朋友連線用的位址（IP:連接埠）"
+      },
+      "port_check": {
+        "title": "連接埠轉發檢查",
+        "description": "中繼檢查能否從外部連線到此伺服器"
+      },
+      "chat": {
+        "title": "傳送遊戲聊天",
+        "description": "把 Discord 訊息傳送到遊戲聊天"
+      },
+      "chat_link": {
+        "title": "聊天聯動"
+      },
+      "update": {
+        "check": {
+          "title": "檢查遊戲伺服器更新",
+          "name": "檢查更新",
+          "description": "檢查 Steam 上是否有新的遊戲伺服器版本"
+        },
+        "apply": {
+          "title": "更新遊戲伺服器",
+          "name": "更新",
+          "description": "更新遊戲伺服器。執行中時會在遊戲內提前 5 分鐘通知，停止、更新後再啟動"
+        },
+        "cancel": {
+          "title": "取消預告中的更新",
+          "name": "取消更新",
+          "description": "取消仍在預告中的遊戲伺服器更新（停止伺服器之前）"
+        }
+      },
+      "diagnose": {
+        "title": "診斷伺服器"
+      }
+    },
+    "monitor": {
+      "summary": {
+        "title": "資源使用情況",
+        "description": "CPU、記憶體、磁碟與網路"
+      }
+    },
+    "backup": {
+      "list": {
+        "title": "備份列表"
+      },
+      "create": {
+        "title": "備份"
+      },
+      "restore": {
+        "title": "還原備份",
+        "description": "以備份覆寫目前的伺服器檔案"
+      },
+      "delete": {
+        "title": "刪除備份"
+      }
+    },
+    "module": {
+      "install": {
+        "title": "安裝模組",
+        "description": "從官方目錄下載並安裝"
+      },
+      "list": {
+        "title": "已安裝的模組"
+      },
+      "available": {
+        "title": "可用的模組"
+      }
+    },
+    "extension": {
+      "enable": {
+        "title": "啟用擴充功能"
+      },
+      "disable": {
+        "title": "停用擴充功能"
+      },
+      "list": {
+        "title": "已安裝的擴充功能"
+      },
+      "available": {
+        "title": "可用的擴充功能"
+      },
+      "install": {
+        "title": "安裝擴充功能"
+      }
+    },
+    "update": {
+      "check": {
+        "title": "檢查更新"
+      },
+      "apply": {
+        "title": "套用更新",
+        "description": "下載並安裝新更新，然後重新啟動應用程式"
+      }
+    },
+    "discord": {
+      "settings": {
+        "set": {
+          "title": "變更 Discord 設定",
+          "description": "語言、睡眠與會唱歌的 Saba-chan"
+        }
+      }
+    },
+    "chatbot": {
+      "settings": {
+        "get": {
+          "title": "查看「會說話的 Saba-chan」設定",
+          "description": "開關、喚醒詞、確認、工具組"
+        },
+        "set": {
+          "title": "變更「會說話的 Saba-chan」設定",
+          "description": "開關、喚醒詞、確認、工具組"
+        }
+      },
+      "common": {
+        "set": {
+          "title": "變更本機共用的「會說話的 Saba-chan」設定",
+          "description": "模型和 API 金鑰（這台電腦的所有伺服器）"
+        }
+      }
+    },
+    "field": {
+      "action": "操作",
+      "instance": "伺服器",
+      "name": "名稱",
+      "module_name": "模組",
+      "module_settings": "模組設定",
+      "schedule": "排程",
+      "backup_keep": "保留的備份數",
+      "module": "模組",
+      "extension": "擴充功能",
+      "backup": "備份",
+      "overwrites": "覆寫對象",
+      "overwrites_instance": "目前的伺服器檔案",
+      "source": "來源",
+      "lines": "行數",
+      "before": "之前位置",
+      "since": "開始時間",
+      "until": "結束時間",
+      "trust": "信任",
+      "version": "要安裝的版本",
+      "installed": "目前版本",
+      "official_catalog": "官方目錄",
+      "guild": "Discord 伺服器",
+      "locale": "語言",
+      "sleeping": "睡眠",
+      "music": "會唱歌的 Saba-chan",
+      "enabled": "開啟",
+      "model": "模型",
+      "memo": "伺服器提示詞",
+      "effort": "對話推理強度",
+      "ambient": "主動插話",
+      "ambientMinutes": "插話判斷間隔（分鐘）",
+      "ambientEffort": "插話判斷推理強度",
+      "confirmLevel": "執行前確認層級",
+      "memory": "記憶",
+      "tools": "啟用的工具",
+      "step": "步驟",
+      "from_snapshot": "來自遊戲自動備份",
+      "text": "內容",
+      "apiKey": "API 金鑰",
+      "command": "指令",
+      "settings": "設定"
+    }
+  }
+}

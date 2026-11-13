@@ -487,7 +487,7 @@ fn retain_allowed(v: &mut Value, allowed: &[String]) {
 
 // ── 목록 ────────────────────────────────────────────────
 
-/// 언어 카탈로그 (`locales/<lang>/bot.json`의 `actions`)
+/// 언어 카탈로그 (`locales/<lang>/daemon.json`의 `actions`)
 fn catalog(locale: &str) -> crate::chat::i18n::Catalog {
     crate::chat::i18n::Catalog::for_language(locale)
 }
@@ -1615,7 +1615,7 @@ fn slash_only(reply: &crate::chat::Reply, cat: &crate::chat::i18n::Catalog) -> O
     let (d, _) = action_by_word(reply, |d| d.instance && d.secret && d.surfaces.contains(&Discord))?;
     let command = ["name", "title"].iter().find_map(|k| translated(cat, &format!("actions.{}.{}", d.id, k))).unwrap_or_else(|| d.id.to_string());
     let name = reply.args.get("name").and_then(Value::as_str).unwrap_or_default();
-    Some(cat.t("errors.slash_only", &[("command", &command), ("name", name)]).into())
+    Some(crate::chat::Text::key("errors.slash_only").var("command", command).var("name", name).into())
 }
 
 /// 채팅 처리기가 모르는 명령이라고 한 문장(서버는 찾음)의 명령 낱말이 이름인 인스턴스 액션과 그 서버. `pick`에 맞는 것만 고른다.
@@ -1677,9 +1677,10 @@ async fn chat_settings(server: &IPCServer, caller: &Caller) -> (crate::chat::Cha
     (crate::chat::ChatSettings::from(&bot), catalog(&caller.locale))
 }
 
-/// 채팅 답의 모양: `{success, text}`, 알아보지 못한 입력·거절이면 `code`·`args`도. 챗봇에는 IP·비밀처럼 보이는 값을 가린다
+/// 채팅 답의 모양: `{success, text}`(`text`는 릴레이가 문장으로 만드는 `Text`), 알아보지 못한 입력·거절이면 `code`·`args`도.
+/// 챗봇에는 IP·비밀처럼 보이는 값을 가린다
 fn chat_json(reply: crate::chat::Reply, ok: bool, caller: &Caller) -> Value {
-    let mut out = json!({ "success": ok && reply.code.is_none(), "text": reply.text });
+    let mut out = json!({ "success": ok && reply.code.is_none(), "text": reply.text.to_json() });
     if let Some(code) = reply.code {
         out["code"] = json!(code);
         out["args"] = reply.args;
@@ -1962,12 +1963,12 @@ async fn execute(server: &IPCServer, r: &Resolved, caller: &Caller) -> Value {
     // 원격 화면은 JSON을 그리지 않으므로 요청 언어의 요약을 함께 준다. 실패면 짧은 이유 (`reason`)
     if let (true, Some(_)) = (ok, &caller.remote) {
         if let Some(text) = summary::text(&r.id, &out["result"], &catalog(&caller.locale)) {
-            out["text"] = json!(text);
+            out["text"] = text.to_json();
         }
     }
     if let (false, Some(_)) = (ok, &caller.remote) {
         let code = crate::commands::error_code(resp.status.as_u16(), &out["result"]);
-        out["reason"] = json!(crate::chat::reason(&catalog(&caller.locale), &code, &out["result"]));
+        out["reason"] = crate::chat::reason(&code, &out["result"]).to_json();
     }
     if let (true, Some((instance, before))) = (ok, previous) {
         if let Some(undo) = undo_plan(server, &instance, before, caller).await {

@@ -1,0 +1,320 @@
+{
+  "default_prefix": "Saba-chan",
+  "top_level_words": {
+    "help": "help",
+    "list": "list"
+  },
+  "schedule": {
+    "restart_warning": "服务器将在 {{minutes}} 分钟后重启。",
+    "update_warning": "服务器将在 {{minutes}} 分钟后重启以进行更新。",
+    "update_cancelled": "已取消更新。",
+    "stop_warning": "服务器将在 {{minutes}} 分钟后停止。"
+  },
+  "provision": {
+    "installing": "正在安装服务器…",
+    "install_failed": "安装失败",
+    "installed": "服务器安装完成",
+    "updating": "正在更新服务器…",
+    "update_failed": "更新失败",
+    "updated": "服务器更新完成",
+    "module_missing": "找不到模块：{{error}}",
+    "no_latest_version": "最新服务器版本获取失败",
+    "script_failed": "安装脚本出错。详情见守护进程日志。",
+    "save_failed": "服务器文件已下载，但服务器信息保存失败。详情见守护进程日志。",
+    "backup_failed": "更新前备份失败：{{reason}}",
+    "version_installing": "正在安装版本 {{version}}…",
+    "version_installed": "{{version}} 安装完成！",
+    "install_backup_failed": "安装前备份失败，未安装：{{reason}}"
+  },
+  "server": {
+    "rest_port_closed": "REST 端口 {{port}} 连接失败"
+  },
+  "errors": {
+    "agreement_required": "需先同意{{names}}才能启动服务器。请在电脑的 Saba-chan 中同意。",
+    "memory_limit_at_start": "启动中达到内存上限（{{limit}} MiB），服务器已退出。请把上限调到高于内存设置，或清空上限。",
+    "runner_missing": "找不到 saba-runner，无法托管启动。请关闭此服务器的托管启动，或重新安装 Saba-chan。"
+  },
+  "chatbot": {
+    "memo_template": "<!-- 这样的说明行和没有填写的标题不会发送给会说话的 Saba-chan。只填写需要的项目即可。 -->\n\n## 聊天氛围\n<!-- 写下这个服务器的聊天氛围，以及可以接受的玩笑尺度。留空则按默认性格聊天。 -->\n\n## 称呼\n<!-- 如果 Saba-chan 要用特别的称呼叫某人，请写在这里。例：标有 (所有者) 的人称为“主人”。 -->\n\n## 本服务器的用语\n<!-- 写下只在本服务器通用的昵称、梗、缩写及其含义。 -->\n\n## 游戏服务器说明\n<!-- 写下服务器规则、开放时间等 Saba-chan 可以告诉提问者的内容。 -->\n"
+  },
+  "controllers": {
+    "kick_reason": "此服务器仅限已登记的玩家进入。"
+  },
+  "backups": {
+    "kind": {
+      "manual": "手动",
+      "scheduled": "计划",
+      "pre-update": "更新前",
+      "pre-restore": "恢复前",
+      "snapshot": "保留的游戏备份",
+      "game-snapshot": "游戏自动备份",
+      "imported": "已导入"
+    },
+    "unreadable": "⚠️ 无法打开"
+  },
+  "actions": {
+    "instance": {
+      "list": {
+        "title": "服务器列表",
+        "description": "已登记的服务器及其状态"
+      },
+      "events": {
+        "title": "启动与停止记录",
+        "description": "何时以及为何启动或停止"
+      },
+      "create": {
+        "title": "创建服务器"
+      },
+      "settings": {
+        "set": {
+          "title": "更改服务器设置"
+        }
+      },
+      "schedule": {
+        "set": {
+          "title": "更改计划任务"
+        },
+        "get": {
+          "title": "查看计划任务"
+        }
+      },
+      "delete": {
+        "title": "删除服务器"
+      },
+      "start_notice": {
+        "set": {
+          "title": "启动通知",
+          "description": "此服务器在 Discord 之外启动或停止时（包括崩溃），会通知此 Discord 服务器的通知频道",
+          "name": "启动通知"
+        }
+      },
+      "full_notice": {
+        "set": {
+          "title": "满员提醒",
+          "description": "此服务器满员或重新有空位时，会通知此 Discord 服务器的通知频道",
+          "name": "满员提醒"
+        }
+      },
+      "get": {
+        "title": "查看服务器设置"
+      },
+      "rename": {
+        "title": "重命名服务器"
+      },
+      "properties": {
+        "get": {
+          "title": "查看游戏设置文件"
+        },
+        "set": {
+          "title": "更改游戏设置文件"
+        }
+      }
+    },
+    "server": {
+      "status": {
+        "title": "服务器状态",
+        "description": "单个服务器的状态",
+        "name": "状态"
+      },
+      "start": {
+        "title": "启动服务器",
+        "name": "启动"
+      },
+      "stop": {
+        "title": "停止服务器",
+        "name": "停止"
+      },
+      "restart": {
+        "title": "重启服务器",
+        "name": "重启"
+      },
+      "console": {
+        "tail": {
+          "title": "控制台末尾",
+          "description": "控制台最后 20 行"
+        },
+        "send": {
+          "title": "发送控制台命令"
+        }
+      },
+      "logs": {
+        "read": {
+          "title": "读取日志",
+          "description": "从末尾读取服务器日志会话"
+        },
+        "export": {
+          "title": "导出日志",
+          "description": "将一个服务器日志会话导出为 .log 文件"
+        }
+      },
+      "players": {
+        "title": "玩家",
+        "description": "在线玩家及名字"
+      },
+      "address": {
+        "title": "服务器地址",
+        "name": "地址",
+        "description": "仅向你显示朋友连接用的地址（IP:端口）"
+      },
+      "port_check": {
+        "title": "端口转发检查",
+        "description": "中继检查能否从外网连接此服务器"
+      },
+      "chat": {
+        "title": "发送游戏聊天",
+        "description": "把 Discord 消息发送到游戏聊天"
+      },
+      "chat_link": {
+        "title": "聊天联动"
+      },
+      "update": {
+        "check": {
+          "title": "检查游戏服务器更新",
+          "name": "检查更新",
+          "description": "检查 Steam 上是否有新的游戏服务器版本"
+        },
+        "apply": {
+          "title": "更新游戏服务器",
+          "name": "更新",
+          "description": "更新游戏服务器。运行中时会在游戏内提前 5 分钟通知，停止、更新后再启动"
+        },
+        "cancel": {
+          "title": "取消预告中的更新",
+          "name": "取消更新",
+          "description": "取消仍在预告中的游戏服务器更新（停止服务器之前）"
+        }
+      },
+      "diagnose": {
+        "title": "诊断服务器"
+      }
+    },
+    "monitor": {
+      "summary": {
+        "title": "资源使用情况",
+        "description": "CPU、内存、磁盘和网络"
+      }
+    },
+    "backup": {
+      "list": {
+        "title": "备份列表"
+      },
+      "create": {
+        "title": "备份"
+      },
+      "restore": {
+        "title": "恢复备份",
+        "description": "用备份覆盖当前服务器文件"
+      },
+      "delete": {
+        "title": "删除备份"
+      }
+    },
+    "module": {
+      "install": {
+        "title": "安装模块",
+        "description": "从官方目录下载并安装"
+      },
+      "list": {
+        "title": "已安装的模块"
+      },
+      "available": {
+        "title": "可用的模块"
+      }
+    },
+    "extension": {
+      "enable": {
+        "title": "启用扩展"
+      },
+      "disable": {
+        "title": "停用扩展"
+      },
+      "list": {
+        "title": "已安装的扩展"
+      },
+      "available": {
+        "title": "可用的扩展"
+      },
+      "install": {
+        "title": "安装扩展"
+      }
+    },
+    "update": {
+      "check": {
+        "title": "检查更新"
+      },
+      "apply": {
+        "title": "应用更新",
+        "description": "下载并安装新更新，然后重启应用"
+      }
+    },
+    "discord": {
+      "settings": {
+        "set": {
+          "title": "更改 Discord 设置",
+          "description": "语言、睡眠和会唱歌的 Saba-chan"
+        }
+      }
+    },
+    "chatbot": {
+      "settings": {
+        "get": {
+          "title": "查看“会说话的 Saba-chan”设置",
+          "description": "开关、唤醒词、确认、工具组"
+        },
+        "set": {
+          "title": "更改“会说话的 Saba-chan”设置",
+          "description": "开关、唤醒词、确认、工具组"
+        }
+      },
+      "common": {
+        "set": {
+          "title": "更改本机共用的“会说话的 Saba-chan”设置",
+          "description": "模型和 API 密钥（这台电脑的所有服务器）"
+        }
+      }
+    },
+    "field": {
+      "action": "操作",
+      "instance": "服务器",
+      "name": "名称",
+      "module_name": "模块",
+      "module_settings": "模块设置",
+      "schedule": "计划",
+      "backup_keep": "保留的备份数",
+      "module": "模块",
+      "extension": "扩展",
+      "backup": "备份",
+      "overwrites": "覆盖对象",
+      "overwrites_instance": "当前的服务器文件",
+      "source": "来源",
+      "lines": "行数",
+      "before": "之前位置",
+      "since": "开始时间",
+      "until": "结束时间",
+      "trust": "信任",
+      "version": "要安装的版本",
+      "installed": "当前版本",
+      "official_catalog": "官方目录",
+      "guild": "Discord 服务器",
+      "locale": "语言",
+      "sleeping": "睡眠",
+      "music": "会唱歌的 Saba-chan",
+      "enabled": "开启",
+      "model": "模型",
+      "memo": "服务器提示词",
+      "effort": "对话推理强度",
+      "ambient": "主动插话",
+      "ambientMinutes": "插话判断间隔（分钟）",
+      "ambientEffort": "插话判断推理强度",
+      "confirmLevel": "执行前确认级别",
+      "memory": "记忆",
+      "tools": "启用的工具",
+      "step": "步骤",
+      "from_snapshot": "来自游戏自动备份",
+      "text": "内容",
+      "apiKey": "API 密钥",
+      "command": "命令",
+      "settings": "设置"
+    }
+  }
+}

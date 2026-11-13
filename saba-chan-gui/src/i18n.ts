@@ -1,8 +1,8 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 // 영어는 폴백이라 번들에 넣고, 나머지 언어는 그 언어로 바꿀 때 불러온다 (첫 로딩 파싱을 줄인다)
-import enBot from '../../locales/en/bot.json';
 import enCommon from '../../locales/en/common.json';
+import enDaemon from '../../locales/en/daemon.json';
 import enGui from '../../locales/en/gui.json';
 import { createLocaleBackend, createLocalesVersionWatcher } from './utils/localeBackend';
 
@@ -10,11 +10,11 @@ import { createLocaleBackend, createLocalesVersionWatcher } from './utils/locale
 const SUPPORTED_LANGUAGES = ['en', 'ko', 'ja', 'zh-CN', 'zh-TW', 'es', 'pt-BR', 'ru', 'de', 'fr'];
 
 const localeFiles = import.meta.glob(
-    ['../../locales/*/common.json', '../../locales/*/gui.json', '../../locales/*/bot.json', '!../../locales/en/*'],
+    ['../../locales/*/common.json', '../../locales/*/gui.json', '../../locales/*/daemon.json', '!../../locales/en/*'],
     { import: 'default' },
 );
 
-const embeddedEn: Record<string, Record<string, unknown>> = { common: enCommon, gui: enGui, bot: enBot };
+const embeddedEn: Record<string, Record<string, unknown>> = { common: enCommon, gui: enGui, daemon: enDaemon };
 
 /** 빌드에 묶인 번역 (폴백) */
 const embedded = async (language: string, namespace: string) => {
@@ -100,9 +100,9 @@ export const i18nReady = i18n
     .use(localeBackend)
     .use(initReactI18next)
     .init({
-        resources: { en: { common: enCommon, gui: enGui, bot: enBot } },
+        resources: { en: { common: enCommon, gui: enGui, daemon: enDaemon } },
         partialBundledLanguages: true,
-        ns: ['gui', 'common', 'bot'],
+        ns: ['gui', 'common', 'daemon'],
         defaultNS: 'gui',
         lng: getCachedLanguage(), // localStorage 캐시 → 첫 실행 이후 깜빡임 없음
         fallbackLng: 'en',

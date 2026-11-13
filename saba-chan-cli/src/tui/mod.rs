@@ -617,12 +617,8 @@ fn start(ctx: &Ctx, app: &mut App, line: &str, id: u64, tx: UnboundedSender<Msg>
     }))
 }
 
-/// 셸과 같은 규칙으로 한 줄을 실행: 명령이 아니면 디스코드와 같은 채팅 처리기로
+/// 셸과 같은 규칙으로 한 줄을 실행
 async fn one(ctx: &Ctx, words: &[String]) -> Result<()> {
-    let top: Vec<String> = crate::cli::command_words().into_iter().filter(|w| !w.contains(' ')).collect();
-    if !(top.contains(&words[0]) || words[0] == "help" || words[0].starts_with('-')) {
-        return crate::cmd::chat(ctx, &words.join(" ")).await;
-    }
     let argv = std::iter::once("saba-chan-cli".to_string()).chain(words.iter().cloned());
     let matches = match crate::cli::parse(argv.map(Into::into).collect()) {
         Ok(m) => m,

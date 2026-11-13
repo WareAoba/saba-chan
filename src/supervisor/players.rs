@@ -304,7 +304,7 @@ pub async fn port_open(host: &str, port: u16) -> Result<(), String> {
     }
 }
 
-/// 응답 없음 이유를 화면에 낼 글로. 포트 확인 실패는 화면 언어 문구(bot.json `server.rest_port_closed`), 모듈이 준 이유는 그대로
+/// 응답 없음 이유를 화면에 낼 글로. 포트 확인 실패는 화면 언어 문구(daemon.json `server.rest_port_closed`), 모듈이 준 이유는 그대로
 pub fn reason_text(reason: &str, catalog: &crate::chat::i18n::Catalog) -> String {
     match reason.strip_prefix(PORT_CLOSED) {
         Some(port) => catalog.t("server.rest_port_closed", &[("port", port)]),
@@ -419,7 +419,7 @@ mod tests {
         let closed = port_open("127.0.0.1", port).await.unwrap_err();
         apply_probe(&rt, id, Some(7), Err(closed.clone()), now);
         apply_probe(&rt, id, Some(7), Err(closed), now + UNRESPONSIVE_AFTER);
-        // 사용자에게 보이는 이유는 화면 언어로 (locales bot.json)
+        // 사용자에게 보이는 이유는 화면 언어로 (locales daemon.json)
         let reason = unresponsive(&rt, id, Some(7), now + UNRESPONSIVE_AFTER).unwrap();
         let ko = reason_text(&reason, &crate::chat::i18n::Catalog::for_language("ko"));
         assert!(ko.contains(&port.to_string()) && ko.contains("REST"), "{ko}");

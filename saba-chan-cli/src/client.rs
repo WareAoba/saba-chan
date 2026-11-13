@@ -1232,10 +1232,6 @@ impl Api {
         ))
         .await
     }
-    /// POST /api/chat/command — 디스코드와 같은 텍스트 명령 처리 (`{reply}`)
-    pub async fn chat(&self, text: &str) -> Result<Value> {
-        self.post("/api/chat/command", json!({ "text": text })).await
-    }
 
     // ── 업데이트 ──
 

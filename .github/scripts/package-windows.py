@@ -10,7 +10,7 @@
   (실행기를 설치 폴더 바로 아래에 두면 0.1.1 GUI 이름 `Saba-chan.exe`와 겹친다. 설치기가 `bin`을 사용자 PATH에 넣는다)
 - saba-chan-gui-windows-x64.zip: 그 exe 하나
 - saba-chan-installer.exe: zip이 아닌 exe 그대로 (소개 페이지 다운로드와 업데이트가 이 파일을 쓴다)
-- locales.zip: 저장소 locales/ (zip 안에는 locales/ 접두사 없이 en/bot.json 꼴)
+- locales.zip: 저장소 locales/ (zip 안에는 locales/ 접두사 없이 en/daemon.json 꼴)
 """
 
 import argparse

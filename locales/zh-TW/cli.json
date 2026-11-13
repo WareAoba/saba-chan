@@ -739,7 +739,7 @@
     "bad_quotes": "引號未閉合",
     "bye": "再見。常駐程式與伺服器會繼續執行。",
     "ctrl_c": "（再按一次 Ctrl+C 或輸入 exit 離開）",
-    "help_line": "輸入指令（help，Tab 補全）。也可像在 Discord 一樣說話（例：\"my-server-1 start\"）。離開：exit。",
+    "help_line": "輸入指令（help，Tab 補全）。離開：exit。",
     "welcome": "Saba-chan CLI {{version}}",
     "lang_fixed": "shell 內無法變更語言。以目前語言（{{lang}}）顯示。"
   },
@@ -986,7 +986,6 @@
       "config.get": "單一設定",
       "config.set": "更改設定：鍵=值 ...（CLI 專用設定用 `cli.鍵`）",
       "config.reset": "恢復為預設值（不指定鍵則全部）",
-      "chat": "像在 Discord 中一樣傳送聊天命令（例：`chat my-server-1 start`）",
       "version": "所有已安裝部分的版本",
       "shell": "開啟互動式 shell",
       "completions": "輸出 shell 自動補全指令碼（`--install` 時為目前使用者安裝）",

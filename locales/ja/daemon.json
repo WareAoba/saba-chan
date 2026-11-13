@@ -1,0 +1,320 @@
+{
+  "default_prefix": "サバちゃん",
+  "top_level_words": {
+    "help": "help",
+    "list": "list"
+  },
+  "schedule": {
+    "restart_warning": "{{minutes}}分後にサーバーを再起動します。",
+    "update_warning": "{{minutes}}分後にアップデートのためサーバーを再起動します。",
+    "update_cancelled": "アップデートを取り消しました。",
+    "stop_warning": "{{minutes}}分後にサーバーを停止します。"
+  },
+  "provision": {
+    "installing": "サーバーをインストール中…",
+    "install_failed": "インストール失敗",
+    "installed": "サーバーのインストール完了",
+    "updating": "サーバーを更新中…",
+    "update_failed": "アップデート失敗",
+    "updated": "サーバーのアップデート完了",
+    "module_missing": "モジュールが見つかりません: {{error}}",
+    "no_latest_version": "最新のサーバーバージョンの確認失敗",
+    "script_failed": "インストールスクリプトのエラー。詳細はデーモンのログを確認してください。",
+    "save_failed": "サーバーファイルは取得したが、サーバー情報の保存に失敗。詳細はデーモンのログを確認してください。",
+    "backup_failed": "アップデート前のバックアップ失敗: {{reason}}",
+    "version_installing": "バージョン {{version}} をインストールしています…",
+    "version_installed": "{{version}} のインストール完了!",
+    "install_backup_failed": "インストール前のバックアップに失敗したためインストールしません: {{reason}}"
+  },
+  "server": {
+    "rest_port_closed": "REST ポート {{port}} 接続失敗"
+  },
+  "errors": {
+    "agreement_required": "サーバーを起動するには{{names}}への同意が必要です。PC の サバちゃん で同意してください。",
+    "memory_limit_at_start": "起動中にメモリ上限 ({{limit}} MiB) に達したためサーバーが停止しました。上限を RAM 設定より高くするか、空にしてください。",
+    "runner_missing": "saba-runner がないため管理型起動は使用不可。このサーバーの管理型起動をオフにするか、サバちゃん を再インストールしてください。"
+  },
+  "chatbot": {
+    "memo_template": "<!-- このような案内の行と、書き込んでいない見出しはおしゃべりサバちゃんに送られません。必要な項目だけ書いてください。 -->\n\n## 部屋の雰囲気\n<!-- このサーバーの会話の雰囲気や、どこまでの冗談が許されるかを書いてください。空のままなら基本の性格で話します。 -->\n\n## 呼び方\n<!-- サバちゃんが特定の人を呼ぶ呼び方があれば書いてください。例: (オーナー)と表示された人は「ご主人様」と呼ぶ。 -->\n\n## このサーバーの言葉\n<!-- このサーバーだけで通じるあだ名・ミーム・略語とその意味を書いてください。 -->\n\n## ゲームサーバーの案内\n<!-- サーバーのルールや運営時間など、サバちゃんが聞かれたら教えてよい内容を書いてください。 -->\n"
+  },
+  "controllers": {
+    "kick_reason": "登録された人のみ接続できるサーバーです。"
+  },
+  "backups": {
+    "kind": {
+      "manual": "手動",
+      "scheduled": "予約",
+      "pre-update": "アップデート前",
+      "pre-restore": "復元前",
+      "snapshot": "ゲーム自動バックアップの保管",
+      "game-snapshot": "ゲーム自動バックアップ",
+      "imported": "インポート"
+    },
+    "unreadable": "⚠️ 開けません"
+  },
+  "actions": {
+    "instance": {
+      "list": {
+        "title": "サーバー一覧",
+        "description": "登録済みのサーバーと状態"
+      },
+      "events": {
+        "title": "起動・停止の記録",
+        "description": "いつ・なぜ起動または停止したか"
+      },
+      "create": {
+        "title": "サーバーを作成"
+      },
+      "settings": {
+        "set": {
+          "title": "サーバー設定を変更"
+        }
+      },
+      "schedule": {
+        "set": {
+          "title": "予約タスクを変更"
+        },
+        "get": {
+          "title": "予約タスクを見る"
+        }
+      },
+      "delete": {
+        "title": "サーバーを削除"
+      },
+      "start_notice": {
+        "set": {
+          "title": "起動通知",
+          "description": "Discord 外でこのサーバーが起動・停止すると (クラッシュ含む)、この Discord サーバーの通知チャンネルに通知します",
+          "name": "起動通知"
+        }
+      },
+      "full_notice": {
+        "set": {
+          "title": "満員通知",
+          "description": "このサーバーが満員になったときや空きが出たときに、この Discord サーバーの通知チャンネルに通知します",
+          "name": "満員通知"
+        }
+      },
+      "get": {
+        "title": "サーバー設定を見る"
+      },
+      "rename": {
+        "title": "サーバー名を変更"
+      },
+      "properties": {
+        "get": {
+          "title": "ゲーム設定ファイルを見る"
+        },
+        "set": {
+          "title": "ゲーム設定ファイルを変更"
+        }
+      }
+    },
+    "server": {
+      "status": {
+        "title": "サーバーの状態",
+        "description": "1つのサーバーの状態",
+        "name": "状態"
+      },
+      "start": {
+        "title": "サーバーを起動",
+        "name": "起動"
+      },
+      "stop": {
+        "title": "サーバーを停止",
+        "name": "停止"
+      },
+      "restart": {
+        "title": "サーバーを再起動",
+        "name": "再起動"
+      },
+      "console": {
+        "tail": {
+          "title": "コンソールの末尾",
+          "description": "コンソールの最後の20行"
+        },
+        "send": {
+          "title": "コンソールコマンドを送る"
+        }
+      },
+      "logs": {
+        "read": {
+          "title": "ログを読む",
+          "description": "サーバーのログセッションを末尾から読みます"
+        },
+        "export": {
+          "title": "ログを書き出す",
+          "description": "サーバーのログセッションを .log ファイルに書き出します"
+        }
+      },
+      "players": {
+        "title": "プレイヤー",
+        "description": "接続中のプレイヤーと名前"
+      },
+      "address": {
+        "title": "サーバーアドレス",
+        "name": "アドレス",
+        "description": "友だちが接続するアドレス(IP:ポート)を呼んだ人にだけ教えます"
+      },
+      "port_check": {
+        "title": "ポート開放の確認",
+        "description": "外部からこのサーバーに接続できるかリレーが確認します"
+      },
+      "chat": {
+        "title": "ゲームチャット送信",
+        "description": "Discordのメッセージをゲームチャットに送ります"
+      },
+      "chat_link": {
+        "title": "チャット連携"
+      },
+      "update": {
+        "check": {
+          "title": "ゲームサーバーの更新を確認",
+          "name": "更新確認",
+          "description": "Steam にゲームサーバーの新しいビルドがあるか確認します"
+        },
+        "apply": {
+          "title": "ゲームサーバーを更新",
+          "name": "更新",
+          "description": "ゲームサーバーを更新します。起動中ならゲーム内で5分前に予告し、停止して更新してから再起動します"
+        },
+        "cancel": {
+          "title": "予告中のアップデートを取り消す",
+          "name": "アップデート取消",
+          "description": "予告中のゲームサーバーのアップデートを取り消します（停止する前まで）"
+        }
+      },
+      "diagnose": {
+        "title": "サーバー診断"
+      }
+    },
+    "monitor": {
+      "summary": {
+        "title": "リソース使用量",
+        "description": "CPU・メモリ・ディスク・ネットワーク"
+      }
+    },
+    "backup": {
+      "list": {
+        "title": "バックアップ一覧"
+      },
+      "create": {
+        "title": "バックアップ"
+      },
+      "restore": {
+        "title": "バックアップを復元",
+        "description": "現在のサーバーファイルをバックアップで上書きします"
+      },
+      "delete": {
+        "title": "バックアップを削除"
+      }
+    },
+    "module": {
+      "install": {
+        "title": "モジュールをインストール",
+        "description": "公式カタログからダウンロードしてインストールします"
+      },
+      "list": {
+        "title": "インストール済みモジュール"
+      },
+      "available": {
+        "title": "入手できるモジュール"
+      }
+    },
+    "extension": {
+      "enable": {
+        "title": "拡張機能を有効化"
+      },
+      "disable": {
+        "title": "拡張機能を無効化"
+      },
+      "list": {
+        "title": "インストール済み拡張機能"
+      },
+      "available": {
+        "title": "入手できる拡張機能"
+      },
+      "install": {
+        "title": "拡張機能をインストール"
+      }
+    },
+    "update": {
+      "check": {
+        "title": "アップデートを確認"
+      },
+      "apply": {
+        "title": "アップデートを適用",
+        "description": "新しいアップデートをダウンロードしてインストールし、アプリを再起動します"
+      }
+    },
+    "discord": {
+      "settings": {
+        "set": {
+          "title": "Discord設定を変更",
+          "description": "言語・スリープ・うたうサバちゃん"
+        }
+      }
+    },
+    "chatbot": {
+      "settings": {
+        "get": {
+          "title": "おしゃべりサバちゃんの設定を見る",
+          "description": "オン/オフ・呼び出し語・確認・ツール"
+        },
+        "set": {
+          "title": "おしゃべりサバちゃんの設定を変更",
+          "description": "オン/オフ・呼び出し語・確認・ツール"
+        }
+      },
+      "common": {
+        "set": {
+          "title": "このPC共通のおしゃべりサバちゃん設定を変更",
+          "description": "モデル・APIキー（このPCのすべてのサーバー）"
+        }
+      }
+    },
+    "field": {
+      "action": "操作",
+      "instance": "サーバー",
+      "name": "名前",
+      "module_name": "モジュール",
+      "module_settings": "モジュール設定",
+      "schedule": "予約",
+      "backup_keep": "保持するバックアップ数",
+      "module": "モジュール",
+      "extension": "拡張機能",
+      "backup": "バックアップ",
+      "overwrites": "上書き対象",
+      "overwrites_instance": "現在のサーバーファイル",
+      "source": "入手元",
+      "lines": "行数",
+      "before": "前の位置",
+      "since": "開始時刻",
+      "until": "終了時刻",
+      "trust": "信頼",
+      "version": "インストールするバージョン",
+      "installed": "現在のバージョン",
+      "official_catalog": "公式カタログ",
+      "guild": "Discordサーバー",
+      "locale": "言語",
+      "sleeping": "スリープ",
+      "music": "うたうサバちゃん",
+      "enabled": "オン",
+      "model": "モデル",
+      "memo": "サーバープロンプト",
+      "effort": "会話の推論の強さ",
+      "ambient": "会話への参加",
+      "ambientMinutes": "参加判断の間隔（分）",
+      "ambientEffort": "参加判断の推論の強さ",
+      "confirmLevel": "実行前の確認レベル",
+      "memory": "記憶",
+      "tools": "使うツール",
+      "step": "ステップ",
+      "from_snapshot": "ゲーム自動バックアップから",
+      "text": "本文",
+      "apiKey": "APIキー",
+      "command": "コマンド",
+      "settings": "設定"
+    }
+  }
+}

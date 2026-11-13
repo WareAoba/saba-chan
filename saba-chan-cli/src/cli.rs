@@ -89,16 +89,6 @@ pub enum Cmd {
     /// App settings
     #[command(subcommand, visible_alias = "settings")]
     Config(ConfigCmd),
-    /// Send a chat-style command, the same way Discord does (e.g. `chat palworld start`)
-    Chat {
-        #[arg(
-            required = true,
-            trailing_var_arg = true,
-            allow_hyphen_values = true,
-            value_name = "TEXT"
-        )]
-        text: Vec<String>,
-    },
     /// CPU, memory, disk and network use, and each server's share
     Monitor(MonitorArgs),
     /// Who started, stopped or sent commands to servers, and from where (GUI, CLI, Discord, schedule)
@@ -1780,8 +1770,8 @@ mod tests {
     #[test]
     fn a_lang_inside_command_text_is_not_the_global_option() {
         let p = |args: &[&str]| Cli::try_parse_from(std::iter::once("saba-chan-cli").chain(args.iter().copied())).unwrap();
-        assert_eq!(p(&["chat", "mc", "say", "--lang=ko"]).global.lang, None);
-        assert_eq!(p(&["--lang", "ko", "chat", "mc", "say", "hi"]).global.lang.as_deref(), Some("ko"));
+        assert_eq!(p(&["server", "rcon", "mc", "say", "--lang=ko"]).global.lang, None);
+        assert_eq!(p(&["--lang", "ko", "server", "rcon", "mc", "say", "hi"]).global.lang.as_deref(), Some("ko"));
     }
 
     #[test]

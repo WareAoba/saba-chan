@@ -163,8 +163,8 @@ async fn agent_round_trips_a_relay_command() {
     let (id, body) = posted.expect("agent never posted a result");
     assert_eq!(id, "req 1");
     assert_eq!(body["success"], true);
-    let en: Value = serde_json::from_str(include_str!("../locales/en/bot.json")).unwrap();
-    assert_eq!(body["data"]["text"], en["list"]["empty"], "{}", body);
+    // 답 문장은 릴레이가 만든다: 데몬은 문구 키만 보낸다
+    assert_eq!(body["data"]["text"], serde_json::json!({ "key": "list.empty" }), "{}", body);
 
     // 하트비트는 명령 폴링과 따로 돈다 (서버 CPU·RAM을 재느라 결과보다 늦게 올 수 있다)
     for _ in 0..100 {
