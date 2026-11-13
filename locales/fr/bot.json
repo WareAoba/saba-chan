@@ -451,7 +451,6 @@
         "unsupported": "Ce serveur ne peut pas être mis à jour.",
         "unchecked": "Serveur dont les mises à jour sont invérifiables",
         "started": "Mise à jour en cours.",
-        "cancelled": "Mise à jour annulée.",
         "scheduled": "Annonce en jeu {{minutes}} minutes avant, puis sauvegarde, arrêt, mise à jour et redémarrage.",
         "players": "{{count}} joueurs connectés"
       }

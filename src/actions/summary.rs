@@ -19,7 +19,7 @@ pub(crate) fn text(id: &str, result: &Value, cat: &Catalog) -> Option<String> {
         "server.address" => Some(address(result, cat)),
         "server.update.check" => Some(server_update_check(result, cat)),
         "server.update.apply" => Some(server_update_apply(result, cat)),
-        "server.update.cancel" => Some(cat.t("actions.summary.server_update.cancelled", &[])),
+        "server.update.cancel" => Some(cat.t("schedule.update_cancelled", &[])),
         // 모듈 조회(접속자 목록 등)는 모양이 모듈마다 달라 채팅 명령 결과와 같은 범용 포맷으로
         _ if id.starts_with(super::QUERY_PREFIX) => {
             let mut shown = result.clone();

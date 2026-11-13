@@ -451,7 +451,6 @@
         "unsupported": "此伺服器無法更新。",
         "unchecked": "無法檢查更新的伺服器",
         "started": "正在更新。",
-        "cancelled": "已取消更新。",
         "scheduled": "在遊戲內提前 {{minutes}} 分鐘通知後，儲存·停止·更新並重新啟動。",
         "players": "目前 {{count}} 人在線"
       }

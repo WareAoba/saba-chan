@@ -451,7 +451,6 @@
         "unsupported": "此服务器无法更新。",
         "unchecked": "无法检查更新的服务器",
         "started": "正在更新。",
-        "cancelled": "已取消更新。",
         "scheduled": "提前 {{minutes}} 分钟在游戏内通知，然后保存、停止、更新并重新启动。",
         "players": "当前在线 {{count}} 人"
       }

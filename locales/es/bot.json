@@ -451,7 +451,6 @@
         "unsupported": "Este servidor no se puede actualizar.",
         "unchecked": "Servidor sin comprobación de actualizaciones",
         "started": "Actualizando.",
-        "cancelled": "Actualización cancelada.",
         "scheduled": "Aviso en el juego desde {{minutes}} minutos antes; luego guarda, detiene, actualiza y vuelve a iniciar.",
         "players": "{{count}} jugadores conectados ahora"
       }

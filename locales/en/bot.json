@@ -451,7 +451,6 @@
         "unsupported": "This server can't be updated.",
         "unchecked": "Server can't be checked for updates",
         "started": "Updating.",
-        "cancelled": "Update canceled.",
         "scheduled": "Warns in game from {{minutes}} minutes ahead, then saves, stops, updates, and starts it again.",
         "players": "{{count}} players online now"
       }

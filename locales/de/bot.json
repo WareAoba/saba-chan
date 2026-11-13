@@ -451,7 +451,6 @@
         "unsupported": "Dieser Server kann nicht aktualisiert werden.",
         "unchecked": "Update-Prüfung für diesen Server nicht möglich",
         "started": "Wird aktualisiert.",
-        "cancelled": "Update abgebrochen.",
         "scheduled": "Warnung {{minutes}} Minuten vorher im Spiel, dann speichern, stoppen, aktualisieren und neu starten.",
         "players": "Aktuell {{count}} Spieler online"
       }
