@@ -268,16 +268,16 @@ pub(crate) async fn players(state: &IPCServer, id: &str) -> axum::response::Resp
     let fail = |status: StatusCode, code: &str, error: String| (status, Json(json!({ "success": false, "error_code": code, "error": error }))).into_response();
     let call = {
         let sup = state.supervisor.read().await;
-        let Some(instance) = sup.instance_store.get(&id) else {
+        let Some(instance) = sup.instance_store.get(id) else {
             return fail(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id));
         };
         let Some(function) = sup.module_loader.get_module(&instance.module_name).ok().and_then(|m| m.metadata.players_function) else {
             return fail(StatusCode::OK, "not_supported", "This server's module cannot list players".into());
         };
-        if sup.tracker.get_pid(&id).is_err() {
+        if sup.tracker.get_pid(id).is_err() {
             return fail(StatusCode::CONFLICT, "server_not_running", "The server is not running".into());
         }
-        sup.instance_call(&id, &function)
+        sup.instance_call(id, &function)
     };
     let mut call = match call {
         Ok(c) => c,

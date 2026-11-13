@@ -693,13 +693,13 @@ pub(crate) async fn create_from(state: &IPCServer, id: &str, source: Source) -> 
 /// 백업 하나(또는 게임 스냅샷 하나)를 지운다
 pub(crate) async fn delete(state: &IPCServer, id: &str, name: String) -> Outcome {
     if let Some(sid) = name.strip_prefix(SNAPSHOT_PREFIX) {
-        return match delete_snapshot(&state, &id, sid).await {
+        return match delete_snapshot(state, id, sid).await {
             Ok(()) => Ok(json!({ "success": true })),
             Err(r) => Err(r),
         };
     }
     let dir = backups_dir(state, id).await?;
-    let Some(_guard) = InstanceLock::take(&id) else {
+    let Some(_guard) = InstanceLock::take(id) else {
         return Err(Failure::coded(StatusCode::CONFLICT, "backup_busy", "A backup or restore is already running for this instance"));
     };
     // 지운 뒤 쓰지 않는 내용을 치우느라 모든 백업을 읽는다: 비동기 작업자를 막지 않게
@@ -799,7 +799,7 @@ pub(crate) async fn export(state: &IPCServer, id: &str, name: String, path: &str
         return Err(Failure::coded(StatusCode::BAD_REQUEST, "invalid_backup_name", "Keep the game's automatic backup first, then export it"));
     }
     let (at, dest) = (transfer(state, id).await?, absolute(path)?);
-    let Some(_guard) = InstanceLock::take(&id) else {
+    let Some(_guard) = InstanceLock::take(id) else {
         return Err(Failure::coded(StatusCode::CONFLICT, "backup_busy", "A backup or restore is already running for this instance"));
     };
     let shown = dest.clone();
@@ -835,7 +835,7 @@ pub(crate) async fn import(state: &IPCServer, id: &str, path: &str, preview: boo
     if preview {
         return Ok(json!({ "success": true, "preview": seen }));
     }
-    let Some(_guard) = InstanceLock::take(&id) else {
+    let Some(_guard) = InstanceLock::take(id) else {
         return Err(Failure::coded(StatusCode::CONFLICT, "backup_busy", "A backup or restore is already running for this instance"));
     };
     let done = tokio::task::spawn_blocking(move || backup::import(&at.dir, &source, &backup::Bases { server: &at.server, instance: &at.instance })).await;

@@ -243,7 +243,7 @@ async fn instance_commands(
 pub(crate) async fn list(state: &IPCServer, id: &str) -> axum::response::Response {
     let (instance, metadata, route) = {
         let supervisor = state.supervisor.read().await;
-        let Some(instance) = supervisor.instance_store.get(&id).cloned() else {
+        let Some(instance) = supervisor.instance_store.get(id).cloned() else {
             return (
                 StatusCode::NOT_FOUND,
                 Json(json!({ "error": format!("Instance not found: {}", id), "error_code": "not_found" })),
@@ -277,7 +277,7 @@ pub(crate) async fn list(state: &IPCServer, id: &str) -> axum::response::Respons
         }
     }
     let extra = match &metadata {
-        Some(meta) if meta.commands.as_ref().is_some_and(|c| c.hook) => Some(instance_commands(&state, &instance, true).await),
+        Some(meta) if meta.commands.as_ref().is_some_and(|c| c.hook) => Some(instance_commands(state, &instance, true).await),
         _ => None,
     };
     if let (Some(meta), Some(extra)) = (&metadata, &extra) {
