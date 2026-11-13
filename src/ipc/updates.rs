@@ -636,8 +636,8 @@ async fn replace_addons_once(state: &UpdateState) -> Leftover {
     let mut failed = false;
     let mut downloaded = Vec::new();
     for comp in ready {
-        // 판마다 잠갔다 놓는다: 판 하나를 받는 동안만 상태 조회·업데이트 화면이 기다린다
-        let result = state.manager.write().await.download_component(&comp).await;
+        // 받는 동안은 관리자를 잠그지 않는다: 상태 조회·업데이트 화면이 기다리지 않는다
+        let result = saba_chan_updater_lib::download_shared(&state.manager, &comp).await;
         match result {
             Ok(_) => downloaded.push(comp),
             Err(e) => {
@@ -1225,8 +1225,7 @@ fn announce_new_updates(status: &saba_chan_updater_lib::UpdateStatus) {
 async fn silent_apply_locales(manager: &Arc<RwLock<UpdateManager>>) {
     // 1. 다운로드
     let download_ok = {
-        let mut mgr = manager.write().await;
-        match mgr.download_component(&Component::Locales).await {
+        match saba_chan_updater_lib::download_shared(manager, &Component::Locales).await {
             Ok(_) => {
                 tracing::info!("[Updates] Locales silently downloaded");
                 true
@@ -1290,24 +1289,26 @@ async fn download_components(State(state): State<UpdateState>, raw: axum::body::
 
 async fn download_components_with(state: UpdateState, body: DownloadRequest) -> impl IntoResponse {
     let _touched = StatusTouched(&state);
-    let mut mgr = state.manager.write().await;
-
-    // 아직 체크하지 않았으면 먼저 체크
-    if mgr.get_status().components.is_empty() {
-        if let Err(e) = mgr.check_for_updates().await {
-            return Json(json!({
-                "ok": false,
-                "error": format!("Auto-check failed: {}", e),
-            }));
+    {
+        let mut mgr = state.manager.write().await;
+        // 아직 체크하지 않았으면 먼저 체크
+        if mgr.get_status().components.is_empty() {
+            if let Err(e) = mgr.check_for_updates().await {
+                return Json(json!({
+                    "ok": false,
+                    "error": format!("Auto-check failed: {}", e),
+                }));
+            }
         }
     }
 
+    // 받는 동안은 관리자를 잠그지 않는다 (`download_shared`): 상태 조회·`update.status`가 기다리지 않는다
     if body.components.is_empty() {
         // 전체 다운로드. 하나가 실패해도 받은 것은 적용할 수 있게 남기고, 선택 다운로드처럼 받은 것과 실패한 것을 함께 알린다
-        match mgr.download_available_updates_report().await {
+        match saba_chan_updater_lib::download_available_shared(&state.manager).await {
             Ok((downloaded, failed)) => {
                 // 업데이터 --apply 모드를 위해 매니페스트 저장
-                if let Err(e) = mgr.save_pending_manifest() {
+                if let Err(e) = state.manager.read().await.save_pending_manifest() {
                     tracing::warn!("[Updates] Failed to save pending manifest: {}", e);
                 }
                 let errors: Vec<Value> = failed.iter().map(|(k, e)| json!({ "component": k, "error": e })).collect();
@@ -1330,7 +1331,7 @@ async fn download_components_with(state: UpdateState, body: DownloadRequest) -> 
 
         for key in &body.components {
             let component = Component::from_manifest_key(key);
-            match mgr.download_component(&component).await {
+            match saba_chan_updater_lib::download_shared(&state.manager, &component).await {
                 Ok(asset) => {
                     downloaded.push(json!({
                         "component": key,
@@ -1348,7 +1349,7 @@ async fn download_components_with(state: UpdateState, body: DownloadRequest) -> 
 
         // 업데이터 --apply 모드를 위해 매니페스트 저장
         if !downloaded.is_empty() {
-            if let Err(e) = mgr.save_pending_manifest() {
+            if let Err(e) = state.manager.read().await.save_pending_manifest() {
                 tracing::warn!("[Updates] Failed to save pending manifest: {}", e);
             }
         }
@@ -2563,7 +2564,7 @@ async fn switch_addon(
         return addon_refusal(StatusCode::CONFLICT, &code, format!("{} was changed by hand; it is not replaced", key));
     }
     let staged = state.manager.write().await.stage_addon(&key, entry);
-    let downloaded = state.manager.write().await.download_component(component).await;
+    let downloaded = saba_chan_updater_lib::download_shared(&state.manager, component).await;
     if let Err(e) = downloaded {
         state.manager.write().await.unstage_addon(staged);
         use saba_chan_updater_lib::download::DownloadError;

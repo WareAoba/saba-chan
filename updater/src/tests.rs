@@ -2377,14 +2377,11 @@ fn component_kind_tells_addons_from_the_app() {
     }
 }
 
-/// 받는 동안 진행을 알릴 곳(`set_download_listener`)이 받기 시작·받은 크기·끝을 차례로 듣는다.
-/// 데몬은 이것으로 진행 이벤트를 내고, 클라이언트는 진행을 묻지 않는다
-#[tokio::test]
-async fn a_download_tells_its_listener_when_it_starts_how_far_it_got_and_when_it_ends() {
+/// 본문 절반을 보내고 0.5초 쉬었다가 나머지를 보내는 서버 하나 (한 번만 답한다): `(url, sha256)`
+async fn slow_module_server(len: usize) -> (String, String) {
     use sha2::Digest;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    const LEN: usize = 1_200_000;
-    let body = vec![b'm'; LEN];
+    let body = vec![b'm'; len];
     let sha256: String = sha2::Sha256::digest(&body).iter().map(|b| format!("{:02x}", b)).collect();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("http://{}/module-slow.zip", listener.local_addr().unwrap());
@@ -2392,17 +2389,32 @@ async fn a_download_tells_its_listener_when_it_starts_how_far_it_got_and_when_it
         let (mut sock, _) = listener.accept().await.unwrap();
         let mut buf = [0u8; 1024];
         let _ = sock.read(&mut buf).await;
-        let _ = sock.write_all(format!("HTTP/1.1 200 OK\r\nContent-Length: {LEN}\r\n\r\n").as_bytes()).await;
-        let _ = sock.write_all(&body[..LEN / 2]).await;
+        let _ = sock.write_all(format!("HTTP/1.1 200 OK\r\nContent-Length: {len}\r\n\r\n").as_bytes()).await;
+        let _ = sock.write_all(&body[..len / 2]).await;
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-        let _ = sock.write_all(&body[LEN / 2..]).await;
+        let _ = sock.write_all(&body[len / 2..]).await;
     });
-    let tmp = tempfile::tempdir().unwrap();
-    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
-    manager.staging_dir = tmp.path().join("staging");
+    (url, sha256)
+}
+
+/// 받을 판 `module-slow`를 둔 관리자
+fn manager_with_slow_module(tmp: &std::path::Path, url: &str, sha256: &str) -> UpdateManager {
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.join("modules").to_str().unwrap());
+    manager.staging_dir = tmp.join("staging");
     let entry: crate::relay::ManifestComponent =
         serde_json::from_value(serde_json::json!({ "version": "1.0.0", "asset": "module-slow.zip", "sha256": sha256, "url": url })).unwrap();
     manager.stage_addon("module-slow", &entry);
+    manager
+}
+
+/// 받는 동안 진행을 알릴 곳(`set_download_listener`)이 받기 시작·받은 크기·끝을 차례로 듣는다.
+/// 데몬은 이것으로 진행 이벤트를 내고, 클라이언트는 진행을 묻지 않는다
+#[tokio::test]
+async fn a_download_tells_its_listener_when_it_starts_how_far_it_got_and_when_it_ends() {
+    const LEN: usize = 1_200_000;
+    let (url, sha256) = slow_module_server(LEN).await;
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = manager_with_slow_module(tmp.path(), &url, &sha256);
     let heard = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let sink = heard.clone();
     manager.set_download_listener(std::sync::Arc::new(move |p: &crate::DownloadProgress| sink.lock().unwrap().push(p.clone())));
@@ -2415,4 +2427,33 @@ async fn a_download_tells_its_listener_when_it_starts_how_far_it_got_and_when_it
     assert!(heard.iter().any(|p| p.active && p.bytes_received > 0 && p.total_bytes == LEN as u64), "{heard:?}");
     let last = heard.last().unwrap();
     assert!(!last.active && last.component.as_deref() == Some("module-slow"), "{heard:?}");
+}
+
+/// 데몬처럼 관리자를 함께 쓰면(`download_shared`) 내려받는 동안 관리자를 잠그지 않는다:
+/// 받는 중에도 상태 조회(`GET /api/updates/status`·`update.status`)가 기다리지 않고, 받은 뒤에는 상태에 남는다
+#[tokio::test]
+async fn a_shared_download_does_not_hold_the_manager_while_it_downloads() {
+    const LEN: usize = 1_200_000;
+    let (url, sha256) = slow_module_server(LEN).await;
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = manager_with_slow_module(tmp.path(), &url, &sha256);
+    let (got_half, mut halfway) = tokio::sync::mpsc::unbounded_channel();
+    manager.set_download_listener(std::sync::Arc::new(move |p: &crate::DownloadProgress| {
+        if p.active && p.bytes_received > 0 {
+            let _ = got_half.send(());
+        }
+    }));
+    let manager = std::sync::Arc::new(tokio::sync::RwLock::new(manager));
+
+    let shared = manager.clone();
+    let download = tokio::spawn(async move { crate::download_shared(&shared, &Component::Module("slow".into())).await });
+    tokio::time::timeout(std::time::Duration::from_secs(5), halfway.recv()).await.expect("the download started");
+    let read = tokio::time::timeout(std::time::Duration::from_millis(100), manager.read()).await;
+    assert!(read.is_ok(), "the status can be read while the download waits on the network");
+    drop(read);
+
+    assert_eq!(download.await.unwrap().unwrap(), "module-slow.zip");
+    let status = manager.read().await.get_status();
+    let slow = status.components.iter().find(|c| c.component == Component::Module("slow".into())).unwrap();
+    assert!(slow.downloaded, "{slow:?}");
 }
