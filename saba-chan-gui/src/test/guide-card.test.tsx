@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { GuideCard } from '../components/guides/GuideCard';
 import { type GuideItem, pendingGuides, startGuide, useGuideStore } from '../components/guides/guides';
@@ -110,6 +110,21 @@ describe('화면 강조', () => {
         expect(useGuideStore.getState().active).toBeNull();
         expect(window.api.guideUpdate).toHaveBeenCalledWith('b', { finished: true, step: 0 });
         target.remove();
+    });
+
+    it('숨겨 둔 탭 안의 자리는 짚지 않는다', async () => {
+        const page = document.createElement('div');
+        page.hidden = true;
+        const target = document.createElement('button');
+        target.dataset.spot = 'here';
+        page.appendChild(target);
+        document.body.appendChild(page);
+        render(<Spotlight />);
+        act(() => startGuide('b'));
+        // 보이는 자리가 없을 때처럼 잠깐 기다린 뒤 가운데 말풍선으로 설명한다
+        await waitFor(() => expect(screen.getByText('look here')).toBeInTheDocument(), { timeout: 3000 });
+        expect(document.querySelector('.spotlight-hole')).toBeNull();
+        page.remove();
     });
 
     it('말풍선 밖을 누르면 바로 닫히고, 보던 단계는 남는다', async () => {

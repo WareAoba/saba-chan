@@ -1,5 +1,5 @@
 import type { ComponentProps } from 'react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, type ReactNode, startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import './App.css';
 import {
@@ -63,7 +63,7 @@ import {
 } from './utils/opening';
 import { consoleQuickCommands, interactionOf, isManaged } from './utils/serverView';
 import { announceUpdateCompleted, syncUpdateNotice } from './utils/updateNotice';
-import { warmTabArt } from './utils/warmArt';
+import { warmTabArt, whenIdle } from './utils/warmArt';
 // 새 레이아웃 스타일은 화면별 옛 CSS(App.css, Modals.css)보다 뒤에 와야 이긴다
 import { announceLastUpdateResult, PatchNotesModal } from './components/Modals/PatchNotesModal';
 import { useSlowProgressBubble } from './hooks/useSlowProgressBubble';
@@ -872,7 +872,7 @@ function App() {
                     />
 
                     <div className="app-body" data-page={page}>
-                        {page === 'servers' && (
+                        <KeptPage active={page === 'servers'} ready={openingPhase === 'done'}>
                             <ServersPage
                                 servers={servers}
                                 modules={modules}
@@ -880,11 +880,15 @@ function App() {
                                 drag={{ draggedId, cardRefs, skipNextClick, handleCardPointerDown }}
                                 consoleProps={consoleProps}
                             />
-                        )}
-                        {page === 'discord' && <DiscordPage {...discordPageProps} />}
-                        {(page as string) === 'activity' && <ActivityPage />}
+                        </KeptPage>
+                        <KeptPage active={page === 'discord'} ready={openingPhase === 'done'}>
+                            <DiscordPage {...discordPageProps} />
+                        </KeptPage>
+                        <KeptPage active={page === 'activity'} ready={openingPhase === 'done'}>
+                            <ActivityPage />
+                        </KeptPage>
                         {page.startsWith('ext:') && <ExtensionAppPage page={page} onMissing={leaveExtensionPage} />}
-                        {page === 'settings' && (
+                        <KeptPage active={page === 'settings'} ready={openingPhase === 'done'}>
                             <div className="page page-scroll page-settings">
                                 <SettingsModal
                                     discordCloudRelayUrl={discordCloudRelayUrl}
@@ -900,7 +904,7 @@ function App() {
                                     onTestLoadingScreen={runLoadingScreenTest}
                                 />
                             </div>
-                        )}
+                        </KeptPage>
                     </div>
 
                     {activityAvailable() && <ActivityBar />}
@@ -941,6 +945,31 @@ function App() {
         </>
     );
 }
+
+/**
+ * 상단 탭 한 칸. 한 번 그린 탭은 떠나도 지우지 않고 그린 결과째 숨겨 두어(`hidden` → content-visibility),
+ * 돌아올 때 처음부터 다시 그리지 않고 바로 보인다. 숨은 동안은 App이 다시 그려져도 따라 그리지 않고,
+ * 돌아올 때 최신 값으로 한 번 그린다. 오프닝이 끝나면(`ready`) 아직 열지 않은 탭도 한가할 때 미리 그려 둔다.
+ * 숨은 탭은 `hidden`이 달려 있어 화면에서 자리를 찾는 코드(가이드 강조·설정 칸 찾기)가 건너뛴다.
+ */
+function KeptPage({ active, ready, children }: { active: boolean; ready: boolean; children: ReactNode }) {
+    const [kept, setKept] = useState(active);
+    if (active && !kept) setKept(true);
+    useEffect(() => {
+        if (kept || !ready) return undefined;
+        return whenIdle(() => startTransition(() => setKept(true)));
+    }, [kept, ready]);
+    if (!kept) return null;
+    return (
+        <div className="app-page" hidden={!active}>
+            <PageBody active={active}>{children}</PageBody>
+        </div>
+    );
+}
+const PageBody = memo(
+    ({ children }: { active: boolean; children: ReactNode }) => children,
+    (_prev, next) => !next.active,
+);
 
 type PopoutConsoleViewProps = Omit<ComponentProps<typeof PopoutConsole>, 'state'> & {
     popoutParams: { instanceId: string; name: string };

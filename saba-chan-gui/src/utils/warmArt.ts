@@ -22,8 +22,21 @@ export function warmTabArt() {
         }
         document.fonts?.load?.("700 1em 'saba-hand'").catch(() => {});
     };
-    const idle = (window as Window & { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number })
-        .requestIdleCallback;
-    if (idle) idle(run, { timeout: 3000 });
-    else setTimeout(run, 1000);
+    whenIdle(run);
+}
+
+type IdleWindow = Window & {
+    requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number;
+    cancelIdleCallback?: (id: number) => void;
+};
+
+/** 한가할 때(늦어도 3초 안에) 한 번 부른다. 없는 웹뷰(맥 WebKit)는 1초 뒤. 돌려준 함수로 취소한다 */
+export function whenIdle(run: () => void): () => void {
+    const w = window as IdleWindow;
+    if (w.requestIdleCallback) {
+        const id = w.requestIdleCallback(run, { timeout: 3000 });
+        return () => w.cancelIdleCallback?.(id);
+    }
+    const timer = setTimeout(run, 1000);
+    return () => clearTimeout(timer);
 }

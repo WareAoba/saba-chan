@@ -35,7 +35,13 @@ function useSpotBox(spot: string | undefined, key: string): Box | null | 'wait' 
         let scrolled = false;
         let frame = 0;
         const tick = () => {
-            if (!el?.isConnected) el = document.querySelector(`[data-spot="${CSS.escape(spot)}"]`);
+            // 숨겨 둔 탭(App KeptPage `hidden`) 안의 같은 자리는 건너뛴다
+            if (!el?.isConnected || el.closest('[hidden]')) {
+                el =
+                    Array.from(document.querySelectorAll(`[data-spot="${CSS.escape(spot)}"]`)).find(
+                        (e) => !e.closest('[hidden]'),
+                    ) ?? null;
+            }
             if (el) {
                 if (!scrolled) {
                     el.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });

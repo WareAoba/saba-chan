@@ -229,6 +229,23 @@
     display: flex;
     position: relative;
 }
+/* 상단 탭 한 칸(App KeptPage): 보일 때는 상자 없이 안의 페이지가 본문 flex에 바로 놓이고,
+   숨은 탭은 그린 결과를 그대로 둔 채 자리만 비운다 (content-visibility: 다시 보일 때 처음부터 그리지 않는다) */
+.app-page {
+    display: contents;
+}
+.app-page[hidden] {
+    display: flex;
+    position: absolute;
+    inset: 0;
+    visibility: hidden;
+    content-visibility: hidden;
+    pointer-events: none;
+}
+/* 다시 보일 때 페이지 들어오는 움직임을 처음부터 (.page의 page-in) */
+.app-page[hidden] > .page {
+    animation: none;
+}
 .page {
     flex: 1;
     min-width: 0;
