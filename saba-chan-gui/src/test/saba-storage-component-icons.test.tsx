@@ -5,7 +5,7 @@
 import { render } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { Icon } from '../components/Icon';
-import { parseComponents } from '../components/Modals/SabaStorage';
+import { parseComponents } from '../components/Modals/SabaStorageComponents';
 
 const KEYS = ['updater', 'gui', 'saba-core', 'cli', 'installer'];
 
