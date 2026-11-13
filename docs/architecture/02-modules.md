@@ -74,7 +74,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 #### `[protocols]` (`ProtocolsSection` `:725-735`)
 | 키 | 타입 | 사용처 |
 |---|---|---|
-| `supported` | Vec<String> | `stdin`/`rest`/`rcon`. `rcon`은 다른 명령 길이 없을 때만 쓴다: `rest`가 없고, `stdin`도 없거나 관리형 시작을 꺼 콘솔이 없을 때(아래 RCON 정책, `ModuleMetadata::rcon_only_port`·`rcon_port_without_console`, `Supervisor::rcon_port_for`). 이 셋 밖의 값은 로드 때 거부한다(`PROTOCOLS`, `value_problems`). 포트 충돌 검사(`build_module_protocols_map`, `D:src/supervisor/mod.rs:255-306`), 인스턴스 생성 시 rest_port 기본값 결정(`instance.rs:112-116`), 명령·정지를 stdin으로 보낼지 판단(`mod.rs:957-959, 1700-1722`) |
+| `supported` | Vec<String> | `stdin`/`rest`/`rcon`. `rcon`은 다른 명령 길이 없을 때만 쓴다: `rest`가 없고, `stdin`도 없거나 관리형 시작을 꺼 콘솔이 없을 때(아래 RCON 정책, `ModuleMetadata::rcon_only_port`·`rcon_port_without_console`, `Supervisor::rcon_port_for`). 이 셋 밖의 값은 로드 때 거부한다(`PROTOCOLS`, `value_problems`). 포트 충돌 검사(`build_module_protocols_map`, `D:src/supervisor/mod.rs:255-306`), 인스턴스 생성 시 rest_port 기본값 결정(`instance/create.rs` `choose_ports`), 명령·정지를 stdin으로 보낼지 판단(`mod.rs:957-959, 1700-1722`) |
 | `rcon_port` | u16 | 게임의 기본 RCON 포트. `supported`에 `rcon`만 있거나 `stdin`·`rcon`이 있고 `rest`가 없으면 필수다(없으면 로드 때 거부, `value_problems`). 데몬이 처음 시작할 때 이 값으로 인스턴스의 RCON 접속 정보를 만든다 |
 | `default` | String | GUI로 전달만 함 (`ProtocolsInfo`). `supported`와 같은 값만 받는다 |
 | `interaction_mode` | String | `console` 또는 `commands`. 데몬도 GUI도 해석하지 않는다. 데몬은 모든 모듈을 기본 managed로 시작하고(`Supervisor::uses_managed_start`), 그 판정을 `GET /api/servers`의 `ServerInfo.managed`로 알려 준다. GUI는 그 값을 따라(`utils/serverView.ts` `isManaged`) managed 서버에 콘솔 탭을 보이고, 입력칸은 `protocols.supported`에 `stdin`이 있을 때만 연다(`interactionOf`). REST 전용 서버는 읽기 전용 콘솔과 명령 탭을 함께 보인다 |
@@ -85,8 +85,8 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 | 키 | 타입 | 사용처 |
 |---|---|---|
 | `executable_path` | String | `/api/modules` 응답에 그대로 노출. 데몬은 이 값으로 실행하지 않음 |
-| `server_executable` | String | `working_dir + server_executable`로 실행파일 자동 해석 (`mod.rs:306-342`), 설치 시 백업 대상(`:2058-2083`), 마이그레이션 (`instance.rs:633-640`) |
-| `process_name` | String | 인스턴스 생성 시 `instance.process_name`에 복사 → auto-detect (`instance.rs:109`, `mod.rs:2514-2524`) |
+| `server_executable` | String | `working_dir + server_executable`로 실행파일 자동 해석 (`mod.rs:306-342`), 설치 시 백업 대상(`:2058-2083`), 마이그레이션 (`instance/create.rs`) |
+| `process_name` | String | 인스턴스 생성 시 `instance.process_name`에 복사 → auto-detect (`instance/create.rs`, `mod.rs:2514-2524`) |
 | `default_port` | u16 | 인스턴스 생성 시 `instance.port` 기본값 |
 | `stop_command` | String | managed stop 때 stdin으로 전송. 기본값 `"stop"` (`mod.rs:961`) |
 | `stop_signal` | `"interrupt"` | 일반 정지에 콘솔 명령 대신 보낼 신호. `interrupt`면 managed stop이 Ctrl+C(unix는 SIGINT)를 보내고 서버가 저장하고 끝나기를 `stop_timeout`만큼 기다린다(§3.4 managed stop 2번). 저장 처리기가 Ctrl+C에만 붙은 서버(공식 정지 방법이 Ctrl+C뿐인 게임)용. 없으면 `stop_command`를 쓴다. 0.1.13 |
@@ -194,7 +194,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 | `platform` | String | — |
 | `download_url` | String | — |
 | `beta` | String | — |
-| `requires_extensions` | Vec<String> | `[]`. 인스턴스 생성·non-managed 시작·`/api/module/:name/install` 때 필수 익스텐션 검증에 사용 (`instance.rs:233-252`, `mod.rs:572-629`, `managed.rs:526-`) |
+| `requires_extensions` | Vec<String> | `[]`. 인스턴스 생성·non-managed 시작·`/api/module/:name/install` 때 필수 익스텐션 검증에 사용 (`instance/create.rs`, `supervisor/start.rs`, `managed.rs:526-`) |
 
 zomboid의 `beta_branch` 키와 lifecycle의 `use_beta` 분기는 지워졌다. 받을 브랜치의 기본값은 module.toml `[install].beta` 한 곳에 둔다: 설치·업데이트(`install_for_module`)와 업데이트 확인(`extension_data.steamcmd_beta`)이 같은 값을 쓴다. 서버마다 브랜치를 고르게 하려면 새 키 없이 `list_versions`·`install_server`를 쓴다(§3.3 `list_versions`): 설치 방식 익스텐션으로 받는 모듈의 버전 목록은 브랜치 목록이고, 고른 값은 데몬이 그 인스턴스의 `<방식>_beta`에 적는다.
 
@@ -403,7 +403,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 - 익스텐션 누락: `error_code: "extension_required"`, `missing_extensions[]`.
 - 데몬은 그 실행에서 확인되지 않아 import를 막은 익스텐션(`SABA_UNVERIFIED_EXTENSIONS`)만으로 `missing_extensions`가 채워진 `extension_required`를 `error_code: "extension_not_verified"`, `unverified_extensions[]`, 영문 `message`로 바꿔 돌려준다(`plugin/mod.rs` `explain_unverified_extensions`). 모듈이 import 실패를 삼켜도 설치·활성화 안내 대신 "파일이 바뀌어 확인되지 않음"이 보이게 하려는 것이다.
 - `status`: `status` 문자열과 `pid`를 데몬이 읽는다. 나머지 키는 버린다 (`mod.rs:1182-1197`).
-- `install_server`: `success`, `executable_path`, `install_path`를 프로비저닝 경로가 읽는다 (`instance.rs:531-559`) `install_path`는 인스턴스의 `working_dir`가 되는데, 확인되지 않은 모듈(Windows)이 돌려준 값은 실제 경로가 인스턴스 폴더 안의 폴더일 때만 받는다(파일은 받지 않는다)(`sandbox::accepts_module_dir`. 그 폴더는 다음 격리 실행에 쓰기를 받는다).
+- `install_server`: `success`, `executable_path`, `install_path`를 프로비저닝 경로가 읽는다 (`instance/provision.rs` `install_new_server`) `install_path`는 인스턴스의 `working_dir`가 되는데, 확인되지 않은 모듈(Windows)이 돌려준 값은 실제 경로가 인스턴스 폴더 안의 폴더일 때만 받는다(파일은 받지 않는다)(`sandbox::accepts_module_dir`. 그 폴더는 다음 격리 실행에 쓰기를 받는다).
 - `get_installed_version`: `version`.
 - `get_credentials`: `success`, `rest_username`, `rest_password`. 데몬은 REST 자격증명만 쓴다 (`command.rs:579-581, 660-687`). 지금은 palworld만 구현한다. minecraft·zomboid는 RCON 값만 돌려주던 이 함수를 지웠다.
 - `import_settings`: `success`, `settings{}`. `port`·`rest_port`와 credential_map의 게임 키(→ `rest_password`)는 인스턴스 필드로도 맞춘다 (`D:src/instance/mod.rs:172-206`). 마이그레이션에서는 `executable_path`(작업 폴더 기준 상대 경로, 모듈이 찾은 서버 실행 파일)와 `detected`(판정 결과, 데몬은 내용을 보지 않고 생성 응답에 넘긴다)도 읽는다.
@@ -423,13 +423,13 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 | `command` | `POST /api/instance/:id/command`에서 명령의 `method`가 `module`일 때 → `mod.rs:1220-1279` | `command`, `args`, `protocol_mode`, `working_dir`, `rest_host`, `rest_port`, `pid`, `instance_id` |
 | `get_credentials` | `/rest` 요청 시. 결과를 캐시하므로 캐시가 있으면 Python을 띄우지 않는다 (`command.rs:660-687`) | `working_dir` |
 | `validate` | `POST /api/instance/:id/validate`, 그리고 `POST /api/instance/:id/start`의 시작 전 점검(`server.rs:712-764`) → `mod.rs:1818-1859` | `server_executable`(=executable_path), `working_dir`, `port`, `extension_data`, 인스턴스 값(위와 같음), `running` |
-| `configure` | `PUT /properties`, 인스턴스 설정 PATCH 후 동기화 (`instance.rs:1276-1349`) → `manage_properties` `mod.rs:1865-1916` | `working_dir`, `extension_data`, 인스턴스 값, `port`, `settings{}`. PATCH 동기화의 `settings`에는 데몬 필드(`protocol_mode`·`executable_path`·`working_dir`·`server_version`·`extension_data`·`managed_start`·`rest_*`·`rcon_*`·`enable_rcon`)와 모듈이 `group = "saba-chan"`으로 선언한 사바쨩 설정이 빠진다(MK6) |
+| `configure` | `PUT /properties`, 인스턴스 설정 PATCH 후 동기화 (`instance/settings.rs` `update_instance_settings`) → `manage_properties` `mod.rs:1865-1916` | `working_dir`, `extension_data`, 인스턴스 값, `port`, `settings{}`. PATCH 동기화의 `settings`에는 데몬 필드(`protocol_mode`·`executable_path`·`working_dir`·`server_version`·`extension_data`·`managed_start`·`rest_*`·`rcon_*`·`enable_rcon`)와 모듈이 `group = "saba-chan"`으로 선언한 사바쨩 설정이 빠진다(MK6) |
 | `read_properties` | `GET /properties` | `working_dir`, `extension_data`, 인스턴스 값, `port` |
 | `reset_properties` | `POST /properties/reset` | 위와 같음 |
 | `reset_server` | `POST /server/reset` | 위와 같음 + `scope`(요청이 고른 범위 id, `reset_preview`가 밝힌 것. 없으면 모듈의 기본 범위) |
 | `reset_preview` | `GET /server/reset` | `reset_server`와 같음. 선택 함수. 아무것도 지우지 않고 `{success, scopes:[{id, label?, note?, items:[{label, paths[]}]}]}`를 돌려준다: 범위마다 `reset_server`가 지울 경로(서버 폴더 기준 상대 경로나 절대 경로)와 이름. 범위가 하나면 `label`을 쓰지 않는다. 지금 있는지와 크기는 데몬이 본다 |
 | `read_lists` | `GET /api/instance/:id/lists` (`[[lists]]`를 선언한 모듈만) | `read_properties`와 같음. 선택 함수. 읽기만 한다(꺼진 서버에도 온다). `{success, lists:{<목록 id>: [{name, added?, note?}]}}`: `added`는 넣은 때(ISO 8601 날짜나 시각), `note`는 덧붙일 말(예: 밴 이유). 데몬은 선언한 id의 이 세 값만 남긴다 |
-| `import_settings` | 마이그레이션 인스턴스 생성 `instance.rs:653-657`, `GET /api/instance/:id/settings/live` (`managed.rs:245-271`) | 마이그레이션은 `working_dir`·`instance_dir`(서버 폴더에 더하지 않고 인스턴스에 둘 것의 자리. minecraft는 맞는 포터블 JRE가 없으면 `<instance_dir>/java`에 받고, 받지 못하면 `java_warning`)·`migration_import: true`(가져오기 호출 표시. 런타임을 받는 일은 이 호출에서만 한다. 시간 한도는 설치와 같은 `INSTALL_TIMEOUT_SECS`), live는 위와 같음(인스턴스를 가리키는 다른 호출도 `instance_dir`을 받는다, `insert_instance_fields`: 켜기 전 점검 `validate`도 인스턴스 폴더에 받은 포터블 JRE를 본다). 마이그레이션에서 모듈은 쓰던 실행 스크립트의 값도 돌려준다: minecraft `ram`(`user_jvm_args.txt`·`run.bat`·`start.bat`·`run.sh`·`start.sh`의 `-Xmx`), zomboid `ram`(GB)·`server_name`(`-servername`, 없으면 데이터 폴더 `Server/`에 하나뿐인 프로필)·`data_home`(`-cachedir=`). 모듈 기본값으로 덮지 않게 하려는 것이다 |
+| `import_settings` | 마이그레이션 인스턴스 생성 `instance/create.rs` `migration_import_call`, `GET /api/instance/:id/settings/live` (`managed.rs:245-271`) | 마이그레이션은 `working_dir`·`instance_dir`(서버 폴더에 더하지 않고 인스턴스에 둘 것의 자리. minecraft는 맞는 포터블 JRE가 없으면 `<instance_dir>/java`에 받고, 받지 못하면 `java_warning`)·`migration_import: true`(가져오기 호출 표시. 런타임을 받는 일은 이 호출에서만 한다. 시간 한도는 설치와 같은 `INSTALL_TIMEOUT_SECS`), live는 위와 같음(인스턴스를 가리키는 다른 호출도 `instance_dir`을 받는다, `insert_instance_fields`: 켜기 전 점검 `validate`도 인스턴스 폴더에 받은 포터블 JRE를 본다). 마이그레이션에서 모듈은 쓰던 실행 스크립트의 값도 돌려준다: minecraft `ram`(`user_jvm_args.txt`·`run.bat`·`start.bat`·`run.sh`·`start.sh`의 `-Xmx`), zomboid `ram`(GB)·`server_name`(`-servername`, 없으면 데이터 폴더 `Server/`에 하나뿐인 프로필)·`data_home`(`-cachedir=`). 모듈 기본값으로 덮지 않게 하려는 것이다 |
 | `config_files` | 마이그레이션 인스턴스 생성(가져온 설정을 저장한 뒤) → `manage_properties("config_files")` | `read_properties`와 같음 |
 | `instance_commands` | `GET /api/instance/:id/commands`, module.toml에 없는 이름의 명령 실행 (`[commands] hook = true`일 때, `D:src/ipc/handlers/command.rs`) | `working_dir`, 인스턴스 값(`insert_instance_fields`) |
 | `accept_agreements` | `POST /api/instance/:id/agreements` (동의를 기록한 뒤) | `validate`와 같은 config + `accepted_agreements:[id]`(지금까지 동의한 전부). 모듈은 자기 파일에 동의를 쓴다(예: minecraft eula.txt). 함수가 없으면 기록만 남는다 |
@@ -698,7 +698,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 - RCON 대신 stdin을 가르친다: `protocols.supported = ["stdin"]`, RCON 설정·자격증명 예시 삭제, 공용 `daemon_stdin_command`·`wait_for_exit`·`force_kill`을 쓰고 대기 후에만 강제 종료한다 (`__example__lifecycle.py:92-97, 236-256`, `__example__module.toml:58-60`). 진입점은 공용 `run_lifecycle()`이고, 주석의 명령 방식도 `method="console"`로 맞췄다(e1d7743). `stop()`의 콘솔 정지는 콘솔이 없을 때 불리므로 보통 실패하고 대기 후 강제 종료로 넘어간다(§6.3 #8).
 - `install_server`는 실제 모듈처럼 `extensions.steamcmd.SteamCMD` 클래스를 쓴다 (`:394-395`).
 - `get_credentials`, `read_properties`가 없다. 명령은 stdin으로 가므로 콘솔 모듈에는 지장이 없지만, REST 모듈을 만들면 `get_credentials`를 직접 추가해야 한다.
-- settings에 `managed_start`와 `graceful_stop`이 있다. `managed_start`는 데몬이 시작 경로를 고르는 데 쓴다(§3.1). `graceful_stop`은 데몬도 예시 `stop()`도 읽지 않고(설정 동기화에서 빼기만 한다, `instance.rs:1293`), GUI만 정지 방식을 고를 때 읽는다 (`saba-chan-gui/src/hooks/useServerActions.ts:734-735`).
+- settings에 `managed_start`와 `graceful_stop`이 있다. `managed_start`는 데몬이 시작 경로를 고르는 데 쓴다(§3.1). `graceful_stop`은 데몬도 예시 `stop()`도 읽지 않고(설정 동기화에서 빼기만 한다, `instance/settings.rs`), GUI만 정지 방식을 고를 때 읽는다 (`saba-chan-gui/src/hooks/useServerActions.ts:734-735`).
 
 ### 4.6 i18n과 locales
 
