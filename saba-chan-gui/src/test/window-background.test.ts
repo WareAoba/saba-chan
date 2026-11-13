@@ -11,7 +11,7 @@ describe('창 바탕색', () => {
         document.documentElement.style.setProperty('--bg-0', '#e6e8ed');
     });
     afterEach(() => {
-        delete document.documentElement.dataset.trayPopup;
+        delete document.documentElement.dataset.popup;
         document.documentElement.style.removeProperty('--bg-0');
     });
 
@@ -21,7 +21,7 @@ describe('창 바탕색', () => {
     });
 
     it('투명한 트레이 팝업은 바탕색을 알리지 않는다', () => {
-        document.documentElement.dataset.trayPopup = '';
+        document.documentElement.dataset.popup = '';
         setTheme('light');
         expect(window.api.windowSetBackground).not.toHaveBeenCalled();
     });

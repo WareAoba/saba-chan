@@ -91,8 +91,8 @@ function applyTheme(theme: ThemeMode) {
     syncWindowBackground();
 }
 
-/** 원래 투명한 셸 창 (트레이 팝업·바탕화면 오버레이): 바탕을 칠하거나 반투명을 깔지 않는다 */
-const transparentWindow = (root: HTMLElement) => root.dataset.trayPopup !== undefined || root.dataset.desktopOverlay !== undefined;
+/** 원래 투명한 셸 창 (트레이 팝업·펫 우클릭 판·바탕화면 오버레이): 바탕을 칠하거나 반투명을 깔지 않는다 */
+const transparentWindow = (root: HTMLElement) => root.dataset.popup !== undefined || root.dataset.desktopOverlay !== undefined;
 
 /**
  * 셸 창의 바탕을 테마 바탕색(--bg-0)으로 칠한다.

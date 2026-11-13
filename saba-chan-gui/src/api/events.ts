@@ -19,7 +19,7 @@ export const EVENT_CHANNELS = [
     'console:popinRequest',
     'app:openServer',
     'app:openRoute',
-    'overlay:menu',
+    'overlay:scale',
     'daemon:stream',
 ] as const;
 

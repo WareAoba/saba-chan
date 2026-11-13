@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-overlay-menu-fit"
+description = "Enables the overlay_menu_fit command without any pre-configured scope."
+commands.allow = ["overlay_menu_fit"]
+
+[[permission]]
+identifier = "deny-overlay-menu-fit"
+description = "Denies the overlay_menu_fit command without any pre-configured scope."
+commands.deny = ["overlay_menu_fit"]

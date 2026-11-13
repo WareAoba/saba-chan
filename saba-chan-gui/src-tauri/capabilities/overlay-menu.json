@@ -1,0 +1,17 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "overlay-menu",
+  "description": "펫 우클릭 판(바탕화면 오버레이 옆의 작은 창): 데몬 읽기(GET)와 서버 시작·정지·재시작(그 밖의 데몬 요청은 셸이 거절한다, overlay::allows_request), 펫 크기 바꾸기, 앱 열기·숨기기·닫기. 알림은 보내지 않는다",
+  "windows": [
+    "overlay-menu"
+  ],
+  "permissions": [
+    "allow-daemon-request",
+    "allow-daemon-status",
+    "allow-daemon-target-get",
+    "allow-language-get",
+    "allow-overlay-action",
+    "allow-overlay-menu-fit",
+    "allow-overlay-set-scale"
+  ]
+}

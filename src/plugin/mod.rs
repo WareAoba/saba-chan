@@ -1193,6 +1193,10 @@ impl Launch {
         if let Ok(runtimes) = serde_json::to_string(&crate::sandbox::java_runtimes()) {
             cmd.env("SABA_JAVA_RUNTIMES", runtimes);
         }
+        // PC 전체 메모리(바이트). 모듈이 힙 크기 같은 기본값을 PC에 맞춰 정할 때 쓴다
+        if let Some(total) = crate::system_monitor::host_memory_bytes() {
+            cmd.env("SABA_HOST_MEMORY", total.to_string());
+        }
 
         // 격리 실행은 127.0.0.1에 닿지 못한다: 자기 인스턴스 포트로 가는 요청은 데몬이 대신 보낸다 (loopback.rs)
         let loopback_dir = isolation.as_ref().and_then(|iso| {

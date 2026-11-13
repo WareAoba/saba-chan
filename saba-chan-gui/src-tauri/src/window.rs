@@ -152,7 +152,7 @@ fn parse_hex_color(css: &str) -> Option<Color> {
 /// 렌더러가 테마의 바탕색을 알린다. 창 크기를 바꾸는 사이 웹뷰가 아직 못 그린 자리가 이 색으로 보인다 (기본은 흰색)
 pub fn set_background(win: &WebviewWindow, css: &str) {
     // 트레이 팝업은 투명 창이라 바탕을 칠하지 않는다
-    if win.label() == TRAY_POPUP {
+    if win.label() == TRAY_POPUP || win.label() == crate::overlay::OVERLAY_MENU {
         return;
     }
     let Some(color) = parse_hex_color(css) else {
@@ -331,7 +331,7 @@ fn tray_only_without(app: &AppHandle, gone: Option<&str>) -> bool {
 }
 
 fn tray_only<'a>(mut labels: impl Iterator<Item = &'a str>) -> bool {
-    labels.all(|l| l == TRAY_POPUP || l == crate::overlay::OVERLAY)
+    labels.all(|l| l == TRAY_POPUP || l == crate::overlay::OVERLAY || l == crate::overlay::OVERLAY_MENU)
 }
 
 /// 창을 모두 없앤다 (닫기 확인을 거치지 않는다). 웹뷰가 내려가고 트레이만 남는다.
@@ -378,15 +378,14 @@ fn schedule_save_bounds(app: &AppHandle) {
     });
 }
 
-// ── 트레이 팝업 ──
+// ── 트레이 팝업·펫 우클릭 판 ──
 
 pub const TRAY_POPUP: &str = "tray-popup";
-const TRAY_POPUP_WIDTH: f64 = 320.0;
-/// 내용 높이를 받기 전 처음 크기 (보이지 않는다)
-const TRAY_POPUP_INITIAL_HEIGHT: f64 = 360.0;
-const TRAY_POPUP_GAP: f64 = 8.0;
-/// 팝업이 포커스를 잃어 닫힌 직후의 아이콘 클릭은 다시 열지 않는다 (아이콘을 눌러 닫는 경우)
-const TRAY_REOPEN_GUARD_MS: u64 = 300;
+/// 내용 높이를 받기 전 처음 높이 (보이지 않는다)
+const POPUP_INITIAL_HEIGHT: f64 = 360.0;
+const POPUP_GAP: f64 = 8.0;
+/// 팝업이 포커스를 잃어 닫힌 직후의 같은 자리 클릭은 다시 열지 않는다 (아이콘·펫을 눌러 닫는 경우)
+const POPUP_REOPEN_GUARD_MS: u64 = 300;
 
 /// 물리 px 사각형 (x, y, 너비, 높이)
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -397,12 +396,35 @@ pub struct PxRect {
     pub h: f64,
 }
 
-/// 마지막으로 누른 트레이 아이콘 자리. 팝업 높이가 정해지면 이 자리에 맞춰 놓는다
-static TRAY_ANCHOR: Mutex<Option<PxRect>> = Mutex::new(None);
-/// 팝업이 포커스를 잃어 닫힌 시각 (`monotonic_ms`)
-static TRAY_POPUP_CLOSED_AT: AtomicU64 = AtomicU64::new(0);
-/// 지금 팝업이 보였는가 (`fit_tray_popup`이 보인 뒤 true, 새로 만들 때 false)
-static TRAY_POPUP_SHOWN: AtomicBool = AtomicBool::new(false);
+/// 무엇(트레이 아이콘·펫) 옆에 뜨는 작은 판 창. 내용 높이를 알려 오면(`fit_popup`) 그 옆에 놓고 보이고,
+/// 보인 뒤 포커스를 잃으면 없앤다
+pub struct Popup {
+    pub label: &'static str,
+    url: &'static str,
+    /// 너비 (논리 px)
+    width: f64,
+    /// 마지막으로 누른 것의 자리. 높이가 정해지면 이 자리에 맞춰 놓는다
+    anchor: Mutex<Option<PxRect>>,
+    /// 포커스를 잃어 닫힌 시각 (`monotonic_ms`)
+    closed_at: AtomicU64,
+    /// 지금 판이 보였는가 (`fit_popup`이 보인 뒤 true, 새로 만들 때 false)
+    shown: AtomicBool,
+}
+
+impl Popup {
+    pub const fn new(label: &'static str, url: &'static str, width: f64) -> Self {
+        Self {
+            label,
+            url,
+            width,
+            anchor: Mutex::new(None),
+            closed_at: AtomicU64::new(0),
+            shown: AtomicBool::new(false),
+        }
+    }
+}
+
+pub static TRAY: Popup = Popup::new(TRAY_POPUP, "index.html?tray-popup=1", 320.0);
 
 /// 숨긴 채 만들어지는 동안에도 포커스 잃음이 온다: 보인 뒤에만 그것으로 닫는다
 fn popup_closes_on_blur(shown: bool) -> bool {
@@ -427,64 +449,72 @@ pub fn popup_position(icon: PxRect, size: (f64, f64), work: PxRect, gap: f64) ->
     )
 }
 
-/// 트레이 아이콘을 눌렀다: 팝업이 있으면 닫고, 없으면 아이콘 옆에 연다
+/// 트레이 아이콘을 눌렀다: 팝업이 있으면 닫고, 없으면 아이콘 옆에 연다. 못 띄우면 메인 창이라도 연다
 pub fn toggle_tray_popup(app: &AppHandle, anchor: Option<PxRect>) {
-    if let Some(w) = app.get_webview_window(TRAY_POPUP) {
+    if !toggle_popup(app, &TRAY, anchor, "") {
+        show_main(app);
+    }
+}
+
+/// 판이 있으면 닫고, 없으면 `anchor` 옆에 연다 (`query`는 주소 뒤에 붙인다). 열지 못했으면 false
+pub fn toggle_popup(app: &AppHandle, popup: &'static Popup, anchor: Option<PxRect>, query: &str) -> bool {
+    if let Some(w) = app.get_webview_window(popup.label) {
         let _ = w.destroy();
-        return;
+        return true;
     }
-    let closed_at = TRAY_POPUP_CLOSED_AT.load(Ordering::SeqCst);
-    if closed_at != 0 && monotonic_ms().saturating_sub(closed_at) < TRAY_REOPEN_GUARD_MS {
-        return;
+    let closed_at = popup.closed_at.load(Ordering::SeqCst);
+    if closed_at != 0 && monotonic_ms().saturating_sub(closed_at) < POPUP_REOPEN_GUARD_MS {
+        return true;
     }
-    *TRAY_ANCHOR.lock().unwrap() = anchor;
-    TRAY_POPUP_SHOWN.store(false, Ordering::SeqCst);
-    let builder = WebviewWindowBuilder::new(app, TRAY_POPUP, WebviewUrl::App("index.html?tray-popup=1".into()))
+    *popup.anchor.lock().unwrap() = anchor;
+    popup.shown.store(false, Ordering::SeqCst);
+    let url = format!("{}{}", popup.url, query);
+    let builder = WebviewWindowBuilder::new(app, popup.label, WebviewUrl::App(url.into()))
         .title("Saba-chan")
-        .inner_size(TRAY_POPUP_WIDTH, TRAY_POPUP_INITIAL_HEIGHT)
+        .inner_size(popup.width, POPUP_INITIAL_HEIGHT)
         .decorations(false)
         .transparent(true)
         .shadow(false)
         .resizable(false)
         .skip_taskbar(true)
         .always_on_top(true)
-        // 렌더러가 높이를 알려 오면(tray_popup_fit) 자리를 잡고 보인다
+        // 렌더러가 높이를 알려 오면(fit_popup) 자리를 잡고 보인다
         .visible(false);
     let win = match lock_navigation(app, builder).build() {
         Ok(w) => w,
         Err(e) => {
-            // 팝업을 못 띄우면 메인 창이라도 연다
-            tracing::warn!("[Tray] Failed to open the tray popup: {}", e);
-            return show_main(app);
+            tracing::warn!("[Popup] Failed to open {}: {}", popup.label, e);
+            return false;
         }
     };
-    let popup = win.clone();
+    let handle = win.clone();
     win.on_window_event(move |event| {
         if let WindowEvent::Focused(false) = event {
-            if !popup_closes_on_blur(TRAY_POPUP_SHOWN.load(Ordering::SeqCst)) {
+            if !popup_closes_on_blur(popup.shown.load(Ordering::SeqCst)) {
                 return;
             }
-            TRAY_POPUP_CLOSED_AT.store(monotonic_ms(), Ordering::SeqCst);
-            let _ = popup.destroy();
+            popup.closed_at.store(monotonic_ms(), Ordering::SeqCst);
+            let _ = handle.destroy();
         }
     });
+    true
 }
 
-/// 렌더러가 잰 팝업 내용 높이(논리 px)에 맞춰 크기와 자리를 정하고 보인다
-pub fn fit_tray_popup(app: &AppHandle, height: f64) {
-    let Some(win) = app.get_webview_window(TRAY_POPUP) else {
+/// 렌더러가 잰 판 내용 높이(논리 px)에 맞춰 크기와 자리를 정하고 보인다
+pub fn fit_popup(app: &AppHandle, popup: &Popup, height: f64) {
+    let Some(win) = app.get_webview_window(popup.label) else {
         return;
     };
-    let anchor = *TRAY_ANCHOR.lock().unwrap();
+    let anchor = *popup.anchor.lock().unwrap();
     let monitor = anchor
-        .and_then(|a| app.monitor_from_point(a.x, a.y).ok().flatten())
+        .and_then(|a| app.monitor_from_point(a.x + a.w / 2.0, a.y + a.h / 2.0).ok().flatten())
         .or_else(|| app.primary_monitor().ok().flatten());
-    // 배율은 팝업이 처음 뜬 모니터가 아니라 아이콘이 있는 모니터의 것 (모니터마다 배율이 다를 수 있다)
+    // 배율은 판이 처음 뜬 모니터가 아니라 누른 것이 있는 모니터의 것 (모니터마다 배율이 다를 수 있다)
     let scale = monitor
         .as_ref()
         .map(|m| m.scale_factor())
         .unwrap_or_else(|| win.scale_factor().unwrap_or(1.0));
-    let size = (TRAY_POPUP_WIDTH * scale, height.clamp(120.0, 640.0) * scale);
+    let size = (popup.width * scale, height.clamp(120.0, 640.0) * scale);
     if let Some(m) = monitor {
         let area = m.work_area();
         let work = PxRect {
@@ -493,21 +523,21 @@ pub fn fit_tray_popup(app: &AppHandle, height: f64) {
             w: area.size.width as f64,
             h: area.size.height as f64,
         };
-        // 아이콘 자리를 모르면(키보드로 연 경우 등) 작업 영역 오른쪽 아래
+        // 누른 자리를 모르면(키보드로 연 경우 등) 작업 영역 오른쪽 아래
         let icon = anchor.unwrap_or(PxRect {
             x: work.x + work.w,
             y: work.y + work.h,
             w: 0.0,
             h: 0.0,
         });
-        let (x, y) = popup_position(icon, size, work, TRAY_POPUP_GAP * scale);
+        let (x, y) = popup_position(icon, size, work, POPUP_GAP * scale);
         // 먼저 옮기고 크기를 준다: 배율이 다른 모니터로 옮기면 창 크기가 그 배율로 다시 잡힌다
         let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
     }
     let _ = win.set_size(tauri::PhysicalSize::new(size.0, size.1));
     let _ = win.show();
     let _ = win.set_focus();
-    TRAY_POPUP_SHOWN.store(true, Ordering::SeqCst);
+    popup.shown.store(true, Ordering::SeqCst);
 }
 
 // ── 콘솔 팝아웃 ──
@@ -874,6 +904,7 @@ mod tests {
             tray_only([crate::overlay::OVERLAY, TRAY_POPUP].into_iter()),
             "the desktop overlay stays like the tray"
         );
+        assert!(tray_only([crate::overlay::OVERLAY, crate::overlay::OVERLAY_MENU].into_iter()), "the pet's menu too");
         assert!(!tray_only([MAIN].into_iter()));
         assert!(
             !tray_only(["popout-abc"].into_iter()),
