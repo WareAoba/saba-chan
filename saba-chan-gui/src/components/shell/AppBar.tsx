@@ -53,7 +53,7 @@ interface AppBarProps {
     noticeProps: Omit<ComponentProps<typeof NoticeModal>, 'isOpen'>;
     showDaemon: boolean;
     onToggleDaemon: () => void;
-    daemonProps: Omit<ComponentProps<typeof BackgroundModal>, 'isOpen'>;
+    daemonProps: ComponentProps<typeof BackgroundModal>;
 }
 
 /**
@@ -145,7 +145,7 @@ export function AppBar({
                         className="bare"
                         autoFocus={false}
                     >
-                        <BackgroundModal {...daemonProps} isOpen />
+                        <BackgroundModal {...daemonProps} />
                     </Popover>
                 </div>
                 <div className="popover-anchor" ref={bellRef}>
