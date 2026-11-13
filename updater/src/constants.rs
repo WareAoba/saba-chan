@@ -34,6 +34,13 @@ pub const DEFAULT_IPC_PORT: u16 = 57474;
 /// 원격 데몬 TLS 포트 기본값 (D1, 설정 `remote.port`로 바꾼다. 사용자 확정 2026-10-26)
 pub const DEFAULT_REMOTE_PORT: u16 = 57480;
 
+/// 이 PC가 다루는 원격 데몬의 최소 판. 원격 포트가 답마다 싣는 판(`VERSION_HEADER`)이 이보다 낮거나 없으면 중계하지 않는다
+/// (`remote_too_old`). GUI·CLI는 이 판 아래 데몬을 위한 분기를 두지 않는다
+pub const MIN_REMOTE_DAEMON: &str = "0.1.14-beta.2";
+
+/// 원격 포트가 답마다 싣는 데몬 판 머리
+pub const VERSION_HEADER: &str = "x-saba-version";
+
 // ══════════════════════════════════════════════════════
 //  인스턴스 설정 칸
 // ══════════════════════════════════════════════════════

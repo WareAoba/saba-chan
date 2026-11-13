@@ -210,6 +210,10 @@ pub fn api_hint(code: &str, body: &Value) -> Option<String> {
             .map(|a| a.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(" "))
             .unwrap_or_default()
     };
+    // 최소 판(`MIN_REMOTE_DAEMON`)보다 낮은 원격 데몬: 이 PC의 데몬이 중계하지 않았다
+    if code == "remote_too_old" {
+        return Some(format!("{} ({})", t!("update_required.title"), body["min_version"].as_str().unwrap_or("?")));
+    }
     // 원격 데몬이 PC 전용 칸을 거절했으면 막힌 칸 이름을 함께 보인다
     if code == "remote_field_blocked" {
         return Some(t!("remote.connect_error.remote_field_blocked", fields = list("fields")));
@@ -445,6 +449,14 @@ mod tests {
                 assert!(crate::i18n::try_t_in(lang, &format!("remote.connect_error.{code}")).is_some(), "{lang}: {code}");
             }
         }
+    }
+
+    /// 최소 판보다 낮은 원격 데몬은 업데이트가 필요하다고 그 판과 함께 보인다
+    #[test]
+    fn a_remote_daemon_below_the_minimum_needs_an_update() {
+        crate::i18n::init("en");
+        let hint = api_hint("remote_too_old", &json!({ "min_version": "0.1.14-beta.2" })).unwrap();
+        assert!(hint.contains(&t!("update_required.title")) && hint.contains("0.1.14-beta.2"), "{hint}");
     }
 
     /// PC 전용 칸 거절은 막힌 칸 이름을 보인다

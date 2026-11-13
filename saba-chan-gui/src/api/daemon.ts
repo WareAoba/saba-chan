@@ -7,6 +7,10 @@ export type Invoke = (cmd: string, args?: Record<string, unknown>) => Promise<an
 
 function moduleErrorBody(body: ApiBody): ApiBody {
     // 고른 원격 데몬에 닿지 못한 것 같은 중계 오류 (01 §1.4.2): 화면마다 따로 번역하지 않게 여기서 문구로
+    // 최소 판(`MIN_REMOTE_DAEMON`)보다 낮은 원격 데몬: 데몬이 중계하지 않고 그 판을 알린다
+    if (body?.error_code === 'remote_too_old') {
+        return { ...body, error: i18n.t('remote_daemon.update_needed', { ns: 'gui', version: body.min_version }) };
+    }
     const relayKey = `remote_daemon.err_${body?.error_code}`;
     if (String(body?.error_code || '').startsWith('remote_') && i18n.exists(relayKey, { ns: 'gui' })) {
         // PC 전용 칸 거절(`remote_field_blocked`)은 막힌 칸 이름을 함께 보인다

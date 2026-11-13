@@ -79,6 +79,13 @@ pub fn error(status: StatusCode, code: &str) -> Response {
     (status, Json(json!({ "error": code, "error_code": code }))).into_response()
 }
 
+/// 원격 데몬이 답에 실은 판이 최소 판(`MIN_REMOTE_DAEMON`) 이상인가. 판이 없으면 그 머리를 싣기 전의 데몬이다
+fn remote_version_ok(version: Option<&str>) -> bool {
+    use saba_chan_updater_lib::version::SemVer;
+    let min = SemVer::parse(saba_chan_updater_lib::constants::MIN_REMOTE_DAEMON);
+    matches!((version.and_then(SemVer::parse), min), (Some(v), Some(min)) if v >= min)
+}
+
 /// 붙는 쪽의 연결 상태: 원격 데몬마다의 직접 연결과 터널, 직접 붙기·닿기 실패 기록.
 /// `RemoteDaemon`이 하나 쥐고, 복제는 같은 상태를 가리킨다
 #[derive(Clone, Default)]
@@ -805,6 +812,11 @@ impl Pool {
             Sent::NotConnected => return error(StatusCode::BAD_GATEWAY, "remote_unreachable"),
             Sent::NoAnswer => return error(StatusCode::GATEWAY_TIMEOUT, "remote_timeout"),
         };
+        let version = res.headers().get(saba_chan_updater_lib::constants::VERSION_HEADER).and_then(|v| v.to_str().ok());
+        if !remote_version_ok(version) {
+            let min = saba_chan_updater_lib::constants::MIN_REMOTE_DAEMON;
+            return (StatusCode::UPGRADE_REQUIRED, Json(json!({ "error": "remote_too_old", "error_code": "remote_too_old", "min_version": min }))).into_response();
+        }
         let (mut head, body) = res.into_parts();
         for hop in [header::CONNECTION, header::TRANSFER_ENCODING, HeaderName::from_static("keep-alive")] {
             head.headers.remove(hop);
@@ -1066,6 +1078,17 @@ mod tests {
     }
 
     use futures_util::StreamExt;
+
+    /// 원격 데몬은 답마다 자기 판(`x-saba-version`)을 싣는다. 판이 없거나(그 머리 전의 데몬) 최소 판보다 낮으면 중계하지 않는다
+    #[test]
+    fn only_remote_daemons_at_the_minimum_version_are_answered() {
+        assert!(!remote_version_ok(None));
+        assert!(!remote_version_ok(Some("0.1.14-beta.1")));
+        assert!(!remote_version_ok(Some("0.1.13")));
+        assert!(remote_version_ok(Some("0.1.14-beta.2")));
+        assert!(remote_version_ok(Some("0.1.14")));
+        assert!(remote_version_ok(Some(crate::extension::APP_VERSION)));
+    }
 
     #[tokio::test]
     async fn a_pc_pairs_with_its_remote_daemon_and_forwards_requests_without_its_local_secrets() {
