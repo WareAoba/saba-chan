@@ -396,14 +396,12 @@ describe('원격 데몬 (G1)', () => {
         expect(await api.remoteInstanceAction('host-b', 'id 1', 'start')).toEqual({ success: true });
         expect(await api.remoteInstanceAction(null, 'id-2', 'stop')).toEqual({ success: true });
         expect(calls[1]).toMatchObject({ method: 'POST', path: '/api/instance/id%201/start', target: 'host-b' });
-        expect(calls[2]).toMatchObject({ method: 'POST', path: '/api/instance/id-2/stop', target: 'local', body: { force: false } });
+        expect(calls[2]).toMatchObject({ method: 'POST', path: '/api/instance/id-2/stop', target: 'local', body: {} });
         expect(await api.remoteInstanceAction('host-b', 'x', 'delete')).toMatchObject({ success: false });
         expect(calls).toHaveLength(3);
-        // 저장 없이 정지(force)와 약관 동의도 그 데몬에 보낸다
-        await api.remoteInstanceAction('host-b', 'x', 'stop', { force: true });
-        expect(calls[3]).toMatchObject({ path: '/api/instance/x/stop', target: 'host-b', body: { force: true } });
+        // 약관 동의도 그 데몬에 보낸다
         await api.remoteInstanceAgreements('host-b', 'id 1', ['eula']);
-        expect(calls[4]).toMatchObject({ method: 'POST', path: '/api/instance/id%201/agreements', target: 'host-b', body: { accept: ['eula'] } });
+        expect(calls[3]).toMatchObject({ method: 'POST', path: '/api/instance/id%201/agreements', target: 'host-b', body: { accept: ['eula'] } });
     });
 
     it('익스텐션 GUI 번들·스타일은 원격 데몬을 고른 동안에도 이 PC 데몬에서 받는다', async () => {

@@ -784,8 +784,6 @@
   "stop": {
     "already": "{{name}}: 既に停止済み",
     "done": "{{name}} 停止済み",
-    "force_confirm": "保存せずに停止しますか？",
-    "no_graceful": "{{name}} に保存して停止を依頼する手段 (コンソール) がありません。強制停止すると、最後の保存以降の進行が失われる可能性があります。",
     "not_yet": "{{name}} はまだ停止していません。強制停止: saba-chan-cli stop --force {{name}}",
     "requested": "{{name}} の停止を要求済み",
     "waiting": "{{name}} を停止しています...",

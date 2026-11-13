@@ -4,7 +4,6 @@ import { controlOutcome } from '../utils/serverControl';
 describe('켜기·끄기 답 해석', () => {
     it('데몬이 고른 이유를 하나로 읽는다', () => {
         const agreements = [{ id: 'eula', url: 'https://example.com/eula' }];
-        expect(controlOutcome({ success: false, error_code: 'graceful_stop_unavailable' })).toEqual({ kind: 'forceStop' });
         expect(controlOutcome({ success: false, error_code: 'agreement_required', agreements })).toEqual({ kind: 'agreements', agreements });
         expect(controlOutcome({ success: false, error_code: 'agreement_required' })).toEqual({ kind: 'agreements', agreements: [] });
         expect(controlOutcome({ success: false, error_code: 'restart_cancelled' })).toEqual({ kind: 'cancelled', code: 'restart_cancelled' });

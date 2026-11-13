@@ -693,29 +693,11 @@ export function serverActions(set: StoreApi<ServerState>['setState'], get: () =>
         }
     };
 
-    // 콘솔도 REST도 없어 저장 후 종료를 요청할 수 없는 서버는 데몬이 그대로 둔다 (MK10). 저장 없이 끈다고 알리고 고를 때만 force로
-    const askForceStop = (name: string, retry: () => void) =>
-        setModal({
-            type: 'question',
-            title: t('servers.force_stop_title'),
-            message: t('servers.force_stop_message', { name }),
-            buttons: [
-                {
-                    label: t('servers.force_stop_confirm'),
-                    action: () => {
-                        setModal(null);
-                        retry();
-                    },
-                },
-                { label: t('modals.cancel'), action: () => setModal(null) },
-            ],
-        });
-
     // ── stopServer ──────────────────────────────────────────
     const stopServer = async (id: string) => {
         const srv = get().servers.find((s) => s.id === id);
         const name = srv?.name ?? id;
-        const stopNow = async (forced: boolean) => {
+        const stopNow = async () => {
             const undo = () => {
                 internal.guiOps.delete(id);
                 revertOptimistic(id);
@@ -729,9 +711,7 @@ export function serverActions(set: StoreApi<ServerState>['setState'], get: () =>
                 get().setServers((prev) => prev.map((s) => (s.id === id ? { ...s, status: 'stopping' } : s)));
 
                 const useGraceful = srv?.module_settings?.graceful_stop;
-                const forceStop = forced || useGraceful === false;
-
-                const result = await window.api.instanceStop(id, { force: forceStop });
+                const result = await window.api.instanceStop(id, { force: useGraceful === false });
                 const opt = internal.optimistic.get(id);
                 if (opt?.pending) internal.optimistic.set(id, { status: 'stopping', timestamp: Date.now() });
 
@@ -763,12 +743,6 @@ export function serverActions(set: StoreApi<ServerState>['setState'], get: () =>
                             },
                         ],
                     });
-                    return;
-                }
-
-                if (controlOutcome(result).kind === 'forceStop') {
-                    undo();
-                    askForceStop(name, () => stopNow(true));
                     return;
                 }
 
@@ -823,7 +797,7 @@ export function serverActions(set: StoreApi<ServerState>['setState'], get: () =>
             message: t('servers.stop_confirm_message', { name }),
             onConfirm: async () => {
                 setModal(null);
-                await stopNow(false);
+                await stopNow();
             },
             onCancel: () => setModal(null),
         });
@@ -835,20 +809,17 @@ export function serverActions(set: StoreApi<ServerState>['setState'], get: () =>
         const srv = get().servers.find((s) => s.id === id);
         if (!srv || !window.api.instanceRestart) return;
         const { name } = srv;
-        const restartNow = async (forced: boolean) => {
+        const restartNow = async () => {
             internal.optimistic.set(id, { status: 'stopping', timestamp: Date.now() });
             get().setServers((prev) => prev.map((s) => (s.id === id ? { ...s, status: 'stopping' } : s)));
             internal.guiOps.add(id);
             setProgressBar({ message: t('servers.restarting_toast', { name }), indeterminate: true });
             try {
-                const force = forced || srv.module_settings?.graceful_stop === false;
+                const force = srv.module_settings?.graceful_stop === false;
                 const result = await window.api.instanceRestart(id, { force });
                 notifyPortMoved(result, srv);
                 const outcome = controlOutcome(result);
-                if (outcome.kind === 'forceStop') {
-                    revertOptimistic(id);
-                    askForceStop(name, () => restartNow(true));
-                } else if (outcome.kind === 'cancelled') {
+                if (outcome.kind === 'cancelled') {
                     revertOptimistic(id);
                     safeShowToast(t(`errors.${outcome.code}`), 'info', 4000);
                 } else if (outcome.kind === 'stillStopping') {
@@ -875,14 +846,14 @@ export function serverActions(set: StoreApi<ServerState>['setState'], get: () =>
                 fetchServers();
             }
         };
-        if (confirmed) return restartNow(false);
+        if (confirmed) return restartNow();
         setModal({
             type: 'question',
             title: t('servers.restart_confirm_title'),
             message: t('servers.restart_confirm_message', { name }),
             onConfirm: async () => {
                 setModal(null);
-                await restartNow(false);
+                await restartNow();
             },
             onCancel: () => setModal(null),
         });

@@ -52,7 +52,7 @@ describe('합쳐 보기: 다른 데몬의 서버 (G1c)', () => {
         await act(async () => render(<OtherDaemons currentTarget="host-b" onSwitched={switched} />));
         const pc = screen.getByRole('region', { name: 'This PC' });
         await act(async () => fireEvent.click(within(pc).getByRole('button', { name: 'test-pal Start' })));
-        expect(window.api.remoteInstanceAction).toHaveBeenCalledWith(null, 'l1', 'start', {});
+        expect(window.api.remoteInstanceAction).toHaveBeenCalledWith(null, 'l1', 'start');
         expect(window.api.remoteServers).toHaveBeenCalledTimes(2);
     });
 
@@ -65,7 +65,7 @@ describe('합쳐 보기: 다른 데몬의 서버 (G1c)', () => {
         expect(dialog).toHaveTextContent('test-pal');
         expect(dialog).toHaveTextContent('Running on 게임 PC 5 player(s) online');
         await act(async () => fireEvent.click(within(dialog).getByRole('button', { name: 'Confirm' })));
-        expect(window.api.remoteInstanceAction).toHaveBeenCalledWith('host-b', 'b1', 'stop', {});
+        expect(window.api.remoteInstanceAction).toHaveBeenCalledWith('host-b', 'b1', 'stop');
         expect(screen.queryByRole('dialog')).toBeNull();
         expect(window.api.remoteServers).toHaveBeenCalledTimes(2);
     });
@@ -77,20 +77,6 @@ describe('합쳐 보기: 다른 데몬의 서버 (G1c)', () => {
         await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Cancel' })));
         expect(window.api.remoteInstanceAction).not.toHaveBeenCalled();
         expect(screen.queryByRole('dialog')).toBeNull();
-    });
-
-    it('저장하고 정지할 길이 없으면 저장 없이 정지할지 묻고, 그러겠다면 force로 다시 보낸다', async () => {
-        vi.mocked(window.api.remoteInstanceAction).mockImplementation(async (_h, _id, _action, opts) =>
-            opts?.force ? { success: true } : { success: false, error_code: 'graceful_stop_unavailable', error: 'no console' },
-        );
-        await act(async () => render(<OtherDaemons currentTarget={null} onSwitched={switched} />));
-        const pc = screen.getByRole('region', { name: '게임 PC' });
-        await act(async () => fireEvent.click(within(pc).getByRole('button', { name: 'test-pal Stop' })));
-        await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Confirm' })));
-        const dialog = screen.getByRole('dialog', { name: 'Stop without saving?' });
-        expect(window.showToast).not.toHaveBeenCalled();
-        await act(async () => fireEvent.click(within(dialog).getByRole('button', { name: 'Stop without saving' })));
-        expect(window.api.remoteInstanceAction).toHaveBeenLastCalledWith('host-b', 'b1', 'stop', { force: true });
     });
 
     it('약관 동의가 필요하면 같은 동의 창을 띄우고, 동의는 그 데몬에 기록한 뒤 다시 켠다', async () => {
@@ -136,7 +122,7 @@ describe('합쳐 보기: 다른 데몬의 서버 (G1c)', () => {
         await act(async () => render(<OtherDaemons currentTarget="host-b" onSwitched={switched} />));
         const pc = screen.getByRole('region', { name: 'This PC' });
         await act(async () => fireEvent.click(within(pc).getByRole('button', { name: 'test-pal Start' })));
-        expect(window.api.remoteInstanceAction).toHaveBeenCalledWith(null, 'l1', 'start', {});
+        expect(window.api.remoteInstanceAction).toHaveBeenCalledWith(null, 'l1', 'start');
         expect(vi.mocked(window.showToast!).mock.calls[0].slice(0, 3)).toEqual(['동의가 필요해요', 'error', 5000]);
     });
 

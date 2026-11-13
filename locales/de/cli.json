@@ -787,8 +787,6 @@
     "not_yet": "{{name}} noch nicht gestoppt. Erzwingen: saba-chan-cli stop --force {{name}}",
     "requested": "Stopp von {{name}} angefordert",
     "waiting": "{{name}} wird gestoppt...",
-    "no_graceful": "{{name}} kann nicht zum Speichern und Stoppen aufgefordert werden (keine Konsole). Erzwungenes Stoppen kann Fortschritt seit dem letzten Speichern verlieren.",
-    "force_confirm": "Ohne Speichern stoppen?",
     "confirm": "Sind Sie sicher, dass Sie Server {{name}} stoppen möchten?"
   },
   "time": {

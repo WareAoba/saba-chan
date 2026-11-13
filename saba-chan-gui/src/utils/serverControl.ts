@@ -6,8 +6,6 @@ import { failed } from './apiResult';
  * 무엇을 보일지(토스트·창)는 부른 쪽이 정한다
  */
 export type ControlOutcome =
-    /** 콘솔도 REST도 없어 저장하고 끌 길이 없다: 데몬은 서버를 그대로 뒀다. 저장 없이 끌지 묻고 force로 다시 보낸다 */
-    | { kind: 'forceStop' }
     /** 모듈이 선언한 약관(EULA 등)에 아직 동의하지 않았다. 목록이 비었으면 물을 것이 없다 */
     | { kind: 'agreements'; agreements: Agreement[] }
     /** 그사이 다른 쪽에서 정지·시작·삭제했다: 실패가 아니라 그만둔 것 */
@@ -21,7 +19,6 @@ export type ControlOutcome =
 
 export function controlOutcome(res: ApiBody | null | undefined): ControlOutcome {
     const code = res?.error_code;
-    if (code === 'graceful_stop_unavailable') return { kind: 'forceStop' };
     if (code === 'agreement_required') {
         return { kind: 'agreements', agreements: Array.isArray(res?.agreements) ? res.agreements : [] };
     }

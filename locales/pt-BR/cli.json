@@ -787,8 +787,6 @@
     "not_yet": "{{name}} ainda não parou. Forçar: saba-chan-cli stop --force {{name}}",
     "requested": "Parada de {{name}} solicitada",
     "waiting": "Parando {{name}}...",
-    "no_graceful": "{{name}} não tem como (console) pedir salvamento antes de parar. Forçar a parada pode perder o progresso desde o último salvamento.",
-    "force_confirm": "Parar sem salvar?",
     "confirm": "Tem certeza de que deseja parar o servidor {{name}}?"
   },
   "time": {

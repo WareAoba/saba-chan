@@ -755,11 +755,7 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
     }
 
     async fn stop(&self, server: &ServerView) -> Done {
-        let mut resp = self.remote_response(self.api.stop(server, false).await);
-        // 저장 후 종료를 요청할 길이 없는 서버(MK10)는 묻지 않고 그대로 강제 정지한다
-        if resp.str_field("error_code") == Some("graceful_stop_unavailable") {
-            resp = self.remote_response(self.api.stop(server, true).await);
-        }
+        let resp = self.remote_response(self.api.stop(server).await);
         let failed = !resp.is_success() || resp.body.get("success").and_then(|v| v.as_bool()) == Some(false);
         if failed {
             let detail = resp.str_field("error").or(resp.str_field("message")).unwrap_or_default();

@@ -787,8 +787,6 @@
     "not_yet": "{{name}} aún no detenido. Forzar: saba-chan-cli stop --force {{name}}",
     "requested": "Detención de {{name}} solicitada",
     "waiting": "Deteniendo {{name}}...",
-    "no_graceful": "{{name}} no tiene forma (consola) de pedirle que guarde y se detenga. Si se fuerza, puede perderse el progreso posterior al último guardado.",
-    "force_confirm": "¿Detener sin guardar?",
     "confirm": "¿Está seguro de que desea detener el servidor {{name}}?"
   },
   "time": {

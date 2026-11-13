@@ -196,8 +196,8 @@ pub trait DaemonApi {
     async fn modules(&self) -> Vec<ModuleView>;
     /// 서버 시작 — 경로(managed 여부)는 데몬이 고른다
     async fn start(&self, server: &ServerView) -> InternalResponse;
-    /// 정지. `force`면 저장을 기다리지 않고 끝낸다
-    async fn stop(&self, server: &ServerView, force: bool) -> InternalResponse;
+    /// 정지 (정지 라우트와 같다: 저장하지 못하는 서버도 바로 정지한다)
+    async fn stop(&self, server: &ServerView) -> InternalResponse;
     /// 게임 명령 (`POST /api/instance/:id/command`와 같은 경로). 인자는 순서대로.
     async fn command(&self, instance_id: &str, command: &str, args: Vec<String>) -> InternalResponse;
     /// 접속자 (`GET /api/instance/:id/players`)
@@ -262,8 +262,8 @@ impl DaemonApi for IPCServer {
         crate::ipc::handlers::server::start(self, &server.id).await.into()
     }
 
-    async fn stop(&self, server: &ServerView, force: bool) -> InternalResponse {
-        crate::ipc::handlers::server::stop(self, &server.id, force).await.into()
+    async fn stop(&self, server: &ServerView) -> InternalResponse {
+        crate::ipc::handlers::server::user_stop(self, &server.id, false).await.into()
     }
 
     async fn command(&self, instance_id: &str, command: &str, args: Vec<String>) -> InternalResponse {
