@@ -42,3 +42,27 @@ class ReleaseChannel(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ChannelNumbering(unittest.TestCase):
+    """번호가 채널을 말한다 (사용자 규칙 2026-11-14): 베타는 X.Y.Z-beta.N, RC는 X.Y.Z-rc.N, 정식은 X.Y.Z.
+    꼬리표 없는 번호를 베타로 내면 그 번호의 다음 베타가 더 낮은 번호가 되어 업데이트가 끊긴다(0.1.14 사고)"""
+
+    load = ReleaseChannel.load
+
+    def test_a_beta_needs_a_beta_number(self):
+        for version in ("0.1.14", "0.1.14-rc.1", "0.1.14-beta", "0.1.14-beta.x"):
+            with self.subTest(version=version), self.assertRaises(SystemExit):
+                self.load(version, "beta")
+
+    def test_an_rc_needs_an_rc_number(self):
+        for version in ("0.1.14", "0.1.14-beta.2"):
+            with self.subTest(version=version), self.assertRaises(SystemExit):
+                self.load(version, "rc")
+
+    def test_the_registration_channel_follows_the_number(self):
+        self.assertEqual(versions.registration_channel("beta"), "beta")
+        self.assertEqual(versions.registration_channel("rc"), "rc")
+        # 정식은 지금처럼 베타에 먼저 걸고 promote-release.yml로 올린다
+        self.assertEqual(versions.registration_channel("stable"), "beta")
+

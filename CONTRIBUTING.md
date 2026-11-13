@@ -16,3 +16,5 @@
 ## 버전
 
 버전은 `versions.toml` 한 곳에서 올린다. `python scripts/versions.py sync`로 각 파일에 써 넣고, `check`로 어긋남을 확인한다. 실행 중인 데몬의 버전은 `GET /api/version`이 코어·모듈·익스텐션·인터페이스를 한 번에 보여 준다.
+
+번호가 채널을 말한다. 베타는 `X.Y.Z-beta.N`, RC는 `X.Y.Z-rc.N`, 정식은 `X.Y.Z`다(`[release] channel`과 맞아야 `versions.py check`가 통과한다). 꼬리표 없는 번호로 베타를 내지 않는다. 베타 채널은 같은 번호의 RC·정식까지 이어 받는다(beta → rc → 정식 → 다음 번호의 베타).
