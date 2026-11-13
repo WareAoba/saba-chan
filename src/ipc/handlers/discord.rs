@@ -68,6 +68,10 @@ pub struct GuildSettings {
 /// 서버 조작·알림, 말하는 사바쨩·AI 모더레이션, 노래하는 사바쨩, 읽어주는 사바쨩, 그 밖의 부가 기능
 pub const SLEEP_FEATURES: &[&str] = &["commands", "llm", "music", "tts", "extras"];
 
+/// 연결을 풀어 PC 없는 서버가 돼도 릴레이에 남는 값 (릴레이 `demoteToPcLess`가 지우지 않는 것, `apply`의 키 이름).
+/// 그동안은 디스코드 `/설정`이 릴레이에 바로 쓴다
+const RELAY_KEPT: &[&str] = &["locale", "music", "tts", "sleepBlocks", "bedtime"];
+
 /// 자동 코코낸내 — 잠드는 시각과 일어나는 시각 (HH:MM, 서로 다르다)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Bedtime {
@@ -252,6 +256,19 @@ impl GuildSettings {
     /// 릴레이 `GET /api/nodes/:guild/settings` 응답에서 (처음 한 번 가져오기). 모르는 값은 기본값
     fn from_relay(body: &Value) -> Self {
         let mut out = Self::default();
+        out.take_relay(body, |_| true);
+        out
+    }
+
+    /// 이 PC에 다시 묶인 길드: PC 없는 동안 릴레이가 원본으로 지닌 값(`RELAY_KEPT`)만 릴레이 응답에서 받는다.
+    /// 연결을 풀 때 릴레이가 지운 값(접두사·명령 모양·잠재우기)은 데몬 사본을 그대로 둔다 (다음 동기화가 다시 보낸다)
+    fn adopt_relay_kept(&mut self, body: &Value) {
+        self.take_relay(body, |key| RELAY_KEPT.contains(&key));
+    }
+
+    /// 릴레이 응답의 값을 `wanted`인 키(`apply`의 키 이름)만 받는다. 틀린 값은 건너뛴다
+    fn take_relay(&mut self, body: &Value, wanted: impl Fn(&str) -> bool) {
+        let out = self;
         let mut patch = Map::new();
         // 릴레이는 `auto`나 언어 태그를 준다
         if let Some(l) = body.get("locale").and_then(Value::as_str) {
@@ -278,12 +295,13 @@ impl GuildSettings {
             patch.insert("tts".into(), t.clone());
         }
         for key in ["prefixes", "translateCommands", "slashPrefix", "slashRootName", "privateQueries", "sleepBlocks", "bedtime"] {
-            if let Some(v) = body.get(key).filter(|v| !v.is_null()) {
+            // 코코낸내 기능·시각의 null은 값이다 (모두 끄기, 자동 없음). 나머지 null은 릴레이에 값이 없다는 뜻
+            if let Some(v) = body.get(key).filter(|v| !v.is_null() || matches!(key, "sleepBlocks" | "bedtime")) {
                 patch.insert(key.into(), v.clone());
             }
         }
         // 하나씩 넣어 틀린 값 하나 때문에 나머지를 잃지 않는다
-        for (k, v) in patch {
+        for (k, v) in patch.into_iter().filter(|(k, _)| wanted(k)) {
             match (k.as_str(), v) {
                 (section @ ("music" | "tts"), Value::Object(m)) => {
                     for (mk, mv) in m {
@@ -296,7 +314,6 @@ impl GuildSettings {
                 }
             }
         }
-        out
     }
 
     /// 바꿀 키만 적용한다. 틀리면 (필드, 이유)를 돌려주고 아무것도 바꾸지 않는다
@@ -449,7 +466,7 @@ impl GuildSettings {
 }
 
 /// 원본이 릴레이인 길드 설정 (데몬은 저장하지 않고 앱의 값을 릴레이에 그대로 넘긴다). 모두 참·거짓 값
-pub const RELAY_OWNED: [&str; 3] = ["bigEmoji", "gameChatGuard", "gameChatClearOnStop"];
+pub const RELAY_OWNED: [&str; 6] = ["bigEmoji", "gameChatGuard", "gameChatClearOnStop", "gameChatAutoOpen", "memberNotice", "busyNotice"];
 
 /// (데몬이 맡는 키, 릴레이 원본 키)
 type SplitPatch = (Map<String, Value>, Map<String, Value>);
@@ -501,7 +518,7 @@ pub fn take_pending_sync() -> bool {
 }
 
 /// 연결 실패나 릴레이 쪽 오류(5xx)면 다시 보낼 만하다. 거절(4xx)은 다시 보내도 같다
-fn retry_later(outcome: &Result<(StatusCode, Value), String>) -> bool {
+pub(super) fn retry_later(outcome: &Result<(StatusCode, Value), String>) -> bool {
     match outcome {
         Ok((c, _)) => c.is_server_error(),
         Err(_) => true,
@@ -509,14 +526,23 @@ fn retry_later(outcome: &Result<(StatusCode, Value), String>) -> bool {
 }
 
 /// 데몬에 저장된 값. 아직 없으면(업그레이드 뒤 첫 연결 전) 릴레이 값을, 릴레이에 노드 설정이 없으면 기본값.
-/// 페어링했는데 릴레이를 읽지 못하면 `None`: 기본값으로 착각해 저장하면 다음 동기화가 릴레이 값을 덮어쓴다
-async fn current(state: &IPCServer, guild: &str) -> Option<GuildSettings> {
+/// 페어링했는데 릴레이를 읽지 못하면 `None`: 기본값으로 착각해 저장하면 다음 동기화가 릴레이 값을 덮어쓴다.
+/// 부른 쪽이 릴레이 값을 이미 읽었으면 `read`로 넘긴다 (같은 GET을 두 번 보내지 않는다)
+async fn current(state: &IPCServer, guild: &str, read: Option<&RelaySettings>) -> Option<GuildSettings> {
     let bot = state.config_store.get_bot_config().await;
     if let Some(s) = GuildSettings::of_guild(&bot.node_settings, guild, &bot) {
         return Some(s);
     }
-    match relay_settings(&relay_base(state).await, guild).await {
-        RelaySettings::Found(body) => Some(GuildSettings::from_relay(&body).inherit(&body, &bot)),
+    let fetched;
+    let relay = match read {
+        Some(r) => r,
+        None => {
+            fetched = relay_settings(&relay_base(state).await, guild).await;
+            &fetched
+        }
+    };
+    match relay {
+        RelaySettings::Found(body) => Some(GuildSettings::from_relay(body).inherit(body, &bot)),
         RelaySettings::Absent => Some(GuildSettings::default().inherit(&Value::Null, &bot)),
         RelaySettings::Unreachable => None,
     }
@@ -584,15 +610,19 @@ fn changed(have: &Value, want: &Value) -> Map<String, Value> {
     out
 }
 
-/// 릴레이에 지금 있는 값과 다른 키만 보낸다. 같으면 보내지 않는다 (음악 플레이어가 바뀔 때마다 다시 그려진다).
-/// 릴레이 값을 못 읽으면 `before`(데몬이 마지막으로 맞춘 값)와 비교한다
+/// 릴레이에 지금 있는 값과 다른 키만 보낸다 (`send_changed`). 릴레이 값을 못 읽으면 `before`(데몬이 마지막으로 맞춘 값)와 비교한다
 async fn push(state: &IPCServer, base: &str, guild: &str, before: &Value, s: &GuildSettings) -> Result<(StatusCode, Value), String> {
-    let path = format!("/api/nodes/{}/settings", encode_path_segment(guild));
     let have = match relay_settings(base, guild).await {
         RelaySettings::Found(body) => body,
         _ => before.clone(),
     };
-    let mut diff = changed(&have, &s.relay_body());
+    send_changed(state, base, guild, &have, s).await
+}
+
+/// `have`(릴레이 값)와 다른 키만 보낸다. 같으면 보내지 않는다 (음악 플레이어가 바뀔 때마다 다시 그려진다)
+async fn send_changed(state: &IPCServer, base: &str, guild: &str, have: &Value, s: &GuildSettings) -> Result<(StatusCode, Value), String> {
+    let path = format!("/api/nodes/{}/settings", encode_path_segment(guild));
+    let mut diff = changed(have, &s.relay_body());
     if diff.is_empty() {
         return Ok((StatusCode::OK, Value::Null));
     }
@@ -608,11 +638,13 @@ async fn push(state: &IPCServer, base: &str, guild: &str, before: &Value, s: &Gu
 /// GET /api/discord/:guild/settings
 /// 처음 보는 길드인데 릴레이를 읽지 못하면 기본값에 `loaded: false`를 붙인다 (그 값으로 저장하지 않는다)
 pub async fn get_settings(State(state): State<IPCServer>, Path(guild): Path<String>) -> Response {
-    let relay = match relay_settings(&relay_base(&state).await, &guild).await {
+    let read = relay_settings(&relay_base(&state).await, &guild).await;
+    let found = current(&state, &guild, Some(&read)).await;
+    let relay = match read {
         RelaySettings::Found(body) => body,
         _ => Value::Null,
     };
-    match current(&state, &guild).await {
+    match found {
         Some(s) => Json(with_relay_owned(view(&guild, &s), &relay)).into_response(),
         None => {
             let mut v = view(&guild, &GuildSettings::default());
@@ -634,7 +666,7 @@ pub async fn patch_settings(State(state): State<IPCServer>, Path(guild): Path<St
         return (StatusCode::CONFLICT, Json(json!({ "success": false, "error": "Not paired with the relay", "error_code": "not_paired" }))).into_response();
     }
     let _turn = SETTINGS_LOCK.lock().await;
-    let Some(before) = current(&state, &guild).await else {
+    let Some(before) = current(&state, &guild, None).await else {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({ "success": false, "error": "Could not read this server's settings from the relay", "error_code": "relay_unavailable" })),
@@ -683,56 +715,133 @@ pub async fn patch_settings(State(state): State<IPCServer>, Path(guild): Path<St
         .into_response()
 }
 
+/// 다음 하트비트가 성공하면 `sync_on_connect`를 돌린다
+pub fn request_sync() {
+    PENDING_SYNC.store(true, std::sync::atomic::Ordering::SeqCst);
+}
+
+/// 하트비트가 이 PC에 새로 묶였다고 알린 길드(`linkedGuilds`). 데몬에 사본이 남아 있으면(풀었다가 다시 묶은 길드)
+/// PC 없는 동안 디스코드에서 바꾼 값을 릴레이에서 받아 사본을 맞추고, 나머지 값은 다음 동기화가 릴레이로 보낸다.
+/// 릴레이를 읽지 못해 맞추지 못했으면 false (부른 쪽이 다음 하트비트에 다시 한다. 그대로 동기화하면 옛 사본이 릴레이 값을 덮는다)
+pub async fn adopt_linked_guild(state: &IPCServer, guild: &str) -> bool {
+    if load_node_token().is_none() {
+        return true;
+    }
+    let _turn = SETTINGS_LOCK.lock().await;
+    adopt_from(state, &relay_base(state).await, guild).await
+}
+
+async fn adopt_from(state: &IPCServer, base: &str, guild: &str) -> bool {
+    let bot = state.config_store.get_bot_config().await;
+    // 사본이 없는 길드는 `sync_on_connect`가 릴레이 값을 통째로 가져온다
+    let Some(mut s) = GuildSettings::of_guild(&bot.node_settings, guild, &bot) else { return true };
+    let path = format!("/api/nodes/{}/settings", encode_path_segment(guild));
+    let outcome = call(base, reqwest::Method::GET, &path, None).await;
+    match &outcome {
+        Ok((c, body)) if c.is_success() => {
+            s.adopt_relay_kept(body);
+            if let Err(e) = save(state, guild, &s).await {
+                tracing::warn!("[Discord] could not keep the relay settings of relinked guild {}: {}", guild, e);
+                return false;
+            }
+            request_sync();
+            true
+        }
+        // 거절(이 PC의 길드가 아니다 등)은 다시 물어도 같다
+        _ => !retry_later(&outcome),
+    }
+}
+
 /// 릴레이 에이전트가 연결된 직후 한 번: 원본이 있는 길드는 보내고, 없는 길드는 릴레이 값을 한 번 가져온다
 pub async fn sync_on_connect(state: &IPCServer) {
     if load_node_token().is_none() {
         return;
     }
     let _turn = SETTINGS_LOCK.lock().await;
-    let base = relay_base(state).await;
-    let bot = state.config_store.get_bot_config().await;
+    sync_with(state, &relay_base(state).await).await;
+}
+
+/// 길드 하나의 릴레이 설정 (읽지 못했으면 없다)과 이 PC가 그 길드의 대표인지 (붙은 길드는 대표 PC가 맞춘다)
+struct RelayRow {
+    guild: String,
+    relay: Option<Value>,
+    primary: bool,
+}
+
+/// 릴레이 `GET /api/hosts/:hostId/settings`: 이 PC가 대표이거나 붙은 길드의 설정을 한 번에.
+/// 그 경로가 없는 릴레이(404)거나 읽지 못하면 없다
+async fn host_settings(base: &str, host: &str) -> Option<Vec<RelayRow>> {
+    if host.is_empty() {
+        return None;
+    }
+    let path = format!("/api/hosts/{}/settings", encode_path_segment(host));
+    match call(base, reqwest::Method::GET, &path, None).await {
+        Ok((c, Value::Array(list))) if c.is_success() => Some(
+            list.into_iter()
+                .filter_map(|v| {
+                    let guild = v.get("guildId")?.as_str()?.to_string();
+                    let primary = v.get("primary").and_then(Value::as_bool).unwrap_or(true);
+                    Some(RelayRow { guild, relay: Some(v), primary })
+                })
+                .collect(),
+        ),
+        _ => None,
+    }
+}
+
+/// 이 PC 길드들의 릴레이 설정. 한 번에 읽지 못하면 사본이 있는 길드와 호스트 길드 목록을 길드마다 읽는다
+async fn relay_rows(state: &IPCServer, base: &str, bot: &BotConfig) -> Vec<RelayRow> {
+    if let Some(rows) = host_settings(base, bot.cloud.host_id.trim()).await {
+        return rows;
+    }
     let mut guilds: Vec<String> = bot.node_settings.as_object().map(|m| m.keys().cloned().collect()).unwrap_or_default();
-    for g in host_guilds(state, &base).await.unwrap_or_default() {
+    for g in host_guilds(state, base).await.unwrap_or_default() {
         if !guilds.contains(&g) {
             guilds.push(g);
         }
     }
+    let mut rows = Vec::new();
     for guild in guilds {
-        match GuildSettings::of_guild(&bot.node_settings, &guild, &bot) {
-            Some(s) => {
-                let outcome = push(state, &base, &guild, &Value::Null, &s).await;
-                if !matches!(&outcome, Ok((c, _)) if c.is_success()) {
-                    tracing::warn!("[Discord] settings sync to guild {} failed: {}", guild, result_row(&guild, &outcome));
+        let path = format!("/api/nodes/{}/settings", encode_path_segment(&guild));
+        let relay = match call(base, reqwest::Method::GET, &path, None).await {
+            Ok((c, body)) if c.is_success() => Some(body),
+            _ => None,
+        };
+        rows.push(RelayRow { guild, relay, primary: true });
+    }
+    rows
+}
+
+async fn sync_with(state: &IPCServer, base: &str) {
+    let bot = state.config_store.get_bot_config().await;
+    for RelayRow { guild, relay, primary } in relay_rows(state, base, &bot).await {
+        let (s, have) = match (GuildSettings::of_guild(&bot.node_settings, &guild, &bot), relay) {
+            (Some(s), relay) => (s, relay.unwrap_or(Value::Null)),
+            (None, Some(body)) => {
+                let s = GuildSettings::from_relay(&body).inherit(&body, &bot);
+                if let Err(e) = save(state, &guild, &s).await {
+                    tracing::warn!("[Discord] could not keep the relay settings of guild {}: {}", guild, e);
+                    continue;
                 }
-                if retry_later(&outcome) {
-                    PENDING_SYNC.store(true, std::sync::atomic::Ordering::SeqCst);
-                }
+                // 호스트 값을 물려받았으면(접두사·명령 번역) 릴레이에도 그 값을 보낸다
+                (s, body)
             }
-            None => {
-                let path = format!("/api/nodes/{}/settings", encode_path_segment(&guild));
-                match call(&base, reqwest::Method::GET, &path, None).await {
-                    Ok((c, body)) if c.is_success() => {
-                        let s = GuildSettings::from_relay(&body).inherit(&body, &bot);
-                        if let Err(e) = save(state, &guild, &s).await {
-                            tracing::warn!("[Discord] could not keep the relay settings of guild {}: {}", guild, e);
-                            continue;
-                        }
-                        // 호스트 값을 물려받았으면(접두사·명령 번역) 릴레이에도 그 값을 보낸다
-                        let diff = changed(&body, &s.relay_body());
-                        if !diff.is_empty() {
-                            let outcome = call(&base, reqwest::Method::PATCH, &path, Some(Value::Object(diff).to_string())).await;
-                            if !matches!(&outcome, Ok((c, _)) if c.is_success()) {
-                                tracing::warn!("[Discord] could not send the inherited settings of guild {}: {}", guild, result_row(&guild, &outcome));
-                            }
-                            if retry_later(&outcome) {
-                                PENDING_SYNC.store(true, std::sync::atomic::Ordering::SeqCst);
-                            }
-                        }
-                    }
-                    // 릴레이에 노드가 없거나 닿지 않으면 다음 연결 때 다시
-                    other => tracing::debug!("[Discord] no relay settings for guild {}: {}", guild, result_row(&guild, &other)),
-                }
+            // 릴레이에 노드가 없거나 닿지 않으면 다음 연결 때 다시
+            (None, None) => {
+                tracing::debug!("[Discord] no relay settings for guild {}", guild);
+                continue;
             }
+        };
+        // 붙은 길드의 설정은 대표 PC가 맞춘다 (릴레이가 이 PC의 PATCH를 받지 않는다)
+        if !primary {
+            continue;
+        }
+        let outcome = send_changed(state, base, &guild, &have, &s).await;
+        if !matches!(&outcome, Ok((c, _)) if c.is_success()) {
+            tracing::warn!("[Discord] settings sync to guild {} failed: {}", guild, result_row(&guild, &outcome));
+        }
+        if retry_later(&outcome) {
+            PENDING_SYNC.store(true, std::sync::atomic::Ordering::SeqCst);
         }
     }
 }
@@ -745,6 +854,141 @@ mod tests {
         v.as_object().unwrap().clone()
     }
 
+    async fn test_state(dir: &std::path::Path) -> IPCServer {
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(dir.join("modules").to_str().unwrap(), dir.join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new())
+    }
+
+    /// 풀었다가 다시 묶은 길드: PC 없는 동안 디스코드 `/설정`으로 바꾼 값(언어·음악·읽어주기)은 릴레이 값을 받고,
+    /// 연결을 풀 때 릴레이가 지운 값(접두사·잠재우기)은 데몬 사본을 지켜 다음 동기화가 되살린다
+    #[tokio::test]
+    async fn a_relinked_guild_keeps_what_discord_changed_while_it_had_no_pc() {
+        use axum::{routing::get, Router};
+        let relay = json!({
+            "guildId": "relinked-guild", "locale": "ja", "sleeping": false,
+            "musicEnabled": false, "musicUIEnabled": true, "musicSettings": { "queueLines": 9, "refreshInterval": 4000, "normalize": true },
+            "ttsSettings": { "volume": 80, "speed": 100, "pitch": 0, "names": "multi", "voiceChatOnly": false, "keepRead": false, "autoChannels": [] },
+            "prefixes": null, "translateCommands": true, "slashPrefix": true, "slashRootName": "name", "privateQueries": false,
+            "sleepBlocks": null, "bedtime": null,
+        });
+        let answer = relay.clone();
+        let app = Router::new().route("/api/nodes/relinked-guild/settings", get(move || async move { Json(answer) }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let dir = tempfile::tempdir().unwrap();
+        let state = test_state(dir.path()).await;
+        let mut before = GuildSettings::default();
+        before.apply(&patch(json!({ "locale": "ko", "sleeping": true, "prefixes": ["!s"], "slashPrefix": false, "bedtime": { "start": "23:00", "end": "07:00" } }))).unwrap();
+        save(&state, "relinked-guild", &before).await.unwrap();
+
+        // 릴레이에 닿지 않으면 맞추지 못했다고 답하고 사본을 건드리지 않는다
+        assert!(!adopt_from(&state, "http://127.0.0.1:9", "relinked-guild").await);
+        let bot = state.config_store.get_bot_config().await;
+        assert_eq!(GuildSettings::of_guild(&bot.node_settings, "relinked-guild", &bot).unwrap(), before);
+
+        assert!(adopt_from(&state, &base, "relinked-guild").await);
+        let bot = state.config_store.get_bot_config().await;
+        let after = GuildSettings::of_guild(&bot.node_settings, "relinked-guild", &bot).unwrap();
+        assert_eq!((after.locale.as_str(), after.music.enabled, after.music.queue_lines, after.tts.volume, &after.bedtime), ("ja", false, 9, 80, &None));
+        assert_eq!((after.sleeping, &after.prefixes, after.slash_prefix), (true, &vec!["!s".to_string()], false));
+        // 다음 동기화는 릴레이가 지운 값만 다시 보낸다
+        let resent = changed(&relay, &after.relay_body());
+        assert_eq!(resent.keys().map(String::as_str).collect::<std::collections::BTreeSet<_>>(), std::collections::BTreeSet::from(["prefixes", "sleepBlocks", "sleeping", "slashPrefix"]));
+        // 사본이 없는 길드는 여기서 할 일이 없다 (연결 직후 동기화가 통째로 가져온다)
+        assert!(adopt_from(&state, "http://127.0.0.1:9", "never-saved-guild").await);
+    }
+
+    /// 연결 직후 동기화는 이 PC의 길드 설정을 한 번에 읽고(`GET /api/hosts/:hostId/settings`) 다른 길드에만 보낸다.
+    /// 붙은 길드(대표가 아니다)에는 보내지 않는다. 그 경로가 없는 릴레이(404)에는 예전처럼 길드마다 읽는다
+    #[tokio::test]
+    async fn connect_sync_reads_all_guild_settings_at_once_and_sends_only_what_differs() {
+        use axum::{extract::Request, http::Method};
+        use std::sync::{Arc, Mutex};
+        async fn serve(bulk: bool) -> (String, Arc<Mutex<Vec<(String, String, Value)>>>) {
+            let seen: Arc<Mutex<Vec<(String, String, Value)>>> = Arc::default();
+            let log = seen.clone();
+            let relay = move |guild: &str| {
+                let mut v = GuildSettings::default().relay_body();
+                v["guildId"] = json!(guild);
+                if guild == "d" {
+                    v["locale"] = json!("ja");
+                }
+                v
+            };
+            let app = axum::Router::new().fallback(move |req: Request| {
+                let log = log.clone();
+                async move {
+                    let (method, path) = (req.method().clone(), req.uri().path().to_string());
+                    let bytes = axum::body::to_bytes(req.into_body(), 1 << 20).await.unwrap();
+                    log.lock().unwrap().push((method.to_string(), path.clone(), serde_json::from_slice(&bytes).unwrap_or(Value::Null)));
+                    let guilds = [("a", true), ("b", true), ("c", false), ("d", true)];
+                    match (method, path.as_str()) {
+                        (Method::GET, "/api/hosts/host-1/settings") if bulk => Json(json!(guilds
+                            .iter()
+                            .map(|(g, primary)| {
+                                let mut v = relay(g);
+                                v["primary"] = json!(primary);
+                                v
+                            })
+                            .collect::<Vec<_>>()))
+                        .into_response(),
+                        (Method::GET, "/api/hosts/host-1/nodes") => Json(json!(guilds.iter().map(|(g, _)| json!({ "guildId": g })).collect::<Vec<_>>())).into_response(),
+                        (Method::GET, p) if p.starts_with("/api/nodes/") => Json(relay(p.split('/').nth(3).unwrap())).into_response(),
+                        (Method::PATCH, _) => Json(json!({ "ok": true })).into_response(),
+                        _ => StatusCode::NOT_FOUND.into_response(),
+                    }
+                }
+            });
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let base = format!("http://{}", listener.local_addr().unwrap());
+            tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            (base, seen)
+        }
+
+        for bulk in [true, false] {
+            let (base, seen) = serve(bulk).await;
+            let dir = tempfile::tempdir().unwrap();
+            let state = test_state(dir.path()).await;
+            crate::ipc::handlers::relay::sync_host_id(&state, Some("sbn_host-1.secret")).await;
+            save(&state, "a", &GuildSettings::default()).await.unwrap();
+            for (guild, locale) in [("b", "ko"), ("c", "ja")] {
+                let mut s = GuildSettings::default();
+                s.apply(&patch(json!({ "locale": locale }))).unwrap();
+                save(&state, guild, &s).await.unwrap();
+            }
+
+            sync_with(&state, &base).await;
+            let seen = seen.lock().unwrap().clone();
+            let patched: Vec<(&str, &Value)> = seen.iter().filter(|(m, ..)| m == "PATCH").map(|(_, p, b)| (p.as_str(), b)).collect();
+            let per_guild_reads = seen.iter().filter(|(m, p, _)| m == "GET" && p.starts_with("/api/nodes/")).count();
+            if bulk {
+                assert_eq!(patched, vec![("/api/nodes/b/settings", &json!({ "locale": "ko" }))], "{seen:?}");
+                assert_eq!(per_guild_reads, 0, "{seen:?}");
+            } else {
+                assert!(patched.contains(&("/api/nodes/b/settings", &json!({ "locale": "ko" }))), "{seen:?}");
+                assert!(per_guild_reads >= 4, "{seen:?}");
+            }
+            // 사본이 없던 길드는 릴레이 값을 받아 둔다
+            let bot = state.config_store.get_bot_config().await;
+            assert_eq!(GuildSettings::of_guild(&bot.node_settings, "d", &bot).unwrap().locale, "ja", "bulk={bulk}");
+        }
+    }
+
+    /// 앱이 처음 보는 길드를 읽을 때 릴레이 값은 화면용으로 이미 읽었다: 그 값으로 채우고 다시 묻지 않는다
+    #[tokio::test]
+    async fn a_guild_seen_first_is_filled_from_the_relay_values_already_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = test_state(dir.path()).await;
+        let read = RelaySettings::Found(json!({ "locale": "ja", "prefixes": ["!r"] }));
+        let s = current(&state, "first-seen-guild", Some(&read)).await.unwrap();
+        assert_eq!((s.locale.as_str(), s.prefixes), ("ja", vec!["!r".to_string()]));
+        // 읽지 못했으면 기본값으로 채우지 않는다
+        assert!(current(&state, "first-seen-guild", Some(&RelaySettings::Unreachable)).await.is_none());
+    }
+
     #[test]
     fn relay_owned_keys_are_split_off_and_checked() {
         let (rest, owned) = split_relay_owned(&patch(json!({ "locale": "ko", "bigEmoji": true }))).unwrap();
@@ -755,6 +999,13 @@ mod tests {
         let (rest, owned) = split_relay_owned(&patch(json!({ "gameChatGuard": true, "gameChatClearOnStop": false }))).unwrap();
         assert!(rest.is_empty());
         assert_eq!(owned, patch(json!({ "gameChatGuard": true, "gameChatClearOnStop": false })));
+        // 멤버 알림·과부하 공지·채팅 기본으로 열기도 릴레이가 원본이다: 앱에서 보내면 모르는 칸으로 거절하지 않고 릴레이에 넘긴다
+        let notices = patch(json!({ "memberNotice": true, "busyNotice": false, "gameChatAutoOpen": true }));
+        let (rest, owned) = split_relay_owned(&notices).unwrap();
+        assert!(rest.is_empty());
+        assert_eq!(owned, notices);
+        let shown = with_relay_owned(json!({}), &json!({ "memberNotice": false, "busyNotice": true, "gameChatAutoOpen": false, "other": 1 }));
+        assert_eq!(shown, json!({ "memberNotice": false, "busyNotice": true, "gameChatAutoOpen": false }));
     }
 
     #[test]

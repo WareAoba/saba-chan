@@ -5,6 +5,7 @@ pub mod audit;
 pub mod backup;
 pub mod bot;
 pub mod chatbot;
+pub mod completions;
 pub mod config;
 pub mod console;
 pub mod daemon;
@@ -73,11 +74,7 @@ pub async fn dispatch(ctx: &Ctx, cmd: Cmd) -> Result<()> {
         Cmd::Chat { text } => chat(ctx, &text.join(" ")).await,
         Cmd::Events { kind, server, since } => events::run(ctx, &kind, server.as_deref(), since).await,
         Cmd::Help { command } => help(ctx, &command),
-        Cmd::Completions { shell } => {
-            let mut cmd = crate::cli::localized();
-            clap_complete::generate(shell, &mut cmd, "saba-chan-cli", &mut std::io::stdout());
-            Ok(())
-        }
+        Cmd::Completions { shell, install, install_shell } => completions::run(ctx, install_shell.or(shell), install),
         Cmd::Shell => Box::pin(crate::shell::run(ctx)).await,
         Cmd::Tui { server } => Box::pin(crate::tui::run(ctx, server.as_deref())).await,
         Cmd::Gui { server } => gui(ctx, server.as_deref()).await,

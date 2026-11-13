@@ -47,8 +47,21 @@ saba-chan-updater-lib = { path = "../../updater", features = ["gtk"] }
 # 창 바탕 반투명: GTK 창에서 X11 창을 얻는다 (Tauri가 쓰는 판과 같다)
 gtk = "0.18"
 
+# 효과음: 앱 안에서 재생한다 (Windows는 PlaySound). 리눅스는 ALSA(libasound2-dev)로 빌드한다
+[target.'cfg(any(target_os = "macos", target_os = "linux"))'.dependencies]
+rodio = { version = "0.23", default-features = false, features = ["playback", "wav", "tracing"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# 알림: UserNotifications (알림 플러그인의 맥 구현은 폐기된 NSUserNotificationCenter를 쓴다)
+objc2 = "0.6"
+block2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSBundle", "NSError", "NSString"] }
+objc2-user-notifications = { version = "0.3", default-features = false, features = ["std", "bitflags", "block2", "UNNotificationContent", "UNNotificationRequest", "UNNotificationSound", "UNNotificationTrigger", "UNUserNotificationCenter"] }
+# 바탕화면 오버레이 창을 NSPanel로: 눌러도 앱이 앞으로 오지 않고, 모든 데스크톱과 전체 화면 앱 위에 보인다
+tauri-nspanel = "2.1"
+
 [target.'cfg(windows)'.dependencies]
-winreg = "0.55"
+winreg = "0.56"
 # 알림 플러그인과 같은 토스트 구현. 결과를 받아 기록하려고 직접 부른다
 tauri-winrt-notification = "0.8"
 # 효과음 (PlaySound, 실행 파일에 실은 wav)

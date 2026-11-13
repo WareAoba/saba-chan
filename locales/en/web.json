@@ -125,7 +125,6 @@
   "detail": {
     "backups": "Backups",
     "players": "Players",
-    "more": "More",
     "tabs": "Server menu",
     "uptime": "Up {{time}}",
     "port_check": "Port forwarding check"
@@ -135,7 +134,9 @@
     "placeholder": "Type a command",
     "send": "Send",
     "danger_title": "This is a dangerous command",
-    "danger_message": "Really send {{command}}?"
+    "danger_message": "Really send {{command}}?",
+    "danger_again": "'{{command}}' is hard to undo. Press send once more to run it.",
+    "danger_again_described": "{{description}}. Press send once more to run it."
   },
   "settings": {
     "game": "Game settings",
@@ -172,7 +173,8 @@
       "manual": "Manual",
       "scheduled": "Scheduled",
       "pre-update": "Before update",
-      "pre-restore": "Before restore"
+      "pre-restore": "Before restore",
+      "imported": "Imported"
     }
   },
   "agreements": {
@@ -265,8 +267,6 @@
     "update": "Update",
     "update_to": "v{{version}} available",
     "updated": "Updated.",
-    "check_ok": "Check: uses only declared features.",
-    "check_failed": "Could not get the check result.",
     "check_undeclared": "Check: uses features not declared by the module ({{perms}}). Make sure you trust this module."
   },
   "plugins": {
@@ -303,12 +303,14 @@
   },
   "errors": {
     "start_cancelled": "The server was stopped while it was starting, so it was not started.",
+    "still_stopping": "The server is still shutting down, so it was not started again. Start it once it has fully stopped.",
     "generic": "Couldn't complete the request.",
     "remote_not_allowed": "This can only be done in the Saba-chan app on the PC.",
     "remote_field_blocked": "These settings can only be changed on the PC: {{fields}}",
     "remote_bad_path": "This request isn't accepted.",
     "remote_bad_request": "This request isn't accepted.",
     "remote_timeout": "It didn't finish within 2 minutes, so it was treated as a failure. Check the result on the PC.",
+    "still_working": "It didn't finish within 2 minutes. The PC may still be working on it, so check again in a moment.",
     "remote_host_gone": "The connection to the PC was lost before the request finished.",
     "remote_busy": "Too many requests. Try again in a moment."
   },
@@ -425,6 +427,9 @@
     "off": "Off",
     "saved": "Changed.",
     "pc": "PC",
+    "guild_here": "This PC",
+    "guild_other_pc": "Another PC",
+    "guild_no_pc": "No PC",
     "no_guilds": "There are no Discord servers you can manage.",
     "other_pc": "This server is connected to another PC. Change it from that PC's /saba web link.",
     "err": {
@@ -536,6 +541,7 @@
     "channel_board": "Status board channel",
     "sleep_now": "Put to sleep now",
     "awake": "Awake",
+    "sleep_needs_pc": "Available once a PC is linked",
     "basics_desc": "Language and emoji for this server",
     "music_desc": "Plays music in voice channels",
     "reading_desc": "Reads chat aloud in voice channels",

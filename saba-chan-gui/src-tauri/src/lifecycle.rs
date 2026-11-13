@@ -862,7 +862,7 @@ fn start_events(app: &AppHandle) {
     let (client, stop) = (state.client.clone(), state.life.events_stop.clone());
     // 화면은 고른 데몬을 따르고, 원격을 고른 동안에도 이 PC 데몬의 중대 알림·크래시 소리는 따로 받는다
     let stream = |feed: Feed| {
-        let app2 = app.clone();
+        let (app2, app_live) = (app.clone(), app.clone());
         let cues = Mutex::new(sounds::EventCues::default());
         events::run_event_stream(
             client.clone(),
@@ -898,6 +898,12 @@ fn start_events(app: &AppHandle) {
                 if feed == Feed::Chosen {
                     emit_main(&app2, "events:message", &ev);
                     crate::overlay::emit(&app2, "events:message", &ev);
+                }
+            },
+            // 화면은 고른 데몬의 스트림만 본다: 붙지 못하는 동안 폴링으로 메운다
+            move |up: bool| {
+                if feed == Feed::Chosen {
+                    emit_main(&app_live, "events:live", up);
                 }
             },
         )
@@ -1076,9 +1082,22 @@ pub fn show_notification(_app: &AppHandle, title: &str, body: &str, silent: bool
     });
 }
 
-/// 다른 OS는 알림 플러그인이 소리를 따로 넣지 않는다 (소리를 주지 않으면 OS 기본 동작)
-#[cfg(not(windows))]
+/// macOS는 UserNotifications로 낸다. 앱 묶음 밖에서 띄운 개발 실행은 알림 플러그인으로 낸다
+#[cfg(target_os = "macos")]
+pub fn show_notification(app: &AppHandle, title: &str, body: &str, silent: bool) {
+    if !crate::mac_notify::show(title, body, silent) {
+        plugin_notification(app, title, body);
+    }
+}
+
+#[cfg(all(not(windows), not(target_os = "macos")))]
 pub fn show_notification(app: &AppHandle, title: &str, body: &str, _silent: bool) {
+    plugin_notification(app, title, body);
+}
+
+/// 알림 플러그인은 소리를 따로 넣지 않는다 (소리를 주지 않으면 OS 기본 동작)
+#[cfg(not(windows))]
+fn plugin_notification(app: &AppHandle, title: &str, body: &str) {
     if let Err(e) = app.notification().builder().title(title).body(body).show() {
         tracing::warn!("[Notify] Failed to show notification: {}", e);
     }

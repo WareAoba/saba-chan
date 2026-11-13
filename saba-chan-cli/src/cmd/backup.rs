@@ -26,7 +26,27 @@ pub async fn run(ctx: &Ctx, cmd: BackupCmd) -> Result<()> {
             Ok(())
         }
         BackupCmd::Restore { server, backup } => restore(ctx, &server, backup.as_deref()).await,
+        BackupCmd::Export { server, backup, out } => {
+            let sv = resolve::server_exact(ctx, Some(&server)).await?;
+            let name = pick(ctx, &sv, backup.as_deref()).await?;
+            let r = ctx.api.export_backup(&sv.id, &name, &absolute(&out)).await?;
+            let bytes = r.get("size").and_then(Value::as_u64).unwrap_or(0);
+            ctx.out.done(&t!("backup.exported", path = s(&r, "path"), size = size(bytes)), &r);
+            Ok(())
+        }
+        BackupCmd::Import { server, file } => {
+            let sv = resolve::server_exact(ctx, Some(&server)).await?;
+            let r = ctx.api.import_backup(&sv.id, &absolute(&file)).await?;
+            ctx.out.done(&t!("backup.imported", backup = name_of(r.get("backup")), name = sv.name), &r);
+            ctx.out.hint(&format!("saba-chan-cli backup restore {}", shell_word(&sv.name)));
+            Ok(())
+        }
     }
+}
+
+/// 데몬은 절대 경로만 받는다: 지금 폴더 기준으로 적은 경로를 절대 경로로
+fn absolute(path: &std::path::Path) -> String {
+    std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf()).to_string_lossy().into_owned()
 }
 
 async fn backups(ctx: &Ctx, sv: &Server) -> Result<Vec<Value>> {

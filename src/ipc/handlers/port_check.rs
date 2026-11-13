@@ -35,10 +35,12 @@ pub async fn check(Path(id): Path<String>, State(state): State<IPCServer>) -> ax
             let status = match e {
                 CheckError::NotPaired | CheckError::Busy => StatusCode::CONFLICT,
                 CheckError::RateLimited => StatusCode::TOO_MANY_REQUESTS,
-                CheckError::Relay(_) => StatusCode::BAD_GATEWAY,
+                CheckError::Rejected | CheckError::Relay(_) => StatusCode::BAD_GATEWAY,
             };
-            if let CheckError::Relay(detail) = &e {
-                tracing::warn!("Port check for {} failed: {}", id, detail);
+            match &e {
+                CheckError::Relay(detail) => tracing::warn!("Port check for {} failed: {}", id, detail),
+                CheckError::Rejected => tracing::warn!("Port check for {} failed: relay answered 400", id),
+                _ => {}
             }
             (status, Json(json!({ "success": false, "error": e.code(), "error_code": e.code() }))).into_response()
         }

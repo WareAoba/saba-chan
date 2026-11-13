@@ -522,17 +522,22 @@ async fn main() -> anyhow::Result<()> {
 
     // 업데이트 주기 확인 — GUI가 꺼져 있어도 데몬이 확인한다 (U6)
     ipc::updates::spawn_update_scheduler(ipc_server.update_state.clone(), shutdown_token.clone());
+    // 지난 앱 업데이트가 이 코어를 기다리게 둔 모듈·익스텐션을 마저 바꾼다
+    ipc::updates::spawn_deferred_apply(ipc_server.update_state.clone());
     // 작업 기록 보관 기간 (앱 설정 auditKeepDays)
     audit::spawn_retention(ipc_server.config_store.clone(), shutdown_token.clone());
     // 인스턴스 예약 작업: 백업·재시작·공지·업데이트 (A3)
     ipc::handlers::backup::spawn_scheduler(ipc_server.clone());
     // 인스턴스별 게임 서버 자동 업데이트 (auto_update)
     ipc::handlers::server_update::spawn_auto_updater(ipc_server.clone());
+    // 나머지 서버의 게임 서버 업데이트 확인 (화면은 목록의 결과만 읽는다)
+    ipc::handlers::server_update::spawn_update_checks(ipc_server.clone());
     controllers::spawn_gate(ipc_server.clone());
 
     // 접속자 수 (Q-5): 모듈이 `[status] players`를 선언한 켜진 서버만 1분마다 묻는다
     let players_sup = supervisor.clone();
     let players_cancel = shutdown_token.clone();
+    let idle_state = ipc_server.clone();
     tokio::spawn(async move {
         loop {
             tokio::select! {
@@ -540,6 +545,10 @@ async fn main() -> anyhow::Result<()> {
                 _ = tokio::time::sleep(tokio::time::Duration::from_secs(supervisor::players::REFRESH_SECS)) => {}
             }
             supervisor::players::refresh(&players_sup).await;
+            // 접속자 없을 때 자동 정지: 방금 갱신한 수만 본다 (따로 묻지 않는다)
+            ipc::handlers::server::stop_idle_servers(&idle_state).await;
+            // 응답 없는 서버 감시: 방금 모은 응답 실패 기록만 본다
+            ipc::handlers::server::watch_unresponsive(&idle_state).await;
         }
     });
 
@@ -593,6 +602,8 @@ async fn main() -> anyhow::Result<()> {
         if !relay_shutdown.settle(std::time::Duration::from_secs(15)).await {
             tracing::warn!("[Shutdown] Some relay results were still being sent after 15s");
         }
+        // 스스로 내려간다고 릴레이에 알린다: "PC 연결 끊김" 알림이 가지 않는다 (업데이트로 내려갈 때는 이미 알렸다)
+        relay_shutdown.notify_stopping().await;
 
         // 1. 익스텐션 정리 (컨테이너 종료 등은 extension hook으로 위임)
         {

@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ActivityPage, AuditLog } from '../components/servers/AuditTab';
+import { ActivityPage, AuditLog, clearAuditCache } from '../components/servers/AuditTab';
 import i18n from '../i18n';
 import { type Server, useServerStore } from '../stores/useServerStore';
 import { pickDate } from './picker';
@@ -25,6 +25,34 @@ describe('AuditLog', () => {
         delete (window.api as Partial<typeof window.api>).auditList;
         delete (window.api as Partial<typeof window.api>).auditExport;
         vi.useRealTimers();
+        clearAuditCache();
+    });
+
+    it('다시 들어오면 받아 둔 기록을 바로 보이고, 새 기록은 뒤에서 받아 바꾼다', async () => {
+        window.api.auditList = vi.fn().mockResolvedValue({ entries: [entry()] }) as never;
+        const first = render(<AuditLog instanceId="mc-1" />);
+        expect(await screen.findByText('Command · say hi')).toBeTruthy();
+        first.unmount();
+
+        let answer: (v: unknown) => void = () => {};
+        window.api.auditList = vi.fn(() => new Promise((r) => (answer = r))) as never;
+        render(<AuditLog instanceId="mc-1" />);
+        // 응답 전에도 지난번 목록이 그대로, 도는 표시 없이 보인다
+        expect(screen.getByText('Command · say hi')).toBeTruthy();
+        expect(document.querySelector('.audit-scroll > .saba-spinner, .audit-scroll > [role="status"]')).toBeNull();
+        expect(window.api.auditList).toHaveBeenCalledTimes(1);
+        await act(async () => answer({ entries: [entry({ command: 'list', args: undefined })] }));
+        expect(await screen.findByText('Command · list')).toBeTruthy();
+    });
+
+    it('다른 서버로 바꾸면 응답이 오기 전까지 앞 서버의 기록을 보이지 않는다', async () => {
+        window.api.auditList = vi.fn(async ({ instance }) =>
+            instance === 'mc-1' ? { entries: [entry()] } : new Promise(() => {}),
+        ) as never;
+        const view = render(<AuditLog instanceId="mc-1" />);
+        expect(await screen.findByText('Command · say hi')).toBeTruthy();
+        view.rerender(<AuditLog instanceId="pal-1" />);
+        expect(screen.queryByText('Command · say hi')).toBeNull();
     });
 
     it('서버별로 누가·무엇을·어디서·성공 여부를 보이고, 목록 끝까지 내리면 더 불러온다', async () => {

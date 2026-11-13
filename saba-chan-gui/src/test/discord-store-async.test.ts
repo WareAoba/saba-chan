@@ -143,3 +143,25 @@ describe('봇 설정 로드 실패 시 저장', () => {
         expect(window.api.botConfigSave).toHaveBeenCalledTimes(1);
     });
 });
+
+describe('창이 가려진 동안의 상태 확인', () => {
+    const setHidden = (hidden: boolean) => {
+        Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
+        document.dispatchEvent(new Event('visibilitychange'));
+    };
+    afterEach(() => setHidden(false));
+
+    it('가려져 있으면 읽지 않고, 다시 보이면 바로 읽는다', async () => {
+        useDiscordStore.setState({ _botConfigLoaded: true });
+        useDiscordStore.getState().startStatusPolling();
+        await vi.advanceTimersByTimeAsync(5200);
+        setHidden(true);
+        vi.mocked(window.api.discordBotStatus).mockClear();
+        await vi.advanceTimersByTimeAsync(30_000);
+        expect(window.api.discordBotStatus).not.toHaveBeenCalled();
+
+        setHidden(false);
+        await vi.advanceTimersByTimeAsync(10);
+        expect(window.api.discordBotStatus).toHaveBeenCalledTimes(1);
+    });
+});

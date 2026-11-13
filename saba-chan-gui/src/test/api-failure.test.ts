@@ -37,7 +37,7 @@ describe('데몬 호출 실패 모양', () => {
     });
 
     it('옛 daemonCall·daemonJson·errorBody 경로가 모두 같은 모양으로 실패한다', async () => {
-        const { api } = createApi({ invoke: vi.fn().mockResolvedValue(refused), hub: { dispatch: vi.fn(), on: vi.fn() } });
+        const { api } = createApi({ invoke: vi.fn().mockResolvedValue(refused), hub: { dispatch: vi.fn(), on: vi.fn(), live: () => true } });
         const expected = { error: 'connect refused', error_code: 'ECONNREFUSED' };
         expect(await api.instanceStop('a')).toEqual(expected);
         expect(await api.chatbotGet()).toEqual(expected);

@@ -24,8 +24,17 @@ const MAX_COMMAND: usize = 4096;
 /// 받는 패킷 하나의 크기 상한과 답 전체의 상한
 const MAX_PACKET: usize = 64 * 1024;
 const MAX_REPLY: usize = 1024 * 1024;
-/// 접속·인증·답 전체의 시간 상한
+/// 접속·인증의 시간 상한이자, 따로 정하지 않은(`waiting_up_to`) 명령 답의 시간 상한
 const TIMEOUT: Duration = Duration::from_secs(5);
+
+tokio::task_local! {
+    static REPLY_WAIT: Duration;
+}
+
+/// 안에서 보내는 RCON 명령은 답을 `wait`까지 기다린다. 다 실행한 뒤에야 답하는 오래 걸리는 명령(저장)에 쓴다
+pub async fn waiting_up_to<F: std::future::Future>(wait: Duration, f: F) -> F::Output {
+    REPLY_WAIT.scope(wait, f).await
+}
 /// 명령 답이 온 뒤 이만큼 더 오지 않으면 답이 끝난 것으로 본다 (끝 표시에 답하지 않는 서버)
 const IDLE: Duration = Duration::from_millis(300);
 
@@ -101,13 +110,12 @@ pub async fn exec(port: u16, password: &str, command: &str) -> Result<String, Rc
     if command.trim().is_empty() || command.len() > MAX_COMMAND || command.contains(['\r', '\n', '\0']) {
         return Err(RconError::InvalidCommand);
     }
-    match tokio::time::timeout(TIMEOUT, session(port, password, command)).await {
-        Ok(result) => result,
-        Err(_) => Err(RconError::Timeout),
-    }
+    let mut stream = tokio::time::timeout(TIMEOUT, open(port, password)).await.map_err(|_| RconError::Timeout)??;
+    let wait = REPLY_WAIT.try_with(|wait| *wait).unwrap_or(TIMEOUT);
+    tokio::time::timeout(wait, run(&mut stream, command)).await.map_err(|_| RconError::Timeout)?
 }
 
-async fn session(port: u16, password: &str, command: &str) -> Result<String, RconError> {
+async fn open(port: u16, password: &str) -> Result<TcpStream, RconError> {
     let mut stream = TcpStream::connect(("127.0.0.1", port)).await.map_err(|_| RconError::Connect(port))?;
 
     write_packet(&mut stream, 1, AUTH, password.as_bytes()).await?;
@@ -118,24 +126,26 @@ async fn session(port: u16, password: &str, command: &str) -> Result<String, Rco
             if id == -1 {
                 return Err(RconError::AuthFailed);
             }
-            break;
+            return Ok(stream);
         }
     }
+}
 
+async fn run(stream: &mut TcpStream, command: &str) -> Result<String, RconError> {
     // 명령 뒤에 빈 RESPONSE_VALUE를 보내면 서버가 명령 답을 다 보낸 뒤 그 id로 답한다: 여러 패킷 답의 끝 표시.
     // 끝 표시에 답하지 않는 서버도 있어, 첫 답 뒤에는 잠깐(IDLE) 조용하면 끝으로 본다
-    write_packet(&mut stream, 2, EXEC, command.as_bytes()).await?;
-    write_packet(&mut stream, 3, RESPONSE_VALUE, b"").await?;
+    write_packet(stream, 2, EXEC, command.as_bytes()).await?;
+    write_packet(stream, 3, RESPONSE_VALUE, b"").await?;
     let mut reply = Vec::new();
     let mut answered = false;
     loop {
         let next = if answered {
-            match tokio::time::timeout(IDLE, read_packet(&mut stream)).await {
+            match tokio::time::timeout(IDLE, read_packet(stream)).await {
                 Ok(packet) => packet,
                 Err(_) => break,
             }
         } else {
-            read_packet(&mut stream).await
+            read_packet(stream).await
         };
         let (id, _, body) = next?;
         match id {
@@ -192,7 +202,7 @@ pub(crate) async fn fake_server(
 ) -> (u16, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
-    (port, serve(listener, password, source_style, true))
+    (port, serve(listener, password, source_style, true, Duration::ZERO))
 }
 
 /// 끝 표시(빈 RESPONSE_VALUE)에 답하지 않는 시험용 서버
@@ -200,13 +210,19 @@ pub(crate) async fn fake_server(
 pub(crate) async fn silent_terminator_server(password: &str) -> (u16, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
-    (port, serve(listener, password, false, false))
+    (port, serve(listener, password, false, false, Duration::ZERO))
 }
 
 /// `fake_server`를 정해 둔 포트에 띄운다
 #[cfg(test)]
 pub(crate) async fn fake_server_on(port: u16, password: &str) -> std::sync::Arc<std::sync::Mutex<Vec<String>>> {
-    serve(tokio::net::TcpListener::bind(("127.0.0.1", port)).await.unwrap(), password, false, true)
+    serve(tokio::net::TcpListener::bind(("127.0.0.1", port)).await.unwrap(), password, false, true, Duration::ZERO)
+}
+
+/// 명령을 다 실행한 뒤(`delay` 뒤)에야 답하는 시험용 서버를 정해 둔 포트에 띄운다 (Minecraft의 `save-all flush`)
+#[cfg(test)]
+pub(crate) async fn slow_server_on(port: u16, password: &str, delay: Duration) -> std::sync::Arc<std::sync::Mutex<Vec<String>>> {
+    serve(tokio::net::TcpListener::bind(("127.0.0.1", port)).await.unwrap(), password, false, true, delay)
 }
 
 #[cfg(test)]
@@ -215,6 +231,7 @@ fn serve(
     password: &str,
     source_style: bool,
     echo_terminator: bool,
+    delay: Duration,
 ) -> std::sync::Arc<std::sync::Mutex<Vec<String>>> {
     let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let (password, log) = (password.to_string(), seen.clone());
@@ -237,6 +254,7 @@ fn serve(
                         }
                         EXEC => {
                             log.lock().unwrap().push(text.clone());
+                            tokio::time::sleep(delay).await;
                             let answer = format!("ran: {}", text).into_bytes();
                             let (a, b) = if source_style { answer.split_at(answer.len() / 2) } else { (&answer[..], &[][..]) };
                             let _ = write_packet(&mut stream, id, RESPONSE_VALUE, a).await;

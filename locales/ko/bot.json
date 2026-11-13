@@ -417,7 +417,8 @@
         "pre-update": "업데이트 전",
         "pre-restore": "복원 직전",
         "snapshot": "게임 자동 백업 보관",
-        "game-snapshot": "게임 자동 백업"
+        "game-snapshot": "게임 자동 백업",
+        "imported": "가져옴"
       },
       "events": "📜 **최근 시작·종료 기록**",
       "events_empty": "📭 기록이 없어요",

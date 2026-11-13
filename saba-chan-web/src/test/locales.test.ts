@@ -71,16 +71,20 @@ describe('web.json', () => {
 const PROPER =
     /Saba-chan|Server-chan|saba-chan|Discord|GitHub|WareAoba|Zomboid|Windows|Linux|macOS|Mica|Liquid Glass|localhost|HTTP|UUID|CPU|GPU|API|URL|CLI|PC|IP|AI|ID|OK|Lv|\/saba(?: \w+)?(?: code:)?/g;
 
-/** 봇이 알아듣는 명령 낱말이라 모든 언어가 영어 그대로 쓰는 키 (릴레이 DAEMON_TOP_LEVEL_WORDS) */
-const COMMAND_WORDS = [
+/** 모든 언어가 영어 그대로 쓰는 키 */
+const SAME_EVERYWHERE = [
+    // 봇이 알아듣는 명령 낱말 (릴레이 DAEMON_TOP_LEVEL_WORDS)
     'gui.json:discord.usage_list_word',
     'gui.json:discord.usage_start_word',
     'gui.json:discord.usage_module_word',
+    // 가이드 카드의 딱지 (#948 부터 모든 언어가 'new!')
+    'gui.json:guides.new',
 ];
 
 /** 영어와 글자가 같아도 그 언어에서 맞는 문구 (언어: 파일:키) */
 const SAME_AS_EN: Record<string, string[]> = {
     es: [
+        'gui.json:palette.title',
         'gui.json:audit.http_other',
         'gui.json:monitor.pick_network_all',
         'web.json:app_name',
@@ -106,8 +110,10 @@ const SAME_AS_EN: Record<string, string[]> = {
         'gui.json:daemon_switcher.label',
         'gui.json:settings_modal.backdrop_material_label',
         'gui.json:remote_daemon.prompt_no',
+        'gui.json:server_settings.idle_stop_unit',
     ],
     'pt-BR': [
+        'gui.json:palette.title',
         'gui.json:discord.iw_cmd_status',
         'gui.json:settings_modal.tab_console',
         'gui.json:command_modal.via_console',
@@ -144,8 +150,11 @@ const SAME_AS_EN: Record<string, string[]> = {
         'gui.json:palette.status',
         'gui.json:remote_daemon.online',
         'gui.json:remote_daemon.offline',
+        'gui.json:server_settings.idle_stop_unit',
+        'gui.json:players.online',
     ],
     de: [
+        'gui.json:palette.title',
         'gui.json:audit.filter',
         'gui.json:audit.detail_server',
         'gui.json:audit.detail_args',
@@ -188,8 +197,14 @@ const SAME_AS_EN: Record<string, string[]> = {
         'gui.json:onboarding.optional',
         'gui.json:remote_daemon.online',
         'gui.json:remote_daemon.offline',
+        'gui.json:shell.build',
+        'gui.json:branch.name',
+        'gui.json:branch.count',
+        'gui.json:players.optional',
+        'gui.json:players.online',
     ],
     fr: [
+        'gui.json:palette.title',
         'gui.json:audit.detail_action',
         'gui.json:audit.detail_args',
         'gui.json:monitor.ports_port',
@@ -247,6 +262,9 @@ const SAME_AS_EN: Record<string, string[]> = {
         'gui.json:palette.risk.danger',
         'gui.json:remote_daemon.install_prompt',
         'gui.json:guides.title',
+        'gui.json:server_settings.idle_stop_unit',
+        'gui.json:shell.build',
+        'gui.json:branch.count',
     ],
     ru: ['gui.json:discord.bot_settings.tts_speed_unit'],
 };
@@ -257,7 +275,7 @@ function untranslated(file: string) {
     const out: string[] = [];
     for (const lang of SUPPORTED_LANGUAGES.filter((l) => l !== 'en')) {
         const other = catalog(lang, file);
-        const allowed = new Set([...COMMAND_WORDS, ...(SAME_AS_EN[lang] ?? [])]);
+        const allowed = new Set([...SAME_EVERYWHERE, ...(SAME_AS_EN[lang] ?? [])]);
         for (const [k, v] of Object.entries(en)) {
             if (other[k] !== v || allowed.has(`${file}:${k}`)) continue;
             if (/[A-Za-z]/.test(v.replace(/\{\{\w+\}\}/g, '').replace(PROPER, ''))) out.push(`${lang}: ${k} = ${v}`);

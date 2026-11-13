@@ -793,10 +793,7 @@ fn importable_extensions(enabled: Vec<String>, isolated: bool, unverified: impl 
 
 /// 이 실행이 import할 수 있는 익스텐션을 Python 가드(`sitecustomize.py`)에 알린다. 확인되지 않아 뺀 것을 돌려준다
 fn set_extension_env(cmd: &mut tokio::process::Command, enabled: Vec<String>, isolated: bool, consented: Option<&str>) -> Vec<String> {
-    let (importable, unverified) = importable_extensions(enabled, isolated, |id| {
-        crate::sandbox::python_isolation_required(crate::sandbox::extension_trust(id))
-            && !crate::sandbox::extension_unisolated_allowed(id)
-    }, consented);
+    let (importable, unverified) = importable_extensions(enabled, isolated, crate::sandbox::extension_isolated, consented);
     cmd.env("SABA_ENABLED_EXTENSIONS", importable.join(","));
     // 가드가 "켜져 있지 않음" 대신 "확인되지 않아 쓸 수 없음"이라고 알리게
     cmd.env("SABA_UNVERIFIED_EXTENSIONS", unverified.join(","));
@@ -826,7 +823,7 @@ fn explain_unverified_extensions(result: &mut Value, unverified: &[String]) {
 /// 모듈이 구현하지 않아도 되는 lifecycle 함수 (MK1). 모듈이 `functions`로 밝힌 목록에 없으면 데몬은 Python을 띄우지 않고
 /// `not_supported`로 답하고, 클라이언트는 `GET /api/modules`의 `functions`를 보고 그 기능을 숨긴다
 pub const OPTIONAL_MODULE_FUNCTIONS: &[&str] = &[
-    "reset_server", "list_versions", "get_version_details", "get_installed_version", "diagnose_log",
+    "reset_server", "reset_preview", "read_lists", "list_versions", "get_version_details", "get_installed_version", "diagnose_log",
     "read_properties", "reset_properties", "configure", "import_settings", "install_server", "validate", "config_files",
 ];
 
@@ -1121,7 +1118,10 @@ async fn spawn_plugin(call: PluginCall, on_progress: Option<Box<dyn Fn(Extension
     // 놓는 자리에서는 종료를 기다릴 수 없어, 끝나기 직전 그 자리에 새로 생긴 것은 남을 수 있다
     let clear_entries = isolation.as_ref().map(crate::sandbox::Isolation::clear_daemon_entries_on_drop);
     let mut child = match &isolation {
-        None => plain(&mut cmd).map_err(|error| call_error(module_path, function, "module_execution_failed", "run", error, Vec::new()))?,
+        None => plain(&mut cmd).map_err(|error| {
+            crate::python_env::forget_python(&python_exe);
+            call_error(module_path, function, "module_execution_failed", "run", error, Vec::new())
+        })?,
         Some(iso) => match deadline.paused(crate::sandbox::spawn_isolated(cmd.as_std(), iso)).await {
             Ok(crate::sandbox::Spawned::Unisolated) => {
                 // 사용자가 격리 없이 돌리기로 한 것은 이 구성요소뿐이다: 확인되지 않은 다른 익스텐션은 import하지 못하게
@@ -1156,6 +1156,7 @@ async fn spawn_plugin(call: PluginCall, on_progress: Option<Box<dyn Fn(Extension
         Ok(Ok((exit_status, stdout_str, stderr_str))) => {
             if !exit_status.success() {
                 tracing::error!("Plugin failed (exit {:?}):\n  stderr: {}\n  stdout: {}", exit_status.code(), stderr_str, stdout_str.trim());
+                tokio::spawn(crate::python_env::recheck_python(python_exe));
                 return Err(call_error(module_path, function, "module_crashed", "run", format!("{}.{} exited with {:?}", module_name(module_path), function, exit_status.code()), stderr_tail(&stderr_str)));
             }
 
@@ -1382,8 +1383,10 @@ async fn drive(
         let (exit_status, stdout_str, ()) = tokio::try_join!(
             async {
                 if let Some(mut stdin) = stdin_pipe {
-                    stdin.write_all(input).await?;
-                    stdin.shutdown().await?;
+                    // 입력을 다 읽기 전에 끝난 프로세스는 쓰기가 실패한다: 무엇이 잘못됐는지는 종료 코드와 stderr에 있다
+                    if stdin.write_all(input).await.is_ok() {
+                        let _ = stdin.shutdown().await;
+                    }
                 }
                 running.child.wait().await
             },
@@ -1481,6 +1484,16 @@ mod tests {
         let mut child = python_process("import sys; sys.stdin.read(); sys.stdout.write('x' * (4 * 1024 * 1024 + 1)); sys.stdout.flush()").await;
         let result = drive(&mut child, b"{}", None, None, None, std::time::Duration::from_secs(10)).await;
         assert!(matches!(result, Ok(Err(_))), "stdout beyond the cap must fail");
+    }
+
+    /// 입력을 읽기 전에 죽은 모듈(import 오류)은 파이프 오류가 아니라 종료 코드와 traceback으로 보인다
+    #[tokio::test]
+    async fn a_module_that_dies_before_reading_its_input_reports_its_own_error() {
+        let mut child = python_process("import sys; print('ImportError: no module named game', file=sys.stderr); sys.exit(1)").await;
+        let input = vec![b' '; 4 * 1024 * 1024];
+        let (status, _, stderr) = drive(&mut child, &input, None, None, None, std::time::Duration::from_secs(10)).await.unwrap().expect("the exit, not a pipe error");
+        assert_eq!(status.code(), Some(1));
+        assert!(stderr.contains("ImportError: no module named game"), "{stderr}");
     }
 
     #[tokio::test]

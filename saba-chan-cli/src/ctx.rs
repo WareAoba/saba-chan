@@ -89,7 +89,7 @@ impl Ctx {
                 return Ok(h);
             }
             // 곧바로 끝난 데몬(다른 데몬이 잠금을 쥔 경우 등)은 시간 초과까지 기다리지 않는다
-            if let Ok(Some(status)) = child.try_wait() {
+            if let Some(Ok(Some(status))) = child.as_mut().map(|c| c.try_wait()) {
                 spin.finish_and_clear();
                 let code = status.code().map(|c| c.to_string()).unwrap_or_else(|| "-".into());
                 return Err(crate::error::failed(t!("daemon.exited_early", code = code)));

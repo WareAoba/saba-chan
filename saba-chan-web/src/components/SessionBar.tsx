@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { art } from '../art';
 import { useApp } from '../store';
@@ -14,7 +14,8 @@ export function remainingText(expiresAt: number | null, now: number) {
     return `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
 }
 
-export function SessionBar({ session }: { session: WebSession | null }) {
+/** children: 탭 메뉴. 넓은 화면은 이 줄 가운데, 휴대폰은 화면 아래에 붙는다 (styles.css .tabs) */
+export function SessionBar({ session, children }: { session: WebSession | null; children?: ReactNode }) {
     const { t } = useTranslation();
     const { expiresAt, warning, phase, hostId } = useApp((s) => s.session);
     const [now, setNow] = useState(Date.now());
@@ -31,6 +32,7 @@ export function SessionBar({ session }: { session: WebSession | null }) {
                     <Wordmark className="topbar-wordmark" />
                     {!hostId && <span className="pill">{t('no_pc.badge')}</span>}
                 </h1>
+                {children}
                 <div className={`timer${warning ? ' timer-warn' : ''}`} title={t('session.remaining')}>
                     <Icon name="clock" size={14} /> {remainingText(expiresAt, now)}
                 </div>

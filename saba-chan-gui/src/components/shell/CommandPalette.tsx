@@ -11,6 +11,7 @@ import { commandArgs } from '../../utils/commandSyntax';
 import { flashSetting } from '../../utils/findOnScreen';
 import { choseong } from '../../utils/hangul';
 import { safeShowToast } from '../../utils/helpers';
+import { isImeKey } from '../../utils/ime';
 import { openScreen } from '../../utils/openScreen';
 import { commandInputLabel, commandText, interactionOf } from '../../utils/serverView';
 import { botSettingsAvailable } from '../discord/BotSettingsTab';
@@ -176,7 +177,8 @@ function Magnifier() {
 
 function Palette({ onClose, busyRef }: { onClose: () => void; busyRef: MutableRefObject<boolean> }) {
     const { t } = useTranslation('gui');
-    const tr = t as Translate;
+    // i18next 27의 TFunction은 키를 리소스 타입으로 좁힌다: 명령 이름 같은 동적 키를 받으려고 넓힌다
+    const tr = t as unknown as Translate;
     const activeTab = useUIStore((s) => s.activeTab);
     const activeServerId = useUIStore((s) => s.activeServerId);
     const openNodeId = useUIStore((s) => s.openDiscordNodeId);
@@ -513,6 +515,7 @@ function Palette({ onClose, busyRef }: { onClose: () => void; busyRef: MutableRe
     };
 
     const onKeyDown = (e: React.KeyboardEvent) => {
+        if (isImeKey(e)) return;
         if (busy || mode === 'done') {
             if (e.key === 'Escape') e.preventDefault();
             return;

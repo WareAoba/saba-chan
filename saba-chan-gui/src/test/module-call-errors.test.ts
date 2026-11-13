@@ -71,7 +71,7 @@ describe('모듈 호출 실패 안내', () => {
         };
         const { api } = createApi({
             invoke: vi.fn().mockResolvedValue({ status: 500, data: body }),
-            hub: { dispatch: vi.fn(), on: vi.fn() },
+            hub: { dispatch: vi.fn(), on: vi.fn(), live: () => true },
         });
         for (const run of [
             () => api.executeCommand('id', { command: 'query' }),
@@ -95,7 +95,7 @@ describe('모듈 호출 실패 안내', () => {
         };
         const { api } = createApi({
             invoke: vi.fn().mockResolvedValue({ status: 403, data: body }),
-            hub: { dispatch: vi.fn(), on: vi.fn() },
+            hub: { dispatch: vi.fn(), on: vi.fn(), live: () => true },
         });
         const result = await api.instanceUpdateSettings('id', { executable_path: '/x' });
         expect(result.error).toContain(

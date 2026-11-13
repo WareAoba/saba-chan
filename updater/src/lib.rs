@@ -28,6 +28,7 @@ pub mod module_support;
 pub mod notify_app_id;
 pub mod process;
 pub mod profile;
+pub mod python_runtime;
 pub mod relay;
 pub mod signature;
 pub mod tls;
@@ -53,7 +54,7 @@ pub use marker::UpdateCompletionMarker;
 pub(crate) use apply::swap_dir_untouched;
 #[cfg(test)]
 pub(crate) use apply::replace_dir;
-pub use apply::{carry_swap_dot_entries, SWAP_FINGERPRINT};
+pub use apply::{carry_swap_dot_entries, Replacing, SWAP_FINGERPRINT};
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -210,6 +211,28 @@ pub struct ComponentVersion {
     pub requires: Option<HashMap<String, String>>,
     /// 해당 컴포넌트가 설치되어 있는지 여부 (false면 미설치 상태)
     pub installed: bool,
+    /// 같은 판으로 다시 받은 복구 (`mark_for_repair`). pending.json에 실어 업데이터 `--apply`가 이미 설치된 판이라고 건너뛰지 않게 한다
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub repair: bool,
+}
+
+/// 설치 점검·복구 계획 (`UpdateManager::repair_plan`)
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct RepairPlan {
+    /// 지금 판 그대로 다시 받을 것
+    pub repair: Vec<RepairItem>,
+    /// 지금 판을 받을 수 없는 것 (릴리즈가 다른 판을 내주거나 없다)
+    pub unavailable: Vec<RepairItem>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct RepairItem {
+    pub component: String,
+    pub display_name: String,
+    /// 설치된 판 (모르면 빈 값)
+    pub installed: String,
+    /// 확인한 릴리즈가 내주는 판
+    pub offered: Option<String>,
 }
 
 /// 전체 업데이트/설치 상태 정보
@@ -441,14 +464,61 @@ fn path_parts(p: &Path) -> Vec<String> {
         .collect()
 }
 
-/// zip이 아닌 설치기(실행 파일 그대로)를 `target`에 둔다. 실패하면 이전 사본을 되돌린다
-pub fn replace_bare_installer(staged: &Path, target: &Path) -> Result<()> {
-    UpdateManager::replace_bare_installer(staged, target)
+const ZIP_ENTRY_LIMIT: usize = 20_000;
+const ZIP_EXPANDED_LIMIT: u64 = 1024 * 1024 * 1024;
+
+/// zip을 열고 파일 수와 풀린 크기(적힌 값)가 한도 안인지 본다
+fn open_zip(staged: &Path) -> Result<zip::ZipArchive<std::fs::File>> {
+    let mut archive = zip::ZipArchive::new(std::fs::File::open(staged)?)?;
+    if archive.len() > ZIP_ENTRY_LIMIT {
+        anyhow::bail!("Archive has too many files");
+    }
+    let mut declared = 0u64;
+    for i in 0..archive.len() {
+        declared = declared.saturating_add(archive.by_index(i)?.size());
+        if declared > ZIP_EXPANDED_LIMIT {
+            anyhow::bail!("Archive expands beyond the size limit");
+        }
+    }
+    Ok(archive)
 }
 
-/// 덮어쓸 실행 파일이 떠 있으면 `.old`로 비켜 둔다 (`extract_zip`의 `before_write`로 쓴다)
-pub fn move_aside_binary(path: &Path) -> Result<()> {
-    UpdateManager::move_aside_binary(path)
+/// 엔트리가 풀릴 상대 경로. 밖으로 나가는 경로는 거부한다
+fn zip_entry_path<R: std::io::Read>(entry: &zip::read::ZipFile<'_, R>, staged: &Path) -> Result<PathBuf> {
+    // enclosed_name은 `a/../b`를 받아 주므로 tar와 같이 평범한 칸만 받는다 (`..`를 지나면 링크 검사가 빗나간다)
+    match entry.enclosed_name().filter(|p| p.components().all(|c| matches!(c, std::path::Component::Normal(_)))) {
+        Some(rel) => Ok(rel),
+        None => anyhow::bail!("Unsafe path in archive {}: {}", staged.display(), String::from_utf8_lossy(entry.name_raw())),
+    }
+}
+
+/// 엔트리 내용을 `out`에 옮긴다 (끝까지 읽으면 zip이 CRC를 확인한다). `expanded`는 이 zip에서 지금까지 푼 크기
+fn copy_zip_entry(entry: &mut impl std::io::Read, out: &mut impl std::io::Write, expanded: &mut u64) -> std::io::Result<()> {
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let count = entry.read(&mut buffer)?;
+        if count == 0 {
+            return Ok(());
+        }
+        *expanded = expanded.saturating_add(count as u64);
+        if *expanded > ZIP_EXPANDED_LIMIT {
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Archive expands beyond the size limit"));
+        }
+        out.write_all(&buffer[..count])?;
+    }
+}
+
+/// zip을 풀지 않고 확인한다: `extract_zip`과 같은 한도·경로 규칙을 보고, 모든 엔트리를 끝까지 읽어 내용(CRC)이 온전한지 본다.
+/// 파일을 쓰지 않는다 (적용 전에 받은 zip을 미리 확인할 때 쓴다)
+pub fn verify_zip(staged: &Path) -> Result<()> {
+    let mut archive = open_zip(staged)?;
+    let mut expanded = 0u64;
+    for i in 0..archive.len() {
+        let mut entry = archive.by_index(i)?;
+        zip_entry_path(&entry, staged)?;
+        copy_zip_entry(&mut entry, &mut std::io::sink(), &mut expanded)?;
+    }
+    Ok(())
 }
 
 /// zip을 `target_dir`에 푼다. 모든 압축 해제는 이 함수를 거친다.
@@ -463,31 +533,12 @@ pub fn extract_zip(
     target_dir: &Path,
     mut before_write: impl FnMut(&Path) -> Result<()>,
 ) -> Result<Vec<PathBuf>> {
-    const ENTRY_LIMIT: usize = 20_000;
-    const EXPANDED_LIMIT: u64 = 1024 * 1024 * 1024;
     let mut written = Vec::new();
-    let file = std::fs::File::open(staged)?;
-    let mut archive = zip::ZipArchive::new(file)?;
-    if archive.len() > ENTRY_LIMIT {
-        anyhow::bail!("Archive has too many files");
-    }
-    let mut declared = 0u64;
-    for i in 0..archive.len() {
-        declared = declared.saturating_add(archive.by_index(i)?.size());
-        if declared > EXPANDED_LIMIT {
-            anyhow::bail!("Archive expands beyond the size limit");
-        }
-    }
+    let mut archive = open_zip(staged)?;
     let mut expanded = 0u64;
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i)?;
-        // enclosed_name은 `a/../b`를 받아 주므로 tar와 같이 평범한 칸만 받는다 (`..`를 지나면 링크 검사가 빗나간다)
-        let Some(rel) = entry
-            .enclosed_name()
-            .filter(|p| p.components().all(|c| matches!(c, std::path::Component::Normal(_))))
-        else {
-            anyhow::bail!("Unsafe path in archive {}: {}", staged.display(), String::from_utf8_lossy(entry.name_raw()));
-        };
+        let rel = zip_entry_path(&entry, staged)?;
         reject_links_below(target_dir, &rel)?;
         let out_path = target_dir.join(&rel);
         if entry.is_dir() {
@@ -504,16 +555,7 @@ pub fn extract_zip(
         partial.push(".update-new");
         let partial = PathBuf::from(partial);
         let wrote = std::fs::File::create(&partial).and_then(|mut f| {
-            let mut buffer = [0u8; 64 * 1024];
-            loop {
-                let count = std::io::Read::read(&mut entry, &mut buffer)?;
-                if count == 0 { break; }
-                expanded = expanded.saturating_add(count as u64);
-                if expanded > EXPANDED_LIMIT {
-                    return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Archive expands beyond the size limit"));
-                }
-                std::io::Write::write_all(&mut f, &buffer[..count])?;
-            }
+            copy_zip_entry(&mut entry, &mut f, &mut expanded)?;
             f.sync_all()
         });
         // 리눅스 zip의 실행 파일은 실행 권한을 지닌다 (zip에 적힌 권한 중 실행 비트만 옮긴다)
@@ -696,6 +738,45 @@ impl UpdateManager {
         integrity::verify_installed()
     }
 
+    /// 무결성 검사에서 바뀌었거나(`Tampered`) 파일이 없어진(`FileNotFound`) 구성요소를 지금 설치된 판 그대로 다시 받을 계획.
+    /// 확인한 릴리즈가 그 판을 내주는 것만 고친다. 다른 판을 내주거나(업데이트가 있다) 릴리즈에 없으면 `unavailable`
+    pub fn repair_plan(&self, report: &integrity::IntegrityReport) -> RepairPlan {
+        let mut plan = RepairPlan::default();
+        let broken = report.components.iter().filter(|c| matches!(c.status, integrity::IntegrityStatus::Tampered | integrity::IntegrityStatus::FileNotFound));
+        for c in broken {
+            let status = self.status.components.iter().find(|s| s.component.manifest_key() == c.component && s.installed);
+            let item = RepairItem {
+                component: c.component.clone(),
+                display_name: c.display_name.clone(),
+                installed: status.map(|s| s.current_version.clone()).unwrap_or_default(),
+                offered: status.and_then(|s| s.latest_version.clone()),
+            };
+            if !item.installed.is_empty() && item.offered.as_deref() == Some(item.installed.as_str()) {
+                plan.repair.push(item);
+            } else {
+                plan.unavailable.push(item);
+            }
+        }
+        plan
+    }
+
+    /// 계획의 고칠 것을 다시 받을 수 있게 표시한다 (받기·적용은 업데이트와 같은 `download_component`·`apply_single_component`)
+    pub fn mark_for_repair(&mut self, plan: &RepairPlan) {
+        for comp in &mut self.status.components {
+            if plan.repair.iter().any(|r| r.component == comp.component.manifest_key()) {
+                comp.update_available = true;
+                comp.downloaded = false;
+                comp.downloaded_path = None;
+                comp.repair = true;
+            }
+        }
+    }
+
+    /// `keys`가 모두 복구(`mark_for_repair`)로 받아 둔 것인가 (완료 마커를 `repaired`로 남긴다)
+    pub fn is_repair(&self, keys: &[String]) -> bool {
+        !keys.is_empty() && keys.iter().all(|k| self.status.components.iter().any(|c| c.repair && c.component.manifest_key() == *k))
+    }
+
     fn relay_client(&self) -> relay::RelayClient {
         relay::RelayClient::new(self.config.relay_url.as_deref().unwrap_or(relay::DEFAULT_RELAY_URL))
             .with_manifest_cache(self.staging_dir.join("manifests"))
@@ -801,6 +882,7 @@ impl UpdateManager {
                     staged_sha256: None,
                     requires: info.requires.clone(),
                     installed,
+                    repair: false,
                 });
                 Self::keep_staged(&previous, components.last_mut().expect("just pushed"));
             }
@@ -1260,9 +1342,9 @@ impl UpdateManager {
         }
     }
 
-    /// 설치 폴더의 사바쨩 실행 파일 백업 `<exe>.old` 또는 그 이름이 잡혀 있을 때 쓴 `<exe>.old.<n>` (`free_backup_path`),
+    /// 설치 폴더와 그 안 `bin`(CLI zip의 명령 실행기 `bin/saba-chan.exe`)의 사바쨩 실행 파일 백업 `<exe>.old` 또는 그 이름이 잡혀 있을 때 쓴 `<exe>.old.<n>` (`free_backup_path`),
     /// Unix는 확장자 없는 바이너리를 비켜 둔 `<이름>.old` (`move_aside`).
-    /// (경로, 실행 파일 이름, 번호(`.old`는 0), GUI인가)
+    /// (경로, 실행 파일 이름, 번호(`.old`는 0), GUI인가). 제자리는 백업과 같은 폴더다 (`backup_home`)
     fn old_exe_backups(&self) -> Vec<(PathBuf, String, u32, bool)> {
         self.try_old_exe_backups().unwrap_or_else(|e| {
             tracing::warn!("[Updater] Cannot list {}: {}", self.install_root.display(), e);
@@ -1272,7 +1354,12 @@ impl UpdateManager {
 
     /// `old_exe_backups`와 같되 설치 폴더(와 그 항목)를 읽지 못하면 오류
     pub(crate) fn try_old_exe_backups(&self) -> std::io::Result<Vec<(PathBuf, String, u32, bool)>> {
-        let entries = std::fs::read_dir(&self.install_root)?;
+        let mut entries: Vec<std::io::Result<std::fs::DirEntry>> = std::fs::read_dir(&self.install_root)?.collect();
+        match std::fs::read_dir(self.install_root.join("bin")) {
+            Ok(bin) => entries.extend(bin),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e),
+        }
         let mut found = Vec::new();
         for entry in entries {
             let path = entry?.path();
@@ -1288,19 +1375,25 @@ impl UpdateManager {
                 _ => continue,
             };
             let gui = GUI_EXE_NAMES.iter().any(|g| g.trim_end_matches(".exe") == stem);
-            if gui || stem.starts_with("saba-") {
+            if gui || Self::is_known_binary(Path::new(stem)) {
                 found.push((path.clone(), format!("{stem}.exe"), number, gui));
             }
         }
         Ok(found)
     }
 
+    /// 백업을 되돌릴 자리: 백업과 같은 폴더의 실행 파일
+    fn backup_home(backup: &Path, exe: &str) -> PathBuf {
+        backup.with_file_name(exe)
+    }
+
     /// 실행 파일이 아예 없는 것: 비켜 둔 뒤 새 판을 두기 전에 적용이 끊겼다. 가장 최근 사본(번호가 가장 큰 것)을 되돌린다.
     /// (낮은 번호가 남아 있는 것은 그때 아직 쥐고 있어 지우지 못한 더 옛 사본이다)
     fn restore_moved_aside_exes(&self) {
-        let mut latest: HashMap<String, (PathBuf, u32)> = HashMap::new();
+        let mut latest: HashMap<PathBuf, (PathBuf, u32)> = HashMap::new();
         for (path, exe, number, gui) in self.old_exe_backups() {
-            let present = if gui { find_gui_exe(&self.install_root).is_some() } else { self.install_root.join(&exe).exists() };
+            let exe = Self::backup_home(&path, &exe);
+            let present = if gui { find_gui_exe(&self.install_root).is_some() } else { exe.exists() };
             if present {
                 continue;
             }
@@ -1309,7 +1402,6 @@ impl UpdateManager {
             }
         }
         for (exe, (path, _)) in latest {
-            let exe = self.install_root.join(exe);
             match std::fs::rename(&path, &exe) {
                 Ok(()) => tracing::warn!("[Updater] Restored {} from {} (an earlier apply was interrupted)", exe.display(), path.display()),
                 Err(e) => tracing::warn!("[Updater] Cannot restore {} from {}: {}", exe.display(), path.display(), e),
@@ -1321,66 +1413,28 @@ impl UpdateManager {
     /// (`restore_moved_aside_exes`를 넓힌 것. 그쪽은 실행 파일이 아예 없을 때만 되돌린다).
     /// 새 파일은 `<exe>.rolled-back`으로 비켜 두고 지운다(아직 쥐고 있으면 남는다). 되돌린 실행 파일 경로를 돌려준다
     pub fn roll_back_exes_since(&self, before: &live_apply::ExeBackups) -> std::io::Result<live_apply::ExeRollback> {
-        let mut rollback = live_apply::ExeRollback::default();
-        for (backup, target) in self.exe_rollbacks_since(before)? {
-            // 새 판은 비켜 두기만 하고, 백업을 제자리에 놓은 뒤에 지운다: 어느 단계가 실패해도 실행 파일이 없어지지 않는다
-            let mut name = target.file_name().unwrap_or_default().to_os_string();
-            name.push(".rolled-back");
-            let aside = target.with_file_name(name);
-            let moved = if target.exists() {
-                let _ = std::fs::remove_file(&aside);
-                match std::fs::rename(&target, &aside) {
-                    Ok(()) => true,
-                    Err(e) => {
-                        tracing::error!("[Updater] Cannot move {} aside to roll back: {}", target.display(), e);
-                        rollback.pending.push((backup, target));
-                        continue;
-                    }
-                }
-            } else {
-                false
-            };
-            match std::fs::rename(&backup, &target) {
-                Ok(()) => {
-                    tracing::warn!("[Updater] Rolled back {} from {}", target.display(), backup.display());
-                    if moved {
-                        let _ = std::fs::remove_file(&aside);
-                    }
-                    rollback.restored.push(target);
-                }
-                Err(e) => {
-                    tracing::error!("[Updater] Cannot roll back {} from {}: {}", target.display(), backup.display(), e);
-                    if moved {
-                        // 새 판을 제자리에 돌려 둔다 (실행 파일이 없는 것보다 낫다)
-                        if let Err(e) = std::fs::rename(&aside, &target) {
-                            tracing::error!("[Updater] Cannot put {} back from {}: {}", target.display(), aside.display(), e);
-                        }
-                    }
-                    rollback.pending.push((backup, target));
-                }
-            }
-        }
-        Ok(rollback)
+        Ok(live_apply::restore_exes(self.exe_rollbacks_since(before)?))
     }
 
     /// 이번 적용이 비켜 둔 실행 파일마다 (가장 최근 백업, 제자리). 적용 전 목록(`before`)에 있던 백업은 고르지 않는다.
     /// 설치 폴더를 읽지 못하면 오류 (빈 목록으로 보고 되돌림을 건너뛰지 않는다)
     pub fn exe_rollbacks_since(&self, before: &live_apply::ExeBackups) -> std::io::Result<Vec<(PathBuf, PathBuf)>> {
-        let mut latest: HashMap<String, (PathBuf, u32)> = HashMap::new();
+        let mut latest: HashMap<PathBuf, (PathBuf, u32)> = HashMap::new();
         for (path, exe, number, _) in self.try_old_exe_backups()? {
             if before.contains(&path, live_apply::backup_id(&path)) {
                 continue;
             }
+            let exe = Self::backup_home(&path, &exe);
             if latest.get(&exe).is_none_or(|(_, n)| number > *n) {
                 latest.insert(exe, (path, number));
             }
         }
-        let mut pairs: Vec<(PathBuf, PathBuf)> = latest.into_iter().map(|(exe, (backup, _))| (backup, self.install_root.join(exe))).collect();
+        let mut pairs: Vec<(PathBuf, PathBuf)> = latest.into_iter().map(|(exe, (backup, _))| (backup, exe)).collect();
         pairs.sort();
         Ok(pairs)
     }
 
-    /// 업데이트가 남긴 사바쨩 실행 파일 백업(`old_exe_backups`)을 지운다 (설치 폴더 바로 안만).
+    /// 업데이트가 남긴 사바쨩 실행 파일 백업(`old_exe_backups`)을 지운다 (설치 폴더 바로 안과 `bin`만).
     /// Windows는 실행 중인 exe를 이름만 바꿔 두므로, 아직 쥐고 있는 파일은 다음 번에 지운다.
     /// 업데이터가 새 데몬을 지켜보는 동안(`live_apply::watch_in_progress`)은 지우지 않는다: 건강하지 않으면 되돌림에 쓴다
     pub fn cleanup_old_files(&self) {
@@ -1390,7 +1444,7 @@ impl UpdateManager {
         }
         for (path, exe, _, gui) in self.old_exe_backups() {
             // 실행 파일이 없으면 되돌리지 못한 유일한 사본이다. 예전 이름의 GUI는 새 이름의 GUI가 있으면 지운다 (`retire_other_gui_exes`)
-            let replaced = if gui { find_gui_exe(&self.install_root).is_some() } else { self.install_root.join(&exe).exists() };
+            let replaced = if gui { find_gui_exe(&self.install_root).is_some() } else { Self::backup_home(&path, &exe).exists() };
             if !replaced {
                 tracing::warn!("[Updater] Keeping {}: {} is missing", path.display(), exe);
                 continue;
@@ -1417,6 +1471,24 @@ impl UpdateManager {
             satisfied: issues.is_empty(),
             issues,
         }
+    }
+
+    /// `keys`에 코어가 있으면, 그중 지금 설치된 코어로는 `saba-core` requires를 채우지 못하는 모듈·익스텐션
+    pub(crate) fn addons_waiting_for_the_new_core(&self, keys: &[String]) -> Vec<String> {
+        let core = Component::CoreDaemon.manifest_key();
+        if !keys.contains(&core) {
+            return Vec::new();
+        }
+        let installed = self.dependency_versions();
+        keys.iter()
+            .filter(|k| matches!(Component::from_manifest_key(k), Component::Module(_) | Component::Extension(_)))
+            .filter(|k| {
+                let needs: HashMap<String, String> =
+                    self.requires_of(k).and_then(|r| r.get(&core)).map(|min| HashMap::from([(core.clone(), min.clone())])).unwrap_or_default();
+                !unmet_requires(k, &needs, &installed).is_empty()
+            })
+            .cloned()
+            .collect()
     }
 
     /// 받아 둔 상태의 requires (pending.json에서 읽은 업데이터 `--apply`도), 없으면 캐시된 서버 매니페스트
@@ -1537,19 +1609,5 @@ impl UpdateManager {
                 }
             }
         }
-    }
-
-    // ─────── 테스트 헬퍼 (pub) ────────────────────────────────────────────────────────────────────────
-
-    /// 테스트 전용: extract_to_directory를 외부에서 호출
-    #[doc(hidden)]
-    pub async fn extract_to_directory_for_test(&self, staged: &Path, target: &Path) {
-        self.extract_to_directory(staged, target).await.unwrap();
-    }
-
-    /// 테스트 전용: resolve_install_dir를 외부에서 호출
-    #[doc(hidden)]
-    pub fn resolve_install_dir_for_test(&self, component: &Component, manifest_dir: Option<&str>) -> PathBuf {
-        self.resolve_install_dir(component, manifest_dir)
     }
 }

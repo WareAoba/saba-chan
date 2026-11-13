@@ -184,9 +184,10 @@ describe('콘솔 출력 우클릭', () => {
         const { ServerConsole } = await import('../components/servers/ServerConsole');
         const { useConsoleStore } = await import('../stores/useConsoleStore');
         const line = (id: number, content: string) => ({ id, key: id, content, source: 'STDOUT', level: 'INFO' });
+        const entry = (id: string, lines: ReturnType<typeof line>[]) => ({ server: { id, name: id }, lines, input: '', stdinDisabled: false });
         useConsoleStore.getState().setConsoles({
-            m: { lines: [line(1, 'Done (4.2s)!')] },
-            other: { lines: [line(2, 'keep')] },
+            m: entry('m', [line(1, 'Done (4.2s)!')]),
+            other: entry('other', [line(2, 'keep')]),
         });
         function Live() {
             const state = useConsoleStore((s) => s.consoles.m);

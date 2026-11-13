@@ -58,7 +58,7 @@ describe('glass material when the window backdrop is on', () => {
         for (const t of SURFACES) {
             expect(glass, t).toMatch(
                 new RegExp(
-                    `${t}:\\s*color-mix\\(in oklch, var\\(${t}-solid\\) var\\(--glass-[a-z]+\\), transparent\\)`,
+                    `${t}:\\s*color-mix\\(in oklab, var\\(${t}-solid\\) var\\(--glass-[a-z]+\\), transparent\\)`,
                 ),
             );
         }
@@ -96,7 +96,7 @@ describe('glass material when the window backdrop is on', () => {
         expect(raw).toMatch(/prefers-reduced-transparency: reduce\)\s*\{\s*:root\[data-backdrop="on"\]\s*\{\s*--glass-float: 100%/);
         expect(raw).toMatch(/\[data-no-transitions="true"\]\s*\{\s*--glass-float: 100%/);
         const float = rules(backdrop).find((r) => /backdrop-filter:\s*var\(--glass-blur\)/.test(r.body));
-        expect(float?.body).toMatch(/--bg-2:\s*color-mix\(in oklch, var\(--bg-2-solid\) var\(--glass-float\)/);
+        expect(float?.body).toMatch(/--bg-2:\s*color-mix\(in oklab, var\(--bg-2-solid\) var\(--glass-float\)/);
     });
 });
 

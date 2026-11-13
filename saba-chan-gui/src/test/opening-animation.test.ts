@@ -16,6 +16,7 @@ import {
     scatterPoint,
     takeOpeningSound,
     whenOpeningReady,
+    whenScreenSettled,
     wordPull,
 } from '../utils/opening';
 
@@ -206,5 +207,40 @@ describe('오프닝 준비 (메인 화면을 다 그린 뒤 재생)', () => {
         const ready = vi.fn();
         await whenOpeningReady([Promise.reject(new Error('x'))], 1500, (cb) => setTimeout(cb, 0)).then(ready);
         expect(ready).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('화면이 잠잠해질 때까지 (메인 화면을 처음 그리며 이어지는 렌더가 끝난 뒤 재생)', () => {
+    /** 정해 준 간격대로 프레임 시각을 넘기는 가짜 rAF */
+    const frameClock = (gaps: number[]) => {
+        let t = 0;
+        let i = 0;
+        return (cb: (now: number) => void) => {
+            t += gaps[Math.min(i++, gaps.length - 1)];
+            setTimeout(() => cb(t), 0);
+        };
+    };
+
+    it('긴 프레임 없이 정한 시간만큼 그려지면 재생한다', async () => {
+        const settled = await whenScreenSettled(frameClock([16]), { quietMs: 200, gapMs: 30, timeoutMs: 5000 });
+        expect(settled).toBeGreaterThanOrEqual(200);
+        expect(settled).toBeLessThan(260);
+    });
+
+    it('긴 프레임(렌더·번역 불러오기 등)이 끼면 그때부터 다시 잰다', async () => {
+        // 16ms 프레임 다섯 개 뒤 97ms 멈춤, 그 뒤로 매끄럽다
+        const settled = await whenScreenSettled(frameClock([16, 16, 16, 16, 16, 97, 16]), {
+            quietMs: 200,
+            gapMs: 30,
+            timeoutMs: 5000,
+        });
+        // 첫 프레임부터 잰다: 16ms 넷 + 멈춤 97ms + 다시 잠잠한 200ms
+        expect(settled).toBeGreaterThanOrEqual(4 * 16 + 97 + 200);
+    });
+
+    it('끝내 잠잠해지지 않아도 정한 시간이 지나면 재생한다', async () => {
+        const settled = await whenScreenSettled(frameClock([40]), { quietMs: 200, gapMs: 30, timeoutMs: 600 });
+        expect(settled).toBeGreaterThanOrEqual(600);
+        expect(settled).toBeLessThan(700);
     });
 });

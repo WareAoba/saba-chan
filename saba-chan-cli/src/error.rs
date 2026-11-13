@@ -180,7 +180,7 @@ pub fn update_required(body: &Value, name: &str) -> Option<String> {
 
 /// 데몬이 영어 고정 문구만 주는 오류 코드: 사람에게는 코드의 현지화 안내를 첫 줄로 보인다
 fn localized_headline(code: &str) -> bool {
-    code == "isolation_unsupported"
+    matches!(code, "isolation_unsupported" | "memory_limit_unsupported")
 }
 
 /// 격리 없이 돌리는 동의로 풀리는 오류면 그 명령 (`component`: `module-<id>`·`ext-<id>`)
@@ -268,8 +268,11 @@ pub fn api_hint(code: &str, body: &Value) -> Option<String> {
         "executable_missing" | "executable_not_found" | "server_jar_not_found" => Some(t!("err.hint.executable_missing")),
         "update_unsupported" => Some(t!("err.hint.update_unsupported")),
         "backup_unsupported" => Some(t!("err.hint.backup_unsupported")),
+        // 서버가 도는 PC의 OS가 메모리 상한을 걸 수 없다 (러너는 Windows Job으로만 건다)
+        "memory_limit_unsupported" => Some(t!("err.hint.memory_limit_unsupported")),
         "nothing_to_back_up" => Some(t!("err.hint.nothing_to_back_up")),
         "backup_busy" => Some(t!("err.hint.backup_busy")),
+        "import_not_backup" | "import_damaged" | "import_other_module" | "export_old_backup" => crate::i18n::try_t(&format!("err.hint.{code}")),
         // 켜진 서버가 쥐고 있는 파일 (`file`: 그 이름)
         "backup_file_locked" => Some(t!("err.hint.backup_file_locked", file = body.get("file").and_then(Value::as_str).unwrap_or("?"))),
         "autosave_not_resumed" => Some(t!("err.hint.autosave_not_resumed")),
@@ -375,6 +378,20 @@ mod tests {
         assert!(!hint.contains(&err.headline()), "{hint}");
         // 기계용 출력은 데몬 문구 그대로
         assert_eq!(err.to_json()["error"], "This operating system cannot isolate");
+    }
+
+    /// 서버가 도는 PC의 OS가 메모리 상한을 걸 수 없어 데몬이 저장하지 않은 것은 첫 줄부터 사용자 언어로 보인다
+    #[test]
+    fn an_unsupported_memory_limit_reads_in_the_users_language() {
+        crate::i18n::init("en");
+        let message = "memory_limit_mb is only enforced on Windows; this daemon's OS cannot apply it";
+        let body = json!({"error_code": "memory_limit_unsupported", "error": message, "fields": [{"field": "memory_limit_mb"}]});
+        let err = CliError::Api { status: 422, code: Some("memory_limit_unsupported".into()), message: message.into(), body };
+        assert_eq!(err.headline(), crate::i18n::try_t("err.hint.memory_limit_unsupported").unwrap());
+        assert_eq!(err.hint(), None, "the guidance is not repeated under the headline");
+        for lang in ["en", "ko"] {
+            assert!(crate::i18n::try_t_in(lang, "err.hint.memory_limit_unsupported").is_some(), "{lang}");
+        }
     }
 
     #[test]

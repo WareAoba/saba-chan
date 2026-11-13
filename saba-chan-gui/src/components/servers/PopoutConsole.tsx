@@ -17,6 +17,7 @@ interface PopoutConsoleProps {
     highlightRules?: HighlightRule[] | null;
     quickCommands?: CommandField[];
     openConsole: (id: string, name: string) => void;
+    watchConsole?: (id: string) => () => void;
     setConsoleInput: (id: string, value: string) => void;
     sendConsoleCommand: (id: string) => void;
     readOnly?: boolean;
@@ -33,6 +34,7 @@ export function PopoutConsole({
     highlightRules,
     quickCommands,
     openConsole,
+    watchConsole,
     setConsoleInput,
     sendConsoleCommand,
     readOnly,
@@ -120,6 +122,7 @@ export function PopoutConsole({
                     highlightRules={highlightRules}
                     quickCommands={quickCommands}
                     openConsole={openConsole}
+                    watchConsole={watchConsole}
                     setConsoleInput={setConsoleInput}
                     sendConsoleCommand={sendConsoleCommand}
                     readOnly={readOnly}

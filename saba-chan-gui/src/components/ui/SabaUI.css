@@ -64,7 +64,7 @@
     width: var(--k);
     height: var(--k);
     border-radius: calc(var(--k) / 2);
-    background: linear-gradient(in oklch 145deg, var(--knob), color-mix(in oklch, var(--knob), #8a93a8 22%));
+    background: linear-gradient(in oklab 145deg, var(--knob), color-mix(in oklab, var(--knob), #8a93a8 22%));
     box-shadow:
         2px 2px 4px rgba(0, 0, 0, 0.28),
         -1px -1px 2px rgba(255, 255, 255, 0.4),
@@ -413,8 +413,11 @@
     flex-direction: column;
     gap: var(--sp-0-5);
 }
+/* 앱 공통 버튼 높이(base.css `button { height }`)를 지운다: 맥(WebKit)은 그 높이를 flex 최소 크기로 써서 단추가 칸 밖으로 늘어난다 */
 .saba-number-steps button {
     flex: 1;
+    height: auto;
+    min-height: 0;
     display: grid;
     place-items: center;
     padding: 0;
@@ -616,7 +619,7 @@
     max-width: 100%;
     margin: var(--sp-4) auto 0;
     padding: var(--sp-1-5) var(--sp-1-5) var(--sp-1-5) var(--sp-4);
-    border: 1px solid color-mix(in oklch, var(--accent) 45%, var(--line));
+    border: 1px solid color-mix(in oklab, var(--accent) 45%, var(--line));
     border-radius: 999px;
     background: var(--bg-2);
     box-shadow: var(--shadow-float);
@@ -632,7 +635,7 @@
     flex-shrink: 0;
     border-radius: 50%;
     background: var(--accent);
-    box-shadow: 0 0 0 4px color-mix(in oklch, var(--accent) 22%, transparent);
+    box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent) 22%, transparent);
 }
 .saba-savebar-text {
     font-size: var(--fs-sm);
@@ -737,7 +740,7 @@
     border-radius: 50%;
     background:
         radial-gradient(in oklch circle, var(--brand-primary) 0 3px, transparent 3.5px) center / 0 0 no-repeat,
-        linear-gradient(in oklch 145deg, var(--knob), color-mix(in oklch, var(--knob), #8a93a8 22%));
+        linear-gradient(in oklab 145deg, var(--knob), color-mix(in oklab, var(--knob), #8a93a8 22%));
     cursor: pointer;
     box-shadow:
         2px 2px 5px rgba(0, 0, 0, 0.3),

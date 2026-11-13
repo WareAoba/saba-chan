@@ -194,19 +194,33 @@ pub fn for_module(module: &str, highlight: Option<&SyntaxHighlight>) -> Arc<High
 }
 
 /// 데몬 로그 규칙: (이름, 패턴, 토큰). daemon_log.rs가 tracing 메시지에 `키=값` 필드를 이어 붙인 줄을 칠한다.
-/// 레벨·시각은 줄의 따로 있는 칸이라 여기서 칠하지 않는다. 앞에 둔 규칙이 이긴다
-const DAEMON_LOG_RULES: [(&str, &str, &str); 14] = [
+/// 레벨·시각은 줄의 따로 있는 칸이라 여기서 칠하지 않는다. 앞에 둔 규칙이 이긴다 (덩어리 → 낱말 → 숫자 순)
+const DAEMON_LOG_RULES: [(&str, &str, &str); 21] = [
     ("tag", r"^\[[A-Za-z][\w .:/-]{0,40}\]", "keyword"),
-    ("url", r"\bhttps?://[^\s'\x22]+", "path"),
-    ("ip", r"\b(?P<hl>\d{1,3}(?:\.\d{1,3}){3}(?::\d{1,5})?)\b", "ip"),
+    // 따옴표 속 ID·경로는 따옴표째 한 덩어리 (띄어쓴 경로 `"C:\\Program Files\\x"`, Debug 출력의 `"\\\\?\\C:\\…"`)
+    ("quoted_uuid", r#"['"][0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}['"]"#, "uuid"),
+    ("quoted_path", r#"["'](?:\\{1,2}\\{1,2}\?\\{1,2})?[A-Za-z]:\\[^"'\n]*["']"#, "path"),
+    ("url", r#"\bhttps?://[^\s'"()]+"#, "path"),
+    // `\\?\` 긴 경로 접두사와 경로 속 ID까지 한 덩어리
+    ("windows_path", r#"(?:\\\\\?\\)?\b[A-Za-z]:\\[^\s'",;)]*"#, "path"),
     ("uuid", r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b", "uuid"),
+    // 디스코드 길드·사용자 ID 같은 긴 숫자 ID
+    ("snowflake", r"\b\d{15,20}\b", "uuid"),
+    ("ip", r"\b(?P<hl>\d{1,3}(?:\.\d{1,3}){3}(?::\d{1,5})?)\b", "ip"),
     // 버전은 한 덩어리 (`v0.1.5`, `1.0.5.102999`, `0.1.11-beta.2`). 점 하나짜리 소수(`12.5 ms`)는 아래 measure·number가 맡는다
     ("version", r"\b(?:[vV]\d+(?:\.\d+)+|\d+(?:\.\d+){2,})(?:-[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)?\b", "number"),
-    ("windows_path", r"\b[A-Za-z]:\\[^\s'\x22,;)]*", "path"),
-    ("unix_path", r"(?:^|[\s(=\x22'])(?P<hl>/(?:[\w.@+-]+/)*[\w.@+-]+)", "path"),
+    // 낱말 뒤(`'x'/minecraft`)는 경로가 아니다
+    ("unix_path", r#"(?:^|[\s(="])(?P<hl>/(?:[\w.@+-]+/)*[\w.@+-]+)"#, "path"),
+    ("clock", r"\b\d{1,2}:\d{2}:\d{2}\b", "timestamp"),
     ("name", r"(?:^|[\s(=:,\[])(?P<hl>'[^'\n]{1,120}')", "string"),
+    // 오류 코드 (`NODE_NOT_FOUND`, `INVALID_TOKEN`)
+    ("code", r"\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b", "warn"),
+    // JSON 키는 낱말 규칙(`"error"`)에 걸리지 않게 먼저 흐리게
+    ("json_key", r#""(?P<hl>[A-Za-z_][\w-]*)":"#, "dim"),
     ("field", r"(?:^|\s)(?P<hl>[a-z_][a-z0-9_]*)=", "dim"),
-    ("failure", r"\b(?:[Ff]ailed|[Ee]rror|[Cc]annot|[Cc]ould not|panicked|denied|refused|timed out|[Uu]nable to)\b", "error"),
+    // 부정은 성공 낱말보다 먼저 (`not started`)
+    ("negated", r"\bnot (?:started|found|installed|running|connected|answered)\b", "error"),
+    ("failure", r"\b(?:[Ff]ailed|\w+Failed|[Ee]rror|[Cc]annot|[Cc]ould not|panicked|denied|refused|rejected|timed out|[Uu]nable to|Unauthorized|wrong token|no token|missing|unmet)\b", "error"),
     ("success", r"\b(?:[Ss]uccessfully|[Cc]ompleted|[Rr]eady|[Ss]tarted|[Cc]onnected|[Ll]oaded)\b", "success"),
     ("measure", r"\b\d+(?:\.\d+)?\s?(?:ms|s|KB|MB|GB|B|%)(?:\b|$)", "number"),
     ("number", r"\b\d+(?:\.\d+)*\b", "number"),
@@ -372,6 +386,42 @@ mod tests {
         assert!(whole("server version v1.0.5.102999 ready", "v1.0.5.102999"));
         assert!(whole("[Updates] core 0.1.10 -> 0.1.11-beta.2", "0.1.11-beta.2"));
         assert!(!whole("IPC on 127.0.0.1:57474", "127.0.0.1:57474"), "an address is still an ip");
+    }
+
+    /// 실제 데몬 로그에서 틀리던 줄 (사용자 2026-11-12): 띄어쓴 경로·`\\?\` 접두사·경로 속 ID가 한 덩어리,
+    /// `not started`·`StartFailed`·`Unauthorized`는 실패, JSON 키는 실패가 아니고, 시각·오류 코드·긴 ID는 제 토큰이다
+    #[test]
+    fn daemon_log_real_lines_keep_whole_tokens() {
+        let hl = daemon_log();
+        let units = |line: &str, b: usize| line[..b].encode_utf16().count();
+        let whole = |line: &str, part: &str| {
+            let at = line.find(part).expect("part");
+            let (st, en) = (units(line, at), units(line, at + part.len()));
+            hl.spans(line).into_iter().find(|(a, b, _)| *a <= st && en <= *b).map(|(_, _, t)| t)
+        };
+        let l = r#"[UpdateManager] install_root updated: "\\\\?\\C:\\Git\\saba" -> "C:\\Program Files\\Saba-chan""#;
+        assert_eq!(whole(l, r#""C:\\Program Files\\Saba-chan""#), Some("path"));
+        assert_eq!(whole(l, r#""\\\\?\\C:\\Git\\saba""#), Some("path"));
+        let l = r"[Sandbox] granting Read on \\?\C:\Users\me\instances\d3dde8a4-4657-46d1-9ec1-0e47dd3704ff took 7358 ms";
+        assert_eq!(whole(l, r"\\?\C:\Users\me\instances\d3dde8a4-4657-46d1-9ec1-0e47dd3704ff"), Some("path"));
+        let l = "[RelayAgent] started (relay=https://saba-chan.online)";
+        assert_eq!(whole(l, "https://saba-chan.online"), Some("path"));
+        assert_eq!(whole(l, ")"), None);
+        let l = "[RelayAgent] not started: node token missing or malformed";
+        assert_eq!(whole(l, "not started"), Some("error"));
+        assert_eq!(whole(l, "missing"), Some("error"));
+        let l = "[RelayAgent] poll failed (poll 401 Unauthorized: NODE_NOT_FOUND), retry in 3s";
+        assert_eq!(whole(l, "Unauthorized"), Some("error"));
+        assert_eq!(whole(l, "NODE_NOT_FOUND"), Some("warn"));
+        let l = r#"[Discord] settings sync to guild 1420000000000000001 failed: {"error":"INVALID_TOKEN","ok":false}"#;
+        assert_eq!(whole(l, "1420000000000000001"), Some("uuid"));
+        assert_eq!(whole(l, "error"), Some("dim"));
+        let l = "Now tracking server '169f8cce-6199-49b2-a222-bd520f0f002b' with pid: 2308";
+        assert_eq!(whole(l, "'169f8cce-6199-49b2-a222-bd520f0f002b'"), Some("uuid"));
+        let l = "'test' exited: StartFailed (ended 17s after start: [00:59:35] level 'ServerLevel[world]'/minecraft:the_nether)";
+        assert_eq!(whole(l, "StartFailed"), Some("error"));
+        assert_eq!(whole(l, "00:59:35"), Some("timestamp"));
+        assert_eq!(whole(l, "/minecraft"), None);
     }
 
     #[test]

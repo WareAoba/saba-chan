@@ -238,6 +238,8 @@ pub enum CheckError {
     /// 같은 인스턴스(또는 같은 공인 주소)를 이미 확인하고 있다
     Busy,
     RateLimited,
+    /// 릴레이가 요청을 받지 않았다(400). 그 요청을 모르는 옛 릴레이면 다시 보내도 같다
+    Rejected,
     /// 릴레이에 닿지 못했거나 알 수 없는 답
     Relay(String),
 }
@@ -248,7 +250,7 @@ impl CheckError {
             CheckError::NotPaired => "node_token_missing",
             CheckError::Busy => "port_check_busy",
             CheckError::RateLimited => "rate_limited",
-            CheckError::Relay(_) => "relay_unreachable",
+            CheckError::Rejected | CheckError::Relay(_) => "relay_unreachable",
         }
     }
 }
@@ -489,7 +491,39 @@ async fn ask_relay(relay: &Relay, nonce: &str, ports: &[(u16, Protocol)]) -> Res
         409 => Err(CheckError::Busy),
         429 => Err(CheckError::RateLimited),
         401 => Err(CheckError::NotPaired),
+        400 => Err(CheckError::Rejected),
         code => Err(CheckError::Relay(format!("relay answered {}", code))),
+    }
+}
+
+/// 친구에게 안내할 이 PC의 공인 IPv4를 물은 결과 (`public_ipv4`)
+#[derive(Debug, PartialEq)]
+pub enum Ipv4Lookup {
+    Found(Ipv4Addr),
+    /// 다시 물어도 같다: 그 답을 모르는 옛 릴레이(빈 포트 목록을 거절), 공인 주소가 아님, 통신사가 나눠 쓰는 주소(CGNAT)
+    Unusable,
+    /// 일시 실패(닿지 못함·한도·알 수 없는 답). IPv4로 닿지 못하는 IPv6 전용 회선도 여기다
+    Later,
+}
+
+/// 이 PC의 공인 IPv4 주소. 포트 없이 확인을 부르면 릴레이는 아무 데도 보내지 않고 요청이 온 주소만 답한다
+pub async fn public_ipv4(relay: &Relay) -> Ipv4Lookup {
+    let nonce = uuid::Uuid::new_v4().simple().to_string();
+    let (answer, gateway) = tokio::join!(ask_relay(relay, &nonce, &[]), gateway_external_ip());
+    ipv4_lookup(answer, gateway)
+}
+
+/// 공유기가 CGNAT 뒤라고 알려 주면 그 IPv4는 밖에서 닿지 않는다. 공유기가 알려 주지 않아 모르면 릴레이가 본 IPv4를 쓴다
+/// (대개 공유기의 UPnP가 꺼진 보통 회선이다)
+fn ipv4_lookup(answer: Result<RelayAnswer, CheckError>, gateway: Option<IpAddr>) -> Ipv4Lookup {
+    let answer = match answer {
+        Ok(answer) => answer,
+        Err(CheckError::Rejected) => return Ipv4Lookup::Unusable,
+        Err(_) => return Ipv4Lookup::Later,
+    };
+    match answer.address.parse::<Ipv4Addr>() {
+        Ok(v4) if answer.public_address && classify_nat(v4.into(), route_local(v4.into()), gateway) != Nat::Cgnat => Ipv4Lookup::Found(v4),
+        _ => Ipv4Lookup::Unusable,
     }
 }
 

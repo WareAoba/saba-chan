@@ -1,7 +1,8 @@
 import type React from 'react';
 import { useRef, useState } from 'react';
 import type { Server } from '../stores/useServerStore';
-import { debugLog, debugWarn } from '../utils/helpers';
+import { failed } from '../utils/apiResult';
+import { debugLog, debugWarn, safeShowToast } from '../utils/helpers';
 
 interface SlotPosition {
     x: number;
@@ -24,6 +25,17 @@ interface DragState {
     originalOrder: string[];
     nameToId: Record<string, string>;
 }
+
+// 저장 중인 순서(id). 그사이 도착한 목록 응답은 옛 순서라 그대로 쓰면 카드가 한 번 되돌아갔다 온다
+let savingOrder: string[] | null = null;
+
+const inOrder = (list: Server[], ids: string[]) => {
+    const at = (s: Server) => (ids.includes(s.id) ? ids.indexOf(s.id) : ids.length);
+    return [...list].sort((a, b) => at(a) - at(b));
+};
+
+/** 순서를 저장하는 동안에는 받은 목록을 놓은 순서로 둔다 */
+export const holdSavingOrder = (list: Server[]) => (savingOrder ? inOrder(list, savingOrder) : list);
 
 /**
  * Manages drag-and-drop reordering of server cards using Pointer Events.
@@ -141,9 +153,11 @@ export function useDragReorder(servers: Server[], setServers: (updater: (prev: S
             }
         };
 
-        const onUp = async () => {
+        // 끌다가 포커스를 잃으면 pointerup 없이 pointercancel만 온다: 카드를 제자리에 두고 순서는 바꾸지 않는다
+        const onUp = async (ue: Event) => {
             document.removeEventListener('pointermove', onMove);
             document.removeEventListener('pointerup', onUp);
+            document.removeEventListener('pointercancel', onUp);
 
             const d = dragRef.current;
 
@@ -169,7 +183,7 @@ export function useDragReorder(servers: Server[], setServers: (updater: (prev: S
                 });
             }
 
-            if (!wasActive || targetSlot === fromSlot) return;
+            if (!wasActive || targetSlot === fromSlot || ue.type === 'pointercancel') return;
 
             // Compute and apply final order
             const order = [...originalOrder];
@@ -186,17 +200,23 @@ export function useDragReorder(servers: Server[], setServers: (updater: (prev: S
             });
 
             // Persist order to backend
-            try {
-                const orderedIds = order.map((n) => nameToId[n]);
-                await window.api.instanceReorder(orderedIds);
+            const orderedIds = order.map((n) => nameToId[n]);
+            savingOrder = orderedIds;
+            // 브리지는 실패해도 던지지 않고 {error}를 돌려준다
+            const res = await window.api.instanceReorder(orderedIds).catch((err: Error) => ({ error: err.message }));
+            if (savingOrder === orderedIds) savingOrder = null;
+            if (failed(res)) {
+                debugWarn('Failed to save server order:', res.error);
+                safeShowToast(res.error, 'error', 4000);
+                setServers((prev) => inOrder(prev, originalOrder.map((n) => nameToId[n])));
+            } else {
                 debugLog('Server order saved:', orderedIds);
-            } catch (err) {
-                debugWarn('Failed to save server order:', err);
             }
         };
 
         document.addEventListener('pointermove', onMove);
         document.addEventListener('pointerup', onUp);
+        document.addEventListener('pointercancel', onUp);
     };
 
     return { draggedName, cardRefs, skipNextClick, handleCardPointerDown };

@@ -4,6 +4,8 @@ pub mod managed_process;
 pub mod crash;
 pub mod highlight;
 pub mod players;
+pub mod idle;
+pub mod watchdog;
 pub mod ready;
 pub mod player_events;
 pub mod chat_link;
@@ -1771,10 +1773,8 @@ impl Supervisor {
         let call = {
             let s = sup.read().await;
             // Managed 프로세스가 있으면 plugin 호출 없이 직접 판단
-            if let Some(managed) = s.managed_store.get(&instance.id).await {
-                let running = managed.is_running();
-                let pid = s.tracker.get_pid(&instance.id).ok();
-                let start_time = if running { s.tracker.get_start_time(&instance.id).ok() } else { None };
+            if s.managed_store.get(&instance.id).await.is_some() {
+                let (running, pid, start_time) = s.tracked_state(&instance.id).await;
                 return Ok(json!({
                     "server": server_name,
                     "status": if running { "running" } else { "stopped" },
@@ -2164,6 +2164,21 @@ impl Supervisor {
     /// 콘솔 명령을 stdin으로 보내야 하는가.
     /// 모듈이 `stdin`을 지원하고 stdin이 열린 managed 프로세스가 돌고 있으면 stdin을 쓴다
     /// (RCON은 보안상 늘 꺼져 있다).
+    /// 데몬이 아는 실행 상태 `(실행 중, PID, 시작 시각)`: 서버 목록과 개별 상태 조회가 같이 쓴다.
+    /// managed 프로세스가 있으면 그것이 살아 있는지로 정한다(끝났지만 모니터가 아직 치우지 않은 PID를 실행 중으로 보지 않는다).
+    /// 없으면 추적 중인 PID가 있는지다
+    pub async fn tracked_state(&self, instance_id: &str) -> (bool, Option<u32>, Option<u64>) {
+        let pid = self.tracker.get_pid(instance_id).ok();
+        let running = match self.managed_store.get(instance_id).await {
+            Some(managed) => managed.is_running(),
+            None => pid.is_some(),
+        };
+        if !running {
+            return (false, None, None);
+        }
+        (true, pid, self.tracker.get_start_time(instance_id).ok())
+    }
+
     /// 서버가 켜져 있는가: 추적표(non-managed와 managed 모두 띄운 뒤 올린다)나 managed 저장소에 살아 있으면.
     /// "켜져 있으면 거절" 판정은 모두 이것을 쓴다 (재부착 때 추적표 등록이 실패해 managed에만 남은 경우도 켜진 것이다)
     pub async fn is_running(&self, instance_id: &str) -> bool {
@@ -2488,7 +2503,16 @@ impl Supervisor {
                     "configure"
                 }
                 "reset" => "reset_properties",
-                "reset_server" => "reset_server",
+                // 지울 범위 (모듈 `reset_preview`가 밝힌 id). 없으면 모듈의 기본 범위
+                "reset_server" => {
+                    if let Some(scope) = settings {
+                        cfg.insert("scope".to_string(), scope);
+                    }
+                    "reset_server"
+                }
+                "reset_preview" => "reset_preview",
+                // 플레이어 목록 (`[[lists]]`)의 지금 명단
+                "read_lists" => "read_lists",
                 // 실제 설정 파일을 saba-chan 키로 (설정 화면이 캐시 대신 실제 값을 보여 준다)
                 "import" => "import_settings",
                 // 사바쨩이 고칠 수 있는 게임 설정 파일 (가져온 서버를 해제할 때 되돌린다)
@@ -3378,13 +3402,14 @@ impl Supervisor {
                                         instance.name, process.pid, details
                                     );
 
-                                    // 자식까지 강제 종료 (런처형 서버는 런처만 끝내면 실제 서버가 남는다. taskkill은 동기라 spawn_blocking)
+                                    // 자식까지 강제 종료 (런처형 서버는 런처만 끝내면 실제 서버가 남는다. taskkill은 동기라 spawn_blocking).
+                                    // 끝나기를 기다리지 않는다: 여기는 supervisor 쓰기 잠금 안이라 기다리는 동안 모든 API 요청이 멈춘다
                                     let kill_pid = process.pid;
                                     let kill_name = instance.name.clone();
                                     tokio::task::spawn_blocking(move || match process::force_kill_tree(kill_pid) {
                                         Ok(()) => tracing::info!("Force-killed PID {} for instance '{}'", kill_pid, kill_name),
                                         Err(e) => tracing::warn!("Could not force-kill PID {} for instance '{}': {}", kill_pid, kill_name, e),
-                                    }).await.ok();
+                                    });
 
                                     // tracker에서 제거 + 쿨다운 설정
                                     let _ = self.tracker.untrack(&instance.id);
@@ -3549,6 +3574,7 @@ fn start_origins() -> &'static std::sync::Mutex<HashMap<String, crate::audit::Or
 /// `instance.started`: 서버가 켜졌다. `unexpected`면 사바쨩이 띄우지 않은 프로세스다
 fn announce_started(instance_id: &str, name: &str, origin: &crate::audit::Origin, unexpected: bool) {
     start_origins().lock().unwrap_or_else(|e| e.into_inner()).insert(instance_id.to_string(), origin.clone());
+    idle::clear_stopped(instance_id);
     let mut data = origin_fields(origin);
     data.insert("instanceId".into(), json!(instance_id));
     data.insert("instance".into(), json!(name));
@@ -3556,8 +3582,6 @@ fn announce_started(instance_id: &str, name: &str, origin: &crate::audit::Origin
     crate::events::emit("instance.started", Value::Object(data));
 }
 
-/// `instance.stopped`: 사바쨩을 거쳐 끄거나(`user_stop`) 게임 안에서 끈(`in_game_stop`) 정상 정지.
-/// 크래시·원인 모를 종료는 `instance.exit`만 알린다
 /// 모듈 점검 결과에 설정 값 문제를 더한다: `issues`가 있으면 뒤에 붙이고, 치명 문제가 아니므로 `success`는 그대로 둔다
 fn with_setting_issues(mut result: Value, extra: Vec<Value>) -> Value {
     if extra.is_empty() {
@@ -3576,11 +3600,16 @@ fn with_setting_issues(mut result: Value, extra: Vec<Value>) -> Value {
     result
 }
 
+/// `instance.stopped`: 사바쨩을 거쳐 끄거나(`user_stop`) 게임 안에서 끈(`in_game_stop`) 정상 정지.
+/// 크래시·원인 모를 종료는 `instance.exit`만 알린다. 접속자가 없어 자동 정지(`idle`)는 비어 있던 분(`idleMinutes`)을 싣는다
 fn announce_stopped(instance_id: &str, name: &str, kind: crash::ExitKind, origin: &crate::audit::Origin) {
     let mut data = origin_fields(origin);
     data.insert("instanceId".into(), json!(instance_id));
     data.insert("instance".into(), json!(name));
     data.insert("kind".into(), json!(kind));
+    if let Some(stopped) = idle::stopped(instance_id).filter(|_| origin.source == "idle") {
+        data.insert("idleMinutes".into(), json!(stopped.minutes));
+    }
     crate::events::emit("instance.stopped", Value::Object(data));
 }
 
@@ -5239,6 +5268,7 @@ mod tests {
             protocol_mode: "auto".to_string(),
             module_settings: std::collections::HashMap::new(),
             server_version: None,
+            server_build: None,
             extension_data: std::collections::HashMap::new(),
             required_extensions: Vec::new(),
             schedule: Vec::new(),
@@ -5256,6 +5286,7 @@ mod tests {
             access: Default::default(),
             kick_players: Vec::new(),
             auto_update: false,
+            branch_of: None,
         };
         supervisor.instance_store.add(inst).unwrap();
 
@@ -5308,6 +5339,7 @@ mod tests {
             protocol_mode: "auto".to_string(),
             module_settings: std::collections::HashMap::new(),
             server_version: None,
+            server_build: None,
             extension_data: std::collections::HashMap::new(),
             required_extensions: Vec::new(),
             schedule: Vec::new(),
@@ -5325,6 +5357,7 @@ mod tests {
             access: Default::default(),
             kick_players: Vec::new(),
             auto_update: false,
+            branch_of: None,
         };
         let inst_dir = instances_dir.join("test-tracker-guard");
         let _ = std::fs::create_dir_all(&inst_dir);

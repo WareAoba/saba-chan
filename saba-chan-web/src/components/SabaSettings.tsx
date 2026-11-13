@@ -158,6 +158,8 @@ export function SabaSettings({ api, server, running }: Omit<ServerPanelProps, 'm
             }
             return;
         }
+        // 서버가 도는 PC의 OS가 메모리 상한을 걸 수 없어 데몬이 저장하지 않았다
+        if (res?.error_code === 'memory_limit_unsupported') return toast(tg('memory_limit.unsupported'), 'error');
         if (failed(res)) return toast(errorText(t, res), 'error');
         if (res?.revision) revision.current = res.revision;
         setOpened(values);

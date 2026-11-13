@@ -29,16 +29,13 @@ const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(60);
 /// 앞당긴 하트비트도 앞의 것과 이만큼은 띄운다 (릴레이 `POST /heartbeat` 한도)
 const HEARTBEAT_KICK_DELAY: Duration = Duration::from_secs(2);
 const HEARTBEAT_MIN_GAP: Duration = Duration::from_secs(15);
+/// 마지막 하트비트 성공이 이보다 오래되면 붙어 있지 않은 것으로 본다 (하트비트 세 번)
+const CONNECTED_WITHIN_MS: u64 = 3 * 60_000;
+/// 공인 IPv4를 일시 실패로 얻지 못했을 때 다시 묻는 간격 (`friend_address`, 포트 확인 한도 분당 6회보다 넉넉히)
+const IPV4_RETRY: Duration = if cfg!(test) { Duration::from_millis(50) } else { Duration::from_secs(5 * 60) };
 const POLL_TIMEOUT: Duration = Duration::from_secs(40); // 릴레이 롱폴 25초 + 여유
 const RETRY_BASE: Duration = Duration::from_secs(3);
 const RETRY_MAX: Duration = Duration::from_secs(60);
-
-/// 하트비트 `metadata.features`: 릴레이가 기능마다 이 PC를 가르는 이름 (전역 최소 버전 `MIN_AGENT_VERSION`과 따로).
-/// 옛 PC와 다르게 다뤄야 하는 변화를 넣을 때만 이름을 더하고, 릴레이 하한이 그 기능을 넘으면 이름과 릴레이 분기를 함께 지운다.
-/// - `confirm_by_daemon`: 되묻기를 데몬이 계획마다 정한다 (`actions::needs_confirm`). 릴레이는 스스로 위험을 판정하지 않고 `needsConfirm`을 따른다
-/// - `check_first`: `check` 액션 요청(`{id, instance?, input}` 또는 `{text}`)으로 확인을 묻기 전에 권한만 본다 (`actions::check`). 계획은 남지 않는다
-/// - `linked_guilds`: 하트비트 응답의 `linkedGuilds`(새로 묶인 길드)로 그 길드에 열 서버를 정한다 (`close_linked_guild`)
-const FEATURES: &[&str] = &["confirm_by_daemon", "linked_guilds", "check_first"];
 
 /// 알림 이벤트(I3): 처음 한 건이 오면 같은 순간에 난 것만 이만큼 모아 곧 보내고, 한 번에 이만큼까지 보낸다
 /// (사용자 11-02: 게임 채팅이 디스코드에 늦게 올라간다. 이벤트는 대부분 한 건씩 온다)
@@ -90,10 +87,29 @@ pub struct AgentStatus {
     /// `agent_too_old`일 때 릴레이가 요구하는 최소 버전
     #[serde(skip_serializing_if = "Option::is_none")]
     pub min_version: Option<String>,
+    /// 릴레이가 마지막 하트비트를 검증에서 거절한 이유. 다시 받아 주면 없다
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub heartbeat_rejected: Option<HeartbeatReject>,
     pub commands_handled: u64,
+    /// 릴레이와 붙어 있다: 돌고 있고, 하트비트가 최근에 성공했고, 그 뒤로 실패가 없다.
+    /// 화면은 릴레이에 따로 묻지 않고 이 값을 본다. 바뀌면 `relay.status` 이벤트가 나간다
+    pub connected: bool,
     /// 릴레이가 하트비트 답에 실어 준, 이 PC가 접속해 온 공인 주소 (서버 주소 `server.address`). 모르면 없다
     #[serde(skip_serializing_if = "Option::is_none")]
     pub seen_address: Option<String>,
+}
+
+/// 릴레이가 하트비트를 거절한 이유 (400 답의 `reason`): 어느 칸이 맞지 않았는지, 개수·길이 상한이면 상한과 보낸 크기.
+/// 문장은 클라이언트가 만든다
+#[derive(Debug, Clone, PartialEq, Serialize, serde::Deserialize)]
+pub struct HeartbeatReject {
+    /// `TOO_BIG`(상한 초과) 또는 `INVALID`
+    pub code: String,
+    pub field: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub actual: Option<u64>,
 }
 
 #[derive(Default)]
@@ -149,6 +165,7 @@ impl RelayAgent {
         status.agent_version = AGENT_VERSION;
         // GUI가 5초마다 부른다: 설정 파일이 그대로면 다시 읽지 않는다
         status.has_token = crate::ipc::handlers::relay::peek_node_token().as_deref().and_then(parse_node_token).is_some();
+        status.connected = connected(&status, now_ms());
         status
     }
 
@@ -164,8 +181,10 @@ impl RelayAgent {
                 // 돌던 세션은 없다: 상태에 이유를 남겨 클라이언트가 보이게 한다
                 let mut inner = self.lock();
                 if inner.cancel.is_none() {
+                    let before = Shown::of(&inner.status);
                     inner.status.last_error = Some(e.message.clone());
                     inner.status.last_error_code = Some(e.code);
+                    before.announce_if_changed(&inner.status);
                 }
                 return Err(e);
             }
@@ -179,7 +198,9 @@ impl RelayAgent {
             inner.cancel = Some(token.clone());
             inner.endpoint = Some((relay_url.clone(), node_token.clone()));
             inner.generation += 1;
+            let before = Shown::of(&inner.status);
             inner.status = AgentStatus { running: true, relay_url: Some(relay_url.clone()), ..Default::default() };
+            before.announce_if_changed(&inner.status);
             (token, inner.generation)
         };
 
@@ -203,6 +224,8 @@ impl RelayAgent {
                 seen: agent.seen.clone(),
                 metadata_sent: Mutex::new(None),
                 linked_acks: Mutex::default(),
+                chatbot_sync_due: std::sync::atomic::AtomicBool::new(true),
+                seen_v4: Mutex::default(),
             };
             if let Err(e) = session.check_version().await {
                 tracing::error!("[RelayAgent] {}", e);
@@ -210,20 +233,9 @@ impl RelayAgent {
                 return;
             }
             tracing::info!("[RelayAgent] started (relay={})", session.base);
-            // 챗봇 설정은 데몬이 원본: 연결될 때마다 릴레이에 맞춘다
-            // 세션이 끝나면(연결 해제·토큰 교체) 같이 멈춘다: 예전 토큰으로 설정을 올리지 않게
-            let sync_server = session.server.clone();
-            let sync_cancel = cancel.clone();
-            tokio::spawn(async move {
-                tokio::select! {
-                    _ = sync_cancel.cancelled() => {}
-                    _ = async {
-                        crate::ipc::handlers::chatbot::sync_on_connect(&sync_server).await;
-                        // 디스코드 길드 설정도 데몬이 원본 (I2)
-                        crate::ipc::handlers::discord::sync_on_connect(&sync_server).await;
-                    } => {}
-                }
-            });
+            // 디스코드 길드 설정과 챗봇 설정은 데몬이 원본 (I2): 연결될 때마다 릴레이에 맞춘다. 첫 하트비트 응답을 처리한 뒤에 보낸다:
+            // 꺼져 있는 동안 다시 묶인 길드(`linkedGuilds`)는 릴레이 값을 먼저 받아야 옛 사본으로 덮지 않는다
+            crate::ipc::handlers::discord::request_sync();
             tokio::join!(session.heartbeat_loop(), session.poll_loop(), session.events_loop(), session.unsent_loop());
             agent.finish(generation, None);
             tracing::info!("[RelayAgent] stopped");
@@ -269,6 +281,33 @@ impl RelayAgent {
         Ok(())
     }
 
+    /// 사용자가 사바쨩을 꺼서 데몬이 내려가기 직전: 릴레이가 3분을 기다리지 않고 바로 꺼짐으로 두고 "PC 연결 끊김" 알림을 보내지 않게 한다
+    /// (`POST /v1/host/stopping`, 본문 없음). 업데이트로 내려가는 중이면 이미 알렸으므로 보내지 않는다. 실패해도 종료는 진행한다
+    pub async fn notify_stopping(&self) {
+        // 알린 뒤의 heartbeat가 다시 켜짐으로 돌리지 않게 먼저 막는다. 이미 막혀 있으면 업데이트 창이다
+        if self.going_down.swap(true, std::sync::atomic::Ordering::SeqCst) {
+            return;
+        }
+        let (base, token) = {
+            let inner = self.lock();
+            match (&inner.cancel, &inner.endpoint) {
+                (Some(cancel), Some(endpoint)) if !cancel.is_cancelled() => endpoint.clone(),
+                _ => return,
+            }
+        };
+        let Ok(client) = http_client() else { return };
+        let Some(req) = crate::ipc::handlers::relay::signed_request(&client, reqwest::Method::POST, &base, "/v1/host/stopping", &token, None)
+        else {
+            return;
+        };
+        match tokio::time::timeout(std::time::Duration::from_secs(5), req.send()).await {
+            Ok(Ok(resp)) if resp.status().is_success() => {}
+            Ok(Ok(resp)) => tracing::warn!("[Shutdown] Relay answered {} to the stopping notice", resp.status()),
+            Ok(Err(e)) => tracing::warn!("[Shutdown] Could not tell the relay we are stopping: {}", e),
+            Err(_) => tracing::warn!("[Shutdown] Telling the relay we are stopping timed out"),
+        }
+    }
+
     pub fn stop(&self) {
         crate::remote::link::stop();
         let mut inner = self.lock();
@@ -276,7 +315,9 @@ impl RelayAgent {
         if let Some(cancel) = inner.cancel.take() {
             cancel.cancel();
         }
+        let before = Shown::of(&inner.status);
         inner.status.running = false;
+        before.announce_if_changed(&inner.status);
     }
 
     /// 세션이 끝났을 때. 그 사이 새 세션이 시작됐으면(세대가 다르면) 아무것도 건드리지 않는다
@@ -287,10 +328,12 @@ impl RelayAgent {
         }
         inner.cancel = None;
         inner.endpoint = None;
+        let before = Shown::of(&inner.status);
         inner.status.running = false;
         if error.is_some() {
             inner.status.last_error = error;
         }
+        before.announce_if_changed(&inner.status);
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Inner> {
@@ -314,7 +357,36 @@ impl RelayAgent {
     fn update(&self, generation: u64, f: impl FnOnce(&mut AgentStatus)) {
         let mut inner = self.lock();
         if inner.generation == generation && inner.cancel.is_some() {
-            f(&mut inner.status)
+            let before = Shown::of(&inner.status);
+            f(&mut inner.status);
+            before.announce_if_changed(&inner.status);
+        }
+    }
+}
+
+/// 릴레이와 붙어 있는가 (`AgentStatus::connected`)
+fn connected(s: &AgentStatus, now: u64) -> bool {
+    s.running && s.last_error.is_none() && s.last_heartbeat_at.is_some_and(|at| now.saturating_sub(at) < CONNECTED_WITHIN_MS)
+}
+
+/// 화면이 보이는 연결 상태. 하트비트 시각처럼 늘 바뀌는 값은 빼고, 이것이 바뀔 때만 알린다
+#[derive(PartialEq)]
+struct Shown {
+    running: bool,
+    heard: bool,
+    error: Option<String>,
+    code: Option<&'static str>,
+}
+
+impl Shown {
+    fn of(s: &AgentStatus) -> Self {
+        Self { running: s.running, heard: s.last_heartbeat_at.is_some(), error: s.last_error.clone(), code: s.last_error_code }
+    }
+
+    /// 바뀌었으면 `relay.status`를 낸다 (지금 붙은 클라이언트에게만: 다시 붙으면 상태를 새로 읽는다)
+    fn announce_if_changed(self, after: &AgentStatus) {
+        if self != Self::of(after) {
+            crate::events::emit_live("relay.status", json!({}));
         }
     }
 }
@@ -426,6 +498,19 @@ struct Session {
     metadata_sent: Mutex<Option<String>>,
     /// 적용했지만 릴레이가 아직 확인 응답을 받지 못한 새로 묶인 길드의 연결 id (`linkedGuildsAckIds`)
     linked_acks: Mutex<Vec<String>>,
+    /// 첫 하트비트 응답 뒤 챗봇 설정을 릴레이에 맞춘다
+    chatbot_sync_due: std::sync::atomic::AtomicBool,
+    /// 릴레이가 본 IPv6를 IPv4로 다시 물은 결과 (`friend_address`). 같은 IPv6에는 답을 얻은 뒤로 다시 묻지 않는다
+    seen_v4: Mutex<Option<SeenV4>>,
+}
+
+#[derive(Clone)]
+struct SeenV4 {
+    v6: String,
+    /// 그때 얻은 공인 IPv4
+    v4: Option<String>,
+    /// 일시 실패였으면 다시 물을 때
+    retry_at: Option<std::time::Instant>,
 }
 
 /// 받은 명령을 처음 본 것인지, 아직 처리 중인지, 이미 끝났는지
@@ -627,6 +712,7 @@ impl Session {
         let (metadata, hash, unchanged) = heartbeat_metadata(self.metadata().await, sent.as_deref());
         let acks = self.linked_acks.lock().unwrap_or_else(|e| e.into_inner()).clone();
         let body = heartbeat_body(metadata, &hash, unchanged, &acks);
+        let mut rejected: Option<HeartbeatReject> = None;
         let result = async {
             let resp = self.send_signed(reqwest::Method::POST, "/heartbeat", Some(body.to_string())).await?;
             let status = resp.status();
@@ -640,7 +726,9 @@ impl Session {
             }
             if !status.is_success() {
                 let hint = if status.as_u16() == 401 || status.as_u16() == 403 { " (node token rejected)" } else { "" };
-                return Err(format!("heartbeat {}{}: {}", status, hint, data.get("error").and_then(|v| v.as_str()).unwrap_or("")));
+                rejected = data.get("reason").cloned().and_then(|reason| serde_json::from_value(reason).ok());
+                let field = rejected.as_ref().map(|r| format!(" ({})", r.field)).unwrap_or_default();
+                return Err(format!("heartbeat {}{}: {}{}", status, hint, data.get("error").and_then(|v| v.as_str()).unwrap_or(""), field));
             }
             Ok(data)
         }
@@ -657,13 +745,14 @@ impl Session {
                 if data.get("warning").and_then(|v| v.as_str()) == Some("UPDATE_REQUIRED") {
                     tracing::warn!("[RelayAgent] relay asks for agent update (min {})", data.get("minVersion").and_then(|v| v.as_str()).unwrap_or("?"));
                 }
-                let seen = relay_seen_address(&data);
+                let seen = self.friend_address(relay_seen_address(&data)).await;
                 let mut seen_changed = false;
                 self.agent.update(self.generation, |s| {
                     s.last_heartbeat_at = Some(now_ms());
                     s.last_error = None;
                     s.last_error_code = None;
                     s.min_version = None;
+                    s.heartbeat_rejected = None;
                     // 사설 주소면 없다
                     seen_changed = s.seen_address != seen;
                     s.seen_address = seen;
@@ -687,7 +776,18 @@ impl Session {
                 } else if let Some(hint) = data.get("updateHint") {
                     crate::ipc::updates::on_update_hint(&self.server.update_state, hint, self.cancel.clone());
                 }
-                // 연결이 끊긴 사이 릴레이에 못 보낸 디스코드 길드 설정을 다시 보낸다
+                // 챗봇 설정은 첫 하트비트 응답(새로 묶인 길드 받기) 뒤에 한 번 릴레이에 맞춘다.
+                // 세션이 끝나면(연결 해제·토큰 교체) 같이 멈춘다: 예전 토큰으로 설정을 올리지 않게
+                if self.chatbot_sync_due.swap(false, std::sync::atomic::Ordering::SeqCst) {
+                    let (server, cancel) = (self.server.clone(), self.cancel.clone());
+                    tokio::spawn(async move {
+                        tokio::select! {
+                            _ = cancel.cancelled() => {}
+                            _ = crate::ipc::handlers::chatbot::sync_on_connect(&server) => {}
+                        }
+                    });
+                }
+                // 연결이 끊긴 사이 릴레이에 못 보낸 디스코드 길드 설정을 다시 보낸다 (세션과 함께 멈춘다)
                 if crate::ipc::handlers::discord::take_pending_sync() {
                     let (server, cancel) = (self.server.clone(), self.cancel.clone());
                     tokio::spawn(async move {
@@ -703,10 +803,32 @@ impl Session {
             Err(e) if e == TOO_OLD => {}
             Err(e) => {
                 tracing::warn!("[RelayAgent] {}", e);
+                self.agent.update(self.generation, |s| s.heartbeat_rejected = rejected);
                 self.report_error(e);
             }
         }
         (need_full && unchanged) || send_again
+    }
+
+    /// 친구에게 안내할 이 PC의 공인 주소. 하트비트가 IPv6로 나가 릴레이가 IPv6를 봤으면 포트 확인과 같은 IPv4 전용 연결로
+    /// 한 번 다시 물어 공인 IPv4를 쓴다 (포트 확인은 IPv4로 두드리고, 친구는 대개 IPv4로 붙는다). 얻지 못하면 IPv6 그대로
+    async fn friend_address(&self, seen: Option<String>) -> Option<String> {
+        use crate::port_check::Ipv4Lookup;
+        let Some(v6) = seen.as_deref().filter(|a| a.parse::<std::net::IpAddr>().is_ok_and(|ip| ip.is_ipv6())) else { return seen };
+        if let Some(SeenV4 { v6: asked, v4, retry_at }) = self.seen_v4.lock().unwrap_or_else(|e| e.into_inner()).clone()
+            && asked == v6
+            && retry_at.is_none_or(|at| std::time::Instant::now() < at)
+        {
+            return v4.or(seen);
+        }
+        let relay = crate::port_check::Relay { base: self.base.clone(), token: self.token.clone(), host: None };
+        let (v4, retry_at) = match crate::port_check::public_ipv4(&relay).await {
+            Ipv4Lookup::Found(ip) => (Some(ip.to_string()), None),
+            Ipv4Lookup::Unusable => (None, None),
+            Ipv4Lookup::Later => (None, Some(std::time::Instant::now() + IPV4_RETRY)),
+        };
+        *self.seen_v4.lock().unwrap_or_else(|e| e.into_inner()) = Some(SeenV4 { v6: v6.to_string(), v4: v4.clone(), retry_at });
+        v4.or(seen)
     }
 
     /// 하트비트 메타데이터: 릴레이 봇이 자동완성·접두사 표시에 쓴다
@@ -749,12 +871,11 @@ impl Session {
             // 알림 채널 맨 위 글의 예약 목록
             "schedules": schedules,
             "modules": modules,
+            // 읽는 곳은 없지만 2026-11-12 전 릴레이 스키마가 요구한다. 그 요구를 뺀 릴레이가 배포되면 지운다
             "moduleDetails": {},
             "botConfig": {
                 // 비어 있으면 릴레이가 응답 언어의 기본값을 쓴다
                 "prefixes": bot.prefixes,
-                "moduleAliases": bot.module_aliases,
-                "commandAliases": command_aliases_json(&bot.command_aliases),
             },
         });
         // 길드별 허용 인스턴스. 목록이 있는 길드만 싣는다 (없으면 릴레이는 제한 없음으로 본다)
@@ -780,8 +901,6 @@ impl Session {
         // 권한 원본은 데몬이다: 릴레이는 이 값으로 바깥 검사용 캐시를 맞춘다
         meta["permissions"] = permissions_by_guild(&bot.node_settings);
         meta["permissionsAt"] = json!(permissions_at);
-        // 이 데몬이 가진 기능 (`FEATURES`): 릴레이는 버전 번호 대신 이 목록으로 기능마다 갈린다
-        meta["features"] = json!(FEATURES);
         // `/사바쨩 상태` 끝 줄의 다음 할 일 (J1-a, GUI·CLI와 같은 단계)
         meta["onboarding"] = crate::ipc::handlers::diagnostics::onboarding_now(&self.server).await;
         // 언어가 `auto`인 길드는 이 언어로 답한다 (I2)
@@ -834,6 +953,10 @@ impl Session {
                     next = None;
                     match polled {
                         Ok(commands) => {
+                            // 실패 뒤 다시 받았다: 하트비트를 기다리지 않고 붙어 있다고 보인다 (`connected`)
+                            if failures > 0 {
+                                self.agent.update(self.generation, |s| s.last_error = None);
+                            }
                             failures = 0;
                             let now = std::time::Instant::now();
                             let mut reack = Vec::new();
@@ -1020,6 +1143,16 @@ impl Session {
             let (Some(guild), Some(via)) = (g.get("guildId").and_then(Value::as_str), g.get("via").and_then(Value::as_str)) else { continue };
             // 릴레이가 연결마다 준 id로 답해야, 풀고 다시 묶은 사이 늦게 간 답이 새 연결의 확인이 되지 않는다
             let link_id = g.get("linkId").and_then(Value::as_str).map(str::to_string);
+            // 이미 적용하고 확인 응답을 기다리는 연결은 길드 설정을 다시 받지 않는다 (그 사이 앱에서 바꾼 값을 덮지 않게)
+            let waiting = link_id.as_ref().is_some_and(|id| self.linked_acks.lock().unwrap_or_else(|e| e.into_inner()).contains(id));
+            // 풀었다가 다시 묶은 길드는 PC 없는 동안 디스코드에서 바꾼 길드·챗봇 설정을 받는다. 못 받았으면 확인 응답을 미뤄 다음 하트비트에 다시 한다
+            if !waiting
+                && !(crate::ipc::handlers::discord::adopt_linked_guild(&self.server, guild).await
+                    && crate::ipc::handlers::chatbot::adopt_linked_guild(&self.server, guild).await)
+            {
+                tracing::warn!("[RelayAgent] could not read the settings of relinked guild {}; trying again at the next heartbeat", guild);
+                continue;
+            }
             match store.update_node_settings(guild, |node| {
                 let c = close_linked_guild(node, via, policy);
                 (c, c)
@@ -1275,15 +1408,15 @@ fn queue_event(pending: &mut std::collections::VecDeque<Value>, event: &crate::e
     }
 }
 
-/// 알림 채널(I3)에 올릴 모양 `{id, type, data}`. 올리지 않는 종류면 None.
-/// 원격으로 나가므로 경로·콘솔 줄·오류 원문은 싣지 않는다
 /// 이 이벤트가 오면 다음 하트비트를 기다리지 않고 곧 보낸다 — 서버가 켜지고 꺼진 것은 누가 어디서 시켰든
 /// (디스코드·챗봇·GUI·CLI·예약·사바쨩 밖) 데몬이 알아챈 때 릴레이의 서버 목록과 상황판에 닿게 한다
 fn kicks_heartbeat(kind: &str) -> bool {
     matches!(kind, "instance.started" | "instance.stopped" | "instance.ready" | "instance.exit")
 }
 
-fn relay_event(event: &crate::events::Event) -> Option<Value> {
+/// 알림 채널(I3)에 올릴 모양 `{id, type, data}`. 올리지 않는 종류면 None.
+/// 원격으로 나가므로 경로·콘솔 줄·오류 원문은 싣지 않는다. 격리된 익스텐션의 event hook도 이 모양만 받는다 (`extension::event_hooks`)
+pub(crate) fn relay_event(event: &crate::events::Event) -> Option<Value> {
     let d = &event.data;
     let pick = |keys: &[&str]| -> serde_json::Map<String, Value> {
         keys.iter().filter_map(|k| d.get(*k).map(|v| (k.to_string(), v.clone()))).collect()
@@ -1305,9 +1438,11 @@ fn relay_event(event: &crate::events::Event) -> Option<Value> {
         "update.available" => pick(&["at", "components"]),
         "schedule.warn" => pick(&["at", "instanceId", "instance", "action", "minutesLeft"]),
         "instance.ready" => pick(&["at", "instanceId", "instance", "ok", "code"]),
+        // 켜져 있지만 응답이 없다 (응답 없는 서버 감시). 실패 이유 원문은 싣지 않는다
+        "instance.unresponsive" => pick(&["at", "instanceId", "instance", "minutes", "restarting"]),
         // 서버가 켜지고 꺼진 것과 시킨 쪽. 사바쨩 밖의 시작은 unexpected (크래시·원인 모를 종료는 instance.exit)
         "instance.started" => pick(&["at", "instanceId", "instance", "source", "userName", "unexpected"]),
-        "instance.stopped" => pick(&["at", "instanceId", "instance", "source", "userName", "kind"]),
+        "instance.stopped" => pick(&["at", "instanceId", "instance", "source", "userName", "kind", "idleMinutes"]),
         // 켠 서버의 모듈 새 버전·게임 서버 새 빌드 (시작을 시킨 사람에게만 알린다)
         "instance.update_notice" => pick(&["at", "instanceId", "instance", "kind", "module", "latest"]),
         // 게임 서버 업데이트가 끝났다 (예약·앱·디스코드 어디서 시켰든)
@@ -1693,21 +1828,6 @@ fn relay_module_entry(m: &crate::chat::api::ModuleView) -> Value {
     entry
 }
 
-/// 릴레이 스키마: commandAliases는 모듈 → (명령 → 콤마 문자열). 문자열이 아닌 값은 뺀다
-fn command_aliases_json(aliases: &std::collections::HashMap<String, Value>) -> serde_json::Map<String, Value> {
-    aliases
-        .iter()
-        .filter_map(|(module, cmds)| {
-            let cmds: serde_json::Map<String, Value> = cmds
-                .as_object()?
-                .iter()
-                .filter_map(|(c, a)| a.as_str().map(|a| (c.clone(), Value::String(a.to_string()))))
-                .collect();
-            Some((module.clone(), Value::Object(cmds)))
-        })
-        .collect()
-}
-
 /// 언어 → 모듈 locales 한 언어 전체 (없으면 Null). 명령마다·언어마다 부르므로 복제하지 않고 함께 쓴다
 type LocaleTexts<'a> = dyn Fn(&str) -> std::sync::Arc<Value> + 'a;
 
@@ -1858,6 +1978,10 @@ fn dm_notice_meta(meta: &mut Value, bot: &crate::config_store::BotConfig) {
     if !off.is_empty() {
         meta["dmOff"] = json!(off);
     }
+    let on = bot.dm_notice.on_kinds();
+    if !on.is_empty() {
+        meta["dmOn"] = json!(on);
+    }
 }
 
 fn heartbeat_metadata(mut meta: Value, sent: Option<&str>) -> (Value, String, bool) {
@@ -1990,6 +2114,53 @@ mod tests {
         assert!(agent.notify_updating(90).await.is_err(), "a stopped session sends nothing");
     }
 
+    /// 사용자가 사바쨩을 끄면 내려가기 직전 릴레이에 알린다 (`POST /v1/host/stopping`, 본문 없음): 릴레이가 "PC 연결 끊김"으로 보지 않는다.
+    /// 업데이트로 내려가는 중이면 이미 알렸으므로 보내지 않는다
+    #[tokio::test]
+    async fn the_relay_is_told_when_the_daemon_is_shut_down_on_purpose() {
+        use axum::routing::post;
+        let seen: Arc<Mutex<Vec<(String, bool)>>> = Arc::default();
+        let log = seen.clone();
+        let app = axum::Router::new()
+            .route(
+                "/v1/host/stopping",
+                post(move |headers: axum::http::HeaderMap, body: String| {
+                    let log = log.clone();
+                    async move {
+                        let signed = headers.keys().any(|k| k.as_str().to_ascii_lowercase().contains("signature"));
+                        log.lock().unwrap().push((body, signed));
+                        axum::Json(json!({ "ok": true }))
+                    }
+                }),
+            )
+            .route("/v1/host/updating", post(|| async { axum::Json(json!({ "ok": true, "untilSeconds": 210 })) }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let connected = || {
+            let agent = RelayAgent::new();
+            let mut inner = agent.lock();
+            inner.cancel = Some(CancellationToken::new());
+            inner.endpoint = Some((base.clone(), "sbn_host.secret".into()));
+            drop(inner);
+            agent
+        };
+        let agent = RelayAgent::new();
+        agent.notify_stopping().await;
+        assert!(seen.lock().unwrap().is_empty(), "not connected");
+
+        let agent = connected();
+        agent.notify_stopping().await;
+        assert_eq!(seen.lock().unwrap().clone(), vec![(String::new(), true)], "no body, signed like the heartbeat");
+        assert!(agent.going_down.load(std::sync::atomic::Ordering::SeqCst), "no heartbeat brings it back online afterwards");
+
+        let agent = connected();
+        agent.notify_updating(90).await.unwrap();
+        agent.notify_stopping().await;
+        assert_eq!(seen.lock().unwrap().len(), 1, "going down for an update: the relay keeps its update window");
+    }
+
     /// 릴레이가 이 PC의 버전을 받지 않으면(최소 버전 미달) 상태에 `agent_too_old`와 요구 버전을 남겨
     /// GUI·CLI가 업데이트를 안내하게 하고, 받기는 업데이트 전에는 같은 답이므로 heartbeat 주기로만 다시 묻는다
     #[tokio::test]
@@ -2033,6 +2204,8 @@ mod tests {
             seen: Arc::default(),
             metadata_sent: Mutex::new(None),
             linked_acks: Mutex::default(),
+            chatbot_sync_due: Default::default(),
+            seen_v4: Mutex::default(),
         };
         let reset = || agent.update(1, |s| *s = AgentStatus { running: true, ..Default::default() });
         let reported = |what: &str| {
@@ -2053,6 +2226,109 @@ mod tests {
         reported("poll");
         assert_eq!(poll_retry(&polled, 1), HEARTBEAT_INTERVAL);
         assert_eq!(poll_retry("poll 502 Bad Gateway: ", 1), backoff(1), "other failures keep the short backoff");
+    }
+
+    /// 릴레이가 상태 보고(heartbeat)를 검증에서 거절하면 어느 값 때문인지(칸·상한·보낸 크기)를 상태에 남겨
+    /// 앱이 연결 상태에 이유를 보이게 하고, 다시 받아 주면 지운다
+    #[tokio::test]
+    async fn a_heartbeat_the_relay_refuses_reports_which_value_was_refused() {
+        use axum::routing::post;
+        use std::sync::atomic::{AtomicBool, Ordering};
+        static REFUSE: AtomicBool = AtomicBool::new(true);
+        async fn heartbeat() -> (axum::http::StatusCode, axum::Json<Value>) {
+            if REFUSE.load(Ordering::SeqCst) {
+                let reason = json!({ "code": "TOO_BIG", "field": "metadata.servers", "max": 200, "actual": 201 });
+                return (axum::http::StatusCode::BAD_REQUEST, axum::Json(json!({ "error": "VALIDATION_ERROR", "details": [], "reason": reason })));
+            }
+            (axum::http::StatusCode::OK, axum::Json(json!({ "ok": true })))
+        }
+        let app = axum::Router::new().route("/heartbeat", post(heartbeat));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let tmp = tempfile::tempdir().unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let server = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let agent = RelayAgent::new();
+        let cancel = CancellationToken::new();
+        {
+            let mut inner = agent.lock();
+            inner.cancel = Some(cancel.clone());
+            inner.generation = 1;
+            inner.status.running = true;
+        }
+        let session = Session {
+            agent: agent.clone(),
+            server,
+            client: http_client().unwrap(),
+            base,
+            token: "sbn_host.secret".into(),
+            cancel,
+            generation: 1,
+            seen: Arc::default(),
+            metadata_sent: Mutex::new(None),
+            linked_acks: Mutex::default(),
+            chatbot_sync_due: Default::default(),
+            seen_v4: Mutex::default(),
+        };
+
+        session.heartbeat().await;
+        let json = serde_json::to_value(agent.status()).unwrap();
+        assert_eq!(json["heartbeatRejected"], json!({ "code": "TOO_BIG", "field": "metadata.servers", "max": 200, "actual": 201 }), "{json}");
+        assert_eq!(json["lastError"], "heartbeat 400 Bad Request: VALIDATION_ERROR (metadata.servers)");
+
+        REFUSE.store(false, Ordering::SeqCst);
+        session.heartbeat().await;
+        let json = serde_json::to_value(agent.status()).unwrap();
+        assert!(json.get("heartbeatRejected").is_none() && json["lastError"].is_null(), "{json}");
+    }
+
+    /// 화면은 릴레이에 따로 묻지 않고 이 값으로 붙었는지 본다 (예전에는 5초마다 릴레이에 다녀왔다)
+    #[test]
+    fn connected_means_a_recent_heartbeat_with_no_failure_since() {
+        let now = now_ms();
+        let heard = |ago: u64| AgentStatus { running: true, last_heartbeat_at: Some(now - ago), ..Default::default() };
+        assert!(connected(&heard(1_000), now));
+        assert!(!connected(&AgentStatus { running: true, ..Default::default() }, now), "never heard back");
+        assert!(!connected(&AgentStatus { last_error: Some("poll 502".into()), ..heard(1_000) }, now), "failed since");
+        assert!(!connected(&heard(CONNECTED_WITHIN_MS + 1), now), "the heartbeat stopped answering");
+        assert!(!connected(&AgentStatus { running: false, ..heard(1_000) }, now), "stopped");
+    }
+
+    /// 붙고 끊길 때만 `relay.status`를 낸다. 매분 바뀌는 하트비트 시각만으로는 내지 않는다
+    #[tokio::test]
+    async fn a_change_in_the_connection_is_announced_once() {
+        let mut rx = crate::events::bus().subscribe(None).rx;
+        let agent = RelayAgent::new();
+        {
+            let mut inner = agent.lock();
+            inner.cancel = Some(CancellationToken::new());
+            inner.generation = 1;
+            inner.status.running = true;
+        }
+        let mut announced = || {
+            let mut n = 0;
+            while let Ok(e) = rx.try_recv() {
+                n += usize::from(e.kind == "relay.status");
+            }
+            n
+        };
+        agent.update(1, |s| s.last_heartbeat_at = Some(1));
+        assert_eq!(announced(), 1, "first heartbeat");
+        agent.update(1, |s| s.last_heartbeat_at = Some(2));
+        assert_eq!(announced(), 0, "only the time moved");
+        agent.update(1, |s| s.last_error = Some("poll 502".into()));
+        agent.update(1, |s| s.last_error = Some("poll 502".into()));
+        assert_eq!(announced(), 1, "the same failure again is not news");
+        agent.stop();
+        assert_eq!(announced(), 1);
+        let json = serde_json::to_value(agent.status()).unwrap();
+        assert_eq!(json["connected"], json!(false));
     }
 
     /// 외부 감사: ack한 명령의 결과 전송이 한 번 실패하면(503 등) 릴레이가 다시 보내 주지 않아 결과가 사라졌다.
@@ -2093,6 +2369,8 @@ mod tests {
             seen: Arc::default(),
             metadata_sent: Mutex::new(None),
             linked_acks: Mutex::default(),
+            chatbot_sync_due: Default::default(),
+            seen_v4: Mutex::default(),
         };
         session.post_result("c1", &json!({ "success": true })).await;
         assert_eq!(CALLS.swap(0, Ordering::SeqCst), 3, "two 503s, then taken");
@@ -2190,6 +2468,8 @@ mod tests {
             seen: Arc::default(),
             metadata_sent: Mutex::new(None),
             linked_acks: Mutex::default(),
+            chatbot_sync_due: Default::default(),
+            seen_v4: Mutex::default(),
         }
     }
 
@@ -2805,11 +3085,246 @@ mod tests {
         assert!(host_load(&none).get("diskFree").is_none());
     }
 
-    /// 하트비트는 기능 목록을 싣는다 (릴레이가 기능마다 이 PC를 가른다)
-    #[test]
-    fn heartbeat_features_name_what_the_relay_branches_on() {
-        assert!(FEATURES.contains(&"confirm_by_daemon"));
-        assert!(FEATURES.iter().all(|f| !f.is_empty() && f.chars().all(|c| c.is_ascii_lowercase() || c == '_')));
+    /// 하트비트가 IPv6로 나가 릴레이가 IPv6를 봤으면, 친구에게 안내할 주소는 포트 확인처럼 IPv4로 다시 물어 얻은 공인 IPv4다.
+    /// 같은 IPv6에는 다시 묻지 않고, 그 답을 모르는 옛 릴레이(빈 포트 목록을 400으로 거절)면 IPv6를 그대로 쓴다.
+    /// 일시 실패(한도·시간 초과)면 그동안 IPv6를 쓰고 간격을 두고 다시 묻는다
+    #[tokio::test]
+    async fn a_relay_that_saw_ipv6_is_asked_once_for_the_ipv4_friends_reach() {
+        use axum::{extract::State as AxState, routing::post};
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        #[derive(Clone, Copy, PartialEq)]
+        enum PortCheck {
+            KnowsAddressOnly,
+            Old,
+            LimitedOnce,
+        }
+        #[derive(Clone)]
+        struct Relay {
+            heartbeat_address: &'static str,
+            mode: PortCheck,
+            asked: Arc<AtomicUsize>,
+        }
+        async fn heartbeat(AxState(r): AxState<Relay>) -> axum::Json<Value> {
+            axum::Json(json!({ "status": "ok", "address": r.heartbeat_address }))
+        }
+        async fn port_check(AxState(r): AxState<Relay>, axum::Json(body): axum::Json<Value>) -> axum::response::Response {
+            use axum::response::IntoResponse;
+            let asked = r.asked.fetch_add(1, Ordering::SeqCst);
+            if r.mode == PortCheck::Old || body["ports"] != json!([]) {
+                return (axum::http::StatusCode::BAD_REQUEST, axum::Json(json!({ "error": "VALIDATION_ERROR" }))).into_response();
+            }
+            if r.mode == PortCheck::LimitedOnce && asked == 0 {
+                return axum::http::StatusCode::TOO_MANY_REQUESTS.into_response();
+            }
+            axum::Json(json!({ "address": "203.0.113.7", "publicAddress": true, "probes": [] })).into_response()
+        }
+        for (heartbeat_address, mode, shown, asked) in [
+            ("2001:db8::1", PortCheck::KnowsAddressOnly, "203.0.113.7", 1),
+            ("2001:db8::1", PortCheck::Old, "2001:db8::1", 1),
+            ("2001:db8::1", PortCheck::LimitedOnce, "203.0.113.7", 2),
+            ("198.51.100.4", PortCheck::KnowsAddressOnly, "198.51.100.4", 0),
+        ] {
+            let relay = Relay { heartbeat_address, mode, asked: Arc::default() };
+            let app = axum::Router::new().route("/heartbeat", post(heartbeat)).route("/api/port-check", post(port_check)).with_state(relay.clone());
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let base = format!("http://{}", listener.local_addr().unwrap());
+            tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+            let tmp = tempfile::tempdir().unwrap();
+            let agent = RelayAgent::new();
+            let session = test_session(&agent, &base, "sbn_h1.secret", tmp.path()).await;
+            {
+                let mut inner = agent.lock();
+                inner.cancel = Some(session.cancel.clone());
+                inner.generation = 1;
+                inner.status.running = true;
+            }
+            session.heartbeat_once().await;
+            if mode == PortCheck::LimitedOnce {
+                assert_eq!(agent.seen_address().as_deref(), Some(heartbeat_address));
+                tokio::time::sleep(IPV4_RETRY).await;
+            }
+            session.heartbeat_once().await;
+            session.heartbeat_once().await;
+            assert_eq!(agent.seen_address().as_deref(), Some(shown), "{heartbeat_address}");
+            assert_eq!(relay.asked.load(Ordering::SeqCst), asked, "{heartbeat_address}");
+            session.cancel.cancel();
+        }
+    }
+
+    /// heartbeat 계약 표본 (`tests/fixtures/relay-heartbeat-sample.json`, 릴레이 저장소의 같은 파일을 그대로 복사한 것).
+    /// 릴레이 시험은 이 표본을 스키마·처리기·카탈로그로 지나게 하고, 여기서는 데몬이 실제로 보내는 본문과 받는 답을 대조한다
+    fn heartbeat_sample() -> Value {
+        serde_json::from_str(include_str!("../tests/fixtures/relay-heartbeat-sample.json")).unwrap()
+    }
+
+    /// JSON 모양: 경로 → 값 형식들. 배열 원소는 `[]`, 키가 id·언어·칸 이름인 묶음은 `*`로 모은다.
+    /// 액션 `input`은 릴레이가 넘기기만 하는 JSON 스키마라 그 자체의 형식만 본다
+    fn shape(v: &Value, path: &str, out: &mut std::collections::BTreeMap<String, std::collections::BTreeSet<&'static str>>) {
+        const MAPS: &[&str] = &[
+            "metadata.allowedInstances", "metadata.fullNotice", "metadata.startNotice", "metadata.serverWords", "metadata.serverWords.*.commands",
+            "metadata.permissions", "metadata.permissions.*.members", "metadata.permissions.*.commandLevels",
+            "metadata.actions[].title", "metadata.actions[].name", "metadata.actions[].description",
+            "metadata.modules[].display_names", "metadata.modules[].module_aliases_by_language",
+            "metadata.modules[].commands.fields[].titles", "metadata.modules[].commands.fields[].descriptions",
+            "metadata.modules[].commands.fields[].aliases_by_language", "metadata.modules[].commands.fields[].inputs[].titles",
+            "latestReleases",
+        ];
+        let kind = match v {
+            Value::Null => "null",
+            Value::Bool(_) => "bool",
+            Value::Number(_) => "number",
+            Value::String(_) => "string",
+            Value::Array(_) => "array",
+            Value::Object(_) => "object",
+        };
+        out.entry(path.to_string()).or_default().insert(kind);
+        if path.ends_with("].input") {
+            return;
+        }
+        let join = |key: &str| if path.is_empty() { key.to_string() } else { format!("{path}.{key}") };
+        match v {
+            Value::Array(items) => items.iter().for_each(|i| shape(i, &format!("{path}[]"), out)),
+            Value::Object(map) if MAPS.contains(&path) => map.values().for_each(|i| shape(i, &join("*"), out)),
+            Value::Object(map) => map.iter().for_each(|(k, i)| shape(i, &join(k), out)),
+            _ => {}
+        }
+    }
+
+    /// 데몬이 보낸 값의 경로가 모두 표본에 같은 형식으로 있는가. 어긋난 (경로, 형식)을 돌려준다.
+    /// 어느 쪽이 키 이름을 바꿔도 여기서 드러난다. 표본의 null은 "값이 없을 수도 있다"라 어느 형식이든 받는다
+    fn off_contract(sent: &Value, samples: &[&Value], except: &[&str]) -> Vec<(String, &'static str)> {
+        let (mut ours, mut theirs) = (Default::default(), Default::default());
+        shape(sent, "", &mut ours);
+        samples.iter().for_each(|sample| shape(sample, "", &mut theirs));
+        ours.into_iter()
+            .filter(|(p, _)| !except.iter().any(|e| p == e || p.starts_with(&format!("{e}."))))
+            .flat_map(|(p, kinds)| {
+                let known = theirs.get(&p).cloned().unwrap_or_default();
+                kinds.into_iter().filter(move |k| !(known.contains(k) || (known.contains("null") || *k == "null") && !known.is_empty())).map(move |k| (p.clone(), k)).collect::<Vec<_>>()
+            })
+            .collect()
+    }
+
+    /// 실제 하트비트 본문(첫 전체·줄인 것)과 서버·모듈 한 줄이 표본과 같은 키·형식이고, 표본의 답(공인 주소·새로 묶인 길드·
+    /// 메타데이터 다시 달라기)을 데몬이 읽는다. 어느 저장소에서 키 이름을 바꾸면 이 시험이나 릴레이 시험이 깨진다
+    #[tokio::test]
+    async fn the_heartbeat_matches_the_contract_sample_shared_with_the_relay() {
+        use axum::{extract::State as AxState, routing::post};
+        use std::collections::VecDeque;
+        let sample = heartbeat_sample();
+        // 표본은 공개 저장소에 들어간다: 가짜 값만
+        let text = sample.to_string();
+        assert!(!text.contains("sbn_") && !text.contains("sk-"), "the sample holds no tokens or keys");
+
+        type Shared = Arc<Mutex<(Vec<Value>, VecDeque<Value>)>>;
+        async fn heartbeat(AxState(shared): AxState<Shared>, axum::Json(body): axum::Json<Value>) -> axum::Json<Value> {
+            let mut s = shared.lock().unwrap();
+            s.0.push(body);
+            axum::Json(s.1.pop_front().unwrap_or(Value::Null))
+        }
+        // 업데이트 알림(latestReleases·updateHint)은 이 시험이 보지 않는다: 실으면 실제 업데이트 확인이 시작된다
+        let mut response = sample["response"].clone();
+        for key in ["latestReleases", "updateHint"] {
+            response.as_object_mut().unwrap().remove(key);
+        }
+        let shared: Shared = Arc::new(Mutex::new((Vec::new(), VecDeque::from([response.clone(), response, sample["needMetadataResponse"].clone()]))));
+        let app = axum::Router::new().route("/heartbeat", post(heartbeat)).with_state(shared.clone());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let tmp = tempfile::tempdir().unwrap();
+        let agent = RelayAgent::new();
+        let session = test_session(&agent, &base, "sbn_h1.secret", tmp.path()).await;
+        {
+            let mut inner = agent.lock();
+            inner.cancel = Some(session.cancel.clone());
+            inner.generation = 1;
+            inner.status.running = true;
+        }
+        // 권한·허용 서버가 실리게 길드 하나를 둔다
+        let guild = "600000000000000001";
+        session.server.config_store.update_node_settings(guild, |node| {
+            node.insert("allowedInstances".into(), json!(["inst-0001"]));
+            ((), true)
+        }).await.unwrap();
+
+        assert!(session.heartbeat_once().await, "a newly linked guild is acknowledged at once");
+        session.heartbeat_once().await;
+        let sent = shared.lock().unwrap().0.clone();
+        // moduleDetails: 새 릴레이는 받지 않지만 운영 중인 릴레이 스키마가 요구한다 (`metadata`의 주석)
+        assert_eq!(off_contract(&sent[0], &[&sample["request"]], &["metadata.moduleDetails"]), vec![], "{}", sent[0]);
+        assert!(sent[0]["metadata"]["permissions"][guild].is_object() && sent[0]["metadata"]["actions"].as_array().is_some_and(|a| !a.is_empty()));
+        // 답의 공인 주소와 새로 묶인 길드를 읽었다: 다음 하트비트가 그 연결 id로 확인 응답을 싣는다
+        assert_eq!(agent.lock().status.seen_address.as_deref(), sample["response"]["address"].as_str());
+        assert_eq!(sent[1]["linkedGuildsAckIds"], json!([sample["response"]["linkedGuilds"][0]["linkId"]]));
+
+        // 릴레이가 지문을 받아 두었으면 줄여 보내고, 모른다고 하면(needMetadata) 곧바로 전체를 다시 보낸다
+        *session.metadata_sent.lock().unwrap() = sent[1]["metadataHash"].as_str().map(str::to_string);
+        assert!(session.heartbeat_once().await, "needMetadata asks for the whole metadata again");
+        let reduced = shared.lock().unwrap().0[2].clone();
+        assert_eq!(reduced["metadataUnchanged"], json!(true));
+        // 줄인 본문은 전체 본문의 일부 키다 (표본의 줄인 본문은 예시라 PC 부하·예약·확인 응답이 없다)
+        assert_eq!(off_contract(&reduced, &[&sample["reducedRequest"], &sample["request"]], &[]), vec![], "{reduced}");
+
+        // 서버·모듈 한 줄 (빈 데몬에는 없다): 표본 줄을 데몬 값으로 만들어 대조한다
+        let server = json!({
+            "id": "inst-0001", "name": "friends", "module": "minecraft", "status": "running", "access": "members",
+            "controllers": [{ "name": "Steve", "discord_id": "300000000000000002" }], "players": { "online": 2, "max": 20 },
+            "start_time": 1_731_400_000u64, "extension_status": { "docker": { "status_line": "TPS 20.0" } },
+        });
+        let usage = crate::system_monitor::InstanceMetrics {
+            id: "inst-0001".into(), name: "friends".into(), running: true, process_count: 1,
+            cpu_percent: 12.5, memory_bytes: 2048 * 1024 * 1024, disk_read_bps: 0, disk_write_bps: 0, net_rx_bps: None, net_tx_bps: None,
+        };
+        crate::supervisor::chat_link::toggle("inst-0001", "600000000000000001", "700000000000000001", None, |_| Ok::<(), ()>(())).unwrap();
+        let entry = relay_server_entry(&server, Some(&usage));
+        assert_eq!(off_contract(&entry, &[&sample["request"]["metadata"]["servers"][0]], &[]), vec![], "{entry}");
+        assert_eq!(entry.as_object().unwrap().len(), sample["request"]["metadata"]["servers"][0].as_object().unwrap().len(), "{entry}");
+
+        let module_dir = tmp.path().join("mc");
+        std::fs::create_dir_all(module_dir.join("locales")).unwrap();
+        std::fs::write(
+            module_dir.join("locales").join("ko.json"),
+            r#"{"module": {"display_name": "마인크래프트"}, "aliases": {"module": ["마크"], "commands": {"say": ["공지"]}}, "commands": {"say": {"label": "말하기", "description": "모두에게 말해요", "inputs": {"message": {"label": "메시지"}}}}}"#,
+        )
+        .unwrap();
+        let say: crate::supervisor::module_loader::CommandField = serde_json::from_value(json!({
+            "name": "say", "label": "Say", "description": "Broadcast a message", "risk": "safe",
+            "inputs": [{ "name": "message", "label": "Message", "type": "text", "required": true }],
+        }))
+        .unwrap();
+        let view = crate::chat::api::ModuleView {
+            name: "minecraft".into(),
+            game_names: vec!["Minecraft".into()],
+            module_aliases: vec!["mc".into()],
+            display_name: Some("Minecraft".into()),
+            command_aliases: vec![("say".into(), vec!["broadcast".into()])],
+            commands: vec![say],
+            presets: vec![serde_json::from_value(json!({ "id": "vanilla", "label": "Vanilla" })).unwrap()],
+            locale_dir: Some(module_dir),
+            ..Default::default()
+        };
+        let module = relay_module_entry(&view);
+        let sample_module = &sample["request"]["metadata"]["modules"][0];
+        assert_eq!(off_contract(&module, &[sample_module], &[]), vec![], "{module}");
+        let keys = |v: &Value| v.as_object().unwrap().keys().cloned().collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(keys(&module), keys(sample_module), "{module}");
+        assert_eq!(keys(&module["commands"]["fields"][0]), keys(&sample_module["commands"]["fields"][0]), "{module}");
+        session.cancel.cancel();
+    }
+
+    /// 릴레이가 읽지 않는 값(기능 목록, 옛 전역 별명)은 하트비트에 싣지 않는다. 릴레이 스키마가 버리는 값이다
+    #[tokio::test]
+    async fn heartbeat_leaves_out_what_the_relay_drops() {
+        let tmp = tempfile::tempdir().unwrap();
+        let session = test_session(&RelayAgent::new(), "http://127.0.0.1:9", "sbn_h1.secret", tmp.path()).await;
+        let meta = session.metadata().await;
+        assert!(meta.get("features").is_none());
+        assert_eq!(meta["botConfig"].as_object().unwrap().keys().collect::<Vec<_>>(), vec!["prefixes"]);
+        // 2026-11-12 전 릴레이 스키마는 줄이지 않은 하트비트에 이 둘을 요구한다
+        assert!(meta["modules"].is_array() && meta["moduleDetails"].is_object());
     }
 
     /// 새로 묶인 길드를 적용했으면 다음 하트비트가 릴레이가 준 연결 id를 확인 응답(`linkedGuildsAckIds`)으로 싣는다.
@@ -2908,16 +3423,22 @@ mod tests {
         dm_notice_meta(&mut meta, &BotConfig::default());
         assert_eq!(meta, json!({}));
 
-        let mut bot: BotConfig = serde_json::from_value(json!({ "backupNotice": "off", "dmNotice": { "crash": false, "chatbotUsage": false } })).unwrap();
+        let mut bot: BotConfig = serde_json::from_value(json!({ "backupNotice": "off", "dmNotice": { "crash": false, "unresponsive": false, "chatbotUsage": false } })).unwrap();
         assert_eq!(bot.backup_notice, BackupNotice::Off);
         assert!(bot.dm_notice.moderation, "빠진 칸은 켜짐");
         dm_notice_meta(&mut meta, &bot);
-        assert_eq!(meta, json!({ "backupNotice": "off", "dmOff": ["crash", "chatbotUsage"] }));
+        assert_eq!(meta, json!({ "backupNotice": "off", "dmOff": ["crash", "unresponsive", "chatbotUsage"] }));
 
         bot.backup_notice = BackupNotice::Failures;
         let mut meta = json!({});
         dm_notice_meta(&mut meta, &bot);
         assert_eq!(meta["backupNotice"], "failures");
+
+        // 켜야 보내는 종류(PC 연결 끊김)는 켰을 때만 `dmOn`으로 싣고, 끈 종류에는 넣지 않는다
+        let bot: BotConfig = serde_json::from_value(json!({ "dmNotice": { "offline": true } })).unwrap();
+        let mut meta = json!({});
+        dm_notice_meta(&mut meta, &bot);
+        assert_eq!(meta, json!({ "dmOn": ["offline"] }));
     }
 
     // 켜짐 알림을 켠 서버는 길드마다 싣는다. 켠 서버가 없는 길드는 싣지 않는다 (릴레이는 없으면 알리지 않는다)
@@ -2993,6 +3514,8 @@ mod tests {
         assert_eq!(relay_event(&failed).unwrap()["data"], json!({"instanceId": "i", "instance": "mc1", "kind": "manual", "ok": false}));
         assert!(relay_event(&ev("action.run", json!({"action": "server.start"}))).is_none());
         assert!(relay_event(&ev("provision.progress", json!({}))).is_none());
+        let silent = ev("instance.unresponsive", json!({"at": 1, "instanceId": "i", "instance": "mc1", "minutes": 10, "restarting": false, "reason": "connection refused"}));
+        assert_eq!(relay_event(&silent).unwrap()["data"], json!({"at": 1, "instanceId": "i", "instance": "mc1", "minutes": 10, "restarting": false}));
         // R39 준비 알림은 계약 필드만 (디스코드 "다 켜졌어요")
         let ready = ev("instance.ready", json!({"at": 1, "instanceId": "i", "instance": "mc1", "ok": false, "code": "start_failed", "line": "C:\\x"}));
         assert_eq!(relay_event(&ready).unwrap()["data"], json!({"at": 1, "instanceId": "i", "instance": "mc1", "ok": false, "code": "start_failed"}));
@@ -3018,6 +3541,9 @@ mod tests {
         assert_eq!(relay_event(&started).unwrap()["data"], json!({"at": 1, "instanceId": "i", "instance": "mc1", "source": "external", "unexpected": true}));
         let stopped = ev("instance.stopped", json!({"at": 1, "instanceId": "i", "instance": "mc1", "source": "gui", "userName": "집 PC", "kind": "user_stop"}));
         assert_eq!(relay_event(&stopped).unwrap()["data"], json!({"at": 1, "instanceId": "i", "instance": "mc1", "source": "gui", "userName": "집 PC", "kind": "user_stop"}));
+        // 접속자가 없어 자동 정지: 비어 있던 분
+        let idle = ev("instance.stopped", json!({"at": 1, "instanceId": "i", "instance": "mc1", "source": "idle", "kind": "user_stop", "idleMinutes": 30}));
+        assert_eq!(relay_event(&idle).unwrap()["data"]["idleMinutes"], 30);
         // 여러 단계 실행은 디스코드에서 시작한 것만
         assert!(relay_event(&ev("plan.done", json!({"runId": "r", "ok": true}))).is_none());
         assert_eq!(relay_event(&ev("plan.done", json!({"runId": "r", "guildId": "g", "ok": true}))).unwrap()["data"]["guildId"], "g");

@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import type { ApiBody } from '../../types/daemon';
 import { safeShowToast } from '../../utils/helpers';
 import { Icon } from '../Icon';
-import { AppBarPill } from './AppBarPill';
+import { AppBarPill, PillRing } from './AppBarPill';
 
 const POLL_MS = 1000;
 const FAILED_POLL_MS = 5000; // 실패는 저장되지 않아 다음 모듈 호출이 다시 시도한다. 그 결과를 따라간다
@@ -54,26 +54,7 @@ export function RuntimePreflight({ daemonStatus }: { daemonStatus?: string }) {
     const label = failed
         ? t('shell.preflight_failed', { error: shown.error || '-' })
         : t('shell.preflight_python', { percent });
-    const r = 7;
-    const c = 2 * Math.PI * r;
-
-    const ring = (
-        <svg viewBox="0 0 18 18" width="18" height="18" aria-hidden="true">
-            <circle className="preflight-track" cx="9" cy="9" r={r} fill="none" strokeWidth="2.5" />
-            <circle
-                className={clsx('preflight-fill', { indeterminate: percent === 0 })}
-                cx="9"
-                cy="9"
-                r={r}
-                fill="none"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeDasharray={c}
-                strokeDashoffset={percent === 0 ? c * 0.75 : c * (1 - percent / 100)}
-                transform="rotate(-90 9 9)"
-            />
-        </svg>
-    );
+    const ring = <PillRing percent={percent === 0 ? undefined : percent} />;
 
     // 실패는 이유를 봐야 하므로 누를 수 있는 버튼 (키보드 포커스로도 말풍선이 뜨고, 누르면 알림으로 전문을 보여 준다)
     // 진행 중엔 퍼센트를 글자로도 보여 준다 (말풍선에만 두지 않는다)

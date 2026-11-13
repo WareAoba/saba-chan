@@ -117,6 +117,17 @@
                             <p class="hint error" id="components-error" hidden></p>
                         </div>
                         <div class="card install-only">
+                            <label class="label" id="label-channel" for="update-channel">Update Channel</label>
+                            <div class="row">
+                                <select id="update-channel" class="input">
+                                    <option value="stable">Stable</option>
+                                    <option value="rc">Preview (release candidate)</option>
+                                    <option value="beta">Beta (early, may be unstable)</option>
+                                </select>
+                            </div>
+                            <p class="hint" id="hint-channel">Installs the latest release of this channel, and later updates come from it too. You can change it in the app settings after installing.</p>
+                        </div>
+                        <div class="card install-only">
                             <span class="label" id="label-options">Options</span>
                             <label class="cb">
                                 <input type="checkbox" id="chk-desktop" checked />

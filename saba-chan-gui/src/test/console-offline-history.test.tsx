@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ServerConsole } from '../components/servers/ServerConsole';
 import { useMultiConsole } from '../hooks/useMultiConsole';
 import { useServerActions } from '../hooks/useServerActions';
-import { useConsoleStore } from '../stores/useConsoleStore';
+import { type ConsoleEntry, useConsoleStore } from '../stores/useConsoleStore';
 import { useServerStore } from '../stores/useServerStore';
 import type { Server } from '../stores/useServerStore';
 
@@ -16,7 +16,7 @@ const consoleOf = (server: Server, lines: unknown[]) =>
     render(
         <ServerConsole
             server={server}
-            state={{ lines, input: '' }}
+            state={{ lines, input: '' } as ConsoleEntry}
             quickCommands={[]}
             openConsole={() => {}}
             setConsoleInput={() => {}}

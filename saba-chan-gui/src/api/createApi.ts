@@ -9,6 +9,7 @@ import type { BackdropSupport, WindowBackdropConfig } from '../utils/themeManage
 import type {
     ApiBody,
     AgentStatus,
+    RelayLink,
     ApiResult,
     DaemonError,
     ExtensionListResponse,
@@ -50,7 +51,7 @@ interface DialogArgs {
     [key: string]: unknown;
 }
 
-export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub, 'on' | 'dispatch'> }) {
+export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub, 'on' | 'dispatch' | 'live'> }) {
     const { request, call } = createDaemonClient(invoke);
     const get = <T = ApiBody>(path: string, opts?: RequestOptions) => request<T>('get', path, undefined, opts);
     const post = (path: string, body?: unknown, opts?: RequestOptions) => request('post', path, body, opts);
@@ -470,6 +471,8 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
                                     status: String(status),
                                     error: data.error || error.message,
                                 }),
+                                // 웹: 릴레이의 504(remote_timeout)도 아직 지우는 중일 수 있다
+                                error_code: data.error_code,
                             };
                     }
                 }
@@ -551,7 +554,10 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
             if (extraArgs !== undefined && extraArgs !== null) body.extra_args = extraArgs;
             return call('post', `/api/instance/${encodeURIComponent(id)}/launch-preview`, body, 15000);
         },
-        instanceResetServer: (instanceId: string) => call('post', `/api/instance/${encodeURIComponent(instanceId)}/server/reset`, {}),
+        // 초기화가 지울 것 (범위마다 지금 있는 항목과 크기). 모듈이 알려 주지 않으면 error_code not_supported
+        instanceResetPreview: (instanceId: string) => call('get', `/api/instance/${encodeURIComponent(instanceId)}/server/reset`),
+        instanceResetServer: (instanceId: string, body: { scope?: string; backup?: boolean } = {}) =>
+            call('post', `/api/instance/${encodeURIComponent(instanceId)}/server/reset`, body, BACKUP_TIMEOUT),
         // 게임 명령 — 해석과 라우팅은 데몬이 한다
         executeCommand: async (id: string, command: { command?: string; args?: Record<string, unknown> | null }): Promise<ApiBody> => {
             const payload = {
@@ -603,6 +609,8 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         instanceCommands: (id: string) => call('get', `/api/instance/${encodeURIComponent(id)}/commands`),
         // 지금 접속한 사람 이름 (모듈 players 함수가 게임에 묻는다). 부를 때만 묻고 주기적으로 부르지 않는다
         instancePlayers: (id: string) => call('get', `/api/instance/${encodeURIComponent(id)}/players`),
+        // 플레이어 목록 (모듈 `[[lists]]`: 화이트리스트·관리자·밴 등)과 지금 명단. 넣기·빼기는 executeCommand로 한다
+        instanceLists: (id: string) => call('get', `/api/instance/${encodeURIComponent(id)}/lists`),
         // 서버 점검: 모듈 validate(켜기 전 점검)·diagnose(최근 로그 진단). 모듈 Python을 돌리므로 넉넉히 기다린다
         instanceValidate: (id: string) => call('post', `/api/instance/${encodeURIComponent(id)}/validate`, {}, 60000),
         instanceDiagnose: (id: string) => call('post', `/api/instance/${encodeURIComponent(id)}/diagnose`, {}, 60000),
@@ -753,9 +761,23 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
 
         // ── 관리 프로세스 콘솔 ──
         // opts.spans: 데몬이 나눈 하이라이트 조각도 받는다
-        managedConsole: (instanceId: string, since = 0, count = 200, opts: { spans?: boolean } = {}) => {
-            const qs = queryString({ since, count, spans: opts?.spans ? 1 : undefined });
-            return call('get', instancePath(instanceId, `/console${qs}`), undefined, 5000);
+        // wait(초): 새 줄이 없으면 데몬이 그만큼 붙잡는다 (답에 waits: true). epoch: 아는 버퍼 세대 (바뀌었으면 바로 답한다).
+        // diskSeen: 꺼진 서버의 디스크 기록을 이미 받았다 (기다리는 동안 다시 보내지 않는다)
+        managedConsole: (
+            instanceId: string,
+            since = 0,
+            count = 200,
+            opts: { spans?: boolean; wait?: number; epoch?: number; diskSeen?: boolean } = {},
+        ) => {
+            const qs = queryString({
+                since,
+                count,
+                spans: opts?.spans ? 1 : undefined,
+                wait: opts?.wait || undefined,
+                epoch: opts?.epoch,
+                disk: opts?.diskSeen ? 'seen' : undefined,
+            });
+            return call('get', instancePath(instanceId, `/console${qs}`), undefined, opts?.wait ? (opts.wait + 10) * 1000 : 5000);
         },
         // 답을 못 받았으면 보냈는지 모른다: 실패 본문의 연결 오류 코드(error_code)로 화면이 다른 길로 다시 보내지 않는다
         managedStdin: (instanceId: string, command: string) =>
@@ -764,10 +786,12 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         // ── 콘솔 팝아웃 (창은 Rust가 만든다) ──
         consolePopout: (instanceId: string, serverName: string) => invoke('console_popout', { instanceId, serverName }),
         consolePopoutList: () => invoke('console_popout_list'),
-        daemonConsole: (opts?: { since?: number; count?: number }) => {
-            const { since, count } = opts || {};
-            const qs = queryString({ since, count: count || undefined });
-            return call('get', `/api/daemon/console${qs}`, undefined, 10000);
+        // wait(초): since 뒤 새 줄이 없으면 데몬이 그만큼 붙잡는다 (답에 waits: true).
+        // 데몬이 나눈 낱말 조각(spans)도 늘 받는다 (DaemonLogLine이 칠한다)
+        daemonConsole: (opts?: { since?: number; count?: number; wait?: number }) => {
+            const { since, count, wait } = opts || {};
+            const qs = queryString({ since, count: count || undefined, wait: wait || undefined, spans: 1 });
+            return call('get', `/api/daemon/console${qs}`, undefined, wait ? (wait + 10) * 1000 : 10000);
         },
         consolePopin: (instanceId: string) => invoke('console_popin', { instanceId }),
         // PIP를 닫는다. reopen: 다음에 다시 띄울지 (사용자가 닫으면 false, 서버가 꺼져 닫으면 true)
@@ -901,14 +925,25 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         discordBotStatus: async (): Promise<AgentStatus> => {
             try {
                 const { data } = await get('/api/relay/agent', { timeout: 3000 });
+                // 에이전트가 하트비트로 아는 연결 상태 (0.1.14~). 있으면 화면이 릴레이에 따로 묻지 않는다
+                const link: RelayLink | undefined =
+                    typeof data?.connected === 'boolean' ? { connected: data.connected, error: String(data.lastError || ''), heard: data.lastHeartbeatAt != null } : undefined;
                 // 릴레이가 이 앱 버전을 받지 않는다: 세션은 살아 있어도 명령이 오지 않는다
                 if (data?.lastErrorCode === 'agent_too_old')
-                    return { status: 'too_old', running: !!data.running, minVersion: data.minVersion ?? null };
-                if (data?.running) return 'running';
-                // 같은 디스코드 계정이 다른 PC를 페어링해서 데몬이 에이전트를 멈췄다
-                if (data?.lastErrorCode === 'token_replaced') return 'replaced';
-                // 저장된 릴레이 주소가 https(루프백만 http)가 아니어서 데몬이 에이전트를 띄우지 않았다
-                return data?.lastErrorCode === 'invalid_relay_url' ? 'invalid_relay_url' : 'stopped';
+                    return { status: 'too_old', running: !!data.running, minVersion: data.minVersion ?? null, ...(link ? { link } : {}) };
+                // 세션은 살아 있지만 릴레이가 상태 보고를 검증에서 거절했다: 이대로면 디스코드에서 오프라인이 된다
+                if (data?.running && data?.heartbeatRejected)
+                    return { status: 'rejected', running: true, reason: data.heartbeatRejected, ...(link ? { link } : {}) };
+                const status = data?.running
+                    ? 'running'
+                    : // 같은 디스코드 계정이 다른 PC를 페어링해서 데몬이 에이전트를 멈췄다
+                      data?.lastErrorCode === 'token_replaced'
+                      ? 'replaced'
+                      : // 저장된 릴레이 주소가 https(루프백만 http)가 아니어서 데몬이 에이전트를 띄우지 않았다
+                        data?.lastErrorCode === 'invalid_relay_url'
+                        ? 'invalid_relay_url'
+                        : 'stopped';
+                return link ? { status, running: !!data?.running, link } : status;
             } catch (_e) {
                 // 늦거나 닿지 못했다: 꺼졌는지 모른다 (스토어가 두 번 연달아 모를 때만 꺼짐으로 본다)
                 return 'unknown';
@@ -1002,6 +1037,8 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         },
         // 데몬 이벤트 스트림: cb({id, type, data}). 돌려주는 함수로 해제
         onDaemonEvent: (callback: Listener) => hub.on('events:message', callback),
+        // 셸이 지금 이벤트 스트림에 붙어 있는가 (`events:live`, 허브가 기억한다)
+        daemonEventsLive: () => hub.live(),
 
         // 내보내기/가져오기: 파일은 데몬이 읽고 쓴다. 여기서는 경로만 고른다
         dataExport: async (opts: { secrets?: boolean } = {}) => {
@@ -1097,11 +1134,11 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         // 원격 데몬 (01 §1.4.2): 고른 데몬과 상관없이 이 PC의 데몬이 답한다. 지우기는 204라 본문이 없다
         remoteSettings: () => call('get', '/api/remote/settings'),
         remoteSettingsSet: (patch: ApiBody) => call('put', '/api/remote/settings', patch),
-        remoteClients: () => call('get', '/api/remote/clients'),
-        remoteRevoke: async (hostId: string) =>
-            (await call('delete', `/api/remote/clients/${encodeURIComponent(hostId)}`)) || { ok: true },
         remotePeers: () => call('get', '/api/remote/peers', undefined, 30000),
         remoteDaemons: () => call('get', '/api/remote/daemons'),
+        // 내 PC 하나(이 PC 포함)의 이름 (서버쨩의 PC 이름, 어느 PC에서든 바꾼다) → {hostId, name}
+        remoteRenamePc: (hostId: string, name: string) =>
+            call('put', `/api/remote/peers/${encodeURIComponent(hostId)}/name`, { name }, 15000),
         remoteConnect: (hostId: string) => call('post', '/api/remote/daemons', { hostId }, 30000),
         remoteForget: async (hostId: string) =>
             (await call('delete', `/api/remote/daemons/${encodeURIComponent(hostId)}`)) || { ok: true },
@@ -1131,10 +1168,10 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         // 합쳐 보기 (G1c): 이 PC와 원격 데몬마다의 서버 {daemons:[{hostId(이 PC는 null), name, ok, error_code?, servers}]}
         // 데몬이 원격 데몬 하나를 30초까지 기다린다 (01 §1.4.2 8)
         remoteServers: () => call('get', '/api/remote/servers', undefined, 40000),
-        // 합쳐 보기에서 다른 데몬의 서버 하나를 켜고 끈다. hostId가 없으면 이 PC
-        remoteInstanceAction: async (hostId: string | null, id: string, action: string): Promise<ApiBody> => {
+        // 합쳐 보기에서 다른 데몬의 서버 하나를 켜고 끈다. hostId가 없으면 이 PC. `force`: 저장 없이 정지
+        remoteInstanceAction: async (hostId: string | null, id: string, action: string, opts: { force?: boolean } = {}): Promise<ApiBody> => {
             if (!['start', 'stop', 'restart'].includes(action)) return { success: false, error: `unknown action ${action}` };
-            const body = action === 'start' ? {} : { force: false };
+            const body = action === 'start' ? {} : { force: !!opts?.force };
             try {
                 return (
                     await request('post', `/api/instance/${encodeURIComponent(id)}/${action}`, body, {
@@ -1142,6 +1179,15 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
                         target: hostId || 'local',
                     })
                 ).data;
+            } catch (caught) {
+                const error = caught as DaemonError;
+                return error.response ? failureBody(error) : connectionError(error);
+            }
+        },
+        // 합쳐 보기에서 켜려는 서버의 약관 동의를 그 데몬에 기록한다
+        remoteInstanceAgreements: async (hostId: string | null, id: string, accept: string[]): Promise<ApiBody> => {
+            try {
+                return (await request('post', instancePath(id, '/agreements'), { accept }, { target: hostId || 'local' })).data;
             } catch (caught) {
                 const error = caught as DaemonError;
                 return error.response ? failureBody(error) : connectionError(error);
@@ -1187,7 +1233,38 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
                 undefined,
                 BACKUP_TIMEOUT,
             ),
+        // 백업 내보내기·가져오기: zip은 데몬이 읽고 쓴다. 여기서는 경로만 고른다
+        instanceBackupExport: async (id: string, name: string, defaultName: string): Promise<ApiBody> => {
+            const filePath = await pickLocal('dialog_save_file', {
+                defaultPath: defaultName,
+                filters: [{ name: 'Zip', extensions: ['zip'] }],
+            });
+            if (!filePath) return { canceled: true };
+            return call(
+                'post',
+                instancePath(id, `/backups/${encodeURIComponent(name)}/export`),
+                { path: filePath },
+                BACKUP_TIMEOUT,
+            );
+        },
+        // path 없이 부르면 파일을 고르게 하고, 결과에 path를 붙인다 (`preview` 뒤 같은 path로 다시 부른다)
+        instanceBackupImport: async (id: string, opts: { path?: string; preview?: boolean } = {}): Promise<ApiBody> => {
+            let filePath = opts.path || null;
+            if (!filePath) {
+                filePath = await pickLocal('dialog_open_file', { filters: [{ name: 'Zip', extensions: ['zip'] }] });
+                if (!filePath) return { canceled: true };
+            }
+            const body = await call(
+                'post',
+                instancePath(id, '/backups/import'),
+                { path: filePath, preview: !!opts.preview },
+                BACKUP_TIMEOUT,
+            );
+            return { ...body, path: filePath };
+        },
         instanceScheduleGet: (id: string) => call('get', instancePath(id, '/schedule')),
+        // 모든 서버의 다가오는 예약 (작업 기록 화면). hours 안에 도는 것만
+        schedulesUpcoming: (hours?: number) => call('get', `/api/schedules/upcoming${queryString({ hours })}`),
         instanceScheduleSave: (id: string, body: ApiBody) => call('put', instancePath(id, '/schedule'), body),
         chatbotGet: () => call('get', '/api/chatbot'),
         chatbotSave: (patch: ApiBody) => call('put', '/api/chatbot', patch),

@@ -125,7 +125,6 @@
   "detail": {
     "backups": "Sauvegardes",
     "players": "Joueurs",
-    "more": "Plus",
     "tabs": "Menu du serveur",
     "uptime": "En marche depuis {{time}}",
     "port_check": "Vérifier la redirection de ports"
@@ -135,7 +134,9 @@
     "placeholder": "Saisissez une commande",
     "send": "Envoyer",
     "danger_title": "Cette commande est dangereuse",
-    "danger_message": "Voulez-vous vraiment envoyer {{command}} ?"
+    "danger_message": "Voulez-vous vraiment envoyer {{command}} ?",
+    "danger_again": "« {{command}} » est difficile à annuler. Appuyez encore une fois sur Envoyer pour l’exécuter.",
+    "danger_again_described": "{{description}}. Appuyez encore une fois sur Envoyer pour l’exécuter."
   },
   "settings": {
     "game": "Réglages du jeu",
@@ -172,7 +173,8 @@
       "manual": "Manuelle",
       "scheduled": "Planifiée",
       "pre-update": "Avant mise à jour",
-      "pre-restore": "Avant restauration"
+      "pre-restore": "Avant restauration",
+      "imported": "Importée"
     }
   },
   "agreements": {
@@ -265,8 +267,6 @@
     "update": "Mettre à jour",
     "update_to": "v{{version}} disponible",
     "updated": "Mis à jour.",
-    "check_ok": "Vérification : n'utilise que les fonctions déclarées.",
-    "check_failed": "Impossible d'obtenir le résultat de la vérification.",
     "check_undeclared": "Vérification : utilise des fonctions non déclarées par le module ({{perms}}). Assurez-vous de faire confiance à ce module."
   },
   "plugins": {
@@ -303,12 +303,14 @@
   },
   "errors": {
     "start_cancelled": "Le serveur a été arrêté pendant son démarrage ; il n'a donc pas été lancé.",
+    "still_stopping": "Le serveur est encore en cours d'arrêt, il n'a donc pas été redémarré. Démarrez-le une fois qu'il sera complètement arrêté.",
     "generic": "Impossible de terminer la requête.",
     "remote_not_allowed": "Ceci n'est possible que dans l'app Saba-chan sur le PC.",
     "remote_field_blocked": "Ces réglages ne se modifient que sur le PC : {{fields}}",
     "remote_bad_path": "Cette requête n'est pas acceptée.",
     "remote_bad_request": "Cette requête n'est pas acceptée.",
     "remote_timeout": "Ce n'était pas terminé en 2 minutes, c'est donc considéré comme un échec. Vérifiez le résultat sur le PC.",
+    "still_working": "Ce n'était pas terminé au bout de 2 minutes. Le PC y travaille peut-être encore ; revérifiez dans un instant.",
     "remote_host_gone": "La connexion avec le PC a été perdue avant la fin de la requête.",
     "remote_busy": "Trop de requêtes. Réessayez dans un instant."
   },
@@ -425,6 +427,9 @@
     "off": "Désactivé",
     "saved": "Modifié.",
     "pc": "PC",
+    "guild_here": "Ce PC",
+    "guild_other_pc": "Autre PC",
+    "guild_no_pc": "Aucun PC",
     "no_guilds": "Aucun serveur Discord que vous pouvez gérer.",
     "other_pc": "Ce serveur est connecté à un autre PC. Modifiez-le depuis le lien /saba web de ce PC.",
     "err": {
@@ -536,6 +541,7 @@
     "channel_board": "Salon du tableau d'état",
     "sleep_now": "Endormir maintenant",
     "awake": "Éveillée",
+    "sleep_needs_pc": "Disponible une fois un PC associé",
     "basics_desc": "Langue et emojis de ce serveur",
     "music_desc": "Joue de la musique dans les salons vocaux",
     "reading_desc": "Lit le chat à voix haute dans les salons vocaux",

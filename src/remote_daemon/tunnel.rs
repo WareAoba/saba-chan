@@ -5,15 +5,14 @@
 //!
 //! 릴레이는 두 데몬의 TLS 암호문만 넘긴다. 원격 포트의 인증(짝 맺은 PC 토큰)은 직접 연결과 같다
 
-use std::collections::HashMap;
-use std::sync::{Arc, LazyLock, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 
-use axum::body::Body;
 use futures_util::{SinkExt, StreamExt};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio_tungstenite::tungstenite::{client::IntoClientRequest, http::HeaderValue, Message};
 
+use super::h2::{self, Sender};
 use super::relay::Target;
 use super::tls;
 
@@ -21,8 +20,6 @@ use super::tls;
 const DIAL_TIMEOUT: Duration = Duration::from_secs(20);
 /// 웹소켓 프레임 하나에 싣는 바이트
 const CHUNK: usize = 64 * 1024;
-
-pub type Sender = hyper::client::conn::http2::SendRequest<Body>;
 
 /// `https://relay` → `wss://relay/node/tunnel?<query>` (모의 릴레이는 http → ws)
 fn url(relay_base: &str, query: &str) -> String {
@@ -243,15 +240,7 @@ async fn dial(relay: &Target, host_id: &str, pin: &str) -> Option<Sender> {
             .connect(name, near)
             .await
             .ok()?;
-        let (send, conn) = hyper::client::conn::http2::Builder::new(hyper_util::rt::TokioExecutor::new())
-            .timer(hyper_util::rt::TokioTimer::new())
-            .keep_alive_interval(Duration::from_secs(25))
-            .keep_alive_timeout(Duration::from_secs(20))
-            .handshake(hyper_util::rt::TokioIo::new(stream))
-            .await
-            .ok()?;
-        tokio::spawn(conn);
-        Some(send)
+        h2::handshake(stream).await
     };
     let sender = tokio::time::timeout(DIAL_TIMEOUT, connect).await.ok().flatten();
     if sender.is_none() {
@@ -260,42 +249,38 @@ async fn dial(relay: &Target, host_id: &str, pin: &str) -> Option<Sender> {
     sender
 }
 
-type Slot = Arc<tokio::sync::Mutex<Option<Sender>>>;
+/// 릴레이·원격 PC마다 연결 하나
+static OPEN: h2::Connections<(String, String)> = h2::Connections::new();
 
-/// 릴레이·원격 PC마다 연결 하나. 여는 동안 같은 PC의 다른 요청은 그 연결을 기다린다
-static OPEN: LazyLock<Mutex<HashMap<(String, String), Slot>>> = LazyLock::new(Mutex::default);
-
-fn slot(relay: &Target, host_id: &str) -> Slot {
-    let key = (relay.base.clone(), host_id.to_string());
-    OPEN.lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .entry(key)
-        .or_default()
-        .clone()
+fn key(relay: &Target, host_id: &str) -> (String, String) {
+    (relay.base.clone(), host_id.to_string())
 }
 
 /// 이 PC까지 열린 터널이 있는가 (테스트가 잊기 뒤 터널을 놓았는지 본다)
 #[cfg(test)]
-pub fn is_open(relay: Option<&Target>, host_id: &str) -> bool {
-    relay.is_some_and(|r| {
-        slot(r, host_id)
-            .try_lock()
-            .is_ok_and(|s| s.as_ref().is_some_and(|s| !s.is_closed()))
-    })
+pub async fn is_open(relay: Option<&Target>, host_id: &str) -> bool {
+    match relay {
+        Some(r) => h2::live(&OPEN.hold(key(r, host_id)).await).is_some(),
+        None => false,
+    }
 }
 
-/// 원격 데몬을 잊으면 그 PC까지 열어 둔 터널을 놓는다 (연결을 쥔 것이 없어지면 HTTP/2 연결과 터널이 닫힌다.
-/// 릴레이는 한 PC가 여는 터널 수를 묶는다)
+/// 원격 데몬을 잊으면 그 PC까지 열어 둔 터널을 놓는다 (연결을 쥔 것과 그 위의 요청·스트림이 없어지면
+/// HTTP/2 연결과 터널이 닫힌다. 릴레이는 한 PC가 여는 터널 수를 묶는다)
 pub fn close(host_id: &str) {
-    OPEN.lock().unwrap_or_else(|e| e.into_inner()).retain(|(_, h), _| h != host_id);
+    OPEN.retain(|(_, h)| h != host_id);
+}
+
+/// 그 PC에 직접 닿게 되면 이 릴레이로 열어 둔 터널을 놓는다 (그 위에서 받던 스트림은 끝날 때까지 간다)
+pub fn release(relay: &Target, host_id: &str) {
+    OPEN.remove(&key(relay, host_id));
 }
 
 /// 열린 터널을 쓰고, 없거나 끊겼으면 새로 연다
 pub async fn sender(relay: &Target, host_id: &str, pin: &str) -> Option<Sender> {
-    let slot = slot(relay, host_id);
-    let mut open = slot.lock().await;
-    if let Some(s) = open.as_ref().filter(|s| !s.is_closed()) {
-        return Some(s.clone());
+    let mut open = OPEN.hold(key(relay, host_id)).await;
+    if let Some(s) = h2::live(&open) {
+        return Some(s);
     }
     *open = dial(relay, host_id, pin).await;
     if open.is_some() {
@@ -304,22 +289,10 @@ pub async fn sender(relay: &Target, host_id: &str, pin: &str) -> Option<Sender> 
     open.clone()
 }
 
-/// HTTP/2 요청은 절대 주소를 쓴다 (`:authority`)
-pub fn absolute(req: &mut hyper::Request<Body>) {
-    let path = req
-        .uri()
-        .path_and_query()
-        .map(|p| p.as_str().to_string())
-        .unwrap_or_else(|| "/".into());
-    if let Ok(uri) = format!("https://{}{}", tls::SERVER_NAME, path).parse() {
-        *req.uri_mut() = uri;
-    }
-    req.headers_mut().remove(hyper::header::HOST);
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
 
     fn env<'a>(pairs: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
         move |k| pairs.iter().find(|(n, _)| *n == k).map(|(_, v)| v.to_string())

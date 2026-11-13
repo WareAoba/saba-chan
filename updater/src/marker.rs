@@ -33,6 +33,13 @@ pub struct UpdateCompletionMarker {
     /// `UpdateConfig::failed_release`에 따로 둔다
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
+    /// 사용자 되돌리기 전의 코어 판 (`result: "reverted"`, `version`은 돌아간 판)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replaced_by: Option<String>,
+    /// 사용자가 고른 묶음 중 새 코어를 기다리게 둔 모듈·익스텐션 키 (업데이터 `apply_staged`). 받아 둔 채 남고,
+    /// 건강한 새 데몬이 업데이터의 감시가 끝난 뒤 마저 바꿔 이 마커에 결과를 더한다 (`finish_deferred`)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub deferred: Vec<String>,
 }
 
 /// 릴리즈 버전과 언어별 패치노트
@@ -78,7 +85,40 @@ impl UpdateCompletionMarker {
             result: None,
             reason: None,
             version: None,
+            replaced_by: None,
+            deferred: Vec::new(),
         }
+    }
+
+    /// 적용 결과 (업데이터 `apply_staged`, 데몬이 바로 적용한 것). `deferred`는 새 코어를 기다리게 둔 키
+    pub fn applied(applied: Vec<String>, failed: Vec<String>, deferred: Vec<String>, release: Option<ReleaseSummary>) -> Self {
+        let mut message = if failed.is_empty() {
+            format!("{} updates applied: {}", applied.len(), applied.join(", "))
+        } else {
+            format!("{} applied, {} failed", applied.len(), failed.len())
+        };
+        if !deferred.is_empty() {
+            message.push_str(&format!("; waiting for the new core: {}", deferred.join(", ")));
+        }
+        Self { message: Some(message), success: failed.is_empty(), failed, release, deferred, ..Self::success(applied) }
+    }
+
+    /// 새 코어를 기다리게 둔 것(`deferred`) 중 `done`을 데몬이 마저 적용했다: 같은 묶음의 결과에 더한다.
+    /// 바뀐 모듈의 익스텐션을 다시 맞추게 하고(`extensions_prepared`), 실패가 있으면 확인했던 결과도 다시 알린다
+    pub fn finish_deferred(self, done: &[String], applied: &[String], failed: &[String]) -> Self {
+        let deferred = self.deferred.iter().filter(|k| !done.contains(k)).cloned().collect();
+        let acknowledged = self.acknowledged && failed.is_empty();
+        let mut all_applied = self.updated_components;
+        all_applied.extend_from_slice(applied);
+        let mut all_failed = self.failed;
+        all_failed.extend_from_slice(failed);
+        Self { acknowledged, ..Self::applied(all_applied, all_failed, deferred, self.release) }
+    }
+
+    /// 같은 판으로 다시 받은 복구(`update repair`)의 결과 (`result: "repaired"`). 업데이트가 아니라 패치노트를 싣지 않고,
+    /// 성공했으면 확인한 것으로 남긴다: 앱이 업데이트로 알리지 않고 `update last`(확인한 것까지)로 본다
+    pub fn repaired(self) -> Self {
+        Self { result: Some("repaired".into()), acknowledged: self.success, release: None, ..self }
     }
 
     /// 파일을 바꾸지 않고 끝났다 (예: 예전 데몬이 끝나지 않음 `wait_pid_timeout`). 받아 둔 것은 그대로 남는다
@@ -107,6 +147,24 @@ impl UpdateCompletionMarker {
         }
     }
 
+    /// 사용자가 직전 판(`to`)으로 되돌렸다 (`result: "reverted"`). 자동 되돌림(`rolled_back`)과 달리 받아 둔 업데이트를
+    /// 다시 적용할 준비가 아니다: 업데이트 단계를 바꾸지 않는다. 다 되돌리지 못했으면 `incomplete`에 되살리는 법.
+    /// 확인한 것으로 남긴다: 앱이 업데이트 결과로 알리지 않고, `update last`(확인한 것까지)로 본다
+    pub fn reverted(to: &str, from: &str, incomplete: Option<String>) -> Self {
+        Self {
+            acknowledged: true,
+            replaced_by: Some(from.into()),
+            success: incomplete.is_none(),
+            message: Some(match incomplete {
+                None => format!("Rolled back from {from} to {to}"),
+                Some(hint) => format!("Could not fully roll back from {from} to {to}; {hint}"),
+            }),
+            result: Some("reverted".into()),
+            version: Some(to.into()),
+            ..Self::failure(String::new())
+        }
+    }
+
     pub fn failure(message: String) -> Self {
         Self {
             timestamp: chrono::Utc::now().to_rfc3339(),
@@ -120,6 +178,8 @@ impl UpdateCompletionMarker {
             result: None,
             reason: None,
             version: None,
+            replaced_by: None,
+            deferred: Vec::new(),
         }
     }
 

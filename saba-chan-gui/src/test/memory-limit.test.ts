@@ -64,6 +64,24 @@ describe('메모리 상한 칸', () => {
         expect(window.showToast).toHaveBeenCalledWith(expect.stringMatching(/format/i), 'warning', 4000, undefined);
     });
 
+    it('서버가 도는 PC의 OS가 상한을 걸 수 없어 데몬이 거절하면 그 까닭을 알린다', async () => {
+        window.api.instanceUpdateSettings = vi.fn().mockResolvedValue({
+            error: 'memory_limit_mb is only enforced on Windows',
+            error_code: 'memory_limit_unsupported',
+            fields: [{ field: 'memory_limit_mb' }],
+        });
+        const setModal = vi.fn();
+        const { result } = renderHook(() =>
+            useServerSettings({ servers: [], modules, setModal, setProgressBar: vi.fn(), fetchServers: vi.fn() }),
+        );
+        await act(async () => result.current.handleOpenSettings({ id: 's', name: 'S', module: 'game' } as Server));
+        act(() => result.current.handleSettingChange('memory_limit_mb', '4096'));
+        await act(async () => result.current.handleSaveSettings());
+        expect(setModal).toHaveBeenCalledWith(
+            expect.objectContaining({ type: 'failure', message: expect.stringMatching(/only apply on Windows/) }),
+        );
+    });
+
     it('자동 재시작 토글을 끄면 글자로 바뀌어도 false로 저장한다', async () => {
         const { result } = setup();
         await act(async () => result.current.handleOpenSettings({ id: 's', name: 'S', module: 'game' } as Server));

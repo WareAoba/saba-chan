@@ -26,8 +26,36 @@ export interface EventToast {
 
 export const eventsAvailable = () => typeof window.api?.onDaemonEvent === 'function';
 
-/** 서버 목록을 다시 읽어야 하는 이벤트 (상태는 이벤트로 오지 않는다) */
-export const SERVER_CHANGING = ['action.run', 'instance.exit', 'instance.started', 'instance.stopped', 'resync'];
+/** 이벤트가 지금 오고 있는가. 셸이 스트림에 다시 붙지 못하는 동안에는 false: 폴링이 주기와 알림을 메운다 */
+export const eventsLive = () => eventsAvailable() && window.api.daemonEventsLive?.() !== false;
+
+/**
+ * 서버 목록을 다시 읽어야 하는 이벤트 (목록 자체는 이벤트로 오지 않는다). `servers.changed`는 접속자 수·응답 없음처럼
+ * 데몬이 뒤에서 바꾼 목록 칸, `instance.update_checked`는 데몬의 게임 서버 업데이트 확인 결과
+ */
+export const SERVER_CHANGING = [
+    'action.run',
+    'instance.exit',
+    'instance.started',
+    'instance.stopped',
+    'instance.ready',
+    'instance.player',
+    'instance.updated',
+    'instance.update_checked',
+    'servers.changed',
+    'resync',
+];
+
+/** 이벤트를 받는 동안 서버 목록을 평소에 다시 읽는 간격 (놓친 것을 메우는 정도) */
+export const SERVER_LIST_SLOW_MS = 30_000;
+
+/**
+ * 서버 목록을 평소에 다시 읽는 간격. 이벤트로 바뀜을 알 수 있으면 느리게 읽는다.
+ * 익스텐션이 상태를 알려 주는 서버(`extension_status`)는 데몬이 바뀜을 모르니 사용자 주기 그대로
+ */
+export function serverListPollMs(refreshInterval: number, { events, extensionStatus }: { events: boolean; extensionStatus: boolean }) {
+    return events && !extensionStatus ? Math.max(refreshInterval, SERVER_LIST_SLOW_MS) : refreshInterval;
+}
 
 /** 브리지가 넘긴 한 건 → {id, type, data}. data는 문자열(JSON)이어도 받는다 */
 export function normalizeEvent(raw: unknown): DaemonEvent | null {
@@ -201,6 +229,16 @@ export function eventToast(ev: DaemonEvent, t: TFunction, nameOf: (id: string) =
                 ...(d.source === 'gui' ? { silent: true } : {}),
             };
         }
+        case 'instance.unresponsive': {
+            const name = d.instance || nameOf(d.instanceId);
+            const key = d.restarting ? 'events.instance_unresponsive_restart' : 'events.instance_unresponsive';
+            return {
+                message: t(key, { name, minutes: d.minutes }),
+                type: 'warning',
+                duration: 8000,
+                notice: serverNotice(d, name, t('events.n_unresponsive', { minutes: d.minutes }), 'error'),
+            };
+        }
         case 'backup.done': {
             // 직접 백업은 시킨 쪽(GUI 토스트, 디스코드면 action.run)이 이미 알린다
             if (d.kind === 'manual') return null;
@@ -241,21 +279,24 @@ export function showPortMoved({ instanceId, name, from, to }: { instanceId: stri
     safeShowToast(t('servers.port_moved', { name: name || instanceId, from, to }), 'warning', 8000);
 }
 
-// 서버의 예기치 않은 멈춤 하나는 이벤트(instance.exit)와 목록 폴링이 따로 알아챈다.
-// 먼저 알린 쪽이 표시를 남기고, 다른 쪽은 그 표시를 지우며 한 번만 건너뛴다 (G-S6).
-// 같은 쪽이 연달아 알리면(재시작 사이 크래시가 거듭되면) 모두 알린다
-const stopNotices = new Map<string, { source: string; at: number }>();
-const STOP_NOTICE_PAIR_MS = 30_000;
+// 서버의 예기치 않은 멈춤·사바쨩 밖의 시작 하나는 이벤트(instance.exit, instance.started unexpected)와
+// 목록 폴링이 따로 알아챈다. 먼저 알린 쪽이 표시를 남기고, 다른 쪽은 그 표시를 지우며 한 번만 건너뛴다 (G-S6).
+// 같은 쪽이 연달아 알리면(재시작 사이 크래시가 거듭되면) 모두 알린다.
+// 이벤트는 일어난 시각(`at`)으로 짝짓는다: 스트림이 끊긴 동안 폴링이 알린 일을 다시 붙은 뒤 밀려 온 이벤트가 또 알리지 않게
+const serverNotices = new Map<string, { source: string; at: number }>();
+const NOTICE_PAIR_MS = 30_000;
 
-/** 이 서버의 예기치 않은 멈춤을 지금 알려도 되는지. source: 'event' | 'poll' */
-export function claimStopNotice(instanceId: string | undefined, source: 'event' | 'poll') {
+/** 이 서버의 예기치 않은 멈춤(stop)·밖의 시작(start)을 지금 알려도 되는지. at: 이벤트가 일어난 시각(초) */
+export function claimServerNotice(instanceId: string | undefined, kind: 'stop' | 'start', source: 'event' | 'poll', at?: unknown) {
     if (!instanceId) return true;
-    const mark = stopNotices.get(instanceId);
-    if (mark && mark.source !== source && Date.now() - mark.at < STOP_NOTICE_PAIR_MS) {
-        stopNotices.delete(instanceId);
+    const key = `${kind}|${instanceId}`;
+    const when = typeof at === 'number' ? at * 1000 : Date.now();
+    const mark = serverNotices.get(key);
+    if (mark && mark.source !== source && Math.abs(when - mark.at) < NOTICE_PAIR_MS) {
+        serverNotices.delete(key);
         return false;
     }
-    stopNotices.set(instanceId, { source, at: Date.now() });
+    serverNotices.set(key, { source, at: when });
     return true;
 }
 
@@ -263,7 +304,8 @@ export function claimStopNotice(instanceId: string | undefined, source: 'event' 
 export function showEventToast(ev: DaemonEvent, t: TFunction, nameOf?: (id: string) => string) {
     const toast = eventToast(ev, t, nameOf);
     if (!toast) return null;
-    if (ev.type === 'instance.exit' && !claimStopNotice(ev.data.instanceId, 'event')) return null;
+    const kind = ev.type === 'instance.exit' ? 'stop' : ev.type === 'instance.started' && ev.data.unexpected ? 'start' : null;
+    if (kind && !claimServerNotice(ev.data.instanceId, kind, 'event', ev.data.at)) return null;
     if (!toast.silent) safeShowToast(toast.message, toast.type, toast.duration);
     if (toast.notice) window.__sabaNotice?.addNotice(toast.notice);
     return toast;

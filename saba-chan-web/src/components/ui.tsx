@@ -19,6 +19,10 @@ export function errorText(t: TFn, res: ApiBody | null | undefined) {
     return res?.error || res?.message || t('errors.generic');
 }
 
+/** 답을 기다리다 끊겼다 (릴레이는 2분에 504를 낸다): PC는 그 작업을 계속하고 있을 수 있다 */
+export const timedOut = (res: ApiBody | null | undefined) =>
+    res?.error_code === 'remote_timeout' || res?.error_code === 'ETIMEDOUT';
+
 /** 기다리는 동안(`busy`)은 `disabled`를 무엇으로 넘겨도 누를 수 없다 (같은 요청을 두 번 보내지 않게) */
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
     tone?: string;

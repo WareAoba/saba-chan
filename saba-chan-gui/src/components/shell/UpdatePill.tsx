@@ -6,11 +6,13 @@ import { safeShowToast } from '../../utils/helpers';
 import { Icon } from '../Icon';
 import { Dialog } from '../ui/Dialog';
 import { Popover } from '../ui/Popover';
-import { AppBarPill } from './AppBarPill';
+import { AppBarPill, PillRing } from './AppBarPill';
 
 /** 업데이트가 진행 중이면 자주, 할 일이 없으면 드물게 읽는다 (이 PC 데몬에 묻는 로컬 요청) */
 const ACTIVE_POLL_MS = 5000;
 const IDLE_POLL_MS = 60000;
+/** '완료'가 뜬 뒤 이만큼 지나 앱을 쓰기 시작하면(누르거나 치면) 알약을 누르지 않아도 지운다 (뜨자마자 누른 것은 보기 전이다) */
+const DONE_SEEN_MS = 5000;
 /** 팝오버에 먼저 보이는 패치노트 줄 수. 나머지는 "패치노트 전체 보기"로 편다 */
 const NOTES_PREVIEW = 3;
 
@@ -72,22 +74,7 @@ const pillIcon = (state: State) => {
     if (state === 'done') return <Icon name="check" size="sm" />;
     if (state === 'waiting') return <Icon name="clock" size="sm" />;
     if (state === 'ready') return <Icon name="arrowUp" size="sm" />;
-    return (
-        <svg viewBox="0 0 18 18" width="18" height="18" aria-hidden="true">
-            <circle className="preflight-track" cx="9" cy="9" r="7" fill="none" strokeWidth="2.5" />
-            <circle
-                className="preflight-fill indeterminate"
-                cx="9"
-                cy="9"
-                r="7"
-                fill="none"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeDasharray="44"
-                strokeDashoffset="33"
-            />
-        </svg>
-    );
+    return <PillRing />;
 };
 
 /**
@@ -173,6 +160,28 @@ export function UpdatePill() {
         setAllNotes(false);
         if (acked.current && stateRef.current === 'done') setDismissed(true);
     };
+
+    // 완료는 앱을 쓰기 시작하면 지운다: 알약·팝오버 밖을 누르거나 키를 치면 확인한 것으로 본다
+    useEffect(() => {
+        if (state !== 'done') return undefined;
+        const shownAt = Date.now();
+        const onUse = (e: Event) => {
+            if (Date.now() - shownAt < DONE_SEEN_MS) return;
+            const target = e.target instanceof Element ? e.target : null;
+            if (target?.closest('.appbar-pill, .update-pill-pop')) return;
+            if (!acked.current) {
+                acked.current = true;
+                Promise.resolve(window.api?.updaterPhaseAck?.()).catch(() => {});
+            }
+            setDismissed(true);
+        };
+        window.addEventListener('pointerdown', onUse, true);
+        window.addEventListener('keydown', onUse, true);
+        return () => {
+            window.removeEventListener('pointerdown', onUse, true);
+            window.removeEventListener('keydown', onUse, true);
+        };
+    }, [state]);
 
     // 사라진 뒤에는 열린 것도 닫는다
     useEffect(() => {

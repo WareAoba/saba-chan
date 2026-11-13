@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSettingsStore } from '../../stores/useSettingsStore';
+import { markDaemonSwitch } from '../../utils/opening';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 
 const LOCAL = '';
@@ -16,7 +17,11 @@ interface RemoteDaemon {
 /** 설정에서 원격 데몬을 연결하거나 잊으면 보내는 창 이벤트 (상단 바가 목록을 다시 읽는다) */
 export const REMOTE_DAEMONS_CHANGED = 'saba:remote-daemons-changed';
 
-export const reloadWindow = () => window.location.reload();
+/** PC를 바꾼 뒤 창을 다시 읽는다. 다시 연 창은 오프닝 없이 바로 열린다 */
+export const reloadWindow = () => {
+    markDaemonSwitch();
+    window.location.reload();
+};
 
 /** 지금 다루는 데몬: 원격 데몬 hostId, 이 PC면 null, 아직 모르면 undefined */
 export function useDaemonTarget() {
@@ -41,6 +46,8 @@ export function useDaemonTarget() {
 export function DaemonSwitcher({ onSwitched = reloadWindow }: { onSwitched?: () => void }) {
     const { t } = useTranslation('gui');
     const [daemons, setDaemons] = useState<RemoteDaemon[] | null>(null);
+    // 이 PC 이름 (서버쨩의 PC 이름, 데몬이 받아 둔 사본). 모르면 '이 PC'
+    const [thisName, setThisName] = useState('');
     const [target, setTarget] = useState(LOCAL);
     const [busy, setBusy] = useState(false);
     const settingsReady = useSettingsStore((st) => st.settingsReady);
@@ -62,7 +69,7 @@ export function DaemonSwitcher({ onSwitched = reloadWindow }: { onSwitched?: () 
                 return null;
             }
         }
-        return { saved, chosen };
+        return { saved, chosen, thisName: typeof list?.thisName === 'string' ? list.thisName : '' };
     }, [onSwitched]);
 
     // 고른 원격 데몬이 이 PC를 잊었으면(그 PC의 데몬을 지우고 다시 설치함) 다시 연결하기 전에는 쓸 수 없다:
@@ -88,6 +95,7 @@ export function DaemonSwitcher({ onSwitched = reloadWindow }: { onSwitched?: () 
                 if (!alive || !r) return null;
                 setDaemons(r.saved);
                 setTarget(r.chosen);
+                setThisName(r.thisName);
                 return r;
             });
         refresh().then((r) => r && leaveForgotten(r.chosen));
@@ -126,7 +134,12 @@ export function DaemonSwitcher({ onSwitched = reloadWindow }: { onSwitched?: () 
             disabled={busy}
             onChange={change}
             options={[
-                { value: LOCAL, label: t('daemon_switcher.local'), icon: 'desktop', mark: markOf(LOCAL) },
+                {
+                    value: LOCAL,
+                    label: thisName ? t('daemon_switcher.local_named', { name: thisName }) : t('daemon_switcher.local'),
+                    icon: 'desktop',
+                    mark: markOf(LOCAL),
+                },
                 ...daemons.map((d) => ({
                     value: d.hostId,
                     label: d.label || d.name || d.hostId,

@@ -17,7 +17,7 @@ import { art } from '../art';
 import { useApp, useData } from '../store';
 import { Dropdown } from './Dropdown';
 import { Icon } from './icons';
-import { startPoll } from './poll';
+import { startPoll } from '@gui/utils/poll';
 import { ServerDetail } from './ServerDetail';
 import { ServerIcon } from './ServerIcon';
 import { ServerOrder } from './ServerOrder';

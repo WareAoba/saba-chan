@@ -1,0 +1,44 @@
+/* 데몬 로그 한 줄 (DaemonLogLine). 콘솔은 두 테마 모두 어두운 바탕이라 색은 콘솔 토큰에서 가져온다 */
+.daemon-log-line {
+    display: grid;
+    grid-template-columns: auto 6ch minmax(0, 1fr);
+    gap: var(--sp-2);
+    align-items: baseline;
+    padding-left: var(--sp-2);
+    border-left: 3px solid transparent;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+.daemon-log-line.level-warn {
+    border-left-color: var(--console-warn);
+    background: color-mix(in oklab, var(--console-warn) 6%, transparent);
+}
+.daemon-log-line.level-error {
+    border-left-color: var(--console-error);
+    background: color-mix(in oklab, var(--console-error) 8%, transparent);
+}
+.daemon-log-time {
+    color: var(--tok-timestamp);
+}
+.daemon-log-level {
+    justify-self: start;
+    padding: 0 var(--sp-1);
+    border-radius: var(--r-xs);
+    font-size: 0.85em;
+    font-weight: 600;
+    color: var(--tok-info);
+    background: color-mix(in oklab, var(--tok-info) 12%, transparent);
+}
+.daemon-log-line.level-warn .daemon-log-level {
+    color: var(--console-warn);
+    background: color-mix(in oklab, var(--console-warn) 14%, transparent);
+}
+.daemon-log-line.level-error .daemon-log-level {
+    color: var(--console-error);
+    background: color-mix(in oklab, var(--console-error) 16%, transparent);
+}
+.daemon-log-line.level-debug .daemon-log-level,
+.daemon-log-line.level-trace .daemon-log-level {
+    color: var(--tok-debug);
+    background: color-mix(in oklab, var(--tok-debug) 12%, transparent);
+}

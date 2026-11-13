@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from harness.paths import EXE, REPO
+from harness.paths import EXE, IS_WINDOWS, REPO
 from harness.webdriver import ENTER, Gui, tauri_driver
 
 pytestmark = pytest.mark.gui
@@ -50,6 +50,7 @@ def labels(lang: str = "ko") -> dict:
         "tab_settings": gui["shell"]["tab_settings"],
         "save_settings": gui["server_settings"]["save_settings"],
         "memory_limit": gui["memory_limit"]["label"],
+        "memory_limit_unsupported": gui["memory_limit"]["unsupported"],
         "invalid_format": gui["launch_preview"]["invalid_format"],
         "popout": gui["console"]["popout"],
         "popped_out": gui["shell"]["console_popped_out"],
@@ -217,7 +218,8 @@ def test_gui_asks_for_agreement_before_first_start(sandbox, daemon_factory, fake
 
 def test_gui_launch_preview_and_memory_limit_in_settings(ko_mc, open_gui):
     """설정 탭: 실행 인자 미리보기가 데몬 계산을 보이고, 추가 인자가 설정 칸에 반영되며, 틀린 형식은 토스트로 알린다.
-    메모리 상한은 사람이 치는 "2G" 그대로 저장된다 (0.1.5 릴리스 확인에서 빠진 항목)."""
+    메모리 상한은 사람이 치는 "2G" 그대로 저장된다 (0.1.5 릴리스 확인에서 빠진 항목).
+    상한을 걸 수 없는 OS(Windows 밖)의 데몬은 저장하지 않고, 앱은 그 까닭을 실패 창으로 보인다."""
     daemon, iid, *_ = ko_mc
     art = daemon.sb.artifacts / "gui-launchPreview"
     gui = open_gui(daemon, "launchPreview")
@@ -230,14 +232,20 @@ def test_gui_launch_preview_and_memory_limit_in_settings(ko_mc, open_gui):
     gui.snap(art, "invalid-format")
     gui.fill(".launch-preview-input", "-Xmx384M")
     gui.wait(lambda: "-Xmx384M" in line() and "-Xmxabc" not in line(), 15, "미리보기에 -Xmx384M")
-    gui.fill(".memory-limit-input", "2G")
     gui.snap(art, "edited")
     gui.click(L["save_settings"])
     saved = lambda: daemon.api.ok("GET", f"/api/instance/{iid}")
-    gui.wait(lambda: saved().get("memory_limit_mb") == 2048, 15, "memory_limit_mb 2048 저장")
-    inst = saved()
-    assert inst["module_settings"].get("ram") == "384M", inst["module_settings"]
-    assert "-Xmxabc" not in json.dumps(inst), inst
+    gui.wait(lambda: saved()["module_settings"].get("ram") == "384M", 15, "ram 384M 저장")
+    assert "-Xmxabc" not in json.dumps(saved()), saved()
+    # 상한은 따로 저장한다: 걸 수 없는 OS의 데몬은 이 저장을 통째로 거절한다
+    gui.fill(".memory-limit-input", "2G")
+    gui.click(L["save_settings"])
+    if IS_WINDOWS:
+        gui.wait(lambda: saved().get("memory_limit_mb") == 2048, 15, "memory_limit_mb 2048 저장")
+    else:
+        gui.wait_text(L["memory_limit_unsupported"], timeout=15)
+        gui.snap(art, "memory-limit-unsupported")
+        assert saved().get("memory_limit_mb") is None, saved()
 
 
 def test_gui_console_popout_and_back(ko_mc, open_gui):
