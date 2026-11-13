@@ -166,6 +166,7 @@ describe('웹 서버 만들기 — GUI와 같은 칸', () => {
             }),
         );
         await flush();
+        await waitFor(() => expect(create().disabled).toBe(false));
         fireEvent.click(create());
         await flush();
         expect(api.instanceCreate).toHaveBeenCalledWith({
