@@ -77,7 +77,7 @@ pub async fn enable_extension(
     let trust = state.extension_manager.read().await.discovered(&ext_id).map(|ext| {
         saba_chan_updater_lib::integrity::trust_of(&format!("ext-{}", ext_id), &ext.dir)
     });
-    let warnings = trust.map(|t| super::server::trust_warnings("extension", &ext_id, t)).unwrap_or_default();
+    let warnings = trust.map(|t| crate::module_audit::trust_warnings("extension", &ext_id, t)).unwrap_or_default();
     Ok(Json(json!({
         "success": true,
         "id": ext_id,

@@ -97,27 +97,6 @@ pub async fn version_handler(State(state): State<IPCServer>) -> impl IntoRespons
     }))
 }
 
-/// 모듈 폴더의 신뢰 표시 (설치 기록의 키는 폴더 이름)
-pub(crate) fn module_trust(path: &str) -> saba_chan_updater_lib::integrity::Trust {
-    let folder = std::path::Path::new(path).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-    saba_chan_updater_lib::integrity::trust_of(
-        &format!("{}{}", saba_chan_updater_lib::relay::MODULE_PREFIX, folder),
-        std::path::Path::new(path),
-    )
-}
-
-/// 서명된 카탈로그에서 받지 않았거나 받은 뒤 바뀐 구성요소를 쓸 때 응답에 싣는 알림 (실행은 막지 않는다)
-pub(crate) fn trust_warnings(kind: &str, id: &str, trust: saba_chan_updater_lib::integrity::Trust) -> Vec<serde_json::Value> {
-    use saba_chan_updater_lib::integrity::Trust;
-    let code = match trust {
-        Trust::Verified => return Vec::new(),
-        Trust::Modified => format!("{}_modified", kind),
-        Trust::Unverified => format!("{}_unverified", kind),
-    };
-    // isolated: 이 플랫폼에서 격리된 환경(허용된 폴더만)에서 돈다
-    vec![json!({ "code": code, kind: id, "isolated": crate::sandbox::enforced() })]
-}
-
 /// 모듈 목록 한 줄. 별명은 module.toml(언어 없는 낱말)에 `lang`(앱 언어)의 모듈 locales 별명을 더한다 (`chat::api::locale_aliases`)
 fn module_info(m: crate::module_loader::LoadedModule, versions: &std::collections::BTreeMap<String, String>, lang: &str) -> ExtensionInfo {
     let installed: std::collections::HashMap<String, String> = versions.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
@@ -134,7 +113,7 @@ fn module_info(m: crate::module_loader::LoadedModule, versions: &std::collection
             format!("data:image/png;base64,{}", general_purpose::STANDARD.encode(&data))
         })
     });
-    let trust = module_trust(&m.path);
+    let trust = crate::module_audit::module_trust(&m.path);
     let addon = addon_choice(&format!("{}{}", saba_chan_updater_lib::relay::MODULE_PREFIX, m.metadata.name), &m.metadata.version);
     let localized = crate::chat::api::locale_aliases(std::path::Path::new(&m.path), lang).unwrap_or_default();
     let unsupported_reason = m.metadata.unsupported_on(std::env::consts::OS, std::env::consts::ARCH).map(str::to_string);
@@ -780,9 +759,9 @@ mod tests {
     #[test]
     fn only_unofficial_or_changed_components_get_a_notice() {
         use saba_chan_updater_lib::integrity::Trust;
-        assert!(trust_warnings("module", "m", Trust::Verified).is_empty());
-        assert_eq!(trust_warnings("module", "m", Trust::Unverified), [json!({"code": "module_unverified", "module": "m", "isolated": cfg!(windows)})]);
-        assert_eq!(trust_warnings("extension", "e", Trust::Modified), [json!({"code": "extension_modified", "extension": "e", "isolated": cfg!(windows)})]);
+        assert!(crate::module_audit::trust_warnings("module", "m", Trust::Verified).is_empty());
+        assert_eq!(crate::module_audit::trust_warnings("module", "m", Trust::Unverified), [json!({"code": "module_unverified", "module": "m", "isolated": cfg!(windows)})]);
+        assert_eq!(crate::module_audit::trust_warnings("extension", "e", Trust::Modified), [json!({"code": "extension_modified", "extension": "e", "isolated": cfg!(windows)})]);
     }
 
     #[tokio::test]

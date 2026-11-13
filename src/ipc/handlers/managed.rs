@@ -516,33 +516,15 @@ pub async fn reset_server_handler(
     super::audited(&state, "reset", &id, None, None, resp).await
 }
 
-/// 요청 본문의 약관 id 목록 (`key`: 문자열 배열, 없으면 빈 목록). 동의는 이 PC(GUI·CLI)에서만 받는다:
-/// 원격(디스코드·챗봇)에서 온 요청이 하나라도 담으면 403 `agreement_local_only`
-pub(crate) fn requested_agreements(payload: &Value, key: &str) -> Result<Vec<String>, Box<axum::response::Response>> {
-    let ids: Vec<String> = match payload.get(key) {
-        None | Some(Value::Null) => Vec::new(),
-        Some(Value::Array(items)) if items.iter().all(Value::is_string) => {
-            items.iter().filter_map(Value::as_str).map(str::to_string).collect()
-        }
-        Some(_) => {
-            return Err(Box::new(super::instance::invalid_field(key, format!("'{}' must be a list of agreement ids", key))));
-        }
-    };
-    if !ids.is_empty() && crate::audit::current().is_relay() {
-        return Err(Box::new(super::error(StatusCode::FORBIDDEN, "agreement_local_only", "Agreements can only be accepted on this PC")));
-    }
-    Ok(ids)
-}
-
 /// POST /api/instance/:id/agreements `{accept:[id]}` — 모듈 약관 동의 (이 PC에서만)
 pub async fn accept_agreements_handler(
     Path(id): Path<String>,
     State(state): State<IPCServer>,
     Json(payload): Json<Value>,
 ) -> axum::response::Response {
-    let ids = match requested_agreements(&payload, "accept") {
+    let ids = match crate::service::instance::requested_agreements(&payload, "accept") {
         Ok(ids) => ids,
-        Err(resp) => return *resp,
+        Err(failure) => return failure.into_response(),
     };
     // 모듈이 eula.txt 같은 게임 파일을 쓴다: 설정 저장과 한 줄로, 서버 파일을 바꾸는 작업 중에는 거절
     let Some(_files) = crate::instance::lock::InstanceLock::files(&id).await else {
@@ -559,7 +541,7 @@ pub async fn accept_agreements_handler(
             (StatusCode::OK, Json(json!({ "success": true, "agreements": agreements }))).into_response()
         }
         Ok(Err(unknown)) => {
-            super::instance::invalid_field("accept", format!("This server's module has no agreement '{}'", unknown))
+            crate::service::instance::invalid_field("accept", format!("This server's module has no agreement '{}'", unknown)).into_response()
         }
         Err(e) => match e.downcast_ref::<crate::supervisor::InstanceNotFound>() {
             Some(missing) => crate::service::lifecycle::instance_not_found(&missing.0).into_response(),
@@ -704,7 +686,7 @@ pub async fn install_server_handler(
         None => Ok(None),
         Some(Value::String(v)) => Ok(Some(v.clone())),
         Some(_) => {
-            Err(Box::new(super::instance::invalid_field(field, format!("'{}' must be a string", field))))
+            Err(Box::new(crate::service::instance::invalid_field(field, format!("'{}' must be a string", field)).into_response()))
         }
     };
     // 비우면 아래에서 그 인스턴스 설정으로 최신을 고른다
@@ -726,9 +708,9 @@ pub async fn install_server_handler(
 
     // 서버 실행 파일 이름 (없으면 모듈 `server_executable`)
     let executable = payload.get("server_executable").and_then(|v| v.as_str());
-    let accepted_agreements = match requested_agreements(&payload, "accept_agreements") {
+    let accepted_agreements = match crate::service::instance::requested_agreements(&payload, "accept_agreements") {
         Ok(ids) => ids,
-        Err(resp) => return *resp,
+        Err(failure) => return failure.into_response(),
     };
     let initial_settings = payload.get("initial_settings").cloned();
     // 어느 인스턴스의 설치인가: 그 설정(서버 종류 등)으로 버전을 고르고 설치한다. 그 인스턴스의 데이터 폴더를
@@ -738,7 +720,7 @@ pub async fn install_server_handler(
             match state.supervisor.read().await.instance_store.get(id) {
                 Some(inst) if inst.module_name == module_name => {}
                 Some(_) => {
-                    return super::instance::invalid_field("instance_id", format!("Instance '{}' is not a '{}' server", id, module_name));
+                    return crate::service::instance::invalid_field("instance_id", format!("Instance '{}' is not a '{}' server", id, module_name)).into_response();
                 }
                 None => return super::error(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id)),
             }
@@ -771,13 +753,13 @@ pub async fn install_server_handler(
             }
         };
         if let Some(unknown) = accepted_agreements.iter().find(|id| !module.metadata.agreements.iter().any(|a| &a.id == *id)) {
-            return super::instance::invalid_field("accept_agreements", format!("Module '{}' has no agreement '{}'", module_name, unknown));
+            return crate::service::instance::invalid_field("accept_agreements", format!("Module '{}' has no agreement '{}'", module_name, unknown)).into_response();
         }
         if let Some(ref install_cfg) = module.metadata.install {
             if !install_cfg.requires_extensions.is_empty() {
                 let found = state.extension_manager.read().await.missing_required(&install_cfg.requires_extensions);
                 if !found.missing.is_empty() {
-                    return super::instance::extension_required("install server", &found);
+                    return crate::service::instance::extension_required("install server", &found).into_response();
                 }
             }
         }

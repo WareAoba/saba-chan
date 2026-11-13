@@ -252,7 +252,7 @@ pub async fn update_instance_settings(
     // port: 1~65535의 숫자 또는 숫자 문자열 (범위 밖 값을 다른 숫자로 저장하지 않는다). 빈 문자열(바꾸지 않음)은 예전처럼 받는다
     let given_port = settings.get("port").filter(|v| !v.is_null() && v.as_str() != Some(""));
     if given_port.is_some_and(|v| port_value(v).is_none()) {
-        return invalid_field("port", "port must be a number from 1 to 65535");
+        return crate::service::instance::invalid_field("port", "port must be a number from 1 to 65535").into_response();
     }
     if let Some(port) = settings.get("port").and_then(port_value) {
         updated.port = Some(port);
@@ -500,7 +500,7 @@ pub async fn update_instance_settings(
     // 모듈의 모든 익스텐션 설정을 범용으로 전달 (특정 익스텐션 이름 참조 없음)
     let module = supervisor.module_loader.get_module(&updated_clone.module_name).ok();
     if let Some(m) = module.as_ref().filter(|m| m.metadata.runtime_settings().iter().any(|(name, _)| settings.get(*name).is_some())) {
-        open_user_runtime(m, &updated_clone);
+        crate::service::instance::open_user_runtime(m, &updated_clone);
     }
     let mut hook_ctx = crate::extension::hook_context(&updated_clone, &instance_dir, module.as_ref().map(|m| &m.metadata));
     hook_ctx["settings"] = crate::extension::redact_for_hooks(module.as_ref().map(|m| &m.metadata), &settings);

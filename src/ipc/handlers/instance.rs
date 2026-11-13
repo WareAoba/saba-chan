@@ -15,7 +15,6 @@ mod provision;
 mod settings;
 mod update;
 
-pub(crate) use create::extension_required;
 pub use create::{check_new_instance, create_instance};
 pub use delete::{delete_instance, DeleteQuery};
 pub use provision::{dismiss_provision_progress, get_provision_progress};
@@ -96,26 +95,6 @@ pub async fn get_instance(
     }
 }
 
-/// 사용자가 런타임 경로 설정(`runtime`)에 정한 값을 그 모듈의 격리 실행에 연다 (폴더 권한 고치기는 오래 걸릴 수 있어 따로)
-fn open_user_runtime(module: &crate::module_loader::LoadedModule, instance: &crate::instance::ServerInstance) {
-    for path in module.metadata.user_runtime_paths(instance) {
-        let (entry, path) = (module.entry_path(), path.to_string());
-        tokio::task::spawn_blocking(move || crate::sandbox::open_user_runtime(std::path::Path::new(&entry), &path));
-    }
-}
-
-/// 요청 값 하나가 잘못됐다는 400 응답: `error`에 이유
-pub(crate) fn invalid_field(field: &str, error: impl Into<String>) -> axum::response::Response {
-    let error = json!({ "success": false, "error": error.into(), "error_code": "invalid_format", "fields": [{"field": field}] });
-    (StatusCode::BAD_REQUEST, Json(error)).into_response()
-}
-
-/// 쉼표가 든 서버 이름 (만들기·이름 바꾸기 공통 400 `invalid_name`)
-fn invalid_name() -> (StatusCode, Json<Value>) {
-    let error = json!({ "success": false, "error": "A server name cannot contain a comma", "error_code": "invalid_name", "fields": [{ "field": "name" }] });
-    (StatusCode::BAD_REQUEST, Json(error))
-}
-
 /// POST /api/instance/:id/rename — 이름 바꾸기 (`{name}`). 실행 중이면 409 `server_running`,
 /// 같은 이름이 있으면 409 `name_taken`, 쉼표가 있으면 400 `invalid_name`. 응답 `{success, id, name, previous}`
 pub async fn rename_instance(
@@ -130,7 +109,7 @@ pub async fn rename_instance(
         return fail(StatusCode::BAD_REQUEST, "Missing 'name'".into(), "invalid_request");
     };
     if new_name.contains(crate::chat::words::is_comma) {
-        return invalid_name().into_response();
+        return crate::service::instance::invalid_name().into_response();
     }
     // 설치·업데이트·복원 중에는 바꾸지 않는다: 진행 알림(`provision.progress`)이 시작 때의 이름을 싣는다
     let Some(_guard) = crate::instance::lock::InstanceLock::take_for_writes(&id).await else {
