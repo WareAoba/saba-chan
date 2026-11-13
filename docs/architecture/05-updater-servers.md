@@ -624,7 +624,7 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`(채
 
 **지금 (코드 기준)**
 
-- PC가 붙은 길드: 데몬 `nodeSettings[길드].discord`(`ipc/handlers/discord.rs` `GuildSettings`)가 원본이다. 데몬은 값이 바뀔 때와 릴레이에 연결될 때(`sync_on_connect`) 다른 키만 `PATCH /api/nodes/:guildId/settings`로 보낸다. 릴레이는 그 값을 직접 바꾸려는 요청을 `409 PC_OWNED`로 막고(`services/relayApi.ts`), 디스코드 `/설정`·MCP는 데몬 액션(`discord.settings.set`)으로 돌려 보낸다.
+- PC가 붙은 길드: 데몬 `nodeSettings[길드].discord`(`service/discord.rs` `GuildSettings`)가 원본이다. 데몬은 값이 바뀔 때와 릴레이에 연결될 때(`sync_on_connect`) 다른 키만 `PATCH /api/nodes/:guildId/settings`로 보낸다. 릴레이는 그 값을 직접 바꾸려는 요청을 `409 PC_OWNED`로 막고(`services/relayApi.ts`), 디스코드 `/설정`·MCP는 데몬 액션(`discord.settings.set`)으로 돌려 보낸다.
 - PC 없는 길드: 릴레이 `nodes` 행이 원본이다. PC가 보내는 명령에만 쓰는 값(`prefixes`·`translateCommands`·`slashPrefix`·`slashRootName`·`privateQueries`)과 PC 채널 배정(`notify`·`gameChat`·`board`)은 `409 NEEDS_PC`다.
 - 늘 릴레이가 원본인 값: `bigEmoji`·`gameChatGuard`·`gameChatClearOnStop`·`gameChatAutoOpen`·`memberNotice`·`busyNotice`(데몬 `RELAY_OWNED`, 데몬은 그대로 릴레이에 넘긴다).
 - 연결을 풀면 릴레이는 `locale`·`music`·`tts`·`sleepBlocks`·`bedtime`만 남기고(`RELAY_KEPT`), 다시 붙이면 데몬이 그 값을 받아 사본을 맞춘다(`adopt_linked_guild`).

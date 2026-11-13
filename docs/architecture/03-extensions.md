@@ -53,7 +53,7 @@
 | `hooks` | `HashMap<String, HookBinding>` | `{}` | hook 이름 → 바인딩. 이름은 `FIRED_HOOKS`의 것이거나 이벤트 버스를 따르는 `event:<종류>`(§2.3 끝)다. |
 | `gui` | `Option<GuiManifest>` | `None` | 번들/스타일 서빙에 쓰인다(`handlers/extension.rs:240-334`). `gui.slots`는 GUI가 읽는다(4.2). |
 | `cli` | `Option<CliManifest>` | `None` | `/api/extensions` 응답에 그대로 실린다. `cli.slots`는 데이터 slot 선언이다(4.3). 인터페이스는 이 원본 대신 정규화된 `slots`를 읽는다. |
-| `module_config_section` | `Option<String>` | `None` | **읽는 코드가 없다(dead 필드)**. module.toml의 익스텐션별 설정은 범용 `[extensions.<id>]` 섹션으로 받아 그대로 넘긴다(`supervisor/module_loader.rs:618-622,1139-1144`). |
+| `module_config_section` | `Option<String>` | `None` | **읽는 코드가 없다(dead 필드)**. module.toml의 익스텐션별 설정은 범용 `[extensions.<id>]` 섹션으로 받아 그대로 넘긴다(`supervisor/module_loader/raw.rs:41-45, 751-760`). |
 | `instance_fields` | `HashMap<String, FieldDef>` | `{}` | disable/remove/unmount/install 시 "사용 중" 판정(`ext/:873-902`). **default 값을 인스턴스에 주입하는 코드는 없다.** |
 | `config_fields` | `HashMap<String, FieldDef>` | `{}` | 목록 응답에만 실린다. 값 저장은 `config.json`의 `extensions.settings.<id>`. 스키마 검증은 없다. |
 | `i18n_dir` | `Option<String>` | `None` | `load_i18n()` → `<dir>/<i18n_dir>/<locale>.json`. `i18n_dir`은 `..` 없는 상대 경로이며 실제 경로도 익스텐션 폴더 안이어야 한다. 중간 링크·정션도 거부한다. 위반하면 locales를 비우고 경고한다. locale은 한 단계 경로 이름이어야 한다(`ext/:1457-1469`). |
@@ -352,7 +352,7 @@ slot 이름·창·종류는 `SLOT_TABLE` 한 곳에 있다. 종류: `inline`은 
 ### 5.5 module → extension 참조 방식
 
 1. `module.toml [install] requires_extensions = [...]`. 모듈을 설치하면(데몬 `POST /api/modules/manifest/:id/install`, 설치기) 요구하는 익스텐션을 받고 켠다(02-modules §5.2). 앱 업데이트로 모듈이 바뀌어도 새로 필요해진 것 중 없는 것을 받고 켠다(02-modules §5.3). 인스턴스에 복사하지 않는다: 인스턴스가 쓰는 익스텐션은 지금 모듈의 이 목록과 인스턴스 `required_extensions`(인스턴스가 더한 것, 예전 판이 만들 때 복사해 둔 모듈 목록도 그대로 읽는다)의 합이다(`Supervisor::effective_required_extensions`). 생성 시점에 검증하고(`handlers/instance/create.rs` `create_instance_inner`), 시작 시점에 관리형·비관리형 모두 다시 검증한다(`supervisor/start.rs` `plan_start` → `extension_required`, `installed_and_enabled_set`). module 기능 엔드포인트에서도 검사한다(`handlers/managed.rs:527-562`). `[module.dependencies]`의 `ext-<id>` 버전 요구도 시작 시 검사한다(`supervisor/start.rs` `unmet_module_dependencies`).
-2. `module.toml [extensions.<id>]` 섹션은 `metadata.extensions["<id>"]`로 그대로 파싱된다(`supervisor/module_loader.rs:618-622`). settings_changed context의 `module_extensions`로 전달된다.
+2. `module.toml [extensions.<id>]` 섹션은 `metadata.extensions["<id>"]`로 그대로 파싱된다(`supervisor/module_loader/raw.rs:41-45`). settings_changed context의 `module_extensions`로 전달된다.
 3. Python 레벨: `from extensions.<pkg> import …`. PYTHONPATH 주입과 import 가드에 의존한다. 모듈은 `SABA_ENABLED_EXTENSIONS`를 따로 읽지 않고, import가 실패하면(없음·꺼짐, 가드의 `ModuleNotFoundError`) `error_code: "extension_required"`, `missing_extensions`로 답한다(palworld·zomboid `install_server`).
 
 ---
