@@ -1,6 +1,6 @@
 import type { StoreApi } from 'zustand';
 import { holdSavingOrder } from '../hooks/useDragReorder';
-import type { ApiBody, Json } from '../types/daemon';
+import type { Agreement, ApiBody, Json } from '../types/daemon';
 import { claimServerNotice, eventsLive, showPortMoved, watchInstance } from '../utils/daemonEvents';
 import {
     busyMessage,
@@ -298,7 +298,7 @@ export function serverActions(set: StoreApi<ServerState>['setState'], get: () =>
     };
 
     // 약관 동의 창 (module.toml [[agreements]]). 동의하면 이 PC에서 기록하고 다시 켠다
-    const askAgreements = (srv: Server, title: string, message: string, agreements: unknown[]) => {
+    const askAgreements = (srv: Server, title: string, message: string, agreements: Agreement[]) => {
         setModal({
             type: 'agreements',
             title,

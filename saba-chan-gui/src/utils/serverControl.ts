@@ -1,8 +1,5 @@
-import type { ApiBody, ModuleAgreement } from '../types/daemon';
+import type { Agreement, ApiBody } from '../types/daemon';
 import { failed } from './apiResult';
-
-/** 데몬이 동의를 요구한 약관 한 건 (label은 모듈 언어로 옮긴 이름) */
-export type Agreement = ModuleAgreement & { label?: string };
 
 /**
  * 켜기·끄기·다시 켜기 답이 뜻하는 것 (앱 serverActions와 웹 useServerControl이 같이 쓴다. 화면 없는 순수 함수).

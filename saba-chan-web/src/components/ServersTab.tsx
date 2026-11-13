@@ -25,13 +25,10 @@ import { FieldInput, patchOf } from './SettingsPanel';
 import { Button, Empty, errorText, failed, Loading, Section, Sheet, StatusDot } from './ui';
 import { useProvision } from './useProvision';
 import { useServerControl } from './useServerControl';
-import type { ModuleAgreement, PlayerCount } from '@gui/types/daemon';
+import type { Agreement, PlayerCount } from '@gui/types/daemon';
 import type { Module, Server, WebApi } from '../types';
 
 /** 만들기 전 겹침 확인 (POST /api/instance/check) */
-/** 모듈이 선언한 약관 (label 은 있으면 쓴다) */
-type Agreement = ModuleAgreement & { label?: string };
-
 interface InstanceCheck {
     ports?: { field?: string; port: number; in_use_by?: string[] }[];
 }
