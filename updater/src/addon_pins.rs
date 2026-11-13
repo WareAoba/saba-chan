@@ -203,6 +203,24 @@ impl UpdateManager {
         }
     }
 
+    /// 고른 판이 이미 깔려 있다(고정 풀기, 깔린 판 고르기): 그 키에 받아 둔 다른 판(켜진 서버를 기다리던 바꾸기)을 걷어 내어
+    /// 서버가 꺼진 뒤 자동 교체가 바꾸지 않게 한다. 받은 파일은 지운다
+    pub fn settle_addon(&mut self, key: &str, entry: &ManifestComponent) {
+        let component = Component::from_manifest_key(key);
+        let Some(status) = self.status.components.iter_mut().find(|c| c.component == component && c.update_available) else { return };
+        if let Some(path) = status.downloaded_path.take().filter(|_| status.downloaded) {
+            let _ = std::fs::remove_file(path);
+        }
+        status.update_available = false;
+        status.downloaded = false;
+        status.staged_sha256 = None;
+        status.latest_version = Some(entry.version.clone());
+        status.requires = entry.requires.clone();
+        if let Some(manifest) = self.cached_manifest.as_mut() {
+            manifest.components.insert(key.to_string(), entry.clone());
+        }
+    }
+
     /// 확인 한 번에 고정 규칙을 적용한다: 고정을 풀 것은 풀고, 미뤄 둔 바꾸기는 고른 판을 다시 찾아 `manifest`에 넣는다
     pub(crate) async fn apply_pins(
         &self,

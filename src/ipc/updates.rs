@@ -2342,14 +2342,10 @@ async fn pin_addon(State(state): State<UpdateState>, Path(key): Path<String>, ra
         };
         return addon_refusal(conflict, "version_unavailable", format!("{} {} cannot be chosen: {}", key, body.version, why));
     };
-    let unmet = state.manager.read().await.unmet_addon_requires(&key, &entry.requires.clone().unwrap_or_default());
-    if !unmet.is_empty() {
-        return addon_refusal(conflict, "requires_unmet", unmet.iter().map(|i| i.message.as_str()).collect::<Vec<_>>().join("; "));
-    }
-    // 고정은 지금 이 코어에 내는 가장 새 판(보통 바꾸기 전 판)보다 새 판이 나올 때까지
+    // 고정은 지금 이 코어에 내는 가장 새 판(보통 바꾸기 전 판)보다 새 판이 나올 때까지. 가장 새 판을 고르면 고정하지 않는다 (고정 풀기와 같다)
     let until = list.versions.first().map(|c| c.version.clone()).unwrap_or_else(|| entry.version.clone());
-    let pin = addon_pins::AddonPin { version: entry.version.clone(), until_newer_than: until };
-    switch_addon(&state, &component, &entry, Some(pin)).await
+    let pin = (entry.version != until).then(|| addon_pins::AddonPin { version: entry.version.clone(), until_newer_than: until });
+    switch_addon(&state, &component, &entry, pin).await
 }
 
 /// DELETE /api/updates/addons/{key}/pin — 고정을 풀고 지금 가장 새 판으로 바로 바꾼다
@@ -2397,10 +2393,16 @@ async fn switch_addon(
         }
     };
     let answer = |state: &str, waiting_for: Vec<String>| Json(json!({ "ok": true, "state": state, "version": version, "waiting_for": waiting_for })).into_response();
-    // 이미 깔린 판이면 고정만 바꾼다
+    // 이미 깔린 판이면 고정만 바꾼다. 켜진 서버를 기다리던 다른 판은 버린다
     if state.manager.read().await.installed_addon_version(&key).as_deref() == Some(version.as_str()) {
+        state.manager.write().await.settle_addon(&key, entry);
         record(addon_pins::AddonChoice { pinned: pin, pending_version: None });
         return answer("applied", Vec::new());
+    }
+    // 요구 조건은 깔린 것과 대조한다 (코어는 릴레이가 걸렀다). 맞지 않으면 받지 않는다
+    let unmet = state.manager.read().await.unmet_addon_requires(&key, &entry.requires.clone().unwrap_or_default());
+    if !unmet.is_empty() {
+        return addon_refusal(StatusCode::CONFLICT, "requires_unmet", unmet.iter().map(|i| i.message.as_str()).collect::<Vec<_>>().join("; "));
     }
     if let Some(code) = hand_modified(&key) {
         return addon_refusal(StatusCode::CONFLICT, &code, format!("{} was changed by hand; it is not replaced", key));
@@ -3371,8 +3373,8 @@ mod tests {
         assert_eq!(body["pinned"], json!({ "version": "0.1.12", "until_newer_than": "0.1.13" }));
     }
 
-    /// 판 고르기 시험용 릴레이: 모듈 하나의 0.1.13·0.1.12(받을 zip까지)와 내린 0.1.11
-    async fn addon_versions_relay(name: &str) -> String {
+    /// 판 고르기 시험용 릴레이: 모듈 하나의 0.1.13(`newest_requires`를 단다)·0.1.12(받을 zip까지)와 내린 0.1.11
+    async fn addon_versions_relay(name: &str, newest_requires: Value) -> String {
         use axum::routing::get;
         use sha2::Digest;
         static KEY: std::sync::OnceLock<String> = std::sync::OnceLock::new();
@@ -3398,8 +3400,12 @@ mod tests {
         for version in ["0.1.13", "0.1.12"] {
             let bytes = zip_of(version);
             let asset = format!("{key}-{version}.zip");
-            versions.push(sign(json!({ "key": key, "version": version, "asset": asset, "sha256": hex::encode(sha2::Sha256::digest(&bytes)),
-                                        "url": format!("{base}/r2/{asset}") })));
+            let mut entry = json!({ "key": key, "version": version, "asset": asset, "sha256": hex::encode(sha2::Sha256::digest(&bytes)),
+                                    "url": format!("{base}/r2/{asset}") });
+            if version == "0.1.13" && !newest_requires.is_null() {
+                entry["requires"] = newest_requires.clone();
+            }
+            versions.push(sign(entry));
             app = axum::Router::route(app, &format!("/r2/{asset}"), get(move || async move { bytes }));
         }
         let body = json!({ "key": key, "versions": versions, "yanked": [sign(json!({ "key": key, "version": "0.1.11", "yanked": true }))], "excluded": [] });
@@ -3416,7 +3422,7 @@ mod tests {
         let _staging = STAGING.lock().await;
         let name = format!("pick{}", std::process::id());
         let key = format!("module-{name}");
-        let base = addon_versions_relay(&name).await;
+        let base = addon_versions_relay(&name, Value::Null).await;
         let modules = crate::plugin::resolve_modules_dir();
         let dir = modules.join(&name);
         std::fs::create_dir_all(&dir).unwrap();
@@ -3453,7 +3459,118 @@ mod tests {
         assert_eq!(back.body, json!({ "ok": true, "state": "applied", "version": "0.1.13", "waiting_for": [] }));
         assert!(installed().contains("0.1.13"));
         assert_eq!(addon_pins::get(&key), addon_pins::AddonChoice::default());
+
+        // 가장 새 판을 고르면 고정 없이 바꾼다: 고정을 푼 것과 같다
+        assert_eq!(call(pin("0.1.12").await).await.body["state"], "applied");
+        let newest = call(pin("0.1.13").await).await;
+        assert_eq!(newest.body, json!({ "ok": true, "state": "applied", "version": "0.1.13", "waiting_for": [] }));
+        assert!(installed().contains("0.1.13"));
+        assert_eq!(addon_pins::get(&key), addon_pins::AddonChoice::default());
         let _ = std::fs::remove_dir_all(&dir);
         let _ = std::fs::remove_dir_all(modules.join(format!(".{name}.saba-old")));
+    }
+
+    /// 시험용: 인스턴스가 켜진 것으로 보이게 하거나 끈다
+    async fn set_running(state: &UpdateState, id: &str, on: bool) {
+        let sup = state.supervisor.as_ref().unwrap().read().await;
+        if on {
+            sup.tracker.track(id, std::process::id()).unwrap();
+        } else {
+            let _ = sup.tracker.untrack(id);
+        }
+    }
+
+    /// 켜진 서버가 쓰는 모듈은 고른 판을 받아 두고 서버가 꺼질 때까지 기다린다(`waiting`). 꺼진 뒤 교체 한 차례가 바꾸고 기다림을 지우며,
+    /// 업데이트 확인을 꺼 두어도 고른 것은 바꾼다. 기다리는 사이 고정을 풀어 깔린 판으로 끝나면 받아 둔 판은 버려, 서버가 꺼져도 바뀌지 않는다
+    #[tokio::test]
+    async fn a_chosen_version_waits_for_the_running_server_and_cancelling_it_keeps_the_installed_one() {
+        use std::sync::atomic::Ordering;
+        let _staging = STAGING.lock().await;
+        // 교체 반복은 이 시험이 직접 한 차례씩 돌린다
+        ADDON_REPLACING.store(true, Ordering::SeqCst);
+        let name = format!("wait{}", std::process::id());
+        let key = format!("module-{name}");
+        let base = addon_versions_relay(&name, Value::Null).await;
+        let modules = crate::plugin::resolve_modules_dir();
+        let dir = modules.join(&name);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("module.toml"), format!("[module]\nname = \"{name}\"\nversion = \"0.1.13\"\n")).unwrap();
+        saba_chan_updater_lib::integrity::record_install(&key, &[dir.join("module.toml")]).unwrap();
+        saba_chan_updater_lib::integrity::set_official(&key, true).unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        let mut state = state_in(tmp.path());
+        let cfg = saba_chan_updater_lib::UpdateConfig { relay_url: Some(base), enabled: true, ..Default::default() };
+        *state.manager.write().await = saba_chan_updater_lib::UpdateManager::new(cfg, modules.to_str().unwrap());
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        let server = crate::instance::ServerInstance::new("srv", &name);
+        let id = server.id.clone();
+        sup.instance_store.add(server).unwrap();
+        state.supervisor = Some(Arc::new(RwLock::new(sup)));
+        let call = |r: axum::response::Response| async { crate::ipc::internal::into_internal(r).await };
+        let pin = |version: &str| pin_addon(State(state.clone()), Path(key.clone()), axum::body::Bytes::from(json!({ "version": version }).to_string()));
+        let installed = || std::fs::read_to_string(dir.join("module.toml")).unwrap();
+        let waiting = json!({ "ok": true, "state": "waiting", "version": "0.1.12", "waiting_for": ["srv"] });
+
+        set_running(&state, &id, true).await;
+        assert_eq!(call(pin("0.1.12").await).await.body, waiting);
+        assert!(installed().contains("0.1.13"), "the running server keeps its version");
+        assert_eq!(addon_pins::get(&key).pending_version.as_deref(), Some("0.1.12"));
+
+        // 기다리는 사이 자동 업데이트로 돌아가면 깔린 0.1.13 그대로 끝나고, 서버가 꺼져도 받아 둔 0.1.12로 바꾸지 않는다
+        let back = call(unpin_addon(State(state.clone()), Path(key.clone())).await).await;
+        assert_eq!(back.body["state"], "applied", "{}", back.body);
+        assert_eq!(addon_pins::get(&key), addon_pins::AddonChoice::default());
+        set_running(&state, &id, false).await;
+        assert_eq!(replace_addons_once(&state).await, Leftover::default());
+        assert!(installed().contains("0.1.13"), "a cancelled switch is not applied: {}", installed());
+
+        // 업데이트 확인을 꺼 두어도 고른 판은 서버가 꺼진 뒤 바꾼다
+        let mut cfg = state.manager.read().await.get_config();
+        cfg.enabled = false;
+        state.manager.write().await.update_config(cfg);
+        set_running(&state, &id, true).await;
+        assert_eq!(call(pin("0.1.12").await).await.body, waiting);
+        assert_eq!(replace_addons_once(&state).await, Leftover { held: true, failed: false });
+        assert!(installed().contains("0.1.13"));
+        set_running(&state, &id, false).await;
+        assert_eq!(replace_addons_once(&state).await, Leftover::default());
+        assert!(installed().contains("0.1.12"), "{}", installed());
+        let choice = addon_pins::get(&key);
+        assert_eq!(choice.pending_version, None, "the wait ends once the chosen version is in place");
+        assert_eq!(choice.pinned, Some(addon_pins::AddonPin { version: "0.1.12".into(), until_newer_than: "0.1.13".into() }));
+
+        ADDON_REPLACING.store(false, Ordering::SeqCst);
+        let _ = addon_pins::update(&key, |c| *c = addon_pins::AddonChoice::default());
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(modules.join(format!(".{name}.saba-old")));
+    }
+
+    /// 고정을 풀 때도 가장 새 판의 요구 조건을 깔린 것과 대조한다: 맞지 않으면 받지 않고 거절하고 고정은 그대로 둔다
+    #[tokio::test]
+    async fn unpinning_refuses_a_newest_version_whose_requirements_are_unmet() {
+        let _staging = STAGING.lock().await;
+        let name = format!("needs{}", std::process::id());
+        let key = format!("module-{name}");
+        let base = addon_versions_relay(&name, json!({ "ext-not-installed": ">=1.0.0" })).await;
+        let modules = crate::plugin::resolve_modules_dir();
+        let dir = modules.join(&name);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("module.toml"), format!("[module]\nname = \"{name}\"\nversion = \"0.1.12\"\n")).unwrap();
+        saba_chan_updater_lib::integrity::record_install(&key, &[dir.join("module.toml")]).unwrap();
+        saba_chan_updater_lib::integrity::set_official(&key, true).unwrap();
+        let pinned = addon_pins::AddonPin { version: "0.1.12".into(), until_newer_than: "0.1.13".into() };
+        addon_pins::update(&key, |c| c.pinned = Some(pinned.clone())).unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        let state = state_in(tmp.path());
+        let cfg = saba_chan_updater_lib::UpdateConfig { relay_url: Some(base), ..Default::default() };
+        *state.manager.write().await = saba_chan_updater_lib::UpdateManager::new(cfg, modules.to_str().unwrap());
+
+        let refused = crate::ipc::internal::into_internal(unpin_addon(State(state.clone()), Path(key.clone())).await).await;
+        assert_eq!((refused.status, refused.body["error_code"].as_str()), (axum::http::StatusCode::CONFLICT, Some("requires_unmet")), "{}", refused.body);
+        assert!(std::fs::read_to_string(dir.join("module.toml")).unwrap().contains("0.1.12"));
+        assert_eq!(addon_pins::get(&key).pinned, Some(pinned));
+
+        let _ = addon_pins::update(&key, |c| *c = addon_pins::AddonChoice::default());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
