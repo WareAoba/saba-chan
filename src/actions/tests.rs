@@ -385,7 +385,7 @@ fn field_titles_go_first_when_the_heartbeat_is_too_big() {
     }
     std::fs::write(dir.join("module.toml"), toml).unwrap();
     std::fs::write(dir.join("lifecycle.py"), "").unwrap();
-    let modules = vec![crate::supervisor::module_loader::load_module_dir(&dir).unwrap()];
+    let modules = vec![crate::module_loader::load_module_dir(&dir).unwrap()];
     let (actions, truncated) = heartbeat_actions(&crate::chat::i18n::languages(), &modules);
     assert!(!truncated, "every action still fits without field titles");
     assert!(serde_json::to_vec(&actions).unwrap().len() <= HEARTBEAT_MAX_BYTES);
@@ -693,7 +693,7 @@ async fn module_queries_are_safe_read_actions_on_every_surface() {
     assert_eq!((resp.status.as_u16(), resp.body["error_code"].as_str()), (400, Some("invalid_argument")));
 
     // heartbeat: 고정 액션 뒤에 모듈 조회가 모듈 이름과 함께 실린다
-    let modules = vec![crate::supervisor::module_loader::load_module_dir(&tmp.path().join("modules").join("plain")).unwrap()];
+    let modules = vec![crate::module_loader::load_module_dir(&tmp.path().join("modules").join("plain")).unwrap()];
     let (actions, truncated) = heartbeat_actions(&crate::chat::i18n::languages(), &modules);
     assert!(!truncated);
     let q = actions.iter().find(|a| a["id"] == action).unwrap();
@@ -1254,8 +1254,8 @@ async fn port_check_reads_as_a_verdict_without_the_address() {
     let mut modules = state.supervisor.read().await.module_loader.discover_modules().unwrap();
     let (actions, _) = heartbeat_actions(&["ko"], &modules);
     assert_eq!(actions.iter().find(|a| a["id"] == "server.port_check").unwrap()["modules"], json!([]));
-    let settings = modules[0].metadata.settings.get_or_insert_with(|| crate::supervisor::module_loader::ModuleSettings { fields: Vec::new() });
-    settings.fields.push(crate::supervisor::module_loader::SettingField { name: "port".into(), port: true, public: Some("udp".into()), ..Default::default() });
+    let settings = modules[0].metadata.settings.get_or_insert_with(|| crate::module_loader::ModuleSettings { fields: Vec::new() });
+    settings.fields.push(crate::module_loader::SettingField { name: "port".into(), port: true, public: Some("udp".into()), ..Default::default() });
     let (actions, _) = heartbeat_actions(&["ko"], &modules);
     let item = actions.iter().find(|a| a["id"] == "server.port_check").unwrap();
     assert_eq!((item["modules"].clone(), item["title"]["ko"].clone(), item["surfaces"].clone()), (json!(["plain"]), json!("포트포워딩 확인"), json!(["discord"])));

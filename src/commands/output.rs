@@ -9,7 +9,7 @@
 //!
 //! 값은 모두 문자열이다. 보일 것이 없으면(빈 답) `output`이 없다. 콘솔 명령의 답은 서버 로그 줄이라 그대로 둔다.
 
-use crate::supervisor::module_loader::SettingField;
+use crate::module_loader::SettingField;
 use serde_json::{json, Map, Value};
 use std::collections::HashMap;
 

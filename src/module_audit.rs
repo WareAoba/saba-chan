@@ -11,7 +11,7 @@ use std::io::Write;
 use std::path::Path;
 use std::process::Stdio;
 
-use crate::supervisor::module_loader::ModulePermissions;
+use crate::module_loader::ModulePermissions;
 
 /// 검사기 원본. 데몬이 공용 유틸리티와 함께 배포한다
 pub const SCRIPT: &str = include_str!("../modules/saba_audit.py");
@@ -41,7 +41,7 @@ pub fn scan_blocking(python: &Path, dir: &Path) -> Result<Vec<Finding>> {
         let manifest: toml::Value = toml::from_str(source.trim_start_matches('\u{feff}'))
             .with_context(|| format!("parse {}", manifest_path.display()))?;
         Some(manifest.get("module").and_then(|value| value.get("dependencies"))
-            .and_then(|value| value.get(crate::supervisor::module_loader::CORE_COMPONENT)).and_then(toml::Value::as_str).unwrap_or("missing").to_string())
+            .and_then(|value| value.get(crate::module_loader::CORE_COMPONENT)).and_then(toml::Value::as_str).unwrap_or("missing").to_string())
     } else {
         None
     };

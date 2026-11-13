@@ -28,7 +28,7 @@
 | GUI가 데몬을 띄울 때 | 모듈 폴더를 주입하지 않는다. 데몬이 위 순서로 정한다 | `D:saba-chan-gui/src-tauri/src/lifecycle.rs` |
 | 레거시 경로 | `Supervisor::run()`은 지워졌다. `"./modules"`는 테스트에만 남았다 | `D:src/supervisor/mod.rs:2633-` |
 
-`ModuleLoader::discover_modules()` (`D:src/supervisor/module_loader/loader.rs:79-146`)의 동작은 다음과 같다.
+`ModuleLoader::discover_modules()` (`D:src/module_loader/loader.rs:79-146`)의 동작은 다음과 같다.
 
 - 모듈 루트의 **1단계 엔트리만** 순회하고 재귀하지 않는다.
 - **폴더 모듈**: `<dir>/module.toml`이 있는 디렉터리만 로드한다 (`:1521-1541`). 폴더 이름은 아무 것이나 되며, 식별자는 `[module].name`이다.
@@ -40,7 +40,7 @@
 - 로드에 실패한 모듈은 `warn` 로그를 남기고 `load_errors`에 기록한다. `GET /api/modules`가 `failed[]`로 돌려준다 (`:1511-1539`, `D:src/ipc/handlers/server.rs:391-392`).
 - `.py` 파일(`daemon_rcon.py`, `i18n.py`)이 같은 루트에 있어도 무시된다. 이 둘은 PYTHONPATH용 공용 라이브러리다 (§2.1).
 
-**진입점 파일**: `[module].entry`가 데몬이 실행하는 Python 파일이다(보통 `lifecycle.py`). `LoadedModule::entry_path()`가 `<모듈 폴더>/<entry>`를 만들고(`D:src/supervisor/module_loader/schema.rs:710-712`), 데몬의 모든 lifecycle 호출이 이 경로를 쓴다(예: `D:src/supervisor/mod.rs:791, 947, 1166, 1519`). 로드할 때 `check_loadable()`이 이 파일이 실제로 있는지 확인하고, 없으면 모듈을 로드하지 않는다(`module_loader/schema.rs:715-730`). 검증 단계는 `entry`가 비었거나 절대 경로이거나 모듈 폴더 밖을 가리키면(`..`·`.` 포함) 거부한다(`module_loader/raw.rs:1283-1289`, 익스텐션 `python_modules`와 같은 `utils::is_inner_relative_path`). (qcza9f 기준)
+**진입점 파일**: `[module].entry`가 데몬이 실행하는 Python 파일이다(보통 `lifecycle.py`). `LoadedModule::entry_path()`가 `<모듈 폴더>/<entry>`를 만들고(`D:src/module_loader/schema.rs:710-712`), 데몬의 모든 lifecycle 호출이 이 경로를 쓴다(예: `D:src/supervisor/mod.rs:791, 947, 1166, 1519`). 로드할 때 `check_loadable()`이 이 파일이 실제로 있는지 확인하고, 없으면 모듈을 로드하지 않는다(`module_loader/schema.rs:715-730`). 검증 단계는 `entry`가 비었거나 절대 경로이거나 모듈 폴더 밖을 가리키면(`..`·`.` 포함) 거부한다(`module_loader/raw.rs:1283-1289`, 익스텐션 `python_modules`와 같은 `utils::is_inner_relative_path`). (qcza9f 기준)
 
 ### 1.2 module.toml 스키마 (Rust 역직렬화 기준, 전체)
 

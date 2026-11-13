@@ -1916,7 +1916,7 @@ fn relay_language_aliases(entry: &mut Value, module_dir: &std::path::Path) {
 /// `aliases`는 module.toml `[aliases.commands]`의 별칭 — 별칭으로 친 명령도 relay가 위험도 확인을 거치게 한다
 /// `texts`: 언어 → 모듈 locales (번역한 명령 이름이 켜져 있을 때). 있으면 `commands.<이름>.label`·`description`과
 /// 칸의 `inputs.<칸>.label`을 언어별 `titles`·`descriptions`로 싣는다 (릴레이 슬래시 명령의 언어별 이름·설명)
-fn relay_command_entry(c: &crate::supervisor::module_loader::CommandField, aliases: &[String], texts: Option<&LocaleTexts<'_>>) -> Value {
+fn relay_command_entry(c: &crate::module_loader::CommandField, aliases: &[String], texts: Option<&LocaleTexts<'_>>) -> Value {
     let by_language = |pointer: &str| -> Option<serde_json::Map<String, Value>> {
         let texts = texts?;
         let map: serde_json::Map<String, Value> = crate::chat::i18n::languages()
@@ -2795,7 +2795,7 @@ mod tests {
 
     #[test]
     fn heartbeat_commands_leave_templates_on_the_pc() {
-        let field: crate::supervisor::module_loader::CommandField = serde_json::from_value(json!({
+        let field: crate::module_loader::CommandField = serde_json::from_value(json!({
             "name": "kick", "label": "Kick", "method": "console", "console_template": "kick {player}",
             "endpoint_template": "/v1/kick", "risk": "caution",
             "inputs": [{ "name": "player", "type": "text", "required": true }]
@@ -2812,7 +2812,7 @@ mod tests {
     /// 번역한 명령 이름이 켜져 있으면 모듈 locales의 이름·설명·칸 이름을 언어별로 싣는다 (슬래시 명령의 언어별 이름)
     #[test]
     fn heartbeat_commands_carry_translated_names_when_asked() {
-        let field: crate::supervisor::module_loader::CommandField = serde_json::from_value(json!({
+        let field: crate::module_loader::CommandField = serde_json::from_value(json!({
             "name": "save-all", "label": "Save World", "description": "Save the game world",
             "inputs": [{ "name": "flush", "type": "text" }]
         }))
@@ -3342,7 +3342,7 @@ mod tests {
             r#"{"module": {"display_name": "마인크래프트"}, "aliases": {"module": ["마크"], "commands": {"say": ["공지"]}}, "commands": {"say": {"label": "말하기", "description": "모두에게 말해요", "inputs": {"message": {"label": "메시지"}}}}}"#,
         )
         .unwrap();
-        let say: crate::supervisor::module_loader::CommandField = serde_json::from_value(json!({
+        let say: crate::module_loader::CommandField = serde_json::from_value(json!({
             "name": "say", "label": "Say", "description": "Broadcast a message", "risk": "safe",
             "inputs": [{ "name": "message", "label": "Message", "type": "text", "required": true }],
         }))

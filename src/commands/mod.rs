@@ -20,7 +20,7 @@
 //! (서버에 설치된 플러그인 명령 등, `InstanceCommands`). 같은 이름이면 module.toml 쪽이 먼저다.
 //! 새 실행 방식은 `Plan`에 갈래 하나와 `plan()`의 match 한 줄을 더하면 된다(슬롯).
 
-use crate::supervisor::module_loader::{CommandField, CommandInput, ModuleMetadata};
+use crate::module_loader::{CommandField, CommandInput, ModuleMetadata};
 use saba_chan_updater_lib::command_rules as rules;
 pub use rules::{has_line_break, risk_of};
 use serde_json::{json, Map, Value};

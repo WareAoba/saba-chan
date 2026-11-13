@@ -7,7 +7,7 @@
 //! 러너 실행 파일이 없으면(개발 중 빌드 누락 등) 호출 쪽이 예전 직접 실행(`spawn`)으로 돌아간다.
 
 use super::*;
-use crate::supervisor::module_loader::ConsoleMode;
+use crate::module_loader::ConsoleMode;
 use saba_runner::{exit_file, read_json, runner_file, ExitInfo, RunnerInfo, TOKEN_ENV};
 use std::io::{Read, Seek, SeekFrom};
 

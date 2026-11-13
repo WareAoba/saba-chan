@@ -14,7 +14,7 @@
 use crate::chat::permissions::{NodePermissions, Requester};
 use crate::ipc::internal::{into_internal, InternalResponse};
 use crate::ipc::IPCServer;
-use crate::supervisor::module_loader::{LoadedModule, ModuleQuery};
+use crate::module_loader::{LoadedModule, ModuleQuery};
 use serde_json::{json, Map, Value};
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -376,7 +376,7 @@ struct FieldRules {
     launch: Vec<String>,
 }
 
-fn field_rules(module: &crate::supervisor::module_loader::LoadedModule) -> FieldRules {
+fn field_rules(module: &crate::module_loader::LoadedModule) -> FieldRules {
     let mut rules = FieldRules::default();
     for f in module.metadata.settings.iter().flat_map(|s| s.fields.iter()) {
         if f.field_type == "password" {
@@ -1470,7 +1470,7 @@ async fn scheduled_commands(server: &IPCServer, instance: &str, body: Option<&Va
 }
 
 /// 예약 작업이 돌릴 모듈 게임 명령의 이름 (명령·공지·저장). 그 밖의 작업이나 모듈이 선언하지 않았으면 None
-pub(crate) fn scheduled_command_name(meta: &crate::supervisor::module_loader::ModuleMetadata, task: &crate::scheduler::ScheduledTask) -> Option<String> {
+pub(crate) fn scheduled_command_name(meta: &crate::module_loader::ModuleMetadata, task: &crate::scheduler::ScheduledTask) -> Option<String> {
     use crate::scheduler::TaskAction;
     match task.action {
         TaskAction::Command => task.command.clone(),

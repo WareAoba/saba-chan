@@ -1,5 +1,4 @@
 pub mod process;
-pub mod module_loader;
 pub mod managed_process;
 pub mod crash;
 pub mod highlight;
@@ -22,7 +21,7 @@ pub(crate) use install::{progress_to_tracker, InstallCall, InstanceInstall};
 
 use anyhow::Result;
 use process::ProcessTracker;
-use module_loader::{ModuleLoader, LoadedModule};
+use crate::module_loader::{self, ModuleLoader, LoadedModule};
 use managed_process::{ManagedProcess, ManagedProcessStore};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};

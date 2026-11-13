@@ -425,7 +425,7 @@ pub(crate) fn schedule_revision(instance: &crate::instance::ServerInstance) -> S
     crate::config_store::patch::revision(&serde_json::json!({ "schedule": instance.schedule, "backup_keep": instance.backup_keep }))
 }
 
-pub(crate) fn save_command_of(meta: &crate::supervisor::module_loader::ModuleMetadata) -> Option<String> {
+pub(crate) fn save_command_of(meta: &crate::module_loader::ModuleMetadata) -> Option<String> {
     meta.backup.as_ref().and_then(|b| b.save_command.clone())
 }
 

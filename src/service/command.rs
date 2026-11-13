@@ -352,7 +352,7 @@ async fn run_module_command(
 }
 
 /// 모듈 `[errors]` 문구: 코드마다 모듈 locales `errors.<code>`(GUI 언어)가 있으면 그 문구, 없으면 module.toml 값
-fn module_errors(module: &crate::supervisor::module_loader::LoadedModule, lang: &str) -> std::collections::HashMap<String, String> {
+fn module_errors(module: &crate::module_loader::LoadedModule, lang: &str) -> std::collections::HashMap<String, String> {
     let locale = crate::actions::module_locale(module, lang);
     module
         .metadata
@@ -845,11 +845,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(dir.path().join("locales")).unwrap();
         std::fs::write(dir.path().join("locales/ko.json"), r#"{"errors": {"server_not_running": "서버가 꺼져 있어요", "timeout": {"detail": "x"}}}"#).unwrap();
-        let metadata = crate::supervisor::module_loader::parse_module_toml(
+        let metadata = crate::module_loader::parse_module_toml(
             "[module]\nname = \"m\"\nversion = \"1\"\nentry = \"lifecycle.py\"\n[errors]\nserver_not_running = \"Server is off\"\ntimeout = \"Timed out\"\n",
         )
         .unwrap();
-        let module = crate::supervisor::module_loader::LoadedModule { metadata, path: dir.path().to_string_lossy().into(), source: dir.path().to_string_lossy().into() };
+        let module = crate::module_loader::LoadedModule { metadata, path: dir.path().to_string_lossy().into(), source: dir.path().to_string_lossy().into() };
 
         let ko = module_errors(&module, "ko");
         assert_eq!(ko["server_not_running"], "서버가 꺼져 있어요");

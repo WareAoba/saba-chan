@@ -139,7 +139,7 @@ export interface ServerListResponse {
     port_conflict_stops?: PortConflictStopEvent[];
 }
 
-// ── 모듈 (ipc::ExtensionInfo, supervisor::module_loader) ──
+// ── 모듈 (ipc::ExtensionInfo, module_loader) ──
 
 /** module_loader::VisibleWhen */
 export interface VisibleWhen {

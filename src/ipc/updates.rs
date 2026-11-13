@@ -616,8 +616,8 @@ async fn replace_addons_once(state: &UpdateState) -> Leftover {
         .filter(|c| c.update_available && is_addon(&c.component))
         .filter(|c| enabled || chosen.contains(&c.component.manifest_key()))
         .filter(|c| {
-            let core = c.requires.as_ref().and_then(|r| r.get(crate::supervisor::module_loader::CORE_COMPONENT));
-            core.is_none_or(|req| saba_chan_updater_lib::version::satisfies(crate::supervisor::module_loader::DAEMON_VERSION, req))
+            let core = c.requires.as_ref().and_then(|r| r.get(crate::module_loader::CORE_COMPONENT));
+            core.is_none_or(|req| saba_chan_updater_lib::version::satisfies(crate::module_loader::DAEMON_VERSION, req))
         })
         .map(|c| c.component)
         .collect();
@@ -1689,7 +1689,7 @@ fn hold_baseline<'a>(installed: &'a str, latest_core: Option<&'a str>) -> &'a st
 
 /// 설치된 모듈·익스텐션 키와 그 `saba-core` 요구 (모듈 `[module.dependencies]`, 익스텐션 `dependencies`·`min_app_version`)
 async fn installed_addon_requires(state: &UpdateState) -> Vec<(String, std::collections::HashMap<String, String>)> {
-    let core = crate::supervisor::module_loader::CORE_COMPONENT.to_string();
+    let core = crate::module_loader::CORE_COMPONENT.to_string();
     let mut addons = Vec::new();
     if let Some(sup) = &state.supervisor
         && let Ok(modules) = sup.read().await.list_modules()
@@ -1711,7 +1711,7 @@ async fn installed_addon_requires(state: &UpdateState) -> Vec<(String, std::coll
 /// `version` 코어가 읽지 않을 것: `saba-core` 요구를 채우지 못하는 모듈·익스텐션 키. 사용자 되돌리기는 실행 파일만 되돌려
 /// 이것들은 새 판으로 남는다
 fn addons_needing_core(version: &str, addons: Vec<(String, std::collections::HashMap<String, String>)>) -> Vec<String> {
-    let core = crate::supervisor::module_loader::CORE_COMPONENT.to_string();
+    let core = crate::module_loader::CORE_COMPONENT.to_string();
     let installed = std::collections::HashMap::from([(core.clone(), version.to_string())]);
     addons
         .into_iter()

@@ -278,7 +278,7 @@ pub struct ExtensionManifest {
     pub commands: Vec<ExtensionCommand>,
     /// 코드가 쓰는 위험한 능력 선언 (모듈 `[permissions]`와 같은 표). `extension audit`가 코드와 대조한다
     #[serde(default)]
-    pub permissions: crate::supervisor::module_loader::ModulePermissions,
+    pub permissions: crate::module_loader::ModulePermissions,
     /// 실행 방식 (모듈 `[runtime]`과 같은 표). `persistent`면 hook·명령을 오래 사는 작업자로 부른다 (실행기가 manifest에서 읽는다)
     #[serde(default, skip_serializing_if = "crate::plugin::Runtime::is_default")]
     pub runtime: crate::plugin::Runtime,
@@ -297,7 +297,7 @@ pub struct ExtensionCommand {
     #[serde(default)]
     pub risk: Option<String>,
     #[serde(default)]
-    pub inputs: Vec<crate::supervisor::module_loader::CommandInput>,
+    pub inputs: Vec<crate::module_loader::CommandInput>,
     /// python_modules의 키
     pub module: String,
     pub function: String,
@@ -411,7 +411,7 @@ pub fn is_valid_extension_id(id: &str) -> bool {
     !id.is_empty()
         && id.len() <= 64
         && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-        && id != crate::supervisor::module_loader::DAEMON_TABLE
+        && id != crate::module_loader::DAEMON_TABLE
 }
 
 fn ensure_valid_extension_id(id: &str) -> Result<()> {
@@ -1006,7 +1006,7 @@ impl ExtensionManager {
 
     /// 익스텐션 활성화 — 통합 dependencies 맵에서 의존성 전부 검증.
     pub fn enable(&mut self, ext_id: &str) -> Result<()> {
-        let installed = HashMap::from([(crate::supervisor::module_loader::CORE_COMPONENT.to_string(), APP_VERSION.to_string())]);
+        let installed = HashMap::from([(crate::module_loader::CORE_COMPONENT.to_string(), APP_VERSION.to_string())]);
         self.enable_with_versions(ext_id, &installed)
     }
 
@@ -1837,7 +1837,7 @@ impl HookPlan {
 pub(crate) fn hook_context(
     instance: &crate::instance::ServerInstance,
     instance_dir: &std::path::Path,
-    module: Option<&crate::supervisor::module_loader::ModuleMetadata>,
+    module: Option<&crate::module_loader::ModuleMetadata>,
 ) -> Value {
     serde_json::json!({
         "instance_id": &instance.id,
@@ -1851,7 +1851,7 @@ pub(crate) fn hook_context(
 
 /// hook에 넘기는 값(인스턴스·설정)에서 비밀을 가린다: REST 비밀번호, 모듈이 password로 선언했거나 이름이 비밀스러운 값 (D-E2).
 /// 키 이름으로만 가린다: 인스턴스를 넘기면 비밀값과 같은 글자가 이름·경로에서도 지워진다
-pub(crate) fn redact_for_hooks(module: Option<&crate::supervisor::module_loader::ModuleMetadata>, value: &Value) -> Value {
+pub(crate) fn redact_for_hooks(module: Option<&crate::module_loader::ModuleMetadata>, value: &Value) -> Value {
     crate::audit::redact(module, None, None, Some(value)).1.unwrap_or_default()
 }
 

@@ -674,7 +674,7 @@ impl Supervisor {
         instance: &crate::instance::ServerInstance,
         module_name: &str,
         managed: bool,
-    ) -> Result<(crate::plugin::PluginCall, crate::supervisor::module_loader::LoadedModule)> {
+    ) -> Result<(crate::plugin::PluginCall, crate::module_loader::LoadedModule)> {
         // 실행 파일은 모듈 정의에서 자동 해석
         let mut cfg = config.as_object().cloned().unwrap_or_default();
         self.insert_resolved_exe(&mut cfg, instance, module_name);

@@ -103,7 +103,7 @@ pub async fn get_instance(
 }
 
 /// 사용자가 런타임 경로 설정(`runtime`)에 정한 값을 그 모듈의 격리 실행에 연다 (폴더 권한 고치기는 오래 걸릴 수 있어 따로)
-fn open_user_runtime(module: &crate::supervisor::module_loader::LoadedModule, instance: &crate::instance::ServerInstance) {
+fn open_user_runtime(module: &crate::module_loader::LoadedModule, instance: &crate::instance::ServerInstance) {
     for path in module.metadata.user_runtime_paths(instance) {
         let (entry, path) = (module.entry_path(), path.to_string());
         tokio::task::spawn_blocking(move || crate::sandbox::open_user_runtime(std::path::Path::new(&entry), &path));

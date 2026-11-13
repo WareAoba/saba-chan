@@ -383,33 +383,33 @@ pub struct ExtensionInfo {
     pub icon: Option<String>,
     pub interaction_mode: Option<String>,
     pub protocols: Option<ProtocolsInfo>,
-    pub settings: Option<crate::supervisor::module_loader::ModuleSettings>,
-    pub commands: Option<crate::supervisor::module_loader::ModuleCommands>,
-    pub syntax_highlight: Option<crate::supervisor::module_loader::SyntaxHighlight>,
+    pub settings: Option<crate::module_loader::ModuleSettings>,
+    pub commands: Option<crate::module_loader::ModuleCommands>,
+    pub syntax_highlight: Option<crate::module_loader::SyntaxHighlight>,
     /// 디렉토리 시그니처 — 마이그레이션 시 기존 서버 폴더 자동 감지용
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub dir_signatures: Vec<String>,
     /// 설치 방식 정보 (download, steamcmd 등)
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub install: Option<crate::supervisor::module_loader::ModuleInstallConfig>,
+    pub install: Option<crate::module_loader::ModuleInstallConfig>,
     /// 모듈 별명 (Discord/CLI 다국어 지원)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub module_aliases: Vec<String>,
     /// 명령어 별명
     #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
-    pub command_aliases: std::collections::HashMap<String, crate::supervisor::module_loader::CommandAliasInfo>,
+    pub command_aliases: std::collections::HashMap<String, crate::module_loader::CommandAliasInfo>,
     /// `[[presets]]` 서버를 만들 때 고르는 추천 설정 묶음
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub presets: Vec<crate::supervisor::module_loader::ModulePreset>,
+    pub presets: Vec<crate::module_loader::ModulePreset>,
     /// `[[queries]]` 읽기 전용 조회 (액션 `server.query:<name>`)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub queries: Vec<crate::supervisor::module_loader::ModuleQuery>,
+    pub queries: Vec<crate::module_loader::ModuleQuery>,
     /// `[[agreements]]` 켜기 전에 동의할 약관 (이름은 모듈 locales `agreements.<id>`)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub agreements: Vec<crate::supervisor::module_loader::ModuleAgreement>,
+    pub agreements: Vec<crate::module_loader::ModuleAgreement>,
     /// `[[lists]]` 플레이어 목록 선언 (있으면 클라이언트가 목록 화면을 보인다. 이름과 지금 명단은 `GET /api/instance/:id/lists`)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub lists: Vec<crate::supervisor::module_loader::ModuleList>,
+    pub lists: Vec<crate::module_loader::ModuleList>,
     /// 모듈이 `functions`로 밝힌 lifecycle 함수 (MK1). null이면 모름: 클라이언트는 아무 기능도 숨기지 않는다
     #[serde(default)]
     pub functions: Option<Vec<String>>,
@@ -423,7 +423,7 @@ pub struct ExtensionListResponse {
     pub modules: Vec<ExtensionInfo>,
     /// 로드하지 못한 모듈과 이유
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub failed: Vec<crate::supervisor::module_loader::ModuleLoadError>,
+    pub failed: Vec<crate::module_loader::ModuleLoadError>,
 }
 
 // ── API Action Tracker ──────────────────────────────────────
@@ -1372,9 +1372,9 @@ mod tests {
             lists: Vec::new(),
             functions: None,
             addon: Default::default(),
-            commands: Some(crate::supervisor::module_loader::ModuleCommands {
+            commands: Some(crate::module_loader::ModuleCommands {
                 fields: vec![
-                    crate::supervisor::module_loader::CommandField {
+                    crate::module_loader::CommandField {
                         name: "players".to_string(),
                         label: "플레이어 목록".to_string(),
                         description: Some("현재 접속 중인 플레이어 조회".to_string()),
@@ -1485,9 +1485,9 @@ mod tests {
                     lists: Vec::new(),
                     functions: None,
                     addon: Default::default(),
-                    commands: Some(crate::supervisor::module_loader::ModuleCommands {
+                    commands: Some(crate::module_loader::ModuleCommands {
                         fields: vec![
-                            crate::supervisor::module_loader::CommandField {
+                            crate::module_loader::CommandField {
                                 name: "info".to_string(),
                                 label: "서버 정보".to_string(),
                                 description: None,
@@ -1500,7 +1500,7 @@ mod tests {
                                 remote: true,
                                 reply_pattern: None,
                             },
-                            crate::supervisor::module_loader::CommandField {
+                            crate::module_loader::CommandField {
                                 name: "announce".to_string(),
                                 label: "공지 전송".to_string(),
                                 description: None,
@@ -1510,7 +1510,7 @@ mod tests {
                                 console_template: None,
                                 risk: None,
                                 inputs: vec![
-                                    crate::supervisor::module_loader::CommandInput {
+                                    crate::module_loader::CommandInput {
                                         name: "message".to_string(),
                                         label: Some("메시지".to_string()),
                                         input_type: Some("string".to_string()),
@@ -1552,7 +1552,7 @@ mod tests {
 
     #[test]
     fn test_command_input_serialization() {
-        let input = crate::supervisor::module_loader::CommandInput {
+        let input = crate::module_loader::CommandInput {
             name: "user_id".to_string(),
             label: Some("유저 ID".to_string()),
             input_type: Some("string".to_string()),
