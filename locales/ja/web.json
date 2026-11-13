@@ -303,6 +303,7 @@
     "start_cancelled": "起動中に停止要求が入ったため起動をキャンセル",
     "still_stopping": "サーバーがまだ停止中のため起動しませんでした。完全に停止してから起動してください。",
     "generic": "リクエスト処理失敗",
+    "command_rejected": "サーバーがコマンドを拒否しました",
     "remote_not_allowed": "PC の サバちゃん アプリでのみ実行できる操作",
     "remote_field_blocked": "PC でのみ変更できる設定: {{fields}}",
     "remote_bad_path": "受け付けられないリクエスト",

@@ -303,6 +303,7 @@
     "start_cancelled": "Start abgebrochen, da währenddessen ein Stopp angefordert wurde",
     "still_stopping": "Server fährt noch herunter, nicht gestartet. Nach vollständigem Stopp starten.",
     "generic": "Anfrage fehlgeschlagen",
+    "command_rejected": "Server hat den Befehl abgelehnt",
     "remote_not_allowed": "Nur in der Saba-chan-App auf dem PC möglich",
     "remote_field_blocked": "Nur am PC änderbar: {{fields}}",
     "remote_bad_path": "Anfrage nicht annehmbar",

@@ -56,6 +56,16 @@ describe('웹 명령 입력', () => {
         expect(exec).toHaveBeenCalledWith('s1', { command: 'give Steve diamond 3' });
     });
 
+    // 서버가 거절한 명령(데몬의 `rejected`)은 성공으로 남기지 않고 까닭을 보인다
+    it('서버가 거절한 명령은 실패로 보인다', async () => {
+        await panel(mc, vi.fn().mockResolvedValue({ success: true, protocol: 'stdin', rejected: { reason: null } }));
+        const line = screen.getByRole('textbox', { name: 'Command' });
+        fireEvent.change(line, { target: { value: 'list extra' } });
+        await act(async () => fireEvent.submit(line.closest('form') as HTMLFormElement));
+        expect(screen.getAllByText('Server rejected the command').length).toBeGreaterThan(0);
+        expect((line as HTMLInputElement).value).toBe('list extra');
+    });
+
     it('칸이 있는 직접 명령 카드를 누르면 입력 줄에 이름을 넣는다', async () => {
         const exec = await panel(mc);
         fireEvent.click(screen.getByRole('button', { name: /Give Item/ }));

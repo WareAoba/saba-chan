@@ -303,6 +303,7 @@
     "start_cancelled": "Arrêt demandé pendant le démarrage : démarrage annulé",
     "still_stopping": "Serveur encore en cours d'arrêt : démarrage impossible. Démarrez-le une fois complètement arrêté.",
     "generic": "Échec du traitement de la requête",
+    "command_rejected": "Le serveur a refusé la commande",
     "remote_not_allowed": "Action possible uniquement dans l'app Saba-chan sur le PC",
     "remote_field_blocked": "Paramètres modifiables uniquement sur le PC : {{fields}}",
     "remote_bad_path": "Requête refusée",

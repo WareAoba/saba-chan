@@ -303,6 +303,7 @@
     "start_cancelled": "Start canceled: a stop request arrived while starting",
     "still_stopping": "The server is still stopping, so it was not started. Start it after it has fully stopped.",
     "generic": "Request failed",
+    "command_rejected": "Server rejected the command",
     "remote_not_allowed": "Can only be done in the Saba-chan app on the PC",
     "remote_field_blocked": "Settings that can only be changed on the PC: {{fields}}",
     "remote_bad_path": "Request not accepted",

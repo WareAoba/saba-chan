@@ -153,7 +153,9 @@ function CommandModal({ server, modules }: CommandModalProps) {
 
             // 응답 메시지 추출 — REST API는 data.response에 {"raw":""} 같은
             // 빈 객체를 반환할 수 있으므로 이를 감지하여 깔끔한 성공/실패 표시로 변환
-            const isError = !!result.error;
+            // 서버가 거절한 명령: 데몬이 모듈의 실패 모양으로 판정한다 (`rejected.reason`)
+            const rejected = result?.rejected as { reason?: string | null } | undefined;
+            const isError = !!result.error || !!rejected;
             const status = isError ? 'failure' : 'success';
 
             // 원본 응답 데이터를 상세 내역용 문자열로 구성
@@ -175,7 +177,9 @@ function CommandModal({ server, modules }: CommandModalProps) {
 
             // 사용자에게 보여줄 간결한 메시지
             let displayMsg: unknown;
-            if (isError) {
+            if (rejected) {
+                displayMsg = rejected.reason || t('command_modal.rejected');
+            } else if (isError) {
                 displayMsg = commandErrorText(result, t) ?? result.error;
             } else if (!isEmptyResponse(responseObj)) {
                 // 의미 있는 응답이 있을 때: 문자열이면 그대로, 객체면 간략 표시

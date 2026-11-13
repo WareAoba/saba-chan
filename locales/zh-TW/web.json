@@ -303,6 +303,7 @@
     "start_cancelled": "啟動中收到停止要求，啟動已取消",
     "still_stopping": "伺服器仍在停止中，未啟動。請在完全停止後再啟動。",
     "generic": "請求處理失敗",
+    "command_rejected": "伺服器拒絕了命令",
     "remote_not_allowed": "只能在電腦的 Saba-chan 應用程式中進行的操作",
     "remote_field_blocked": "只能在電腦上變更的設定：{{fields}}",
     "remote_bad_path": "無法接受的請求",

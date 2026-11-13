@@ -1445,7 +1445,7 @@ impl ModuleToml {
                 remote: f.remote.unwrap_or(true),
                 reply_pattern: f.reply_pattern,
             }).collect();
-            if fields.is_empty() && !c.hook { None } else { Some(ModuleCommands { fields, hook: c.hook, failure_patterns: c.failure_patterns }) }
+            if fields.is_empty() && !c.hook && c.failure_patterns.is_empty() { None } else { Some(ModuleCommands { fields, hook: c.hook, failure_patterns: c.failure_patterns }) }
         } else {
             None
         };

@@ -86,13 +86,9 @@ impl std::fmt::Display for SaveNotDone {
 
 impl std::error::Error for SaveNotDone {}
 
-/// 서버 답이 모듈의 실패 모양(`[commands] failure_patterns`)에 맞으면 그 까닭. 실패 모양의 `reason` 이름 묶음만 싣고,
-/// 없으면 "rejected" (콘솔 원문은 밖으로 내지 않는다)
-fn rejected(reply: &str, failures: &[regex::Regex]) -> Option<String> {
-    failures
-        .iter()
-        .find_map(|re| re.captures(reply))
-        .map(|c| c.name("reason").map(|m| m.as_str().trim().to_string()).unwrap_or_else(|| "rejected".to_string()))
+/// 서버 답이 모듈의 실패 모양(`[commands] failure_patterns`)에 맞으면 그 까닭. 까닭이 없으면 "rejected"
+fn rejected(reply: &str, failures: &[String]) -> Option<String> {
+    crate::commands::rejected(reply, failures).map(|reason| reason.unwrap_or_else(|| "rejected".to_string()))
 }
 
 /// 켜진 서버의 자동 저장을 멈추고 저장한다. 서버가 명령을 거절하면(명령 답이 실패 모양) 백업을 만들지 않는다.
@@ -100,7 +96,6 @@ fn rejected(reply: &str, failures: &[regex::Regex]) -> Option<String> {
 /// 선언이 없으면 예전처럼 3초 기다린다
 async fn save_for_backup(state: &IPCServer, id: &str, spec: &crate::supervisor::module_loader::ModuleBackup, failures: &[String]) -> Result<(), SaveNotDone> {
     let proc = state.supervisor.read().await.managed_store.get(id).await;
-    let failures: Vec<regex::Regex> = failures.iter().filter_map(|p| regex::Regex::new(p).ok()).collect();
     let done = spec.save_done_pattern.as_deref().and_then(|p| match regex::Regex::new(p) {
         Ok(re) => Some(re),
         Err(e) => {
@@ -128,7 +123,7 @@ async fn save_for_backup(state: &IPCServer, id: &str, spec: &crate::supervisor::
         }
         // 답에는 보낸 뒤 잠깐 찍힌 줄이 다 섞인다(다른 명령의 답 포함). 서버가 바로 찍는 첫 줄로만 거절을 가린다
         let first = reply.lines().find(|l| !l.trim().is_empty()).unwrap_or_default();
-        if let Some(reason) = rejected(first, &failures) {
+        if let Some(reason) = rejected(first, failures) {
             return Err(SaveNotDone::Rejected { command: cmd.to_string(), reason });
         }
         let Some(done) = done_here else { continue };
@@ -434,7 +429,6 @@ async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, prote
     let mut not_resumed = None;
     if let Some(cmd) = resume.as_deref().filter(|_| !stopped) {
         // 저장 명령처럼 답의 첫 줄이 모듈의 실패 모양이면 서버가 재개를 거절한 것이다
-        let failures: Vec<regex::Regex> = failures.iter().filter_map(|p| regex::Regex::new(p).ok()).collect();
         let resumed = save_reply(state, id, cmd, None).await.is_some_and(|reply| {
             let first = reply.lines().find(|l| !l.trim().is_empty()).unwrap_or_default();
             rejected(first, &failures).is_none()

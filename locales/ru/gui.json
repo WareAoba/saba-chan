@@ -345,6 +345,7 @@
     "execute": "Выполнить",
     "server_not_running_message": "Для выполнения команд сервер '{{name}}' должен быть запущен.\n\nТекущее состояние: {{status}}",
     "execution_failed": "Ошибка выполнения команды",
+    "rejected": "Сервер отклонил команду",
     "success": "Успех",
     "command_executed": "Команда '{{command}}' выполнена",
     "show_more": "Показать ещё {{count}}",

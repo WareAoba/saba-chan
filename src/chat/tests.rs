@@ -575,14 +575,19 @@ async fn a_module_defines_the_reply_from_the_console_answer() {
     assert!(run(&api, &settings(), "mc say hi").await.contains("Chat"));
 }
 
-/// 콘솔 답이 모듈의 실패 모양과 맞으면 실패로 알린다 (`[commands] failure_patterns`, `reason` 그룹이 이유)
+/// 데몬이 거절로 표시한 명령(`rejected`, 모듈의 실패 모양)은 실패로 알린다. 까닭이 없으면 기본 까닭
 #[tokio::test]
-async fn a_console_answer_matching_a_failure_pattern_is_a_failure() {
+async fn a_command_the_server_rejected_is_a_failure() {
     let mut api = fixture();
-    api.modules[0].failure_patterns = vec![r"(?P<reason>No player was found)".into()];
-    api.reply = Some(console_reply("[12:00:00] [Server thread/INFO]: No player was found"));
+    let mut reply = console_reply("[12:00:00] [Server thread/INFO]: No player was found");
+    reply.body["rejected"] = json!({ "reason": "No player was found" });
+    api.reply = Some(reply.clone());
     let out = run(&api, &settings(), "mc kick Steve").await;
     assert!(out.starts_with("[command.failed") && out.contains("reason=No player was found") && !out.contains("Server thread"), "{out}");
+    reply.body["rejected"] = json!({ "reason": null });
+    api.reply = Some(reply);
+    let out = run(&api, &settings(), "mc kick Steve").await;
+    assert!(out.starts_with("[command.failed") && out.contains("reasons.rejected"), "{out}");
 }
 
 /// 틀린 인자는 무엇이 틀렸는지 응답 언어로 알린다 (데몬 검사 결과의 `rule`, 모델 해석 없이)

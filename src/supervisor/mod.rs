@@ -566,6 +566,8 @@ impl Supervisor {
                 "rest_port": instance.rest_port.unwrap_or(default_rest_port),
                 "pid": pid,
                 "instance_id": instance_id,
+                // 설치 때 기록한 게임 버전: 버전마다 명령 모양이 다른 게임(마인크래프트 gamerule 이름)이 본다
+                "server_version": &instance.server_version,
             });
 
             // 플러그인 실행

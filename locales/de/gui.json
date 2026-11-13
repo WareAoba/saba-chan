@@ -345,6 +345,7 @@
     "execute": "Ausführen",
     "server_not_running_message": "Der Server „{{name}}“ muss laufen, um Befehle auszuführen.\n\nStatus: {{status}}",
     "execution_failed": "Befehlsausführung fehlgeschlagen",
+    "rejected": "Server hat den Befehl abgelehnt",
     "success": "Erfolg",
     "command_executed": "Befehl „{{command}}“ ausgeführt",
     "show_more": "{{count}} weitere anzeigen",
