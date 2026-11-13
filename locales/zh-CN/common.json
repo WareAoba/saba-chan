@@ -129,6 +129,7 @@
     "crash": "服务器“{{name}}”崩溃停止",
     "unknown_exit": "服务器“{{name}}”意外停止",
     "restart_in": "{{secs}} 秒后重启",
+    "with_next": "{{head}}。{{next}}",
     "gave_up": "自动重启已中止。请手动确认。",
     "restart_failed": "服务器“{{name}}”重启失败",
     "daemon_down": "Saba-chan 守护进程异常退出。服务器监控和 Discord 联动已停止，请在应用中重新启动。",

@@ -129,6 +129,7 @@
     "crash": "Serveur « {{name}} » arrêté par un crash",
     "unknown_exit": "Serveur « {{name}} » arrêté de façon inattendue",
     "restart_in": "Redémarrage dans {{secs}} s",
+    "with_next": "{{head}}. {{next}}",
     "gave_up": "Redémarrage automatique abandonné. Vérifiez le serveur.",
     "restart_failed": "Échec du redémarrage du serveur « {{name}} »",
     "daemon_down": "Daemon Saba-chan arrêté anormalement. Surveillance des serveurs et liaison Discord suspendues : relancez-le depuis l'app.",

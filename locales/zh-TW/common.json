@@ -129,6 +129,7 @@
     "crash": "「{{name}}」伺服器因當機而停止",
     "unknown_exit": "「{{name}}」伺服器意外停止",
     "restart_in": "{{secs}} 秒後重新啟動",
+    "with_next": "{{head}}。{{next}}",
     "gave_up": "自動重新啟動已中止。請自行確認。",
     "restart_failed": "「{{name}}」伺服器重新啟動失敗",
     "daemon_down": "Saba-chan 常駐程式異常結束。伺服器監控與 Discord 連動已停止，請在應用程式中重新啟動。",

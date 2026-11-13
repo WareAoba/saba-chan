@@ -129,6 +129,7 @@
     "crash": "Servidor “{{name}}” detenido por fallo",
     "unknown_exit": "Servidor “{{name}}” detenido inesperadamente",
     "restart_in": "Reinicio en {{secs}} s",
+    "with_next": "{{head}}. {{next}}",
     "gave_up": "Reinicio automático interrumpido. Revisa el servidor.",
     "restart_failed": "Error al reiniciar el servidor “{{name}}”",
     "daemon_down": "El daemon de Saba-chan se cerró de forma anómala. La supervisión de servidores y la integración con Discord están detenidas; reinícialo desde la app.",

@@ -129,6 +129,7 @@
     "crash": "“{{name}}” 서버 크래시로 종료됨",
     "unknown_exit": "“{{name}}” 서버가 예기치 않게 종료됨",
     "restart_in": "{{secs}}초 뒤 재시작",
+    "with_next": "{{head}}. {{next}}",
     "gave_up": "자동 재시작 중단됨. 직접 확인해 주세요.",
     "restart_failed": "“{{name}}” 서버 재시작 실패",
     "daemon_down": "사바쨩 데몬 비정상 종료. 서버 감시와 디스코드 연동이 멈췄으니 앱에서 다시 시작해 주세요.",

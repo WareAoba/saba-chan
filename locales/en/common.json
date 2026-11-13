@@ -129,6 +129,7 @@
     "crash": "Server “{{name}}” stopped after a crash",
     "unknown_exit": "Server “{{name}}” stopped unexpectedly",
     "restart_in": "Restarting in {{secs}}s",
+    "with_next": "{{head}}. {{next}}",
     "gave_up": "Auto restart stopped. Check the server.",
     "restart_failed": "Server “{{name}}” restart failed",
     "daemon_down": "Saba-chan daemon exited abnormally. Server monitoring and Discord are paused. Start it again from the app.",

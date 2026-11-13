@@ -129,6 +129,7 @@
     "crash": "Servidor “{{name}}” encerrado por crash",
     "unknown_exit": "Servidor “{{name}}” encerrado inesperadamente",
     "restart_in": "Reinício em {{secs}} s",
+    "with_next": "{{head}}. {{next}}",
     "gave_up": "Reinício automático interrompido. Verifique manualmente.",
     "restart_failed": "Falha ao reiniciar o servidor “{{name}}”",
     "daemon_down": "Daemon do Saba-chan encerrado de forma anormal. Monitoramento dos servidores e integração com o Discord parados; reinicie pelo app.",

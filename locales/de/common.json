@@ -129,6 +129,7 @@
     "crash": "Server „{{name}}“ abgestürzt",
     "unknown_exit": "Server „{{name}}“ unerwartet beendet",
     "restart_in": "Neustart in {{secs}} s",
+    "with_next": "{{head}}. {{next}}",
     "gave_up": "Automatischer Neustart abgebrochen. Selbst prüfen.",
     "restart_failed": "Neustart von Server „{{name}}“ fehlgeschlagen",
     "daemon_down": "Saba-chan-Daemon abnormal beendet. Serverüberwachung und Discord sind pausiert, in der App neu starten.",

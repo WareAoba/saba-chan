@@ -129,6 +129,7 @@
     "crash": "サーバー “{{name}}” がクラッシュして停止",
     "unknown_exit": "サーバー “{{name}}” が予期せず停止",
     "restart_in": "{{secs}} 秒後に再起動",
+    "with_next": "{{head}}。{{next}}",
     "gave_up": "自動再起動を中止。サーバーを確認してください。",
     "restart_failed": "サーバー “{{name}}” の再起動失敗",
     "daemon_down": "サバちゃん デーモンが異常終了。サーバー監視と Discord 連携が停止しているため、アプリから再起動してください。",
