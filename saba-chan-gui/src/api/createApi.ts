@@ -954,6 +954,11 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         updaterRestart: () => invoke('updater_restart'),
         updaterGetConfig: () => call('get', '/api/updates/config', undefined, 5000),
         updaterSetConfig: (config: ApiBody) => call('put', '/api/updates/config', config, 5000),
+        // 모듈·익스텐션 버전 고르기 (key: module-<이름>·ext-<id>). 받기·서명 확인·설치와 켜진 서버 기다리기는 데몬이 한다
+        addonVersions: (key: string) => call('get', `/api/updates/addons/${encodeURIComponent(key)}/versions`, undefined, 30000),
+        addonPin: (key: string, version: string) =>
+            call('post', `/api/updates/addons/${encodeURIComponent(key)}/pin`, { version }, 600000),
+        addonUnpin: (key: string) => call('delete', `/api/updates/addons/${encodeURIComponent(key)}/pin`, undefined, 600000),
         onUpdatesAvailable: (callback: Listener) => {
             hub.on('updates:available', callback);
         },
