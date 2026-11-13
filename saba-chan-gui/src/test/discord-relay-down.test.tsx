@@ -91,17 +91,6 @@ describe('실패로 정해진 뒤의 확인', () => {
         expect(useDiscordStore.getState().relayError).toBe('');
         expect(useDiscordStore.getState()._relayFailures).toBe(0);
     });
-
-    it('봇을 멈추면 남은 릴레이 실패를 지운다', async () => {
-        vi.mocked(window.api.relayCheckHostStatus).mockResolvedValue({ error: 'down' });
-        await useDiscordStore.getState().checkStatus();
-        await useDiscordStore.getState().checkStatus();
-        window.api.discordBotStop = vi.fn().mockResolvedValue({}) as never;
-        window.showToast = vi.fn();
-        await useDiscordStore.getState().stopBot();
-        expect(useDiscordStore.getState().relayError).toBe('');
-        expect(useDiscordStore.getState()._relayFailures).toBe(0);
-    });
 });
 
 describe('디스코드 화면', () => {

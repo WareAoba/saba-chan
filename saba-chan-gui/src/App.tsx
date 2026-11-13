@@ -192,7 +192,6 @@ function App() {
 
     // Discord store action aliases
     const handleStartDiscordBot = useDiscordStore((s) => s.startBot);
-    const handleStopDiscordBot = useDiscordStore((s) => s.stopBot);
 
     // 서버 동작은 스토어 액션이다 (stores/serverActions). 관리 모드로 켜면 여는 콘솔은 이 창의 콘솔 훅이 들고 있다
     useEffect(() => setServerConsole(openConsole), [openConsole]);
@@ -740,7 +739,6 @@ function App() {
         relayConnected,
         relayConnecting,
         handleStartDiscordBot,
-        handleStopDiscordBot,
         saveCurrentSettings,
         servers,
         modules,
