@@ -146,8 +146,7 @@ fn kept_backups(body: &Value) -> Option<String> {
 }
 
 /// 사바쨩 버전이 모자라 거절된 응답을 "업데이트가 필요해요" 문구로. 그런 거절이 아니면 None (GUI `utils/updateRequired.ts`와 같은 규칙).
-/// 요구 버전은 데몬이 `required_core`로 싣는다(0.1.14-beta.2~). 그 전 데몬(0.1.14 정식)이면 문구·`related`에서 읽는다
-/// (원격 데몬 최소 버전이 beta.2를 넘을 때 그 대체를 지운다).
+/// 요구 버전은 데몬이 `required_core`로 싣는다.
 /// 릴레이(`agent_too_old`·`AGENT_TOO_OLD` + minVersion), 모듈(saba-core 의존성·더 새 스키마), 익스텐션(min_app_version·saba-core 의존성).
 /// `name`이 비면 응답의 `module`·`extension`을 쓴다
 pub fn update_required(body: &Value, name: &str) -> Option<String> {
@@ -156,29 +155,18 @@ pub fn update_required(body: &Value, name: &str) -> Option<String> {
         "" => "?".to_string(),
         v => v.to_string(),
     };
-    let required = body.get("required_core").and_then(Value::as_str).filter(|v| !v.is_empty());
-    let related = |i: usize| body.get("related").and_then(|r| r.get(i)).and_then(Value::as_str).unwrap_or_default();
+    let required = || version(s("required_core"));
     let name = if name.is_empty() { [s("module"), s("extension")].into_iter().find(|n| !n.is_empty()).unwrap_or_default() } else { name };
     if s("lastErrorCode") == "agent_too_old" || s("error").eq_ignore_ascii_case("AGENT_TOO_OLD") {
         return Some(t!("update_required.relay", version = version(s("minVersion"))));
     }
     match s("error_code") {
-        // 항목 꼴: "saba-core >=0.1.10 (installed 0.1.9)"
-        "module_dependency_unsatisfied" => required
-            .or_else(|| {
-                body.get("missing_dependencies")
-                    .and_then(Value::as_array)
-                    .into_iter()
-                    .flatten()
-                    .filter_map(Value::as_str)
-                    .find_map(|d| d.strip_prefix("saba-core "))
-                    .map(|d| d.split(" (").next().unwrap_or_default())
-            })
-            .map(|d| t!("update_required.module", name = name, version = version(d))),
+        // 사바쨩이 모자란 거절에만 `required_core`가 있다 (다른 의존성이 모자란 거절은 아니다)
+        "module_dependency_unsatisfied" if !s("required_core").is_empty() => Some(t!("update_required.module", name = name, version = required())),
         "module_schema_unsupported" => Some(t!("update_required.module_newer", name = name)),
-        "app_version_unsatisfied" => Some(t!("update_required.extension", name = name, version = version(required.unwrap_or(related(0))))),
-        "component_version_unsatisfied" if related(0) == "saba-core" => {
-            Some(t!("update_required.extension", name = name, version = version(required.unwrap_or(related(1)))))
+        "app_version_unsatisfied" => Some(t!("update_required.extension", name = name, version = required())),
+        "component_version_unsatisfied" if !s("required_core").is_empty() => {
+            Some(t!("update_required.extension", name = name, version = required()))
         }
         _ => None,
     }

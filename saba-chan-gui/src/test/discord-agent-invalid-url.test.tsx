@@ -33,13 +33,13 @@ describe('거절된 릴레이 주소로 멈춘 에이전트', () => {
     it('브리지가 상태와 시작 실패를 코드로 넘긴다', async () => {
         const invoke = vi
             .fn()
-            .mockResolvedValueOnce({ status: 200, data: { running: false, lastErrorCode: 'invalid_relay_url' } })
+            .mockResolvedValueOnce({ status: 200, data: { state: 'invalid_relay_url', running: false, connected: false, lastErrorCode: 'invalid_relay_url' } })
             .mockResolvedValueOnce({
                 status: 409,
                 data: { error: 'relay URL must use https', error_code: 'invalid_relay_url' },
             });
         const { api } = createApi({ invoke, hub: { dispatch: vi.fn() } as never });
-        expect(await api.discordBotStatus()).toBe('invalid_relay_url');
+        expect(await api.discordBotStatus()).toMatchObject({ status: 'invalid_relay_url', running: false });
         expect(await api.discordBotStart()).toEqual({ error: 'invalid_relay_url' });
     });
 

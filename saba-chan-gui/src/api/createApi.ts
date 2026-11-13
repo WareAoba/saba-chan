@@ -42,21 +42,6 @@ interface DialogArgs {
     [key: string]: unknown;
 }
 
-/**
- * `state`가 없는 0.1.14 정식(beta.2 전) 데몬의 에이전트 상태 → 화면 상태 (데몬 `relay_agent::agent_state`와 같은 규칙).
- * 원격 데몬 최소 버전이 beta.2를 넘을 때 지운다 (`MIN_REMOTE_DAEMON` 참고)
- */
-type AgentState = 'running' | 'stopped' | 'replaced' | 'invalid_relay_url' | 'too_old' | 'rejected';
-const AGENT_STATES: unknown[] = ['running', 'stopped', 'replaced', 'invalid_relay_url', 'too_old', 'rejected'];
-
-function legacyAgentState(data: ApiBody | undefined): AgentState {
-    if (data?.lastErrorCode === 'agent_too_old') return 'too_old';
-    if (data?.running) return data.heartbeatRejected ? 'rejected' : 'running';
-    if (data?.lastErrorCode === 'token_replaced') return 'replaced';
-    if (data?.lastErrorCode === 'invalid_relay_url') return 'invalid_relay_url';
-    return 'stopped';
-}
-
 export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub, 'on' | 'dispatch' | 'live'> }) {
     const { request, call } = createDaemonClient(invoke);
     const get = <T = ApiBody>(path: string, opts?: RequestOptions) => request<T>('get', path, undefined, opts);
@@ -995,18 +980,15 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         discordBotStatus: async (): Promise<AgentStatus> => {
             try {
                 const { data } = await get('/api/relay/agent', { timeout: 3000 });
-                // 에이전트가 하트비트로 아는 연결 상태 (0.1.14~). 있으면 화면이 릴레이에 따로 묻지 않는다
-                const link: RelayLink | undefined =
-                    typeof data?.connected === 'boolean' ? { connected: data.connected, error: String(data.lastError || ''), heard: data.lastHeartbeatAt != null } : undefined;
-                // 화면이 보일 상태는 데몬이 정한다 (`state`, 0.1.14-beta.2~): running·too_old·rejected·replaced·invalid_relay_url·stopped
-                const status: AgentState = AGENT_STATES.includes(data?.state) ? data.state : legacyAgentState(data);
+                // 에이전트가 하트비트로 아는 연결 상태. 화면은 릴레이에 따로 묻지 않는다
+                const link: RelayLink = { connected: !!data?.connected, error: String(data?.lastError || ''), heard: data?.lastHeartbeatAt != null };
+                // 화면이 보일 상태는 데몬이 정한다 (`state`): running·too_old·rejected·replaced·invalid_relay_url·stopped
+                const status = data?.state as 'running' | 'stopped' | 'replaced' | 'invalid_relay_url' | 'too_old' | 'rejected';
                 // 릴레이가 이 앱 버전을 받지 않는다: 세션은 살아 있어도 명령이 오지 않는다
-                if (status === 'too_old')
-                    return { status, running: !!data.running, minVersion: data.minVersion ?? null, ...(link ? { link } : {}) };
+                if (status === 'too_old') return { status, running: !!data.running, minVersion: data.minVersion ?? null, link };
                 // 세션은 살아 있지만 릴레이가 상태 보고를 검증에서 거절했다: 이대로면 디스코드에서 오프라인이 된다
-                if (status === 'rejected')
-                    return { status, running: true, reason: data.heartbeatRejected, ...(link ? { link } : {}) };
-                return link ? { status, running: !!data?.running, link } : status;
+                if (status === 'rejected') return { status, running: true, reason: data.heartbeatRejected, link };
+                return { status, running: !!data?.running, link };
             } catch (_e) {
                 // 늦거나 닿지 못했다: 꺼졌는지 모른다 (스토어가 두 번 연달아 모를 때만 꺼짐으로 본다)
                 return 'unknown';

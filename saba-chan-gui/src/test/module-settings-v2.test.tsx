@@ -341,6 +341,7 @@ describe('공통 칸을 가리키는 visible_when', () => {
             status: 'stopped',
             [name]: now,
             module_settings: { [name]: stale },
+            stored: { [name]: now },
         } as unknown as Server;
         window.api = {
             serverList: vi.fn().mockResolvedValue(null),

@@ -9,7 +9,7 @@ import { asServer, mockApi } from './mocks';
 
 // 데몬은 설정을 저장했지만 모듈이 게임 설정 파일에 쓰지 못하면 synced:false를 준다 (GUI useServerSettingsStore와 같게 알린다)
 const moduleData = { settings: { fields: [{ name: 'motd', field_type: 'text' }] } };
-const server = { id: 's1', name: 'survival', module: 'mc', revision: 'r1', module_settings: { motd: 'old' } };
+const server = { id: 's1', name: 'survival', module: 'mc', revision: 'r1', module_settings: { motd: 'old' }, stored: { motd: 'old' } };
 
 describe('웹 서버 설정 저장의 게임 파일 반영', () => {
     beforeAll(() => initI18n('en'));

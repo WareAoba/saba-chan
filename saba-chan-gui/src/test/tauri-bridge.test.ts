@@ -96,7 +96,7 @@ describe('데몬 응답 가공', () => {
         const { api } = await install({
             daemon_request: daemon({ 'GET /api/relay/agent': { status: 200, data: { state: 'replaced', running: false, lastErrorCode: 'something_new' } } }),
         });
-        expect(await api.discordBotStatus()).toBe('replaced');
+        expect(await api.discordBotStatus()).toMatchObject({ status: 'replaced', running: false });
     });
 
     it('bot-config를 못 읽으면 기본값을 꾸며 내지 않고 실패한다 (저장이 디스크 값을 덮지 않게)', async () => {

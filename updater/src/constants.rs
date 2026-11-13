@@ -345,22 +345,6 @@ pub fn resolve_locale(locale: &str) -> Option<String> {
 mod tests {
     use super::*;
 
-    /// `stored`가 없는 예전 데몬에서 GUI(`utils/storedValue.ts` `TOP_LEVEL_FIELDS`)는 저장된 값을 이 표대로 고른다: 둘이 어긋나면 화면이 낡은 값을 보인다.
-    /// 표에서 빠지는 칸은 GUI가 따로 읽는 칸뿐이다 (메모리 상한·게임 채팅·사용 모드·자동 업데이트)
-    #[test]
-    fn the_gui_reads_saved_values_by_the_same_instance_fields() {
-        let hook = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../saba-chan-gui/src/utils/storedValue.ts");
-        let text = std::fs::read_to_string(hook).unwrap();
-        let start = text.find("const TOP_LEVEL_FIELDS = new Set([").expect("TOP_LEVEL_FIELDS");
-        let body = &text[start..start + text[start..].find("]);").unwrap()];
-        let gui: std::collections::BTreeSet<&str> = body.split('\'').skip(1).step_by(2).collect();
-        let read_apart = ["memory_limit_mb", "game_chat", "game_chat_keyword", "access", "controllers_only", "auto_update"];
-        let daemon: std::collections::BTreeSet<&str> =
-            INSTANCE_FIELDS.iter().map(|(k, _)| *k).filter(|k| !read_apart.contains(k)).collect();
-        assert_eq!(gui, daemon);
-    }
-
-    /// GUI·웹이 고르는 언어(`utils/languages.ts` `LANGUAGE_OPTIONS`)는 이 목록과 같다
     #[test]
     fn the_gui_offers_the_supported_languages() {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../saba-chan-gui/src/utils/languages.ts");

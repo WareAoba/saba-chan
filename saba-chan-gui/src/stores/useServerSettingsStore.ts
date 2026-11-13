@@ -6,7 +6,6 @@ import { versionBranchMethod } from '../utils/installMethod';
 import { launchDraft } from '../utils/launchDraft';
 import { installFailure } from '../utils/serverControl';
 import { gameNameOf } from '../utils/serverView';
-import { storedValue } from '../utils/storedValue';
 import { blockedText } from '../utils/trustNotice';
 import { listItems } from '../utils/validation';
 import { t, translateError } from './serverI18n';
@@ -68,7 +67,7 @@ const fieldValue = (v: unknown): string | string[] | null =>
     v === undefined || v === null ? null : Array.isArray(v) ? v.map(String) : String(v);
 
 /** 저장된 값 (데몬이 칸마다 정한 `stored`) */
-const savedValue = (server: Server, name: string) => fieldValue(storedValue(server, name));
+const savedValue = (server: Server, name: string) => fieldValue(server.stored?.[name]);
 
 /**
  * 실제 설정 값을 칸 값으로. 문자열 칸에 숫자가 오면 (모듈이 "000123"을 123으로 바꾼 경우)

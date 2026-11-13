@@ -1636,7 +1636,7 @@ mod tests {
         let module = api_err(check(200, json!({
             "success": false, "error": "module_dependency_unsatisfied", "error_code": "module_dependency_unsatisfied",
             "message": "Cannot start 'A': module 'palworld' needs saba-core >=0.1.10 (installed 0.1.9)",
-            "module": "palworld", "missing_dependencies": ["saba-core >=0.1.10 (installed 0.1.9)"],
+            "module": "palworld", "missing_dependencies": ["saba-core >=0.1.10 (installed 0.1.9)"], "required_core": "0.1.10",
         })));
         assert_eq!(module.code(), "module_dependency_unsatisfied");
         let text = module.to_string();
@@ -1647,7 +1647,7 @@ mod tests {
         assert!(newer.starts_with("업데이트 필요") && newer.contains("ark"), "{newer}");
 
         let ext = api_err(check(422, json!({
-            "success": false, "error": "raw", "error_code": "app_version_unsatisfied", "related": ["0.1.10"], "extension": "steamcmd",
+            "success": false, "error": "raw", "error_code": "app_version_unsatisfied", "related": ["0.1.10"], "required_core": "0.1.10", "extension": "steamcmd",
         })));
         let text = ext.to_string();
         assert!(text.starts_with("업데이트 필요") && text.contains("steamcmd") && text.contains("0.1.10"), "{text}");

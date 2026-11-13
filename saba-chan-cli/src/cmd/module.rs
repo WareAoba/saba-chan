@@ -505,7 +505,7 @@ mod tests {
         let newer = json!({ "path": "/m/ark", "error": "x", "error_code": "module_schema_unsupported", "required": 2 });
         assert_eq!(failed_lines(&newer), vec![t!("update_required.module_newer", name = "ark")]);
         let core = json!({ "path": "/m/pal", "error": "x", "error_code": "module_dependency_unsatisfied", "module": "palworld",
-            "missing_dependencies": ["saba-core >=0.1.10 (installed 0.1.9)"] });
+            "missing_dependencies": ["saba-core >=0.1.10 (installed 0.1.9)"], "required_core": "0.1.10" });
         assert_eq!(failed_lines(&core), vec![t!("update_required.module", name = "palworld", version = "0.1.10")]);
         let other = json!({ "path": "/m/zz", "error": "boom" });
         assert_eq!(
@@ -519,7 +519,7 @@ mod tests {
     fn module_install_reports_the_extensions_the_daemon_set_up() {
         let r = json!({ "ok": true, "extensions": {
             "installed": ["ue4-ini"], "enabled": ["steamcmd", "ue4-ini"],
-            "failed": [{ "id": "rcon", "error": "Cannot enable 'rcon'", "error_code": "app_version_unsatisfied", "related": ["999.0.0"] }]
+            "failed": [{ "id": "rcon", "error": "Cannot enable 'rcon'", "error_code": "app_version_unsatisfied", "related": ["999.0.0"], "required_core": "999.0.0" }]
         }});
         let (enabled, failed) = extension_notes(&r);
         assert_eq!(enabled, Some(t!("module.extensions_enabled", ids = "steamcmd, ue4-ini")));

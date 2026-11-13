@@ -38,9 +38,9 @@ const HELD = {
 const STATUS = {
     ok: true,
     components: [
-        { component: 'saba-core', display_name: 'Saba-Core', current_version: '0.1.13' },
-        { component: 'gui', display_name: 'GUI', current_version: '0.1.13' },
-        { component: 'module-minecraft', display_name: '마인크래프트 모듈', current_version: '1.2.0' },
+        { component: 'saba-core', kind: 'app', display_name: 'Saba-Core', current_version: '0.1.13' },
+        { component: 'gui', kind: 'app', display_name: 'GUI', current_version: '0.1.13' },
+        { component: 'module-minecraft', kind: 'module', display_name: '마인크래프트 모듈', current_version: '1.2.0' },
     ],
 };
 

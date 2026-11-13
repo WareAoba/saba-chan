@@ -131,8 +131,8 @@ export const parseComponents = (comps?: ApiBody[] | null) =>
         })
         .map((c) => {
             const key = typeof c.component === 'string' ? c.component : String(c.component);
-            // 종류는 데몬이 준다(`kind`, 0.1.14-beta.2~). 칸이 없는 0.1.14 정식 데몬만 키 모양으로 본다 (원격 최소 판이 beta.2를 넘으면 지운다)
-            const kind = c.kind ?? (key.startsWith('module-') ? 'module' : key.startsWith('ext-') ? 'extension' : 'app');
+            // 종류는 데몬이 준다 (`kind`)
+            const kind = c.kind;
             return {
                 key,
                 hidden: kind !== 'app',

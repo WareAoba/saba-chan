@@ -14,6 +14,7 @@ const at = (revision: string, motd: string) => ({
     module: 'mc',
     revision,
     module_settings: { motd },
+    stored: { motd },
 });
 const flush = () => act(async () => {});
 

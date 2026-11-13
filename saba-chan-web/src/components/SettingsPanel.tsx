@@ -5,7 +5,6 @@ import { Dropdown } from './Dropdown';
 import { Icon } from './icons';
 import { Button, Empty, errorText, failed, Section } from './ui';
 import type { SettingField } from '@gui/types/daemon';
-import { storedValue } from '@gui/utils/storedValue';
 import type { ApiBody, Json, Server, ServerPanelProps, TFn } from '../types';
 
 /** 설정 칸 (module.toml `[[settings.fields]]`) */
@@ -28,7 +27,7 @@ const typeOf = (f: Field) => f.field_type || 'text';
 const pcOnly = (f: Field) => PC_ONLY.has(f.name) || ['file', 'path', 'password'].includes(typeOf(f)) || f.format === 'path';
 
 export function savedValue(server: Partial<Server> | ApiBody, field: Pick<Field, 'name' | 'default'>): Json {
-    return storedValue(server, field.name) ?? field.default ?? '';
+    return server.stored?.[field.name] ?? field.default ?? '';
 }
 
 /** 스키마 2 visible_when: {field, equals} | {field, in:[...]} (값 비교는 글자로) */
