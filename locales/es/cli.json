@@ -679,6 +679,7 @@
   "run": {
     "confirm_danger": "{{label}} en {{name}} no se puede deshacer. ¿Ejecutarlo?",
     "missing_arg": "Falta {{label}}. Uso: {{usage}}",
+    "must_be_boolean": "{{label}} debe ser true o false (on/off, yes/no).",
     "must_be_number": "{{label}} debe ser un número.",
     "must_be_one_of": "{{label}} debe ser uno de: {{options}}",
     "no_commands": "Este juego no tiene comandos definidos. Envía líneas directas a la consola: saba-chan-cli server send NAME \"line\"",

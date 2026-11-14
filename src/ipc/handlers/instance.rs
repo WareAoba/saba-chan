@@ -15,17 +15,11 @@ mod provision;
 mod settings;
 mod update;
 
-pub(crate) use create::extension_required;
 pub use create::{check_new_instance, create_instance};
 pub use delete::{delete_instance, DeleteQuery};
 pub use provision::{dismiss_provision_progress, get_provision_progress};
-use settings::extra_args_from;
-pub(crate) use settings::settings_rejection;
 pub use settings::update_instance_settings;
-pub(crate) use update::{begin_server_update_holding, emit_update_failed, updatable, update_blocked_by_shared_folder};
-pub use update::{apply_server_update, check_server_update, server_update_status};
-#[cfg(test)]
-pub(crate) use update::begin_server_update;
+pub use update::{apply_server_update, cancel_server_update, check_server_update};
 
 /// GET /api/instances - 모든 인스턴스 목록
 pub async fn list_instances(State(state): State<IPCServer>) -> impl IntoResponse {
@@ -47,8 +41,7 @@ pub async fn reorder_instances(
             .filter_map(|v| v.as_str().map(|s| s.to_string()))
             .collect(),
         None => {
-            let error = json!({ "error": "Missing 'order' array" });
-            return (StatusCode::BAD_REQUEST, Json(error)).into_response();
+            return super::error(StatusCode::BAD_REQUEST, "invalid_request", "Missing 'order' array");
         }
     };
 
@@ -58,8 +51,7 @@ pub async fn reorder_instances(
             (StatusCode::OK, Json(response)).into_response()
         }
         Err(e) => {
-            let error = json!({ "error": format!("Failed to reorder: {}", e) });
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response()
+            super::error(StatusCode::INTERNAL_SERVER_ERROR, "save_failed", format!("Failed to reorder: {}", e))
         }
     }
 }
@@ -81,10 +73,11 @@ pub async fn get_instance(
             let fields = supervisor.module_loader.get_module(&instance.module_name).ok().and_then(|m| m.metadata.settings.clone()).map(|s| s.fields).unwrap_or_default();
             // 설치된 버전에 없는 설정 (`versions` 밖). 숨긴 설정이므로 `hidden`에도 든다
             let version_hidden = crate::validator::version_hidden(&fields, instance.server_version.as_deref());
-            let mut hidden = crate::validator::hidden_fields(&fields, |k| stored_setting(&body, instance, k));
+            let mut hidden = crate::validator::hidden_fields(&fields, |k| crate::instance::stored_setting(&body, instance, k));
             hidden.extend(version_hidden.iter().filter(|name| !hidden.contains(name)).cloned().collect::<Vec<_>>());
             body["hidden"] = json!(hidden);
             body["version_hidden"] = json!(version_hidden);
+            body["stored"] = Value::Object(crate::instance::stored_settings(instance, &fields));
             body["revision"] = json!(instance.settings_revision());
             // 이 데몬이 메모리 상한을 거는가 (다른 PC의 데몬을 보는 클라이언트가 자기 OS로 짐작하지 않게)
             body["memory_limit_supported"] = json!(crate::instance::MEMORY_LIMIT_ENFORCED);
@@ -95,32 +88,9 @@ pub async fn get_instance(
             (StatusCode::OK, Json(body)).into_response()
         }
         None => {
-            let error = json!({
-                "error": format!("Instance not found: {}", id),
-                "error_code": "instance_not_found",
-            });
-            (StatusCode::NOT_FOUND, Json(error)).into_response()
+            super::error(StatusCode::NOT_FOUND, "instance_not_found", format!("Instance not found: {}", id))
         }
     }
-}
-
-/// 사용자가 정한 `java_path`를 그 모듈의 격리 실행에 연다 (폴더 권한 고치기는 오래 걸릴 수 있어 따로)
-fn open_user_runtime(entry: String, instance: &crate::instance::ServerInstance) {
-    let Some(java) = instance.module_settings.get("java_path").and_then(Value::as_str).filter(|_| instance.user_settings.contains("java_path")) else { return };
-    let java = java.to_string();
-    tokio::task::spawn_blocking(move || crate::sandbox::open_user_runtime(std::path::Path::new(&entry), &java));
-}
-
-/// 요청 값 하나가 잘못됐다는 400 응답: `error`에 이유
-pub(crate) fn invalid_field(field: &str, error: impl Into<String>) -> axum::response::Response {
-    let error = json!({ "error": error.into(), "error_code": "invalid_format", "fields": [{"field": field}] });
-    (StatusCode::BAD_REQUEST, Json(error)).into_response()
-}
-
-/// 쉼표가 든 서버 이름 (만들기·이름 바꾸기 공통 400 `invalid_name`)
-fn invalid_name() -> (StatusCode, Json<Value>) {
-    let error = json!({ "success": false, "error": "A server name cannot contain a comma", "error_code": "invalid_name", "fields": [{ "field": "name" }] });
-    (StatusCode::BAD_REQUEST, Json(error))
 }
 
 /// POST /api/instance/:id/rename — 이름 바꾸기 (`{name}`). 실행 중이면 409 `server_running`,
@@ -131,16 +101,16 @@ pub async fn rename_instance(
     Json(body): Json<serde_json::Value>,
 ) -> impl IntoResponse {
     let fail = |status: StatusCode, error: String, code: &str| {
-        (status, Json(json!({ "success": false, "error": error, "error_code": code }))).into_response()
+        super::error(status, code, error)
     };
     let Some(new_name) = body.get("name").and_then(|v| v.as_str()).map(str::trim).filter(|n| !n.is_empty()) else {
         return fail(StatusCode::BAD_REQUEST, "Missing 'name'".into(), "invalid_request");
     };
     if new_name.contains(crate::chat::words::is_comma) {
-        return invalid_name().into_response();
+        return crate::service::instance::invalid_name().into_response();
     }
     // 설치·업데이트·복원 중에는 바꾸지 않는다: 진행 알림(`provision.progress`)이 시작 때의 이름을 싣는다
-    let Some(_guard) = super::backup::InstanceLock::take_for_writes(&id).await else {
+    let Some(_guard) = crate::instance::lock::InstanceLock::take_for_writes(&id).await else {
         return super::backup::instance_busy();
     };
     let mut supervisor = state.supervisor.write().await;
@@ -176,14 +146,14 @@ pub async fn launch_preview(
     let draft = match body.get("settings") {
         None | Some(Value::Null) => serde_json::Map::new(),
         Some(Value::Object(m)) => m.clone(),
-        Some(_) => return (StatusCode::BAD_REQUEST, Json(json!({ "error": "invalid_body", "message": "settings must be an object" }))).into_response(),
+        Some(_) => return (StatusCode::BAD_REQUEST, Json(json!({ "success": false, "error": "settings must be an object", "error_code": "invalid_body", "message": "settings must be an object" }))).into_response(),
     };
     // 보내지 않으면 저장된 추가 인자로 본다
-    let extra = match body.get("extra_args").map(extra_args_from) {
+    let extra = match body.get("extra_args").map(crate::service::instance::settings::extra_args_from) {
         None => None,
         Some(Some(args)) => Some(args),
         Some(None) => {
-            return (StatusCode::BAD_REQUEST, Json(json!({ "error": "invalid_format", "error_code": "invalid_format", "message": "extra_args must be a string or an array of strings" }))).into_response()
+            return (StatusCode::BAD_REQUEST, Json(json!({ "success": false, "error": "extra_args must be a string or an array of strings", "error_code": "invalid_format", "message": "extra_args must be a string or an array of strings" }))).into_response()
         }
     };
     match crate::supervisor::Supervisor::launch_preview(&state.supervisor, &id, &draft, extra.as_deref()).await {
@@ -191,24 +161,6 @@ pub async fn launch_preview(
         Err(e) if e.downcast_ref::<crate::supervisor::InstanceNotFound>().is_some() => (StatusCode::NOT_FOUND, Json(crate::plugin::error_response(&e))).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(crate::plugin::error_response(&e))).into_response(),
     }
-}
-
-/// 설정의 저장된 값: 공통 칸(`constants::INSTANCE_FIELDS`, 예: port)은 PATCH가 인스턴스 칸에 쓰므로 그 값을,
-/// 아니면 `module_settings`를 본다. `view`는 그 인스턴스를 JSON으로 펼친 것
-pub(crate) fn stored_setting(view: &Value, instance: &crate::instance::ServerInstance, key: &str) -> Option<Value> {
-    let own = saba_chan_updater_lib::constants::INSTANCE_FIELDS.iter().any(|(k, _)| *k == key);
-    own.then(|| view.get(key).filter(|v| !v.is_null()).cloned()).flatten().or_else(|| instance.module_settings.get(key).cloned())
-}
-
-/// 익스텐션 hook에 넘기는 인스턴스: REST 비밀번호, 모듈이 password로 선언했거나 이름이 비밀스러운 설정 값은 가린다 (D-E2)
-fn instance_for_hooks(module: Option<&crate::supervisor::module_loader::ModuleMetadata>, instance: &crate::instance::ServerInstance) -> Value {
-    settings_for_hooks(module, &serde_json::to_value(instance).unwrap_or_default())
-}
-
-/// hook에 넘기는 설정 값에서 같은 기준으로 비밀을 가린다. 키 이름으로만 가린다:
-/// 인스턴스를 넘기면 비밀값과 같은 글자가 이름·경로에서도 지워진다
-fn settings_for_hooks(module: Option<&crate::supervisor::module_loader::ModuleMetadata>, settings: &Value) -> Value {
-    crate::audit::redact(module, None, None, Some(settings)).1.unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -231,32 +183,5 @@ mod tests {
         assert_eq!((missing.status.as_u16(), missing.body["error"].as_str()), (404, Some("Instance 'nope' not found")), "{}", missing.body);
         let orphan = preview("orphan").await;
         assert_eq!(orphan.status.as_u16(), 500, "{}", orphan.body);
-    }
-
-    use serde_json::json;
-
-    /// 익스텐션 hook에 넘기는 인스턴스는 REST 비밀번호와 비밀스러운 설정 값을 가리고, 나머지는 그대로 둔다 (D-E2)
-    #[test]
-    fn hooks_get_the_instance_without_its_secrets() {
-        let mut inst = crate::instance::ServerInstance::new("srv", "game");
-        inst.rest_password = Some("hunter2-rest".into());
-        inst.module_settings.insert("server_password".into(), json!("hunter2-join"));
-        inst.module_settings.insert("max_players".into(), json!(16));
-        let value = super::instance_for_hooks(None, &inst);
-        let text = value.to_string();
-        assert!(!text.contains("hunter2"), "{text}");
-        assert_eq!(value["module_settings"]["max_players"], 16);
-        assert_eq!(value["name"], "srv");
-        let settings = super::settings_for_hooks(None, &json!({ "rest_password": "hunter2-new", "port": 7777 }));
-        assert!(!settings.to_string().contains("hunter2"), "{settings}");
-        assert_eq!(settings["port"], 7777);
-        // 비밀값과 같은 글자의 이름·경로는 비밀이 아니다: 값 대신 키 이름으로만 가린다
-        let mut same = crate::instance::ServerInstance::new("palworld", "game");
-        same.working_dir = Some("C:/srv/palworld/data".into());
-        same.rest_password = Some("palworld".into());
-        let value = super::instance_for_hooks(None, &same);
-        assert_eq!(value["name"], "palworld");
-        assert_eq!(value["working_dir"], "C:/srv/palworld/data");
-        assert_ne!(value["rest_password"], "palworld");
     }
 }

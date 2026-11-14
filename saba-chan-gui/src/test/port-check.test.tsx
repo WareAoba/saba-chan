@@ -10,7 +10,7 @@ const server = { id: 'a', name: 'A', module: 'game', status: 'stopped' } as unkn
 
 const closedReport = {
     instanceId: 'a',
-    verdict: 'closed',
+    verdict: 'closed', hint: 'closed',
     address: '8.8.4.4',
     ports: [
         { field: 'port', port: 7777, protocol: 'tcp', status: 'closed' },
@@ -24,9 +24,9 @@ describe('포트포워딩 확인', () => {
     });
 
     it('브리지는 인스턴스의 port-check를 POST로 확인하고 GET으로 마지막 결과를 읽는다', async () => {
-        const invoke = vi.fn().mockResolvedValue({ status: 200, data: { verdict: 'open' } });
+        const invoke = vi.fn().mockResolvedValue({ status: 200, data: { verdict: 'open', hint: 'open' } });
         const { api } = createApi({ invoke, hub: { dispatch: vi.fn() } as never });
-        await expect(api.instancePortCheck('a b')).resolves.toEqual({ verdict: 'open' });
+        await expect(api.instancePortCheck('a b')).resolves.toEqual({ verdict: 'open', hint: 'open' });
         expect(invoke.mock.calls.at(-1)![1]).toMatchObject({ method: 'POST', path: '/api/instance/a%20b/port-check' });
         await api.instancePortCheckLast('a b');
         expect(invoke.mock.calls.at(-1)![1]).toMatchObject({ method: 'GET', path: '/api/instance/a%20b/port-check' });
@@ -38,7 +38,7 @@ describe('포트포워딩 확인', () => {
     });
 
     it('확인하면 판정, 공인 주소, 포트마다 상태와 닫힘 안내를 보인다', async () => {
-        window.api.instancePortCheckLast = vi.fn().mockResolvedValue({ instanceId: 'a', verdict: 'not_checked' });
+        window.api.instancePortCheckLast = vi.fn().mockResolvedValue({ instanceId: 'a', verdict: 'not_checked', hint: 'not_checked' });
         window.api.instancePortCheck = vi.fn().mockResolvedValue(closedReport);
         render(<PortCheck server={server} />);
         await act(async () => fireEvent.click(screen.getByRole('button', { name: /Check port forwarding/i })));
@@ -53,7 +53,7 @@ describe('포트포워딩 확인', () => {
     it('공개 주소가 이 PC를 가리키지 않으면 그 주소가 가리키는 곳과 고칠 곳을 보이고 상세 위에도 알린다', async () => {
         const report = {
             instanceId: 'a',
-            verdict: 'host_mismatch',
+            verdict: 'host_mismatch', hint: 'host_mismatch',
             address: '8.8.4.4',
             host: 'mc.example.com',
             hostResult: 'mismatch',
@@ -81,8 +81,8 @@ describe('포트포워딩 확인', () => {
     });
 
     it('결과가 나오면 성공이든 실패든 다시 확인할 수 있다', async () => {
-        window.api.instancePortCheckLast = vi.fn().mockResolvedValue({ ...closedReport, verdict: 'open' });
-        window.api.instancePortCheck = vi.fn().mockResolvedValue({ ...closedReport, verdict: 'router' });
+        window.api.instancePortCheckLast = vi.fn().mockResolvedValue({ ...closedReport, verdict: 'open', hint: 'open' });
+        window.api.instancePortCheck = vi.fn().mockResolvedValue({ ...closedReport, verdict: 'router', hint: 'router' });
         render(<PortCheck server={server} />);
         const retry = await screen.findByRole('button', { name: /Check again/i });
         await act(async () => fireEvent.click(retry));
@@ -109,7 +109,7 @@ describe('접속 주소 카드의 포트포워딩 알약', () => {
         }) as never;
 
     it('포트포워딩이 안 됐으면 짧은 알약과 다시 확인 버튼을 카드 안에 한 번만 보이고, 고칠 방법은 알약에 띄운다', async () => {
-        window.api = addressApi({ ...closedReport, verdict: 'router' });
+        window.api = addressApi({ ...closedReport, verdict: 'router', hint: 'router' });
         render(<ServerAddress server={server} />);
         const pill = await screen.findByText('Port forwarding not set up');
         expect(pill).toHaveAttribute('data-tooltip', expect.stringMatching(/Forward this port to this PC/));
@@ -119,7 +119,7 @@ describe('접속 주소 카드의 포트포워딩 알약', () => {
     });
 
     it('다시 확인해서 열리면 알약이 열림으로 바뀌고 버튼은 사라진다', async () => {
-        window.api = addressApi({ ...closedReport, verdict: 'firewall' }, { ...closedReport, verdict: 'open' });
+        window.api = addressApi({ ...closedReport, verdict: 'firewall', hint: 'firewall' }, { ...closedReport, verdict: 'open', hint: 'open' });
         render(<ServerAddress server={server} />);
         await screen.findByText('Blocked by the PC firewall');
         await act(async () => fireEvent.click(screen.getByRole('button', { name: /Check again/i })));

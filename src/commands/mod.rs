@@ -20,7 +20,9 @@
 //! (서버에 설치된 플러그인 명령 등, `InstanceCommands`). 같은 이름이면 module.toml 쪽이 먼저다.
 //! 새 실행 방식은 `Plan`에 갈래 하나와 `plan()`의 match 한 줄을 더하면 된다(슬롯).
 
-use crate::supervisor::module_loader::{CommandField, CommandInput, ModuleMetadata};
+use crate::module_loader::{CommandField, CommandInput, ModuleMetadata};
+use saba_chan_updater_lib::command_rules as rules;
+pub use rules::{has_line_break, risk_of};
 use serde_json::{json, Map, Value};
 
 /// lifecycle `instance_commands()`가 준 인스턴스별 명령
@@ -234,27 +236,17 @@ pub fn plan(module: &ModuleMetadata, req: &Request) -> Result<Plan, PlanError> {
 pub fn bind(inputs: &[CommandInput], args: &Args) -> Result<Map<String, Value>, PlanError> {
     let mut given: Map<String, Value> = match args {
         Args::Named(map) => map.clone(),
-        Args::Positional(words) => {
-            let mut map = Map::new();
-            let last = inputs.len().saturating_sub(1);
-            for (i, input) in inputs.iter().enumerate() {
-                let value = if i == last && words.len() > i {
-                    Some(words[i..].join(" "))
-                } else {
-                    words.get(i).cloned()
-                };
-                if let Some(v) = value {
-                    map.insert(input.name.clone(), Value::String(v));
-                }
-            }
-            map
-        }
+        Args::Positional(words) => inputs
+            .iter()
+            .zip(rules::spread(inputs.len(), words))
+            .filter_map(|(input, v)| Some((input.name.clone(), Value::String(v?))))
+            .collect(),
     };
 
     let mut out = Map::new();
     for input in inputs {
         let label = input.label.as_deref().unwrap_or(&input.name);
-        let value = given.remove(&input.name).filter(|v| !is_blank(v));
+        let value = given.remove(&input.name).filter(|v| !rules::is_blank(v));
         let value = match value {
             Some(v) => check(input, label, v)?,
             None => match input.default.as_ref().and_then(toml_to_json) {
@@ -275,96 +267,13 @@ pub fn bind(inputs: &[CommandInput], args: &Args) -> Result<Map<String, Value>, 
     Ok(out)
 }
 
-fn is_blank(v: &Value) -> bool {
-    v.is_null() || v.as_str().is_some_and(|s| s.trim().is_empty())
-}
-
 fn check(input: &CommandInput, label: &str, value: Value) -> Result<Value, PlanError> {
-    let shown = match &value {
-        Value::String(s) => s.clone(),
-        other => other.to_string(),
-    };
-    let invalid = |rule: &'static str, message: String, params: Value| {
-        let mut params = params;
-        params["value"] = json!(shown);
-        PlanError::new("invalid_argument", Some(&input.name), message).because(rule, params)
-    };
-
-    let value = if input.input_type.as_deref() == Some("number") {
-        let n = match &value {
-            Value::Number(n) => n.as_f64(),
-            Value::String(s) => s.trim().parse::<f64>().ok(),
-            _ => None,
-        }
-        // NaN·무한대는 범위 비교를 지나가므로 숫자로 보지 않는다
-        .filter(|n| n.is_finite())
-        .ok_or_else(|| invalid("not_number", format!("'{}' must be a number", label), json!({})))?;
-        if input.min.is_some_and(|min| n < min) || input.max.is_some_and(|max| n > max) {
-            return Err(invalid(
-                "out_of_range",
-                format!(
-                    "'{}' must be between {} and {}",
-                    label,
-                    input.min.map(|v| v.to_string()).unwrap_or_else(|| "-∞".into()),
-                    input.max.map(|v| v.to_string()).unwrap_or_else(|| "∞".into()),
-                ),
-                json!({ "min": input.min, "max": input.max }),
-            ));
-        }
-        if n.fract() == 0.0 && n.abs() < 9.0e15 {
-            Value::from(n as i64)
-        } else {
-            Value::from(n)
-        }
-    } else if input.input_type.as_deref() == Some("boolean") {
-        let yes = match &value {
-            Value::Bool(b) => Some(*b),
-            Value::String(s) => match s.trim().to_lowercase().as_str() {
-                "true" | "on" | "yes" | "1" => Some(true),
-                "false" | "off" | "no" | "0" => Some(false),
-                _ => None,
-            },
-            _ => None,
-        };
-        Value::Bool(yes.ok_or_else(|| invalid("not_boolean", format!("'{}' must be true or false", label), json!({})))?)
-    } else {
-        match value {
-            Value::String(s) => Value::String(s),
-            other => Value::String(other.to_string()),
-        }
-    };
-
-    // 값 안의 줄바꿈은 콘솔에서 두 번째 명령이 된다
-    if value.as_str().is_some_and(has_line_break) {
-        return Err(invalid("line_break", format!("'{}' must not contain line breaks", label), json!({})));
-    }
-
-    if let Some(options) = &input.options {
-        let text = value.as_str().map(str::to_string).unwrap_or_else(|| value.to_string());
-        if !options.iter().any(|o| o == &text) {
-            return Err(invalid("not_option", format!("'{}' must be one of: {}", label, options.join(", ")), json!({ "options": options })));
-        }
-    }
-    Ok(value)
+    let rule = rules::Rule { kind: input.input_type.as_deref(), min: input.min, max: input.max, options: input.options.as_deref() };
+    rules::check(&rule, label, value).map_err(|e| PlanError::new("invalid_argument", Some(&input.name), e.message).because(e.rule, e.params))
 }
 
 fn toml_to_json(v: &toml::Value) -> Option<Value> {
     serde_json::to_value(v).ok()
-}
-
-/// 명령 위험도: safe·caution·danger만 그대로, 없으면 caution. 모르는 값(오타·대소문자 다름)은 danger로 다룬다
-pub fn risk_of(risk: Option<&str>) -> &'static str {
-    match risk {
-        None => "caution",
-        Some("safe") => "safe",
-        Some("caution") => "caution",
-        Some(_) => "danger",
-    }
-}
-
-/// 콘솔 한 줄을 여러 줄로 쪼갤 수 있는 문자(`\r`, `\n`, NUL)가 있는지
-pub fn has_line_break(text: &str) -> bool {
-    text.contains(['\r', '\n', '\0'])
 }
 
 /// 값이 콘솔 템플릿에서 자기 자리를 넘는가. 따옴표로 감싼 자리(`"{key}"`)는 따옴표를, 뒤에 템플릿 글자가 더 있는

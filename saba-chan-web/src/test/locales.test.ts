@@ -2,7 +2,8 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { hangulOutsideT } from '../../../saba-chan-gui/src/test/hangulScan';
-import { initI18n, SUPPORTED_LANGUAGES } from '../i18n';
+import { SUPPORTED_LANGUAGES } from '@gui/utils/languages';
+import { initI18n } from '../i18n';
 
 const LOCALES = join(__dirname, '../../../locales');
 const SRC = join(__dirname, '..');

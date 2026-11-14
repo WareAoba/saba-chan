@@ -20,7 +20,7 @@ const ss = (key: string, vars: Record<string, unknown> = {}) => tr(`saba_storage
 const UPDATED_AT = '2026-11-12T03:09:00Z';
 const KEPT = { version: '0.1.13', updated_at: UPDATED_AT, needs_newer_core: [] as string[] };
 const VERSIONS = {
-    ok: true,
+    success: true,
     channel: 'stable',
     installed: '0.1.14',
     kept_previous: KEPT,
@@ -28,7 +28,7 @@ const VERSIONS = {
     held_until_newer_than: null,
 };
 const HELD = {
-    ok: true,
+    success: true,
     channel: 'stable',
     installed: '0.1.13',
     kept_previous: null,
@@ -36,11 +36,11 @@ const HELD = {
     held_until_newer_than: '0.1.14',
 };
 const STATUS = {
-    ok: true,
+    success: true,
     components: [
-        { component: 'saba-core', display_name: 'Saba-Core', current_version: '0.1.13' },
-        { component: 'gui', display_name: 'GUI', current_version: '0.1.13' },
-        { component: 'module-minecraft', display_name: '마인크래프트 모듈', current_version: '1.2.0' },
+        { component: 'saba-core', kind: 'app', display_name: 'Saba-Core', current_version: '0.1.13' },
+        { component: 'gui', kind: 'app', display_name: 'GUI', current_version: '0.1.13' },
+        { component: 'module-minecraft', kind: 'module', display_name: '마인크래프트 모듈', current_version: '1.2.0' },
     ],
 };
 
@@ -49,7 +49,6 @@ function fakeApi(overrides: Record<string, unknown>) {
         {
             updaterGetConfig: vi.fn().mockResolvedValue({ config: { enabled: true, channel: 'stable' } }),
             updaterStatus: vi.fn().mockResolvedValue(STATUS),
-            updaterDownloadProgress: vi.fn().mockResolvedValue({ ok: true, active: false }),
             daemonTarget: vi.fn().mockResolvedValue({ target: null }),
             updaterVersions: vi.fn().mockResolvedValue(VERSIONS),
             ...overrides,
@@ -128,9 +127,9 @@ describe('사바쨩 버전 줄', () => {
         expect(screen.getByRole('button', { name: ss('version_unpin') })).toBeTruthy();
     });
 
-    it('버전을 읽지 못하면(옛 데몬 포함) 줄을 그리지 않는다', async () => {
+    it('버전을 읽지 못하면 줄을 그리지 않는다', async () => {
         fakeApi({
-            updaterVersions: vi.fn().mockResolvedValue({ ok: false, error: 'Request failed with status code 404' }),
+            updaterVersions: vi.fn().mockResolvedValue({ success: false, error: 'Request failed with status code 404' }),
         });
         await openTab();
         await act(async () => {});
@@ -238,7 +237,7 @@ describe('직전 버전으로 되돌리기', () => {
         fakeApi({
             updaterRollback: vi
                 .fn()
-                .mockResolvedValue({ ok: false, error: 'saba-chan-installer not found next to the daemon' }),
+                .mockResolvedValue({ success: false, error: 'saba-chan-installer not found next to the daemon' }),
         });
         await pickPrevious();
         await act(async () => fireEvent.click(screen.getByRole('button', { name: ss('version_confirm_go') })));
@@ -258,7 +257,7 @@ describe('직전 버전으로 되돌리기', () => {
             updaterRollback: vi
                 .fn()
                 .mockResolvedValue({
-                    ok: false,
+                    success: false,
                     error: 'No previous version is kept',
                     error_code: 'no_previous_version',
                 }),
@@ -340,7 +339,7 @@ describe('자동 업데이트로 돌아가기', () => {
 
 describe('되돌린 뒤 다시 켜졌을 때', () => {
     const REVERTED = {
-        ok: true,
+        success: true,
         acknowledged: true,
         version: null,
         notes: null,
@@ -407,7 +406,7 @@ describe('되돌린 뒤 다시 켜졌을 때', () => {
     it('이미 본 다른 결과는 다시 알리지 않는다', async () => {
         fakeApi({
             updaterLastResult: vi.fn().mockResolvedValue({
-                ok: true,
+                success: true,
                 acknowledged: true,
                 version: '0.1.14',
                 result: { success: true, updated_components: ['gui'], failed: [], acknowledged: true },

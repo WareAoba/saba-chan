@@ -50,7 +50,7 @@ describe('서버 추가 창', () => {
     });
 
     it('직접 만들기 칸은 만드는 방법을 펼쳐 보인다', async () => {
-        window.api.makerInfo = vi.fn().mockResolvedValue({ ok: true, repo: 'https://github.com/x/y', guide: 'g' }) as never;
+        window.api.makerInfo = vi.fn().mockResolvedValue({ success: true, repo: 'https://github.com/x/y', guide: 'g' }) as never;
         openModal();
         await act(async () => fireEvent.click(screen.getByRole('button', { name: /Make one yourself/ })));
         expect(await screen.findByText('git clone https://github.com/x/y')).toBeTruthy();

@@ -142,13 +142,10 @@ async fn dispatch(proxy: &Proxy, request: &Value) -> Value {
     }
     // RCON만 받는 서버의 한 줄 (모듈 `stop()`의 정지 명령). 콘솔이 있으면 데몬이 stdin으로 보낸다
     if op == "instance.rcon" {
-        return response(crate::ipc::handlers::command::rcon_for(&supervisor, &context.id, &Value::Object(args.clone())).await).await;
+        return response(crate::ipc::handlers::answer(crate::service::command::rcon_for(&supervisor, &context.id, &Value::Object(args.clone())).await)).await;
     }
     if op == "instance.stdin" {
-        return response(
-            crate::ipc::handlers::command::stdin_for(&supervisor, &context.id, &Value::Object(args.clone())).await,
-        )
-        .await;
+        return response(crate::ipc::handlers::answer(crate::service::command::stdin_for(&supervisor, &context.id, &Value::Object(args.clone())).await)).await;
     }
     let Some(path) = args
         .get("path")
@@ -172,11 +169,10 @@ async fn dispatch(proxy: &Proxy, request: &Value) -> Value {
             return failure("no_instance", "The instance is no longer available");
         };
         let module = sup.module_loader.get_module(&instance.module_name).ok();
-        (
-            instance.rest_host.clone().or_else(|| module.as_ref().map(|m| m.metadata.default_rest_host())).unwrap_or_else(|| "127.0.0.1".to_string()),
-            instance.rest_port.or_else(|| module.as_ref().map(|m| m.metadata.default_rest_port())).unwrap_or(8212),
-            sup.tracker.get_pid(&context.id).ok(),
-        )
+        let Some((host, port)) = module.as_ref().and_then(|m| Some((m.metadata.rest_host(instance)?, m.metadata.rest_port(instance)?))) else {
+            return failure("rest_not_supported", "This instance's module declares no REST port");
+        };
+        (host, port, sup.tracker.get_pid(&context.id).ok())
     };
     if rest_port == super::ipc_port() {
         tracing::warn!("[Host] refused REST to the daemon port {}", rest_port);
@@ -193,16 +189,9 @@ async fn dispatch(proxy: &Proxy, request: &Value) -> Value {
     if let Some(body) = args.get("body") {
         payload["body"] = body.clone();
     }
-    response(
-        crate::ipc::handlers::command::rest_for(
-            &supervisor,
-            &context.runtime.credentials,
-            &context.id,
-            payload,
-            Some(loopback::MAX_RESPONSE),
-        )
-        .await,
-    )
+    response(crate::ipc::handlers::answer(
+        crate::service::command::rest_for(&supervisor, &context.runtime.credentials, &context.id, payload, Some(loopback::MAX_RESPONSE)).await,
+    ))
     .await
 }
 
@@ -291,10 +280,14 @@ mod tests {
     async fn host_rest_refuses_a_port_the_instance_server_does_not_hold() {
         let tmp = tempfile::tempdir().unwrap();
         let other = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let module = tmp.path().join("modules").join("host-probe");
+        std::fs::create_dir_all(&module).unwrap();
+        std::fs::write(module.join("module.toml"), "[module]\nschema_version=1\nname='host-probe'\nversion='1.0.0'\nentry='lifecycle.py'\n[protocols]\nsupported=['rest']\n").unwrap();
+        std::fs::write(module.join("lifecycle.py"), "").unwrap();
         let mut supervisor = Supervisor::new_with_instances_dir(tmp.path().join("modules").to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
         supervisor.initialize().await.unwrap();
         let mut instance = crate::instance::ServerInstance::new("host", "host-probe");
-        instance.rest_port = Some(other.local_addr().unwrap().port());
+        instance.module_settings.insert("rest_port".into(), serde_json::json!(other.local_addr().unwrap().port()));
         let id = instance.id.clone();
         supervisor.instance_store.add(instance).unwrap();
         let supervisor = Arc::new(RwLock::new(supervisor));
@@ -322,7 +315,7 @@ mod tests {
         let mut supervisor = Supervisor::new_with_instances_dir(tmp.path().join("modules").to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
         supervisor.initialize().await.unwrap();
         let mut instance = crate::instance::ServerInstance::new("host", "host-probe");
-        instance.rest_port = Some(rest_port);
+        instance.module_settings.insert("rest_port".into(), serde_json::json!(rest_port));
         let id = instance.id.clone();
         supervisor.instance_store.add(instance).unwrap();
         supervisor.tracker.track(&id, std::process::id()).unwrap();
@@ -446,7 +439,7 @@ print(json.dumps(result))
         );
         supervisor.initialize().await.unwrap();
         let mut instance = crate::instance::ServerInstance::new("host", "host-probe");
-        instance.rest_port = Some(port);
+        instance.module_settings.insert("rest_port".into(), serde_json::json!(port));
         let id = instance.id.clone();
         supervisor.instance_store.add(instance).unwrap();
         // REST 포트는 그 인스턴스 서버가 들어야 잇는다: 이 테스트 프로세스가 서버이고 포트를 듣는다

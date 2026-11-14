@@ -5,12 +5,13 @@ import type { ApiBody, ModuleInfo } from '../../types/daemon';
 import { AgreementList, allChecked } from '../AgreementList';
 import clsx from 'clsx';
 import Icon from '../Icon';
-import { Card, SettingRow } from '../ServerSettingsModal';
+import { Card, SettingRow } from '../ServerSettingsParts';
 import { SabaSpinner } from '../ui/SabaUI';
 import { TrustCreateNotice } from '../ui/TrustBadge';
 import type { AddServerPayload } from '../../stores/serverActions';
 import { AddServerFrame } from './AddServerFrame';
 import { isImeKey } from '../../utils/ime';
+import { loadModuleCatalog } from '../../utils/storeCache';
 
 /**
  * AddInstanceMigration — "기존 서버 마이그레이션" 흐름.
@@ -84,7 +85,7 @@ export function AddInstanceMigration({
 
             try {
                 const result = await window.api?.migrationScanDir?.(path);
-                if (!result?.ok) {
+                if (!result?.success) {
                     setScanError(result?.error || t('migration_modal.scan_error'));
                     setScanning(false);
                     return;
@@ -122,13 +123,9 @@ export function AddInstanceMigration({
         setManifestLoading(true);
         setManifestError(null);
         try {
-            const res = await window.api?.moduleManifest?.();
-            if (res?.ok && res.manifest?.modules) {
-                const mods = Object.entries(res.manifest.modules as Record<string, ApiBody>).map(([id, info]) => ({
-                    id,
-                    ...info,
-                }));
-                setManifestModules(mods);
+            const res = await loadModuleCatalog();
+            if (res.ok) {
+                setManifestModules(res.modules);
             } else {
                 setManifestError(res?.error || t('migration_modal.manifest_fetch_failed'));
                 setManifestModules([]);

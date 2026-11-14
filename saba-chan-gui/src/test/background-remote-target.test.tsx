@@ -5,9 +5,10 @@ import { render, screen } from '@testing-library/react';
 import i18n from 'i18next';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import BackgroundModal from '../components/Modals/BackgroundModal';
+import { useUIStore } from '../stores/useUIStore';
 
 beforeEach(() => {
-    window.api.daemonStatus = vi.fn().mockResolvedValue({ running: true }) as never;
+    useUIStore.setState({ backgroundDaemonStatus: 'running' });
     window.api.remoteDaemons = vi.fn().mockResolvedValue({
         daemons: [
             { hostId: 'host-b', name: 'saba-cloud-test', address: '', port: 57480 },
@@ -19,20 +20,20 @@ beforeEach(() => {
 describe('배경 팝오버의 다루는 데몬', () => {
     it('원격 데몬을 고르면 그 이름과 릴레이를 거친다는 것을 보인다', async () => {
         window.api.daemonTarget = vi.fn().mockResolvedValue({ target: 'host-b' }) as never;
-        render(<BackgroundModal isOpen onClose={vi.fn()} />);
+        render(<BackgroundModal onClose={vi.fn()} />);
         expect(await screen.findByText(i18n.t('gui:shell.daemon_target'))).toBeInTheDocument();
         expect(screen.getByText(`saba-cloud-test · ${i18n.t('gui:remote_daemon.via_relay')}`)).toBeInTheDocument();
     });
 
     it('주소가 있는 원격 데몬은 주소를 보인다', async () => {
         window.api.daemonTarget = vi.fn().mockResolvedValue({ target: 'host-c' }) as never;
-        render(<BackgroundModal isOpen onClose={vi.fn()} />);
+        render(<BackgroundModal onClose={vi.fn()} />);
         expect(await screen.findByText('집 서버 · g.example:57480')).toBeInTheDocument();
     });
 
     it('이 PC를 다루면 줄을 더하지 않는다', async () => {
         window.api.daemonTarget = vi.fn().mockResolvedValue({ target: null }) as never;
-        render(<BackgroundModal isOpen onClose={vi.fn()} />);
+        render(<BackgroundModal onClose={vi.fn()} />);
         await screen.findByText(i18n.t('gui:shell.daemon_address'));
         expect(screen.queryByText(i18n.t('gui:shell.daemon_target'))).toBeNull();
     });
@@ -41,9 +42,9 @@ describe('배경 팝오버의 다루는 데몬', () => {
 // 사용자 11-11: 확인 중은 꺼짐에서 출발한 진행 — 노랑이 아니라 회색으로 깜빡인다
 describe('배경 팝오버의 상태 표시', () => {
     it('데몬을 확인하는 동안은 회색으로 깜빡인다', () => {
-        window.api.daemonStatus = vi.fn(() => new Promise(() => {})) as never;
+        useUIStore.setState({ backgroundDaemonStatus: 'checking' });
         window.api.daemonTarget = vi.fn().mockResolvedValue({ target: null }) as never;
-        const { container } = render(<BackgroundModal isOpen onClose={vi.fn()} />);
+        const { container } = render(<BackgroundModal onClose={vi.fn()} />);
         expect(container.querySelector('.bg-pop-head.tone-idle')).not.toBeNull();
         expect(container.querySelector('.bg-pop-orb.pulse')).not.toBeNull();
     });

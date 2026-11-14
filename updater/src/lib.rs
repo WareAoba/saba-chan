@@ -16,6 +16,7 @@
 
 pub mod addon_pins;
 pub mod app_bundle;
+pub mod command_rules;
 pub mod component_dirs;
 pub mod config_file;
 pub mod constants;
@@ -53,15 +54,13 @@ pub use relay::{ReleaseManifest, ManifestComponent};
 pub use integrity::{IntegrityReport, IntegrityStatus, OverallIntegrity, ComponentIntegrity};
 pub use marker::UpdateCompletionMarker;
 pub(crate) use apply::swap_dir_untouched;
-#[cfg(test)]
-pub(crate) use apply::replace_dir;
-pub use apply::{carry_swap_dot_entries, Replacing, SWAP_FINGERPRINT};
+pub use apply::{carry_swap_dot_entries, replace_dir, Replacing, SWAP_FINGERPRINT};
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex as StdMutex};
+use std::sync::Arc;
 
 use version::SemVer;
 
@@ -102,8 +101,8 @@ pub(crate) fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> std::res
 // 다운로드 진행률
 // ══════════════════════════════════════════════════════
 
-/// 다운로드 진행 상태 (Manager 외부에서 안전하게 폴링 가능)
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+/// 다운로드 진행 상태. 받는 동안 `DownloadListener`가 듣는다
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct DownloadProgress {
     /// 현재 다운로드 중인 컴포넌트 키 (None = 대기 중)
     pub component: Option<String>,
@@ -114,6 +113,9 @@ pub struct DownloadProgress {
     /// 다운로드 활성 여부
     pub active: bool,
 }
+
+/// 받는 동안 진행을 듣는 곳 (`UpdateManager::set_download_listener`): 받기 시작, 0.2초마다 받은 크기, 끝(`active: false`)
+pub type DownloadListener = Arc<dyn Fn(&DownloadProgress) + Send + Sync>;
 
 // ══════════════════════════════════════════════════════
 // 컴포넌트 정의
@@ -147,6 +149,16 @@ impl Component {
             Component::Module(name) => format!("module-{}", name),
             Component::Extension(name) => format!("ext-{}", name),
             Component::Locales => "locales".to_string(),
+        }
+    }
+
+    /// 구성요소 종류: `module`·`extension`(애드온, 사용자가 골라 받는다), 그 밖은 `app`(데몬이 묻지 않고 적용한다).
+    /// `/api/updates/status`·`check`의 `kind`
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Component::Module(_) => "module",
+            Component::Extension(_) => "extension",
+            _ => "app",
         }
     }
 
@@ -286,14 +298,7 @@ pub fn unmet_requires(component_key: &str, requires: &HashMap<String, String>, i
         .iter()
         .filter_map(|(dep_key, min_version_str)| {
             let dep_version = installed.get(dep_key);
-            let satisfied = dep_version.is_some_and(|v| {
-                // ">=" 접두사 제거 후 SemVer 비교
-                let min_clean = min_version_str.trim_start_matches(">=").trim();
-                match (SemVer::parse(v), SemVer::parse(min_clean)) {
-                    (Some(installed_v), Some(required_v)) => installed_v >= required_v,
-                    _ => false,
-                }
-            });
+            let satisfied = dep_version.is_some_and(|v| version::satisfies(v, min_version_str));
             (!satisfied).then(|| DependencyIssue {
                 required_component: dep_key.clone(),
                 required_version: min_version_str.clone(),
@@ -402,17 +407,37 @@ fn read_extension_version(manifest: &Path) -> Option<(String, String)> {
     Some((v.get("id")?.as_str()?.to_string(), v.get("version")?.as_str()?.to_string()))
 }
 
+/// 설치 폴더의 실행 파일 이름 표 (정본). `*_STEM`은 확장자 없는 이름(설치기가 끌 프로세스·지울 항목을 견준다),
+/// `*_EXE`는 이 OS의 파일 이름이다. 설치기·설치 창·GUI 셸·업데이터가 모두 여기서 가져온다
+macro_rules! exe_names {
+    ($($(#[$doc:meta])* $stem:ident, $exe:ident = $name:literal;)*) => {$(
+        $(#[$doc])*
+        pub const $stem: &str = $name;
+        $(#[$doc])*
+        pub const $exe: &str = if cfg!(windows) { concat!($name, ".exe") } else { $name };
+    )*};
+}
+
+exe_names! {
+    /// 데몬. 설치 목록의 폴더에 이것이 남아 있어야 설치본으로 친다
+    CORE_STEM, CORE_EXE = "saba-core";
+    /// 관리 모드 게임 서버를 잡(Job Object)에 묶는 러너
+    RUNNER_STEM, RUNNER_EXE = "saba-runner";
+    CLI_STEM, CLI_EXE = "saba-chan-cli";
+    GUI_STEM, GUI_EXE = "saba-chan-gui";
+    /// 0.1.1 Electron GUI의 productName (옛 설치본, Electron 폴더를 그대로 담은 0.1.1 GUI zip)
+    LEGACY_GUI_STEM, LEGACY_GUI_EXE = "Saba-chan";
+    /// 설치기가 설치 폴더에 남기는 자기 사본 (제거에 쓴다)
+    INSTALLER_STEM, INSTALLER_EXE = "saba-chan-installer";
+    /// 0.1.12 전에 업데이트를 적용하던 옛 업데이터. 지금은 설치기(`INSTALLER_EXE --apply`)가 적용한다
+    LEGACY_UPDATER_STEM, LEGACY_UPDATER_EXE = "saba-chan-updater";
+}
+
 /// GUI 실행 파일 이름들: 표준 이름과, 0.1.1 GUI zip처럼 Electron 폴더를 그대로 담은 경우의 productName
-pub const GUI_EXE_NAMES: &[&str] = if cfg!(windows) { &["saba-chan-gui.exe", "Saba-chan.exe"] } else { &["saba-chan-gui"] };
+pub const GUI_EXE_NAMES: &[&str] = if cfg!(windows) { &[GUI_EXE, LEGACY_GUI_EXE] } else { &[GUI_EXE] };
 
 /// 설치기가 업데이트 적용(`--apply`)을 맡은 첫 판. 이보다 옛 설치기(Windows 0.1.12-beta.1까지)는 `--apply`를 모르고 설치 창을 연다
 pub const INSTALLER_APPLIES_SINCE: &str = "0.1.12-beta.2";
-
-/// 설치기가 설치 폴더에 남기는 자기 사본 (제거에 쓴다)
-pub const INSTALLER_EXE: &str = if cfg!(windows) { "saba-chan-installer.exe" } else { "saba-chan-installer" };
-
-/// 0.1.12 전에 업데이트를 적용하던 옛 업데이터. 지금은 설치기(`INSTALLER_EXE --apply`)가 적용한다
-pub const LEGACY_UPDATER_EXE: &str = if cfg!(windows) { "saba-chan-updater.exe" } else { "saba-chan-updater" };
 
 /// 설치기가 있으면 설치 폴더에 남은 옛 업데이터와 그 버전·파일 기록을 지운다. 실패해도 다음에 다시 한다
 pub fn retire_legacy_updater() {
@@ -448,6 +473,143 @@ pub fn retire_legacy_updater_at(install_root: &Path, installed_manifest: &Path, 
     }
     if let Err(e) = integrity::retain_at(records, |k| k != key) {
         tracing::warn!("[Updater] Cannot update {}: {}", records.display(), e);
+    }
+}
+
+/// 관리자를 여럿이 함께 쓸 때(데몬)의 `download_component`: 준비와 기록만 잠깐 잠그고 내려받는 동안은 잠그지 않는다.
+/// 받는 중에도 상태 조회가 기다리지 않는다. 받기끼리는 `download_turn`으로 한 번에 하나씩 한다 (같은 staging 파일에 겹쳐 쓰지 않게)
+pub async fn download_shared(manager: &tokio::sync::RwLock<UpdateManager>, component: &Component) -> Result<String> {
+    let turn = manager.read().await.download_turn.clone();
+    let _turn = turn.lock().await;
+    let job = manager.read().await.download_job(component)?;
+    let done = job.run().await?;
+    Ok(manager.write().await.record_download(done))
+}
+
+/// 관리자를 함께 쓸 때의 `download_available_updates_report`: 내려받는 동안은 잠그지 않는다 (`download_shared`와 같다)
+pub async fn download_available_shared(manager: &tokio::sync::RwLock<UpdateManager>) -> Result<(Vec<String>, Vec<(String, String)>)> {
+    let turn = manager.read().await.download_turn.clone();
+    let _turn = turn.lock().await;
+    let (staging_dir, to_download) = {
+        let mgr = manager.read().await;
+        (mgr.staging_dir.clone(), mgr.available_downloads()?)
+    };
+    let (downloaded, failed) = fetch_available(&staging_dir, &to_download).await;
+    manager.write().await.record_available(&to_download, &downloaded);
+    Ok((downloaded, failed))
+}
+
+/// 받을 수 있는 업데이트를 차례로 받는다: `(받은 파일 이름, 실패한 (키, 이유))`. 하나가 실패해도 나머지는 받는다
+async fn fetch_available(staging_dir: &Path, to_download: &[(String, ManifestComponent)]) -> (Vec<String>, Vec<(String, String)>) {
+    let client = crate::tls::http_client_builder().build().unwrap();
+    let mut downloaded = Vec::new();
+    let mut failed = Vec::new();
+    for (key, rc) in to_download {
+        let dest = staging_dir.join(&rc.filename);
+        tracing::info!("[Updater] Downloading {}", key);
+        match download::download_verified(&client, &rc.url, &dest, Some(&rc.sha256), rc.size_bytes, None).await {
+            Ok(_) => {
+                tracing::info!("[Updater] Downloaded {}", rc.filename);
+                downloaded.push(rc.filename.clone());
+            }
+            Err(e) => {
+                tracing::warn!("[Updater] Download of {} failed: {}", key, e);
+                failed.push((key.clone(), e.to_string()));
+            }
+        }
+    }
+    (downloaded, failed)
+}
+
+/// 관리자를 여럿이 함께 쓸 때(데몬)의 `check_for_updates_hinted`: 준비와 기록만 잠깐 잠그고 릴레이에 묻는 동안은 잠그지 않는다.
+/// 확인하는 중에도 상태 조회가 기다리지 않는다. 확인끼리는 `check_turn`으로 한 번에 하나씩 한다
+pub async fn check_shared(manager: &tokio::sync::RwLock<UpdateManager>, hint: Option<u64>) -> Result<(UpdateStatus, Option<u64>)> {
+    let turn = manager.read().await.check_turn.clone();
+    let _turn = turn.lock().await;
+    let job = manager.write().await.check_job(hint);
+    let fetched = job.fetch().await;
+    manager.write().await.record_check(job, fetched)
+}
+
+/// 관리자를 빌리지 않고 릴레이에 묻는 확인 한 번 (`UpdateManager::check_job`)
+struct CheckJob {
+    client: relay::RelayClient,
+    channel: String,
+    platform: String,
+    /// 지금 깐 코어 판 (모르면 빈 글자)
+    current: String,
+    local_versions: HashMap<String, String>,
+}
+
+/// 릴레이가 답한 릴리즈(모듈·익스텐션 판 목록과 고른 판을 합친 것)
+struct CheckedRelease {
+    release: Option<relay::VerifiedRelease>,
+    addons: Option<relay::AddonCatalog>,
+    pins: addon_pins::PinnedKeys,
+}
+
+impl CheckJob {
+    async fn fetch(&self) -> Result<CheckedRelease> {
+        let release = self.client.fetch_verified_release(&self.channel, &self.platform, &self.current, &relay::anon_client_id()).await?;
+        // 모듈·익스텐션은 앱 릴리즈와 따로 내는 판 목록에서, 지금 코어로 돌아가는 가장 새 판으로 고른다 (릴레이 `/v1/addons/catalog`).
+        // 목록이 없으면(옛 릴레이, 아직 올린 판 없음) 릴리즈 manifest의 판을 그대로 쓰고, 읽지 못하면 이번에는 모듈·익스텐션을 내지 않는다
+        let core = if self.current.is_empty() { relay::core_version() } else { self.current.clone() };
+        let catalog = self.client.fetch_addon_catalog(&core, &self.channel).await;
+        // 깐 판이 내린 판인지는 목록의 서명된 내림 기록으로 안다
+        let addons = catalog.as_ref().ok().and_then(Option::as_ref).map(|c| relay::AddonCatalog { components: HashMap::new(), yanked: c.yanked.clone() });
+        let mut release = relay::merge_addon_catalog(release, catalog, &core, &self.channel, &self.platform);
+        // 사용자가 고른 판: 고정한 것은 두고, 미뤄 둔 바꾸기는 고른 판으로 (`addon_pins::rule`)
+        let pins = match release.as_mut() {
+            Some(r) => UpdateManager::apply_pins(&self.channel, &self.client, &mut r.manifest, &self.local_versions, addons.as_ref(), &core).await,
+            None => addon_pins::PinnedKeys::default(),
+        };
+        Ok(CheckedRelease { release, addons, pins })
+    }
+}
+
+/// 관리자를 빌리지 않고 내려받을 판 하나 (`UpdateManager::download_job`)
+struct DownloadJob {
+    component: Component,
+    key: String,
+    rc: ManifestComponent,
+    dest: PathBuf,
+    listener: Option<DownloadListener>,
+}
+
+/// 받아 검증을 마친 판. `UpdateManager::record_download`가 상태에 적는다
+struct Downloaded {
+    component: Component,
+    rc: ManifestComponent,
+    dest: PathBuf,
+}
+
+impl DownloadJob {
+    /// 내려받고 SHA-256을 검증한다 (불일치면 파일을 지운다). 받기 시작·받은 크기·끝을 듣는 곳에 알린다
+    async fn run(self) -> Result<Downloaded> {
+        let DownloadJob { component, key, rc, dest, listener } = self;
+        tracing::info!("[Updater] Downloading {} v{}", key, rc.version);
+
+        // 받기 시작·받은 크기·끝을 듣는 곳에 알린다
+        let tell = |bytes_received: u64, total_bytes: u64, active: bool| {
+            if let Some(listener) = &listener {
+                listener(&DownloadProgress { component: Some(key.clone()), bytes_received, total_bytes, active });
+            }
+        };
+        tell(0, 0, true);
+
+        // 스트리밍 다운로드 + SHA-256 검증 (불일치면 파일 삭제)
+        let client = crate::tls::http_client_builder().build().unwrap();
+        let result = download::download_reporting(&client, &rc.url, Some(&rc.sha256), &dest, rc.size_bytes, |received, total| {
+            tell(received, total.unwrap_or(0), true)
+        })
+        .await;
+        tell(0, 0, false);
+        if let Err(e) = result {
+            // 원인(`DownloadError`)을 남겨 둔다: 데몬이 받지 못함과 검증 실패를 가른다
+            let message = format!("Failed to download {}: {}", rc.filename, e);
+            return Err(anyhow::Error::new(e).context(message));
+        }
+        Ok(Downloaded { component, rc, dest })
     }
 }
 
@@ -635,8 +797,12 @@ pub struct UpdateManager {
     restored_release: Option<crate::marker::ReleaseSummary>,
     /// 받아 둔 목록을 되살릴 때 이미 같거나 더 새 판이 깔려 있어 뺀 키. 적용 대상 목록에서도 뺀다
     already_installed: Vec<String>,
-    /// 다운로드 진행 상태 (Arc로 공유 — Manager 잠금 없이 폴링 가능)
-    pub download_progress: Arc<StdMutex<DownloadProgress>>,
+    /// 받는 동안 진행을 듣는 곳 (없으면 알리지 않는다)
+    download_listener: Option<DownloadListener>,
+    /// 잠금 밖 받기(`download_shared`)의 차례. 받기끼리 겹치지 않게 한다
+    download_turn: Arc<tokio::sync::Mutex<()>>,
+    /// 함께 쓰는 확인(`check_shared`)이 한 번에 하나씩 돌게 한다
+    check_turn: Arc<tokio::sync::Mutex<()>>,
 }
 
 impl UpdateManager {
@@ -684,7 +850,9 @@ impl UpdateManager {
             latest_release: None,
             restored_release: None,
             already_installed: Vec::new(),
-            download_progress: Arc::new(StdMutex::new(DownloadProgress::default())),
+            download_listener: None,
+            download_turn: Default::default(),
+            check_turn: Default::default(),
         };
         // 지난 업데이트가 남긴 .exe.old: 적용 직후엔 옛 프로세스가 쥐고 있어 못 지운 것을 다음 실행 때 지운다
         mgr.cleanup_old_files();
@@ -693,6 +861,11 @@ impl UpdateManager {
 
     fn resolve_staging_dir() -> PathBuf {
         crate::constants::resolve_staging_dir()
+    }
+
+    /// 받는 동안 진행을 들을 곳을 정한다 (데몬이 진행 이벤트로 낸다)
+    pub fn set_download_listener(&mut self, listener: DownloadListener) {
+        self.download_listener = Some(listener);
     }
 
     /// 모듈·익스텐션 폴더를 옮긴 뒤 새 폴더에 적용하게 한다 (데몬 `/api/system/paths/move`)
@@ -711,14 +884,9 @@ impl UpdateManager {
     /// 익스텐션 ID에서 디스크 상의 디렉토리 경로를 해석합니다.
     /// Python import 호환을 위해 하이픈→언더스코어 변환도 시도합니다.
     fn resolve_ext_dir(&self, ext_name: &str) -> PathBuf {
-        // 데몬(`extension::extension_dir`)과 같은 순서: Python-safe 이름(하이픈→언더스코어) 먼저, 다음 원본 이름.
-        // 둘 다 없으면 Python-safe 이름 (신규 설치용)
-        let safe = self.extensions_dir.join(ext_name.replace('-', "_"));
-        let exact = self.extensions_dir.join(ext_name);
-        if !safe.exists() && exact.exists() {
-            return exact;
-        }
-        safe
+        // 데몬과 같은 폴더(`component_dirs::extension_dir`). 둘 다 없으면 Python-safe 이름 (신규 설치용)
+        component_dirs::extension_dir(&self.extensions_dir, ext_name)
+            .unwrap_or_else(|| self.extensions_dir.join(ext_name.replace('-', "_")))
     }
 
     /// 현재 업데이트 상태를 반환
@@ -816,39 +984,38 @@ impl UpdateManager {
     /// `check_for_updates`에 heartbeat가 알린 릴리즈 id(`hint`)를 캐시 키로 붙인다. 확인 결과와,
     /// 릴레이 `/latest` 응답에 담긴 가장 큰 릴리즈 id(옛 릴레이면 None)를 준다
     pub async fn check_for_updates_hinted(&mut self, hint: Option<u64>) -> Result<(UpdateStatus, Option<u64>)> {
+        let job = self.check_job(hint);
+        let fetched = job.fetch().await;
+        self.record_check(job, fetched)
+    }
+
+    /// 확인 한 번을 준비한다 (`checking` 표시): 지금 깐 판과 물을 릴레이
+    fn check_job(&mut self, hint: Option<u64>) -> CheckJob {
         self.status.checking = true;
         self.status.error = None;
-
         let local_versions = self.collect_local_versions();
-        let client = self.relay_client().with_release_hint(hint);
-        let platform = relay::current_platform();
         let current = local_versions.get("saba-core").cloned().unwrap_or_default();
+        CheckJob {
+            client: self.relay_client().with_release_hint(hint),
+            channel: self.config.channel.clone(),
+            platform: relay::current_platform(),
+            current,
+            local_versions,
+        }
+    }
 
-        let release = match client
-            .fetch_verified_release(&self.config.channel, &platform, &current, &relay::anon_client_id())
-            .await
-        {
-            Ok(r) => r,
+    /// 받아 온 확인 결과를 상태에 남긴다
+    fn record_check(&mut self, job: CheckJob, fetched: Result<CheckedRelease>) -> Result<(UpdateStatus, Option<u64>)> {
+        let CheckedRelease { release, addons, pins } = match fetched {
+            Ok(found) => found,
             Err(e) => {
                 tracing::error!("[Updater] Relay check failed: {}", e);
                 self.status.checking = false;
                 self.status.error = Some(format!("Relay check failed: {}", e));
-                return Err(e.into());
+                return Err(e);
             }
         };
-
-        // 모듈·익스텐션은 앱 릴리즈와 따로 내는 판 목록에서, 지금 코어로 돌아가는 가장 새 판으로 고른다 (릴레이 `/v1/addons/catalog`).
-        // 목록이 없으면(옛 릴레이, 아직 올린 판 없음) 릴리즈 manifest의 판을 그대로 쓰고, 읽지 못하면 이번에는 모듈·익스텐션을 내지 않는다
-        let core = if current.is_empty() { relay::core_version() } else { current.clone() };
-        let catalog = client.fetch_addon_catalog(&core, &self.config.channel).await;
-        // 깐 판이 내린 판인지는 목록의 서명된 내림 기록으로 안다
-        let addons = catalog.as_ref().ok().and_then(Option::as_ref).map(|c| relay::AddonCatalog { components: HashMap::new(), yanked: c.yanked.clone() });
-        let mut release = relay::merge_addon_catalog(release, catalog, &core, &self.config.channel, &platform);
-        // 사용자가 고른 판: 고정한 것은 두고, 미뤄 둔 바꾸기는 고른 판으로 (`addon_pins::rule`)
-        let pins = match release.as_mut() {
-            Some(r) => self.apply_pins(&client, &mut r.manifest, &local_versions, addons.as_ref(), &core).await,
-            None => addon_pins::PinnedKeys::default(),
-        };
+        let CheckJob { client, channel, current, local_versions, .. } = job;
 
         let offered = release.as_ref().map(|r| r.latest.version.clone());
         let previous = std::mem::take(&mut self.status.components);
@@ -918,7 +1085,7 @@ impl UpdateManager {
         // 주기 확인은 24시간마다다 (연결된 데몬은 heartbeat의 판 번호로 안다). `check_interval_hours`는 읽기만 한다
         let next = time::iso_after_hours(CHECK_EVERY_HOURS);
         // 같은 판 베타를 받는 동안 기다리는 정식 판. 정식(그 판 이상)을 받으면 사라진다
-        let stable_wait = relay::stable_wait_base(&self.config.channel, &current)
+        let stable_wait = relay::stable_wait_base(&channel, &current)
             .filter(|_| offered.as_deref().and_then(SemVer::parse).is_none_or(|v| v.is_prerelease()));
         self.status = UpdateStatus {
             last_check: Some(now),
@@ -1092,38 +1259,27 @@ impl UpdateManager {
     /// 받을 수 있는 업데이트를 모두 받고 `(받은 파일 이름, 실패한 (키, 이유))`를 돌려준다.
     /// 하나가 실패해도 나머지는 받고, 받은 것은 상태에 남긴다. 받기 전 준비가 안 되면 Err
     pub async fn download_available_updates_report(&mut self) -> Result<(Vec<String>, Vec<(String, String)>)> {
+        let to_download = self.available_downloads()?;
+        // 하나가 실패해도 나머지는 받고, 받은 것은 상태에 남긴다
+        let (downloaded, failed) = fetch_available(&self.staging_dir, &to_download).await;
+        self.record_available(&to_download, &downloaded);
+        Ok((downloaded, failed))
+    }
+
+    /// 업데이트 가능하고 아직 다운로드하지 않은 컴포넌트 목록. staging 폴더를 만들지 못하면 Err
+    fn available_downloads(&self) -> Result<Vec<(String, ManifestComponent)>> {
         std::fs::create_dir_all(&self.staging_dir)?;
-
-        let mut downloaded = Vec::new();
-
-        // 업데이트 가능하고 아직 다운로드하지 않은 컴포넌트 목록
-        let to_download: Vec<(String, ManifestComponent)> = self.status.components.iter()
+        Ok(self.status.components.iter()
             .filter(|c| c.update_available && !c.downloaded)
             .filter_map(|c| {
                 let key = c.component.manifest_key();
                 self.manifest_entry(&key).map(|rc| (key, rc.clone()))
             })
-            .collect();
+            .collect())
+    }
 
-        // 하나가 실패해도 나머지는 받고, 받은 것은 아래에서 상태에 남긴다
-        let client = crate::tls::http_client_builder().build().unwrap();
-        let mut failed = Vec::new();
-        for (key, rc) in &to_download {
-            let dest = self.staging_dir.join(&rc.filename);
-            tracing::info!("[Updater] Downloading {}", key);
-            match download::download_verified(&client, &rc.url, &dest, Some(&rc.sha256), rc.size_bytes, None).await {
-                Ok(_) => {
-                    tracing::info!("[Updater] Downloaded {}", rc.filename);
-                    downloaded.push(rc.filename.clone());
-                }
-                Err(e) => {
-                    tracing::warn!("[Updater] Download of {} failed: {}", key, e);
-                    failed.push((key.clone(), e.to_string()));
-                }
-            }
-        }
-
-        // 상태 업데이트: downloaded 플래그 설정
+    /// 받은 파일을 상태에 적는다: downloaded 플래그 설정
+    fn record_available(&mut self, to_download: &[(String, ManifestComponent)], downloaded: &[String]) {
         for comp in &mut self.status.components {
             if let Some(ref name) = comp.asset_name {
                 if downloaded.contains(name) {
@@ -1137,12 +1293,17 @@ impl UpdateManager {
                 }
             }
         }
-
-        Ok((downloaded, failed))
     }
 
     /// 특정 컴포넌트만 다운로드
     pub async fn download_component(&mut self, component: &Component) -> Result<String> {
+        let job = self.download_job(component)?;
+        let done = job.run().await?;
+        Ok(self.record_download(done))
+    }
+
+    /// 받을 판 하나를 준비한다 (상태만 읽는다): 받을 것이 있는지, 릴리즈 manifest의 어느 파일인지
+    fn download_job(&self, component: &Component) -> Result<DownloadJob> {
         std::fs::create_dir_all(&self.staging_dir)?;
 
         let comp_status = self.status.components.iter()
@@ -1158,56 +1319,21 @@ impl UpdateManager {
             .ok_or_else(|| anyhow::anyhow!("{} is not in the release manifest", component.display_name()))?;
 
         let dest = self.staging_dir.join(&rc.filename);
+        Ok(DownloadJob { component: component.clone(), key, rc, dest, listener: self.download_listener.clone() })
+    }
 
-        tracing::info!("[Updater] Downloading {} v{}", key, rc.version);
-
-        // 진행률 초기화
-        {
-            let mut prog = self.download_progress.lock().unwrap();
-            prog.component = Some(key.clone());
-            prog.bytes_received = 0;
-            prog.total_bytes = 0;
-            prog.active = true;
-        }
-
-        // 스트리밍 다운로드 + SHA-256 검증 (불일치면 파일 삭제)
-        let client = crate::tls::http_client_builder().build().unwrap();
-        let result = download::download_verified(
-            &client,
-            &rc.url,
-            &dest,
-            Some(&rc.sha256),
-            rc.size_bytes,
-            Some(&self.download_progress),
-        )
-        .await;
-        if let Err(e) = result {
-            if let Ok(mut prog) = self.download_progress.lock() {
-                prog.active = false;
-            }
-            // 원인(`DownloadError`)을 남겨 둔다: 데몬이 받지 못함과 검증 실패를 가른다
-            let message = format!("Failed to download {}: {}", rc.filename, e);
-            return Err(anyhow::Error::new(e).context(message));
-        }
-
-        // 진행률 완료
-        {
-            let mut prog = self.download_progress.lock().unwrap();
-            prog.active = false;
-        }
-
-        let asset_name = rc.filename;
-        let sha256 = Some(rc.sha256);
-
+    /// 받은 판을 상태에 적고 받은 파일 이름을 돌려준다
+    fn record_download(&mut self, done: Downloaded) -> String {
+        let Downloaded { component, rc, dest } = done;
         // 상태 업데이트
-        if let Some(comp) = self.status.components.iter_mut().find(|c| &c.component == component) {
+        if let Some(comp) = self.status.components.iter_mut().find(|c| c.component == component) {
             comp.downloaded = true;
             comp.downloaded_path = Some(dest.to_string_lossy().to_string());
-            comp.staged_sha256 = sha256;
+            comp.staged_sha256 = Some(rc.sha256);
         }
-
-        Ok(asset_name)
+        rc.filename
     }
+
     fn manifest_entry(&self, key: &str) -> Option<&ManifestComponent> {
         self.cached_manifest.as_ref()?.components.get(key)
     }

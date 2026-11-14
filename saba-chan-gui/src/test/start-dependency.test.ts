@@ -3,12 +3,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupServerStore } from './serverStore';
 import { useUIStore } from '../stores/useUIStore';
 
-const blocked = (missing: string[]) => ({
+const blocked = (missing: string[], required_core?: string) => ({
     success: false,
     error: 'module_dependency_unsatisfied',
     error_code: 'module_dependency_unsatisfied',
     message: "Cannot start 'A': module 'game' needs ...",
     missing_dependencies: missing,
+    ...(required_core ? { required_core } : {}),
 });
 
 function setup(agreements?: unknown) {
@@ -34,7 +35,7 @@ describe('시작: 모듈 의존성이 안 맞을 때', () => {
     });
 
     it('사바쨩 버전이 모자라면 업데이트가 필요하다고 알리고 업데이트 화면을 연다', async () => {
-        window.api.instanceStart = vi.fn().mockResolvedValue(blocked(['saba-core >=9.0.0 (installed 0.1.1)']));
+        window.api.instanceStart = vi.fn().mockResolvedValue(blocked(['saba-core >=9.0.0 (installed 0.1.1)'], '9.0.0'));
         const { result, setModal } = setup();
         await act(async () => result.current.startServer('a'));
         const modal = setModal.mock.calls.at(-1)![0];

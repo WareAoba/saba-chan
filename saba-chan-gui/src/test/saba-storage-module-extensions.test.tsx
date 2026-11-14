@@ -21,7 +21,7 @@ beforeEach(() => {
             moduleList: vi.fn().mockResolvedValue({ modules: [] }),
             moduleManifest: vi
                 .fn()
-                .mockResolvedValue({ ok: true, manifest: { modules: { palworld: { display_name: 'Palworld' } } } }),
+                .mockResolvedValue({ success: true, manifest: { modules: { palworld: { display_name: 'Palworld' } } } }),
             moduleInstallFromManifest: vi.fn(),
         },
         {
@@ -50,7 +50,7 @@ async function installPalworld(response: Record<string, unknown>) {
 describe('모듈 설치 때 켠 익스텐션', () => {
     it('켠 익스텐션을 알리고 익스텐션 목록을 새로 받는다', async () => {
         await installPalworld({
-            ok: true,
+            success: true,
             module_id: 'palworld',
             extensions: { installed: ['ue4-ini'], enabled: ['steamcmd', 'ue4-ini'], failed: [] },
         });
@@ -62,7 +62,7 @@ describe('모듈 설치 때 켠 익스텐션', () => {
 
     it('켜지 못한 익스텐션은 번역한 이유와 함께 경고한다', async () => {
         await installPalworld({
-            ok: true,
+            success: true,
             module_id: 'palworld',
             extensions: {
                 installed: [],
@@ -79,7 +79,7 @@ describe('모듈 설치 때 켠 익스텐션', () => {
     });
 
     it('익스텐션이 필요 없는 모듈은 아무것도 알리지 않는다', async () => {
-        await installPalworld({ ok: true, module_id: 'palworld', extensions: { installed: [], enabled: [], failed: [] } });
+        await installPalworld({ success: true, module_id: 'palworld', extensions: { installed: [], enabled: [], failed: [] } });
         await waitFor(() => expect(window.api.moduleInstallFromManifest).toHaveBeenCalled());
         await act(async () => {});
         expect(window.showToast).not.toHaveBeenCalled();

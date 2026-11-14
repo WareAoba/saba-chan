@@ -420,6 +420,15 @@ pub fn still_scheduled(instance_id: &str, schedule: &[ScheduledTask], key: &str)
     schedule.iter().any(|t| t.enabled && task_key(instance_id, t) == key)
 }
 
+/// 일정과 보관 수의 지문. 목록 전체를 다시 보내는 편집이 그사이 바뀐 일정을 덮어쓰지 않게 한다
+pub(crate) fn schedule_revision(instance: &crate::instance::ServerInstance) -> String {
+    crate::config_store::patch::revision(&serde_json::json!({ "schedule": instance.schedule, "backup_keep": instance.backup_keep }))
+}
+
+pub(crate) fn save_command_of(meta: &crate::module_loader::ModuleMetadata) -> Option<String> {
+    meta.backup.as_ref().and_then(|b| b.save_command.clone())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

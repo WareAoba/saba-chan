@@ -15,7 +15,7 @@ const COMPONENTS = [
     { key: 'saba-core', label: 'Core', icon: 'package' },
     { key: 'gui', label: 'GUI', icon: 'monitor' },
     { key: 'cli', label: 'CLI', icon: 'terminal' },
-    { key: 'updater', label: 'Updater', icon: 'refresh' },
+    { key: 'installer', label: 'Installer', icon: 'download' },
 ];
 
 const DAY = [

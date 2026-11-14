@@ -5,7 +5,7 @@
 
 use crate::i18n::strip_bom;
 use saba_chan_updater_lib::config_file::ConfigFile;
-use saba_chan_updater_lib::constants::{DEFAULT_IPC_PORT, SUPPORTED_LANGUAGES};
+use saba_chan_updater_lib::constants::{resolve_locale, DEFAULT_IPC_PORT};
 use serde_json::{json, Map, Value};
 use std::path::{Path, PathBuf};
 
@@ -50,18 +50,12 @@ pub fn write_gui_section(data_dir: &Path, gui: &Value) -> std::io::Result<()> {
     ConfigFile::at(data_dir).set_section("gui", gui.clone())
 }
 
+/// 데몬이 꺼져 있어도 셸이 정해야 하는 값만: 데몬 주소(`ipcPort`)와 언어. 화면 설정의 기본값은 데몬(`GuiSettings::default`)과
+/// 화면 스토어(`useSettingsStore` `SETTINGS_DEFAULTS`)가 정하고, 셸이 읽는 칸(창 크기·소리·OS 알림)은 값이 없으면 기본으로 본다
 pub fn default_settings() -> Map<String, Value> {
     let v = json!({
-        "autoRefresh": true,
-        "refreshInterval": 2000,
-        "windowBounds": { "width": 1200, "height": 840 },
         "language": system_language(),
         "ipcPort": DEFAULT_IPC_PORT,
-        "consoleBufferSize": 2000,
-        "autoGeneratePasswords": true,
-        "portConflictCheck": true,
-        "osNotifications": true,
-        "sounds": { "enabled": true, "serverStart": true, "serverStop": true, "crash": true, "install": true, "update": true, "startup": true },
     });
     match v {
         Value::Object(m) => m,
@@ -142,33 +136,8 @@ pub fn language(settings: &Value) -> String {
 }
 
 pub fn system_language() -> String {
-    match_language(&sys_locale::get_locale().unwrap_or_else(|| "en".into()))
-}
-
-/// OS 로케일 → 지원 언어 (정확히 같으면 그것, 아니면 언어 코드로, 없으면 en)
-pub fn match_language(locale: &str) -> String {
-    let locale = locale.replace('_', "-");
-    if let Some(l) = SUPPORTED_LANGUAGES.iter().find(|l| l.eq_ignore_ascii_case(&locale)) {
-        return l.to_string();
-    }
-    let base = locale.split('-').next().unwrap_or("").to_ascii_lowercase();
-    // 데몬과 같은 규칙: 스크립트 태그가 지역보다 우선 (zh-Hans-HK → 간체, zh-HK·zh-MO·zh-Hant → 번체)
-    if base.eq_ignore_ascii_case("zh") {
-        let subtags: Vec<String> = locale.split('-').skip(1).map(|t| t.to_ascii_lowercase()).collect();
-        let has = |t: &str| subtags.iter().any(|s| s == t);
-        return if has("hans") {
-            "zh-CN".into()
-        } else if ["hant", "tw", "hk", "mo"].into_iter().any(has) {
-            "zh-TW".into()
-        } else {
-            "zh-CN".into()
-        };
-    }
-    SUPPORTED_LANGUAGES
-        .iter()
-        .find(|l| **l == base || l.starts_with(&format!("{base}-")))
-        .map(|l| l.to_string())
-        .unwrap_or_else(|| "en".into())
+    // 데몬·CLI와 같은 해석. 지원하지 않는 언어는 en
+    resolve_locale(&sys_locale::get_locale().unwrap_or_default()).unwrap_or_else(|| "en".into())
 }
 
 #[cfg(test)]
@@ -216,8 +185,6 @@ mod tests {
         let s = load_settings(dir.path());
         assert_eq!(ipc_port(&s), 60000);
         assert_eq!(s["language"], "ko");
-        // 기본값은 없는 칸만 채운다
-        assert_eq!(s["consoleBufferSize"], 2000);
     }
 
     #[test]
@@ -254,21 +221,5 @@ mod tests {
         assert_eq!(doc["gui"]["ipcPort"], 60000);
         // 깨진 파일은 .bak을 덮어쓰지 않는다
         assert!(read_json_file(&with_suffix(&path, ".bak")).is_ok());
-    }
-
-    #[test]
-    fn matches_system_locale() {
-        assert_eq!(match_language("ko-KR"), "ko");
-        assert_eq!(match_language("KO-kr"), "ko");
-        assert_eq!(match_language("ZH-tw"), "zh-TW");
-        assert_eq!(match_language("zh-TW"), "zh-TW");
-        assert_eq!(match_language("zh-HK"), "zh-TW");
-        assert_eq!(match_language("zh_MO"), "zh-TW");
-        assert_eq!(match_language("zh-Hant-SG"), "zh-TW");
-        assert_eq!(match_language("zh-Hans-HK"), "zh-CN");
-        assert_eq!(match_language("zh-SG"), "zh-CN");
-        assert_eq!(match_language("zh"), "zh-CN");
-        assert_eq!(match_language("pt_PT"), "pt-BR");
-        assert_eq!(match_language("nl-NL"), "en");
     }
 }

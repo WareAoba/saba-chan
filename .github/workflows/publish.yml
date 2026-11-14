@@ -14,7 +14,7 @@ name: Publish release
 #                버전이 같은 컴포넌트는 빌드하지 않고 지난 manifest 항목(url·sha256·version)을 그대로 싣는다.
 #                실행 파일 컴포넌트가 하나도 안 바뀌었으면 세 플랫폼 빌드를 건너뛴다.
 #   조합 관문    서명 전에 그 조합(새로 빌드한 것 + 지난 릴리즈 파일)의 linux-x64 데몬·러너·CLI로 E2E를 돌린다.
-#   베타 먼저    베타·RC 번호는 그 채널에, 정식 번호는 beta에 먼저 등록한다. manifest는 versions.toml 채널로 서명한다(승격할 수 있는 끝).
+#   베타 먼저    베타·RC 번호는 그 채널, 정식 번호는 beta에 먼저 등록한다. manifest는 versions.toml 채널로 서명한다(승격할 수 있는 끝).
 #                정식 승격은 사용자가 promote-release.yml을 손으로 실행할 때만.
 #
 # 같은 소스: prepare가 main 커밋 하나를 고르고 모든 작업이 그 커밋을 빌드한다.
@@ -42,6 +42,10 @@ on:
         description: '릴레이 등록 롤아웃 비율 (1~100, 기본 100). 일부만 받게 하고 나중에 릴레이 PATCH로 올린다'
         type: number
         default: 100
+      source:
+        description: '빌드할 소스 브랜치 (비우면 main). release/<버전>만 받는다: 지난 발행 소스에 번호를 다시 붙여 낼 때'
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -72,6 +76,9 @@ jobs:
       channel: ${{ steps.src.outputs.channel }}
       # 릴레이에 등록할 채널: 베타·RC 번호는 그 채널, 정식 번호는 베타 먼저 (versions.py registration_channel)
       register: ${{ steps.src.outputs.register }}
+      # 묶을 모듈·익스텐션 저장소 커밋: 소스의 .github/release-addons.env(MODULES_REF·EXTENSIONS_REF), 없으면 main
+      modules_ref: ${{ steps.src.outputs.modules_ref }}
+      extensions_ref: ${{ steps.src.outputs.extensions_ref }}
       binaries: ${{ steps.plan.outputs.binaries }}
       build: ${{ steps.plan.outputs.build }}
       # 공개 주소라 비밀이 아니다: 환경 밖의 관문 작업이 쓴다
@@ -82,8 +89,19 @@ jobs:
         run: |
           echo "::error::Run this workflow on main (got $GITHUB_REF)"; exit 1
 
+      # 워크플로 파일과 비밀은 늘 main의 것이다. 소스만 release/<버전> 브랜치에서 가져올 수 있다
+      - name: Check source
+        env:
+          SOURCE: ${{ inputs.source }}
+        run: |
+          if [ -n "$SOURCE" ] && ! [[ "$SOURCE" =~ ^release/[0-9]+\.[0-9]+\.[0-9]+(-(beta|rc)\.[0-9]+)?$ ]]; then
+            echo "::error::source must be release/<version> (got $SOURCE)"; exit 1
+          fi
+
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source || github.sha }}
 
       - name: Setup Python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
@@ -103,6 +121,11 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
           echo "register=$(python -c "import sys;sys.path.insert(0,'scripts');import versions;print(versions.registration_channel('$CHANNEL'))")" >> "$GITHUB_OUTPUT"
+          # 지난 발행 소스를 다시 낼 때는 그때의 모듈·익스텐션을 묶는다 (main의 애드온은 옛 데몬이 읽지 못할 수 있다)
+          MODULES_REF=main; EXTENSIONS_REF=main
+          if [ -f .github/release-addons.env ]; then . ./.github/release-addons.env; fi
+          echo "modules_ref=$MODULES_REF" >> "$GITHUB_OUTPUT"
+          echo "extensions_ref=$EXTENSIONS_REF" >> "$GITHUB_OUTPUT"
           echo "### $VERSION ($CHANNEL) from \`$(git rev-parse HEAD)\`" >> "$GITHUB_STEP_SUMMARY"
 
       # 40분 빌드 전에 확인한다. 확인하지 못하면 "없다"로 치지 않고 멈춘다
@@ -434,14 +457,14 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: WareAoba/saba-chan-modules
-          ref: main
+          ref: ${{ needs.prepare.outputs.modules_ref }}
           path: addons/modules
 
       - name: Checkout extensions
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: WareAoba/saba-chan-extensions
-          ref: main
+          ref: ${{ needs.prepare.outputs.extensions_ref }}
           path: addons/extensions
 
       - name: Setup Python
@@ -474,6 +497,7 @@ jobs:
             --base-url "${{ needs.prepare.outputs.r2_base }}" --platform windows-x64 --also-platform linux-x64 --also-platform linux-arm64 --also-platform macos-arm64 \
             --modules-repo addons/modules --extensions-repo addons/extensions \
             --addons-ref "$(git -C addons/modules rev-parse HEAD)" \
+            --extensions-ref "$(git -C addons/extensions rev-parse HEAD)" \
             --previous previous-manifest.json \
             --out release-manifest.unsigned.json
           cp output/module-*.zip output/ext-*.zip gate-output/ 2>/dev/null || true

@@ -14,7 +14,8 @@ use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
 use super::super::IPCServer;
-use super::relay::{apply_signed_headers, client, load_node_token, send, signed_relay_url};
+use super::relay::{client, send};
+use crate::relay_client::{apply_signed_headers, load_node_token, signed_relay_url};
 
 /// 삭제표는 30분 산다. 릴레이가 그 뒤에는 expired 로 답한다. 릴레이에 닿지 않을 때만 이 시간에 그만둔다
 const GIVE_UP: Duration = Duration::from_secs(35 * 60);
@@ -50,7 +51,7 @@ struct Ticket {
 }
 
 fn bad_gateway(message: &str) -> axum::response::Response {
-    (StatusCode::BAD_GATEWAY, Json(json!({ "error": message }))).into_response()
+    super::error(StatusCode::BAD_GATEWAY, "relay_unreachable", message)
 }
 
 /// POST `<relay>/api/privacy/erasures` (노드 토큰 서명)
@@ -76,7 +77,7 @@ async fn issue(base: &str, locale: Option<&str>) -> Result<Ticket, axum::respons
             }
             Ok(ticket)
         }
-        (code, Some(data)) => Err((code, Json(data)).into_response()),
+        (code, Some(data)) => Err(super::relay::relayed(code, data)),
         (_, None) => Err(bad_gateway("Invalid relay response")),
     }
 }
@@ -90,7 +91,7 @@ fn is_site_url(url: &str) -> bool {
 async fn status_once(base: &str, ticket: &Ticket) -> Option<&'static str> {
     let client = client().ok()?;
     let req = client
-        .post(format!("{}/api/privacy/erasures/{}/status", base, super::relay::encode_path_segment(&ticket.id)))
+        .post(format!("{}/api/privacy/erasures/{}/status", base, crate::relay_client::encode_path_segment(&ticket.id)))
         .json(&json!({ "pollSecret": ticket.poll_secret }));
     match send(req).await.ok()? {
         (code, Some(data)) if code.is_success() => match data.get("status").and_then(Value::as_str) {
@@ -130,7 +131,7 @@ pub struct EraseRequest {
 /// POST /api/relay/privacy/erase
 pub async fn start_erase(State(state): State<IPCServer>, body: super::LooseJson<EraseRequest>) -> axum::response::Response {
     let Some(issued_with) = load_node_token() else {
-        return (StatusCode::CONFLICT, Json(json!({ "error": "not paired", "error_code": "node_token_missing" }))).into_response();
+        return super::error(StatusCode::CONFLICT, "node_token_missing", "not paired");
     };
     let locale = body.0.and_then(|Json(b)| b.locale).filter(|l| !l.is_empty() && l.len() <= 16);
     let configured = state.config_store.get_bot_config().await.cloud.relay_url;
@@ -153,7 +154,7 @@ pub async fn start_erase(State(state): State<IPCServer>, body: super::LooseJson<
         // 그사이 연결을 끊고 다른 계정으로 다시 페어링했으면 새 연결은 건드리지 않는다
         if outcome == "done" && load_node_token().as_deref() == Some(issued_with.as_str()) {
             // 릴레이에서는 이미 지워졌다. 이 PC 의 연결도 끊는다 (연결 해제와 같다)
-            if let Err(e) = super::relay::disconnect(&state).await {
+            if let Err(e) = crate::relay_client::disconnect(&state).await {
                 tracing::warn!("[Privacy] erased on the relay but could not remove the node token: {}", e);
                 set_status(&cancel, "failed");
                 return;

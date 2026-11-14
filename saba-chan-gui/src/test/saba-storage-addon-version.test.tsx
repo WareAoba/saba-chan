@@ -25,7 +25,7 @@ const kind = () => tr('version_kind_module');
 
 const MINECRAFT = { name: '마인크래프트', version: '0.1.13', path: '/m/minecraft', description: '서버를 실행해요', trust: 'verified' };
 const VERSIONS = {
-    ok: true,
+    success: true,
     key: 'module-minecraft',
     core: '0.1.14',
     installed: '0.1.13',
@@ -43,7 +43,7 @@ function fakeApi(overrides: Record<string, unknown>) {
     window.api = new Proxy<Record<string | symbol, unknown>>(
         {
             moduleList: vi.fn().mockResolvedValue({ modules: [MINECRAFT] }),
-            moduleManifest: vi.fn().mockResolvedValue({ ok: true, manifest: { modules: {} } }),
+            moduleManifest: vi.fn().mockResolvedValue({ success: true, manifest: { modules: {} } }),
             addonVersions: vi.fn().mockResolvedValue(VERSIONS),
             ...overrides,
         },
@@ -109,7 +109,7 @@ describe('모듈 버전 선택', () => {
     });
 
     it('고른 버전을 확인받고 데몬에 보내, 바꿨다고 알린다', async () => {
-        fakeApi({ addonPin: vi.fn().mockResolvedValue({ ok: true, state: 'applied', version: '0.1.12', waiting_for: [] }) });
+        fakeApi({ addonPin: vi.fn().mockResolvedValue({ success: true, state: 'applied', version: '0.1.12', waiting_for: [] }) });
         await openTab(1);
         await chooseFromMenu(tr('version_choose'));
         await act(async () => fireEvent.click(await screen.findByRole('radio', { name: /0\.1\.12/ })));
@@ -132,7 +132,7 @@ describe('모듈 버전 선택', () => {
             .mockResolvedValue({ modules: [{ ...MINECRAFT, pending_version: '0.1.12' }] });
         fakeApi({
             moduleList,
-            addonPin: vi.fn().mockResolvedValue({ ok: true, state: 'waiting', version: '0.1.12', waiting_for: ['친구들 서버'] }),
+            addonPin: vi.fn().mockResolvedValue({ success: true, state: 'waiting', version: '0.1.12', waiting_for: ['친구들 서버'] }),
         });
         await openTab(1);
         await pick012();
@@ -141,7 +141,7 @@ describe('모듈 버전 선택', () => {
 
     it('바꾸지 못하면 이유와 그대로인 버전을 알린다', async () => {
         fakeApi({
-            addonPin: vi.fn().mockResolvedValue({ ok: false, error: 'download failed', error_code: 'download_failed' }),
+            addonPin: vi.fn().mockResolvedValue({ success: false, error: 'download failed', error_code: 'download_failed' }),
         });
         await openTab(1);
         await pick012();
@@ -159,8 +159,8 @@ describe('모듈 버전 선택', () => {
     it('직접 고친 폴더라 거절하면 데몬의 영어 원문 대신 앱 문장으로 알리고, 모르는 코드는 일반 실패 문장으로 알린다', async () => {
         const addonPin = vi
             .fn()
-            .mockResolvedValueOnce({ ok: false, error: 'module-minecraft was changed by hand; it is not replaced', error_code: 'module_modified' })
-            .mockResolvedValueOnce({ ok: false, error: 'something new went wrong', error_code: 'brand_new_code' });
+            .mockResolvedValueOnce({ success: false, error: 'module-minecraft was changed by hand; it is not replaced', error_code: 'module_modified' })
+            .mockResolvedValueOnce({ success: false, error: 'something new went wrong', error_code: 'brand_new_code' });
         fakeApi({ addonPin });
         await openTab(1);
         const failedWith = (reason: string) =>
@@ -184,7 +184,7 @@ describe('모듈 버전 선택', () => {
         const pinned = { ...MINECRAFT, version: '0.1.12', pinned: { version: '0.1.12', until_newer_than: '0.1.13' } };
         fakeApi({
             moduleList: vi.fn().mockResolvedValue({ modules: [pinned] }),
-            addonUnpin: vi.fn().mockResolvedValue({ ok: true, state: 'applied', version: '0.1.13', waiting_for: [] }),
+            addonUnpin: vi.fn().mockResolvedValue({ success: true, state: 'applied', version: '0.1.13', waiting_for: [] }),
         });
         await openTab(1);
         expect(pane().textContent).toContain(tr('version_pinned'));
@@ -218,7 +218,7 @@ describe('익스텐션 버전 선택', () => {
 
 describe('버전 선택 브리지', () => {
     const setup = () => {
-        const invoke = vi.fn().mockResolvedValue({ status: 200, data: { ok: true } });
+        const invoke = vi.fn().mockResolvedValue({ status: 200, data: { success: true } });
         const { api } = createApi({ invoke, hub: { dispatch: vi.fn() } as never });
         return { api, sent: () => invoke.mock.calls.at(-1)![1] };
     };

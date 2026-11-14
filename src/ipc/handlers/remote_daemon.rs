@@ -46,7 +46,7 @@ use crate::ipc::IPCServer;
 use crate::remote_daemon::{self, config, peer};
 
 fn bad(code: &str, message: &str) -> Response {
-    (StatusCode::BAD_REQUEST, Json(json!({ "error": message, "error_code": code }))).into_response()
+    super::error(StatusCode::BAD_REQUEST, code, message)
 }
 
 fn view(settings: &config::Settings, status: &remote_daemon::Status) -> Value {
@@ -64,8 +64,8 @@ pub async fn get_settings(State(state): State<IPCServer>) -> Json<Value> {
         "publicIp": state.relay_agent.seen_address(),
     });
     // 원격 데몬의 이벤트 중 이 PC가 시킨 것(`remoteHost`)을 가리는 데 쓴다 (셸 효과음)
-    let host = crate::ipc::handlers::relay::load_node_token();
-    v["hostId"] = json!(host.as_deref().and_then(|t| crate::ipc::handlers::relay::parse_node_token(t.trim())).map_or("", |(id, _)| id));
+    let host = crate::relay_client::load_node_token();
+    v["hostId"] = json!(host.as_deref().and_then(|t| crate::relay_client::parse_node_token(t.trim())).map_or("", |(id, _)| id));
     Json(v)
 }
 
@@ -96,7 +96,7 @@ pub async fn put_settings(State(state): State<IPCServer>, Json(patch): Json<Sett
         settings.enabled = enabled;
     }
     if let Err(e) = config::save_settings_in(&file, &settings) {
-        return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.to_string(), "error_code": "save_failed" }))).into_response();
+        return super::error(StatusCode::INTERNAL_SERVER_ERROR, "save_failed", e.to_string());
     }
     let status = remote_daemon::apply(&state).await;
     Json(view(&settings, &status)).into_response()
@@ -166,7 +166,7 @@ pub async fn put_public_address(State(state): State<IPCServer>, Json(patch): Jso
         }
         Err(PublicAddressError::Invalid) => bad("invalid_address", "Address must be a host name or an IP address"),
         Err(PublicAddressError::Save(e)) => {
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.to_string(), "error_code": "save_failed" }))).into_response()
+            super::error(StatusCode::INTERNAL_SERVER_ERROR, "save_failed", e.to_string())
         }
     }
 }
@@ -186,8 +186,8 @@ pub async fn revoke_client(State(state): State<IPCServer>, Path(host_id): Path<S
             state.remote_daemon.clients.reload(&file);
             StatusCode::NO_CONTENT.into_response()
         }
-        Ok(false) => (StatusCode::NOT_FOUND, Json(json!({ "error": "Not paired", "error_code": "not_paired" }))).into_response(),
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.to_string(), "error_code": "save_failed" }))).into_response(),
+        Ok(false) => super::error(StatusCode::NOT_FOUND, "not_paired", "Not paired"),
+        Err(e) => super::error(StatusCode::INTERNAL_SERVER_ERROR, "save_failed", e.to_string()),
     }
 }
 
@@ -497,7 +497,7 @@ async fn body_json(res: Response) -> Value {
 
 /// 이 PC와 저장한 원격 데몬마다의 서버 목록. 원격 데몬은 동시에 묻고, 포트 충돌 알림은 비우지 않는다(`notices=keep`)
 async fn all_servers_with(file: &ConfigFile, state: &IPCServer, timeout: std::time::Duration) -> Value {
-    let local = body_json(crate::ipc::handlers::server::list_servers_internal(state).await).await;
+    let local = crate::service::servers::list(state, 0).await.unwrap_or_default();
     let mut daemons = vec![json!({ "hostId": null, "name": "", "label": "", "ok": true, "servers": local["servers"].as_array().cloned().unwrap_or_default() })];
     let relay = relay_target(state).await;
     let asks = config::daemons_in(file).into_iter().map(|d| {

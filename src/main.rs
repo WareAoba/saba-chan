@@ -1,6 +1,6 @@
 // 데몬 모듈은 lib(saba_core) 하나로만 컴파일한다. 바이너리가 같은 모듈을 다시 `mod`로 선언하면
 // 데몬 전체가 두 번 컴파일되고 단위 시험도 두 번 돈다
-use saba_core::{supervisor, plugin, ipc, process_monitor, system_monitor, python_env, utils, extension, boot_selector, daemon_log, instance_lock, module_audit, audit, sandbox, controllers, tray_host};
+use saba_core::{service, supervisor, plugin, ipc, process_monitor, system_monitor, python_env, utils, extension, boot_selector, daemon_log, instance_lock, module_audit, audit, sandbox, controllers, tray_host};
 
 use std::sync::Arc;
 use std::io::IsTerminal;
@@ -20,7 +20,7 @@ const DAEMON_LOG_CAP: u64 = 5 * 1024 * 1024;
 /// `saba-core module audit <모듈 폴더>...` — Python 코드가 `[permissions]`에 없는 능력을 쓰면 종료 코드 1
 /// (Python은 `SABA_PYTHON`, 없으면 PATH의 python3/python)
 fn module_tool(args: &[String]) -> i32 {
-    use saba_core::supervisor::module_loader::{load_module_dir, module_json_schema};
+    use saba_core::module_loader::{load_module_dir, module_json_schema};
     match args.first().map(String::as_str) {
         Some("schema") => {
             println!("{}", serde_json::to_string_pretty(&module_json_schema()).unwrap_or_default());
@@ -218,7 +218,7 @@ async fn main() -> anyhow::Result<()> {
         }
     }
     // 기동 시각 (`/health`의 `started_at_ms`)
-    std::sync::LazyLock::force(&ipc::handlers::server::STARTED_AT_MS);
+    std::sync::LazyLock::force(&ipc::STARTED_AT_MS);
     let spawned = args.iter().any(|a| a == "--spawned");
     let interactive =
         std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
@@ -391,13 +391,6 @@ async fn main() -> anyhow::Result<()> {
     tokio::spawn(supervisor::Supervisor::backfill_server_versions(supervisor.clone()));
     tokio::spawn(supervisor::Supervisor::backfill_data_roots(supervisor.clone()));
 
-    // Supervisor에 ExtensionManager 연결
-    {
-        let mut sup = supervisor.write().await;
-        sup.extension_manager = Some(ipc_server.extension_manager.clone());
-        sup.provision_tracker = Some(ipc_server.provision_tracker.clone());
-    }
-
     let client_registry = ipc_server.client_registry.clone();
     tracing::info!("Starting IPC server on {}", ipc_addr);
 
@@ -454,215 +447,13 @@ async fn main() -> anyhow::Result<()> {
         let server = ipc_server.clone();
         tokio::spawn(async move {
             loop {
-                ipc::handlers::extension::prepare_after_update(&server, &saba_chan_updater_lib::UpdateCompletionMarker::path()).await;
+                service::extensions::prepare_after_update(&server, &saba_chan_updater_lib::UpdateCompletionMarker::path()).await;
                 server.update_state.modules_updated.notified().await;
             }
         });
     }
 
-    // ── CancellationToken: 모든 백그라운드 태스크에 graceful shutdown 전파 ──
-    let shutdown_token = ipc_server.shutdown_token.clone();
-    let stop_requested_token = ipc_server.stop_requested.clone();
-
-    // 백그라운드 모니터링 태스크 시작
-    let supervisor_monitor = supervisor.clone();
-    let monitor_cancel = shutdown_token.clone();
-    let restart_ipc = ipc_server.clone();
-    tokio::spawn(async move {
-        let mut error_count = 0;
-        
-        loop {
-            tokio::select! {
-                _ = monitor_cancel.cancelled() => {
-                    tracing::info!("Monitor task shutting down");
-                    break;
-                }
-                _ = tokio::time::sleep(tokio::time::Duration::from_secs(MONITOR_INTERVAL_SECS)) => {}
-            }
-            
-            // Phase 1: write lock 밖에서 프로세스 목록을 한 번 스캔 (비용이 큰 sysinfo 호출)
-            let taken_at = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
-            // 인스턴스가 없으면 맞춰 볼 대상이 없다: 전체 프로세스 조회를 건너뛴다 (죽은 프로세스 정리는 그대로 한다)
-            let has_instances = !supervisor_monitor.read().await.instance_store.list().is_empty();
-            let process_snapshot = if has_instances { process_monitor::get_running_processes_async().await } else { Vec::new() };
-            
-            // Phase 2: write lock 안에서는 snapshot 기반 매칭만 수행 (시스템 콜 없음)
-            let mut sup = supervisor_monitor.write().await;
-            if !has_instances && !sup.instance_store.list().is_empty() {
-                // 그사이 인스턴스가 생겼다: 빈 목록으로 맞춰 보지 않고 다음 주기에 조회한다
-                continue;
-            }
-            match sup.monitor_processes_taken_at(&process_snapshot, taken_at).await {
-                Ok(_) => {
-                    if error_count > 0 {
-                        tracing::info!("Monitor recovered after {} errors", error_count);
-                    }
-                    error_count = 0;
-                }
-                Err(e) => {
-                    error_count += 1;
-                    if error_count <= 3 || error_count % 10 == 0 {
-                        tracing::error!("Monitor error (count: {}): {}", error_count, e);
-                    }
-                    
-                    if error_count >= MONITOR_MAX_CONSECUTIVE_ERRORS {
-                        tracing::error!("Monitor has failed {} consecutive times, restarting monitoring", error_count);
-                        error_count = 0;
-                    }
-                }
-            }
-            // 크래시로 끝난 서버 다시 띄우기 (A1). 대기는 락 밖에서.
-            let restarts = sup.take_pending_restarts();
-            drop(sup);
-            for (instance_id, delay, generation) in restarts {
-                tokio::spawn(ipc::handlers::server::auto_restart(restart_ipc.clone(), instance_id, delay, generation));
-            }
-        }
-    });
-
-    // 업데이트 주기 확인 — GUI가 꺼져 있어도 데몬이 확인한다 (U6)
-    ipc::updates::spawn_update_scheduler(ipc_server.update_state.clone(), shutdown_token.clone());
-    // 지난 앱 업데이트가 이 코어를 기다리게 둔 모듈·익스텐션을 마저 바꾼다
-    ipc::updates::spawn_deferred_apply(ipc_server.update_state.clone());
-    // 작업 기록 보관 기간 (앱 설정 auditKeepDays)
-    audit::spawn_retention(ipc_server.config_store.clone(), shutdown_token.clone());
-    // 인스턴스 예약 작업: 백업·재시작·공지·업데이트 (A3)
-    saba_core::scheduler::runner::spawn_scheduler(ipc_server.clone());
-    // 인스턴스별 게임 서버 자동 업데이트 (auto_update)
-    ipc::handlers::server_update::spawn_auto_updater(ipc_server.clone());
-    // 나머지 서버의 게임 서버 업데이트 확인 (화면은 목록의 결과만 읽는다)
-    ipc::handlers::server_update::spawn_update_checks(ipc_server.clone());
-    controllers::spawn_gate(ipc_server.clone());
-
-    // 접속자 수 (Q-5): 모듈이 `[status] players`를 선언한 켜진 서버만 1분마다 묻는다
-    let players_sup = supervisor.clone();
-    let players_cancel = shutdown_token.clone();
-    let idle_state = ipc_server.clone();
-    tokio::spawn(async move {
-        loop {
-            tokio::select! {
-                _ = players_cancel.cancelled() => break,
-                _ = tokio::time::sleep(tokio::time::Duration::from_secs(supervisor::players::REFRESH_SECS)) => {}
-            }
-            supervisor::players::refresh(&players_sup).await;
-            // 접속자 없을 때 자동 정지: 방금 갱신한 수만 본다 (따로 묻지 않는다)
-            ipc::handlers::server::stop_idle_servers(&idle_state).await;
-            // 응답 없는 서버 감시: 방금 모은 응답 실패 기록만 본다
-            ipc::handlers::server::watch_unresponsive(&idle_state).await;
-        }
-    });
-
-    // Heartbeat reaper 태스크 — 30초마다 만료 클라이언트 확인, 봇 프로세스 정리
-    let registry_reaper = client_registry.clone();
-    let reaper_cancel = shutdown_token.clone();
-    tokio::spawn(async move {
-        loop {
-            tokio::select! {
-                _ = reaper_cancel.cancelled() => {
-                    tracing::info!("Heartbeat reaper shutting down");
-                    break;
-                }
-                _ = tokio::time::sleep(tokio::time::Duration::from_secs(HEARTBEAT_REAPER_INTERVAL_SECS)) => {}
-            }
-            ipc::reap_expired_clients(&registry_reaper).await;
-        }
-    });
-
-    // 인터페이스가 모두 떠나도 데몬은 남는다 (데몬이 서비스의 주체, C14). 스스로 끝내지 않고, 다음에 켠 GUI·CLI가
-    // 다시 붙는다. 끄는 것은 /api/daemon/shutdown 또는 Ctrl+C·SIGTERM뿐이다. 다시 띄우는 것은 트레이를 든 상주 GUI뿐이다.
-    if daemon_only {
-        // 데몬 온리 모드: 터미널 폴링 루프 시작 — 데몬 로그 + 프로세스 콘솔을 stderr에 표시
-        let term_buf = daemon_log_buffer.clone();
-        let term_sup = supervisor.clone();
-        let term_cancel = shutdown_token.clone();
-        tokio::spawn(async move {
-            daemon_log::daemon_terminal_loop(term_buf, term_sup, term_cancel).await;
-        });
-    }
-
-    // Graceful shutdown: Ctrl+C / SIGTERM 시 정리
-    let registry_shutdown = client_registry.clone();
-    let supervisor_shutdown = supervisor.clone();
-    let ctrl_c_cancel = shutdown_token.clone();
-    let stop_requested = stop_requested_token.clone();
-    let relay_shutdown = ipc_server.relay_agent.clone();
-    let monitor_shutdown = ipc_server.system_monitor.clone();
-    tokio::spawn(async move {
-        // 종료 경로는 하나: Ctrl+C·SIGTERM, API(/api/daemon/shutdown, unregister?shutdown=true, 업데이터) 모두 여기로
-        tokio::select! {
-            _ = tokio::signal::ctrl_c() => tracing::info!("Shutdown signal received, cleaning up..."),
-            _ = sigterm() => tracing::info!("SIGTERM received, cleaning up..."),
-            _ = stop_requested.cancelled() => tracing::info!("Shutdown requested, cleaning up..."),
-        }
-
-        // 포트·서버별 네트워크 세션(ETW)은 시스템 전체 이름이라 프로세스가 끝나도 남는다: 먼저 닫는다
-        monitor_shutdown.stop_net_trace();
-
-        // 0. 보내는 중인 원격 명령 결과(예: 원격 업데이트의 재시작 안내)가 릴레이에 닿도록 잠깐 기다린다
-        if !relay_shutdown.settle(std::time::Duration::from_secs(15)).await {
-            tracing::warn!("[Shutdown] Some relay results were still being sent after 15s");
-        }
-        // 스스로 내려간다고 릴레이에 알린다: "PC 연결 끊김" 알림이 가지 않는다 (업데이트로 내려갈 때는 이미 알렸다)
-        relay_shutdown.notify_stopping().await;
-
-        // 1. 익스텐션 정리 (컨테이너 종료 등은 extension hook으로 위임)
-        {
-            let sup = supervisor_shutdown.read().await;
-            let all_instances: Vec<_> = sup.instance_store.list()
-                .iter()
-                .collect();
-
-            // Extension hook: daemon.shutdown — 익스텐션이 자체 정리 수행
-            if let Some(ref ext_mgr) = sup.extension_manager {
-                let ctx = serde_json::json!({
-                    "instances": all_instances.iter().map(|i| {
-                        serde_json::json!({
-                            "id": &i.id,
-                            "name": &i.name,
-                            "module": &i.module_name,
-                            "extension_data": &i.extension_data,
-                            "instance_dir": sup.instance_store.instance_dir(&i.id).to_string_lossy().to_string(),
-                        })
-                    }).collect::<Vec<_>>(),
-                });
-                // 익스텐션이 멈춰도 종료는 진행되게 상한을 둔다
-                let results = match tokio::time::timeout(
-                    std::time::Duration::from_secs(30),
-                    extension::run_hook(ext_mgr, "daemon.shutdown", ctx),
-                )
-                .await
-                {
-                    Ok(results) => results,
-                    Err(_) => {
-                        tracing::warn!("[Shutdown] daemon.shutdown hooks timed out after 30s");
-                        Vec::new()
-                    }
-                };
-                let handled = results.iter().any(|(_id, r)| {
-                    r.as_ref()
-                        .map(|v| v.get("handled").and_then(|h| h.as_bool()) == Some(true))
-                        .unwrap_or(false)
-                });
-                if handled {
-                    tracing::info!("[Shutdown] Extensions handled cleanup");
-                }
-            }
-        }
-
-        // 모듈·익스텐션 작업자를 끝낸다 (daemon.shutdown hook도 작업자로 불렸을 수 있다)
-        plugin::stop_workers(None);
-
-        // 2. 등록된 클라이언트 정리
-        let timeout = std::time::Duration::from_secs(0); // 즉시 모든 클라이언트 만료 처리
-        let all = registry_shutdown.reap_expired(timeout).await;
-        for (id, client) in &all {
-            tracing::info!("[Shutdown] Cleaning client {} ({:?})", id, client.kind);
-        }
-
-        tracing::info!("Cleanup complete, signaling shutdown");
-        // CancellationToken으로 모든 태스크에 종료 전파 (IPC 서버 포함)
-        ctrl_c_cancel.cancel();
-    });
+    spawn_background_tasks(&ipc_server, &supervisor, &client_registry, &daemon_log_buffer, daemon_only);
 
     // Windows가 GUI 알림(크래시 등 중대 알림)을 바로가기 없이도 띄우도록 앱 ID를 등록한다
     tokio::task::spawn_blocking(|| {
@@ -753,6 +544,226 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
+
+
+/// 데몬이 사는 동안 도는 백그라운드 일감을 한자리에서 띄운다: 프로세스 감시와 크래시 재시작, 업데이트 확인, 작업 기록 정리,
+/// 예약 작업, 게임 서버 자동 업데이트, 접속자 수·유휴 정지·무응답 감시, 클라이언트 만료 정리, 데몬 온리 터미널, 종료 처리.
+/// 모두 `ipc_server.shutdown_token`으로 함께 끝난다
+fn spawn_background_tasks(
+    ipc_server: &ipc::IPCServer,
+    supervisor: &Arc<RwLock<supervisor::Supervisor>>,
+    client_registry: &ipc::ClientRegistry,
+    daemon_log_buffer: &daemon_log::DaemonLogBuffer,
+    daemon_only: bool,
+) {
+    // ── CancellationToken: 모든 백그라운드 태스크에 graceful shutdown 전파 ──
+    let shutdown_token = ipc_server.shutdown_token.clone();
+    let stop_requested_token = ipc_server.stop_requested.clone();
+
+    // 백그라운드 모니터링 태스크 시작
+    let supervisor_monitor = supervisor.clone();
+    let monitor_cancel = shutdown_token.clone();
+    let restart_ipc = ipc_server.clone();
+    tokio::spawn(async move {
+        let mut error_count = 0;
+        
+        loop {
+            tokio::select! {
+                _ = monitor_cancel.cancelled() => {
+                    tracing::info!("Monitor task shutting down");
+                    break;
+                }
+                _ = tokio::time::sleep(tokio::time::Duration::from_secs(MONITOR_INTERVAL_SECS)) => {}
+            }
+            
+            // Phase 1: write lock 밖에서 프로세스 목록을 한 번 스캔 (비용이 큰 sysinfo 호출)
+            let taken_at = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+            // 인스턴스가 없으면 맞춰 볼 대상이 없다: 전체 프로세스 조회를 건너뛴다 (죽은 프로세스 정리는 그대로 한다)
+            let has_instances = !supervisor_monitor.read().await.instance_store.list().is_empty();
+            let process_snapshot = if has_instances { process_monitor::get_running_processes_async().await } else { Vec::new() };
+            
+            // Phase 2: write lock 안에서는 snapshot 기반 매칭만 수행 (시스템 콜 없음)
+            let mut sup = supervisor_monitor.write().await;
+            if !has_instances && !sup.instance_store.list().is_empty() {
+                // 그사이 인스턴스가 생겼다: 빈 목록으로 맞춰 보지 않고 다음 주기에 조회한다
+                continue;
+            }
+            match sup.monitor_processes_taken_at(&process_snapshot, taken_at).await {
+                Ok(_) => {
+                    if error_count > 0 {
+                        tracing::info!("Monitor recovered after {} errors", error_count);
+                    }
+                    error_count = 0;
+                }
+                Err(e) => {
+                    error_count += 1;
+                    if error_count <= 3 || error_count % 10 == 0 {
+                        tracing::error!("Monitor error (count: {}): {}", error_count, e);
+                    }
+                    
+                    if error_count >= MONITOR_MAX_CONSECUTIVE_ERRORS {
+                        tracing::error!("Monitor has failed {} consecutive times, restarting monitoring", error_count);
+                        error_count = 0;
+                    }
+                }
+            }
+            // 크래시로 끝난 서버 다시 띄우기 (A1). 대기는 락 밖에서.
+            let restarts = sup.take_pending_restarts();
+            drop(sup);
+            for (instance_id, delay, generation) in restarts {
+                tokio::spawn(service::lifecycle::auto_restart(restart_ipc.clone(), instance_id, delay, generation));
+            }
+        }
+    });
+
+    // 업데이트 주기 확인 — GUI가 꺼져 있어도 데몬이 확인한다 (U6)
+    ipc::updates::spawn_update_scheduler(ipc_server.update_state.clone(), shutdown_token.clone());
+    // 업데이트 상태가 바뀌면 클라이언트에 알린다 (`update.status`). 클라이언트는 상태를 주기로 묻지 않는다
+    ipc::updates::spawn_status_events(ipc_server.update_state.clone(), shutdown_token.clone());
+    // 지난 앱 업데이트가 이 코어를 기다리게 둔 모듈·익스텐션을 마저 바꾼다
+    ipc::updates::spawn_deferred_apply(ipc_server.update_state.clone());
+    // 작업 기록 보관 기간 (앱 설정 auditKeepDays)
+    audit::spawn_retention(ipc_server.config_store.clone(), shutdown_token.clone());
+    // 인스턴스 예약 작업: 백업·재시작·공지·업데이트 (A3)
+    saba_core::scheduler::runner::spawn_scheduler(ipc_server.clone());
+    // 인스턴스별 게임 서버 자동 업데이트 (auto_update)
+    service::server_update::spawn_auto_updater(ipc_server.clone());
+    // 나머지 서버의 게임 서버 업데이트 확인 (화면은 목록의 결과만 읽는다)
+    service::server_update::spawn_update_checks(ipc_server.clone());
+    controllers::spawn_gate(ipc_server.clone());
+
+    // 접속자 수 (Q-5): 모듈이 `[status] players`를 선언한 켜진 서버만 1분마다 묻는다
+    let players_sup = supervisor.clone();
+    let players_cancel = shutdown_token.clone();
+    let idle_state = ipc_server.clone();
+    tokio::spawn(async move {
+        loop {
+            tokio::select! {
+                _ = players_cancel.cancelled() => break,
+                _ = tokio::time::sleep(tokio::time::Duration::from_secs(supervisor::players::REFRESH_SECS)) => {}
+            }
+            supervisor::players::refresh(&players_sup).await;
+            // 접속자 없을 때 자동 정지: 방금 갱신한 수만 본다 (따로 묻지 않는다)
+            service::lifecycle::stop_idle_servers(&idle_state).await;
+            // 응답 없는 서버 감시: 방금 모은 응답 실패 기록만 본다
+            service::lifecycle::watch_unresponsive(&idle_state).await;
+        }
+    });
+
+    // Heartbeat reaper 태스크 — 30초마다 만료 클라이언트 확인, 봇 프로세스 정리
+    let registry_reaper = client_registry.clone();
+    let reaper_cancel = shutdown_token.clone();
+    tokio::spawn(async move {
+        loop {
+            tokio::select! {
+                _ = reaper_cancel.cancelled() => {
+                    tracing::info!("Heartbeat reaper shutting down");
+                    break;
+                }
+                _ = tokio::time::sleep(tokio::time::Duration::from_secs(HEARTBEAT_REAPER_INTERVAL_SECS)) => {}
+            }
+            ipc::reap_expired_clients(&registry_reaper).await;
+        }
+    });
+
+    // 인터페이스가 모두 떠나도 데몬은 남는다 (데몬이 서비스의 주체, C14). 스스로 끝내지 않고, 다음에 켠 GUI·CLI가
+    // 다시 붙는다. 끄는 것은 /api/daemon/shutdown 또는 Ctrl+C·SIGTERM뿐이다. 다시 띄우는 것은 트레이를 든 상주 GUI뿐이다.
+    if daemon_only {
+        // 데몬 온리 모드: 터미널 폴링 루프 시작 — 데몬 로그 + 프로세스 콘솔을 stderr에 표시
+        let term_buf = daemon_log_buffer.clone();
+        let term_sup = supervisor.clone();
+        let term_cancel = shutdown_token.clone();
+        tokio::spawn(async move {
+            daemon_log::daemon_terminal_loop(term_buf, term_sup, term_cancel).await;
+        });
+    }
+
+    // Graceful shutdown: Ctrl+C / SIGTERM 시 정리
+    let registry_shutdown = client_registry.clone();
+    let supervisor_shutdown = supervisor.clone();
+    let ctrl_c_cancel = shutdown_token.clone();
+    let stop_requested = stop_requested_token.clone();
+    let relay_shutdown = ipc_server.relay_agent.clone();
+    let monitor_shutdown = ipc_server.system_monitor.clone();
+    tokio::spawn(async move {
+        // 종료 경로는 하나: Ctrl+C·SIGTERM, API(/api/daemon/shutdown, unregister?shutdown=true, 업데이터) 모두 여기로
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => tracing::info!("Shutdown signal received, cleaning up..."),
+            _ = sigterm() => tracing::info!("SIGTERM received, cleaning up..."),
+            _ = stop_requested.cancelled() => tracing::info!("Shutdown requested, cleaning up..."),
+        }
+
+        // 포트·서버별 네트워크 세션(ETW)은 시스템 전체 이름이라 프로세스가 끝나도 남는다: 먼저 닫는다
+        monitor_shutdown.stop_net_trace();
+
+        // 0. 보내는 중인 원격 명령 결과(예: 원격 업데이트의 재시작 안내)가 릴레이에 닿도록 잠깐 기다린다
+        if !relay_shutdown.settle(std::time::Duration::from_secs(15)).await {
+            tracing::warn!("[Shutdown] Some relay results were still being sent after 15s");
+        }
+        // 스스로 내려간다고 릴레이에 알린다: "PC 연결 끊김" 알림이 가지 않는다 (업데이트로 내려갈 때는 이미 알렸다)
+        relay_shutdown.notify_stopping().await;
+
+        // 1. 익스텐션 정리 (컨테이너 종료 등은 extension hook으로 위임)
+        {
+            let sup = supervisor_shutdown.read().await;
+            let all_instances: Vec<_> = sup.instance_store.list()
+                .iter()
+                .collect();
+
+            // Extension hook: daemon.shutdown — 익스텐션이 자체 정리 수행
+            {
+                let ext_mgr = &sup.extension_manager;
+                let ctx = serde_json::json!({
+                    "instances": all_instances.iter().map(|i| {
+                        serde_json::json!({
+                            "id": &i.id,
+                            "name": &i.name,
+                            "module": &i.module_name,
+                            "extension_data": &i.extension_data,
+                            "instance_dir": sup.instance_store.instance_dir(&i.id).to_string_lossy().to_string(),
+                        })
+                    }).collect::<Vec<_>>(),
+                });
+                // 익스텐션이 멈춰도 종료는 진행되게 상한을 둔다
+                let results = match tokio::time::timeout(
+                    std::time::Duration::from_secs(30),
+                    extension::run_hook(ext_mgr, "daemon.shutdown", ctx),
+                )
+                .await
+                {
+                    Ok(results) => results,
+                    Err(_) => {
+                        tracing::warn!("[Shutdown] daemon.shutdown hooks timed out after 30s");
+                        Vec::new()
+                    }
+                };
+                let handled = results.iter().any(|(_id, r)| {
+                    r.as_ref()
+                        .map(|v| v.get("handled").and_then(|h| h.as_bool()) == Some(true))
+                        .unwrap_or(false)
+                });
+                if handled {
+                    tracing::info!("[Shutdown] Extensions handled cleanup");
+                }
+            }
+        }
+
+        // 모듈·익스텐션 작업자를 끝낸다 (daemon.shutdown hook도 작업자로 불렸을 수 있다)
+        plugin::stop_workers(None);
+
+        // 2. 등록된 클라이언트 정리
+        let timeout = std::time::Duration::from_secs(0); // 즉시 모든 클라이언트 만료 처리
+        let all = registry_shutdown.reap_expired(timeout).await;
+        for (id, client) in &all {
+            tracing::info!("[Shutdown] Cleaning client {} ({:?})", id, client.kind);
+        }
+
+        tracing::info!("Cleanup complete, signaling shutdown");
+        // CancellationToken으로 모든 태스크에 종료 전파 (IPC 서버 포함)
+        ctrl_c_cancel.cancel();
+    });
+
+}
 
 /// SIGTERM을 기다린다 (Unix). Windows에는 없으므로 끝나지 않는다
 async fn sigterm() {

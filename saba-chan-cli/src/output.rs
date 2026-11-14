@@ -298,6 +298,17 @@ pub fn s<'a>(v: &'a Value, key: &str) -> &'a str {
     v.get(key).and_then(Value::as_str).unwrap_or("")
 }
 
+/// 서버 목록 줄 하나의 상태. 켜는 중·끄는 중은 데몬이 `transition`에 싣는다 (어디서 시켰든)
+pub fn status_of(v: &Value) -> &str {
+    match s(v, "transition") {
+        "" => match s(v, "status") {
+            "" => "stopped",
+            st => st,
+        },
+        tr => tr,
+    }
+}
+
 /// 값 하나를 사람이 읽는 문자열로
 pub fn show(v: &Value) -> String {
     match v {
@@ -372,6 +383,16 @@ pub fn players(server: &Value) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+
+    /// 켜는 중·끄는 중은 데몬이 `transition`에 싣는다 (어디서 시켰든)
+    #[test]
+    fn status_of_prefers_daemon_transition() {
+        use serde_json::json;
+        assert_eq!(super::status_of(&json!({ "status": "stopped", "transition": "starting" })), "starting");
+        assert_eq!(super::status_of(&json!({ "status": "running", "transition": "stopping" })), "stopping");
+        assert_eq!(super::status_of(&json!({ "status": "running" })), "running");
+        assert_eq!(super::status_of(&json!({})), "stopped");
+    }
 
     /// OSC 52는 base64로 싣는다 (터미널이 클립보드에 넣는 형식)
     #[test]

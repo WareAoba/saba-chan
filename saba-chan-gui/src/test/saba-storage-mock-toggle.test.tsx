@@ -42,7 +42,6 @@ beforeEach(() => {
             updaterGetConfig: getConfigSpy,
             updaterStatus: vi.fn().mockResolvedValue({ ok: true, components: [] }),
             updaterCheck: vi.fn().mockResolvedValue({ ok: true, components: [] }),
-            updaterDownloadProgress: vi.fn().mockResolvedValue({ ok: true, active: false }),
         },
         {
             get(target, prop) {

@@ -24,6 +24,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::config::{self, Client};
 use super::h2;
+use super::peer::error;
 use super::relay::{self, Failure, Target};
 
 /// PC 전용 칸을 보려고 받아 두는 본문 (axum `Json`의 기본 한도와 같다)
@@ -61,8 +62,8 @@ impl RelaySource {
         match self {
             Self::Configured(server) => {
                 let configured = server.config_store.get_bot_config().await.cloud.relay_url;
-                let token = crate::ipc::handlers::relay::peek_node_token()?;
-                Some(Target { base: crate::ipc::handlers::relay::signed_relay_url(&configured, None), token })
+                let token = crate::relay_client::peek_node_token()?;
+                Some(Target { base: crate::relay_client::signed_relay_url(&configured, None), token })
             }
             #[cfg(test)]
             Self::Fixed(t) => Some(t.clone()),
@@ -146,14 +147,18 @@ impl Ctx {
     }
 }
 
-fn error(status: StatusCode, code: &str) -> Response {
-    (status, Json(json!({ "error": code, "error_code": code }))).into_response()
-}
-
 pub(crate) fn router(routes: Router, ctx: Ctx) -> Router {
     routes
         .merge(Router::new().route("/remote/pair", post(pair)).with_state(ctx.clone()))
         .layer(axum::middleware::from_fn_with_state(ctx, remote_auth))
+        // 답마다 이 데몬의 판을 싣는다: 붙는 쪽이 최소 판(`MIN_REMOTE_DAEMON`)을 본다
+        .layer(axum::middleware::map_response(|mut res: Response| async move {
+            res.headers_mut().insert(
+                saba_chan_updater_lib::constants::VERSION_HEADER,
+                header::HeaderValue::from_static(crate::extension::APP_VERSION),
+            );
+            res
+        }))
 }
 
 /// 짝 맺은 PC(감사 출처 `remote`)의 요청에 PC 전용 규칙을 거는 층 (`IPCServer::routes`가 씌운다).
@@ -279,7 +284,7 @@ async fn blocked_fields(server: &crate::ipc::IPCServer, method: &str, pattern: &
         if key == "extension_data" {
             return sent.as_object().is_none_or(|m| m.iter().any(|(k, v)| !same_value(v, instance.extension_data.get(k))));
         }
-        !same_value(sent, crate::ipc::handlers::instance::stored_setting(&view, instance, key).as_ref())
+        !same_value(sent, crate::instance::stored_setting(&view, instance, key).as_ref())
     });
     blocked
 }
@@ -745,7 +750,7 @@ pub(crate) mod tests {
         let r = start(Some(fake_relay().await)).await;
         for body in [json!({ "ticketId": "good", "secret": "wrong" }), json!({ "ticketId": "../x", "secret": "s3cret" })] {
             let (s, res) = call(r.addr, &r.pin, "POST", "/remote/pair", None, Some(body)).await.unwrap();
-            assert_eq!((s, res["error"].as_str()), (401, Some("ticket_invalid")));
+            assert_eq!((s, res["error_code"].as_str()), (401, Some("ticket_invalid")));
             assert!(res.get("token").is_none());
         }
     }
@@ -755,7 +760,7 @@ pub(crate) mod tests {
         let r = start(None).await;
         let (s, res) =
             call(r.addr, &r.pin, "POST", "/remote/pair", None, Some(json!({ "ticketId": "good", "secret": "s3cret" }))).await.unwrap();
-        assert_eq!((s, res["error"].as_str()), (502, Some("relay_unreachable")));
+        assert_eq!((s, res["error_code"].as_str()), (502, Some("relay_unreachable")));
     }
 
     /// 실제 데몬 라우트(`IPCServer::routes`)를 원격 포트로 연다. 짝 맺은 PC 하나의 토큰과 함께

@@ -92,11 +92,11 @@ export function OtherDaemons({
     const toggle = (hostId: string | null, pc: string, server: RemoteServer, action: string) =>
         action === 'stop' ? setAsk({ hostId, pc, server, kind: 'stop' }) : run({ hostId, pc, server }, action);
 
-    /** 동의를 그 데몬에 기록하고 다시 켠다. 옛 데몬이라 기록하지 못하면 그 데몬을 열어서 하라고 알린다 */
+    /** 동의를 그 데몬에 기록하고 다시 켠다. 기록하지 못하면 그 데몬을 열어서 하라고 알린다 */
     const accept = async (target: Ask, ids: string[]) => {
         setAsk(null);
         const res = await window.api.remoteInstanceAgreements(target.hostId, target.server.id, ids).catch(() => null);
-        if (!res || res.success === false || res.error) {
+        if (failed(res)) {
             safeShowToast(t('other_daemons.open_to_continue', { pc: target.pc }), 'error', 5000);
             return;
         }
@@ -114,7 +114,7 @@ export function OtherDaemons({
     return (
         <div className="other-daemons">
             {others.map((d) => {
-                const name = d.hostId ? d.label || d.name || d.hostId : t('daemon_switcher.local');
+                const name = d.hostId ? d.label || d.hostId : t('daemon_switcher.local');
                 return (
                     <section key={d.hostId || 'local'} className="other-daemon" aria-label={name}>
                         <header className="other-daemon-head">

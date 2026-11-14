@@ -377,15 +377,16 @@ const mockMac = params.get('mac') === '1'; // 모듈 없이 처음 연 맥(Apple
 const mockDiscord = params.get('discord') === '1';
 const mockStarted = params.get('started') !== '0';
 const mockRunningFolder = params.get('running') === '1';
+const mockNoUpdates = params.get('updates') === '0'; // 사바 스토리지: 모두 최신
 let mockModulesInstalled = !mockMac && params.get('modules') !== '0'; // ?modules=0 모듈 없이 처음 연 PC
 const settings = {};
 // 받을 수 있는 모듈 (릴레이 0.1.13 카탈로그 모양). 맥 보기에서는 데몬처럼 OS·CPU를 판정해 싣는다
 const ICON = (m: string) => `https://raw.githubusercontent.com/WareAoba/saba-chan-modules/7c3454c70064459b8f4f82c1cd492e590e29e6cc/${m}/icon.png`;
 const catalog: Record<string, Record<string, unknown>> = {
-    minecraft: { display_name: 'Minecraft', display_names: { ko: '마인크래프트' }, description: 'Minecraft server management module with full lifecycle control', descriptions: { ko: '마인크래프트 서버 관리 모듈 (전체 수명주기 제어)' }, icon: ICON('minecraft'), version: '0.1.12', size_bytes: 713031, architectures: ['x86_64', 'aarch64'] },
-    palworld: { display_name: 'Palworld', display_names: { ko: '팰월드' }, description: 'Palworld server management module', descriptions: { ko: '팰월드 서버 관리 모듈' }, icon: ICON('palworld'), version: '0.1.12', size_bytes: 220201, architectures: ['x86_64'] },
-    terraria: { display_name: 'Terraria', display_names: { ko: '테라리아' }, description: 'Terraria dedicated server', descriptions: { ko: '테라리아 데디케이티드 서버' }, icon: ICON('terraria'), version: '0.1.5', size_bytes: 73400, platforms: ['windows', 'linux'], architectures: ['x86_64'] },
-    zomboid: { display_name: 'Project Zomboid', display_names: { ko: '프로젝트 좀보이드' }, description: 'Project Zomboid dedicated server management module', descriptions: { ko: '프로젝트 좀보이드 전용 서버 관리 모듈 (전체 수명주기 제어)' }, icon: ICON('zomboid'), version: '0.1.11', size_bytes: 618659, architectures: ['x86_64'] },
+    minecraft: { display_name: 'Minecraft', display_names: { ko: '마인크래프트' }, description: 'Minecraft server management module with full lifecycle control', descriptions: { ko: '마인크래프트 서버 관리 모듈 (전체 수명주기 제어)' }, has_icon: true, version: '0.1.12', size_bytes: 713031, architectures: ['x86_64', 'aarch64'] },
+    palworld: { display_name: 'Palworld', display_names: { ko: '팰월드' }, description: 'Palworld server management module', descriptions: { ko: '팰월드 서버 관리 모듈' }, has_icon: true, version: '0.1.12', size_bytes: 220201, architectures: ['x86_64'] },
+    terraria: { display_name: 'Terraria', display_names: { ko: '테라리아' }, description: 'Terraria dedicated server', descriptions: { ko: '테라리아 데디케이티드 서버' }, has_icon: true, version: '0.1.5', size_bytes: 73400, platforms: ['windows', 'linux'], architectures: ['x86_64'] },
+    zomboid: { display_name: 'Project Zomboid', display_names: { ko: '프로젝트 좀보이드' }, description: 'Project Zomboid dedicated server management module', descriptions: { ko: '프로젝트 좀보이드 전용 서버 관리 모듈 (전체 수명주기 제어)' }, has_icon: true, version: '0.1.11', size_bytes: 618659, architectures: ['x86_64'] },
 };
 const judged = (info: Record<string, unknown>) => {
     if (!mockMac) return { ...info, platform_supported: true };
@@ -402,24 +403,10 @@ const impl: Record<string, MockFn> = {
     moduleList: () => ok({ modules: mockModulesInstalled ? modules : [], failed: mockFailed }),
     moduleInstallFromManifest: () => {
         mockModulesInstalled = true;
-        return new Promise((r) => setTimeout(() => r({ ok: true }), 600));
+        return new Promise((r) => setTimeout(() => r({ success: true }), 600));
     },
     moduleManifest: () =>
-        ok({ ok: true, manifest: { modules: Object.fromEntries(Object.entries(catalog).map(([id, info]) => [id, judged(info)])) } }),
-    instanceEvents: () =>
-        ok({
-            events: [
-                { at: now() - 7200, kind: 'user_stop', exit_code: 0 },
-                {
-                    at: now() - 3600,
-                    kind: 'crash',
-                    exit_code: -1073741819,
-                    evidence: 'hs_err_pid4120.log',
-                    restart_in_secs: 10,
-                },
-                { at: now() - 600, kind: 'crash', exit_code: 1, note: 'auto_restart is off' },
-            ],
-        }),
+        ok({ success: true, manifest: { modules: Object.fromEntries(Object.entries(catalog).map(([id, info]) => [id, judged(info)])) } }),
     instanceScheduleGet: () =>
         ok({
             success: true,
@@ -506,7 +493,7 @@ const impl: Record<string, MockFn> = {
     instancePortCheckLast: (id) => ok({ instanceId: id, verdict: 'not_checked' }),
     daemonDiagnostics: () =>
         ok({
-            ok: true,
+            success: true,
             version: '0.1.5',
             pid: 4242,
             uptime_secs: 3725,
@@ -527,7 +514,7 @@ const impl: Record<string, MockFn> = {
         }),
     migrationScanDir: () =>
         ok({
-            ok: true,
+            success: true,
             matches: [{ name: 'minecraft', display_name: 'Minecraft: Java Edition' }],
             notices: mockRunningFolder ? ['server_running'] : [],
         }),
@@ -682,7 +669,7 @@ const impl: Record<string, MockFn> = {
             ],
         });
     },
-    configReset: () => ok({ ok: true, config: {} }),
+    configReset: () => ok({ success: true, config: {} }),
     relayListHostNodes: () =>
         ok([
             { guildId: 'guild-1', guildName: '사바 마을' },
@@ -981,7 +968,7 @@ const impl: Record<string, MockFn> = {
     daemonStatus: () => ok({ running: mockDaemonUp }),
     updaterLastResult: ({ clear } = {}) =>
         ok({
-            ok: true,
+            success: true,
             version: '0.1.3',
             notes: '- 디스코드 서버별 챗봇·음악 채널 배정\n- 업데이트 결과 알림과 패치노트',
             result:
@@ -995,9 +982,42 @@ const impl: Record<string, MockFn> = {
                           message: mockUpdate === 'ok' ? '' : '데몬 파일을 교체하지 못했어요 (사용 중)',
                       },
         }),
-    extensionList: () => ok({ extensions: [] }),
+    extensionList: () =>
+        ok({
+            extensions: [
+                { id: 'steamcmd', name: 'SteamCMD', version: '1.2.0', enabled: true, trust: 'verified', description: 'SteamCMD로 게임 서버를 받고 업데이트합니다' },
+                { id: 'desktop-pet', name: '데스크톱 펫', version: '0.2.0', enabled: false, trust: 'verified', description: '바탕화면에 사바쨩이 놀러 옵니다' },
+            ],
+        }),
+    // 사바 스토리지 (브라우저 미리보기): ?updates=0 이면 모두 최신
+    updaterStatus: () =>
+        ok({
+            success: true,
+            components: [
+                { component: 'saba-core', kind: 'app', display_name: 'Saba Core', current_version: '0.1.13', latest_version: '0.1.14', update_available: !mockNoUpdates },
+                { component: 'gui', kind: 'app', display_name: 'GUI', current_version: '0.1.13', latest_version: '0.1.14', update_available: !mockNoUpdates },
+                { component: 'cli', kind: 'app', display_name: 'CLI', current_version: '0.1.14', update_available: false },
+                { component: 'installer', kind: 'app', display_name: 'Installer', current_version: '0.1.13', latest_version: '0.1.14', update_available: !mockNoUpdates },
+                { component: 'module-minecraft', kind: 'module', display_name: 'Minecraft', current_version: '1.2.0', latest_version: '1.3.0', update_available: !mockNoUpdates },
+                { component: 'ext-steamcmd', kind: 'extension', display_name: 'SteamCMD', current_version: '1.2.0', latest_version: '1.3.0', update_available: !mockNoUpdates },
+            ],
+        }),
+    updaterGetConfig: () => ok({ config: { enabled: true, channel: 'beta', auto_download: true, auto_apply: true } }),
+    updaterVersions: () => ok({ channel: 'beta', installed: '0.1.13', kept_previous: null, latest: '0.1.14', held_until_newer_than: null }),
+    storeIcon: (key: string) => ok(key.startsWith('module-') ? ICON(key.slice('module-'.length)) : undefined),
+    extensionFetchManifest: () =>
+        ok({
+            success: true,
+            extensions: [
+                { id: 'steamcmd', name: 'SteamCMD', version: '1.3.0', author: 'WareAoba' },
+                { id: 'desktop-pet', name: 'Desktop Pet', version: '0.2.0', author: 'WareAoba' },
+                { id: 'music-bot', name: 'Music Bot', version: '0.4.1', author: 'WareAoba', description: 'Plays music in Discord voice channels', descriptions: { ko: '디스코드 음성 채널에서 음악을 틀어 줍니다' } },
+                { id: 'backup-cloud', name: 'Cloud Backup', version: '0.1.0', author: 'WareAoba', description: 'Uploads backups to cloud storage', descriptions: { ko: '백업을 클라우드 저장소에 올립니다' } },
+            ],
+            updates: mockNoUpdates ? [] : [{ id: 'steamcmd', latest_version: '1.3.0' }],
+        }),
     relayMcpGrant: () => ok({ grants: [{ id: 'mock-1', clientName: 'Claude', createdAt: '2026-10-28T00:00:00Z', lastUsedAt: '2026-10-28T01:00:00Z' }], url: 'https://saba-chan.online/mcp' }),
-    relayMcpGrantRevoke: () => ok({ ok: true }),
+    relayMcpGrantRevoke: () => ok({ success: true }),
     relayPrivacyErase: () => ok({ url: 'https://saba-chan.online/legal/erase#mock.secret' }),
     relayPrivacyEraseStatus: () => ok({ status: 'pending' }),
     onboarding: () => {
@@ -1018,7 +1038,7 @@ const impl: Record<string, MockFn> = {
             if (typeof body.step === 'number') g.step = body.step;
             if (body.finished) g.done = true;
         }
-        return ok({ ok: true });
+        return ok({ success: true });
     },
     extensionInitStatus: () => ok({ initializing: false, in_progress: {} }),
     getAppVersion: () => ok('0.1.1'),

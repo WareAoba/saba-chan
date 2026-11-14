@@ -73,7 +73,7 @@ pub async fn download_verified(
     download_with(client, url, dest, expected, max_bytes, progress, retry).await
 }
 
-/// `download_verified`처럼 받되, 받는 동안 `on_progress(받은 크기, 전체)`를 0.2초마다 부른다
+/// `download_verified`처럼 받되, 받는 동안 `on_progress(받은 크기, 전체)`를 0.2초마다 부른다 (그 사이 바뀐 것이 없으면 부르지 않는다)
 pub async fn download_reporting(
     client: &reqwest::Client,
     url: &str,
@@ -85,13 +85,17 @@ pub async fn download_reporting(
     let progress = Arc::new(Mutex::new(DownloadProgress::default()));
     // 같은 작업 안에서 받기와 함께 돈다: 진행 콜백이 호출한 쪽의 것을 빌려 쓸 수 있다
     let ticker = async {
+        let mut told = None;
         loop {
             tokio::time::sleep(Duration::from_millis(200)).await;
             let Ok((received, total)) = progress.lock().map(|p| (p.bytes_received, p.total_bytes)) else {
                 // 진행을 못 읽어도 받기는 끝까지 간다
                 return std::future::pending::<()>().await;
             };
-            on_progress(received, (total > 0).then_some(total));
+            if told != Some((received, total)) {
+                told = Some((received, total));
+                on_progress(received, (total > 0).then_some(total));
+            }
         }
     };
     tokio::select! {

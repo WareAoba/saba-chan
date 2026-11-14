@@ -25,6 +25,7 @@ import { Popover } from '../ui/Popover';
 import { SabaCheckbox, SabaSpinner } from '../ui/SabaUI';
 import { Segmented, StatusChip } from '../ui/StatusChip';
 import { UpcomingSchedules, upcomingAvailable } from './UpcomingSchedules';
+import { failed } from '../../utils/apiResult';
 
 export { auditRange, auditResult, auditWhat, auditWho };
 
@@ -140,7 +141,7 @@ export function AuditLog({ instanceId }: { instanceId?: string }) {
         try {
             const res = await window.api.auditExport({ ...(instanceId ? { instance: instanceId } : {}), ...range });
             if (!alive.current || res?.canceled) return;
-            if (!res || res.success === false || res.error || res.error_code) {
+            if (failed(res)) {
                 // 데몬 문구는 영문이다: 아는 오류 코드만 번역해 덧붙인다
                 const known = EXPORT_ERRORS.includes(res?.error_code as string);
                 const detail = known ? ` ${t(`data_transfer.err_${res.error_code?.toLowerCase()}`)}` : '';

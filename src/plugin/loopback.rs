@@ -37,15 +37,15 @@ pub struct Proxy {
     pub server: Option<u32>,
 }
 
-/// 데몬이 만든 config에서 그 인스턴스의 포트를 모은다: 게임 포트 `port`와 `rest_port`.
+/// 데몬이 만든 config에서 그 인스턴스의 포트를 모은다: 게임 포트 `port`와 REST 포트 설정(`rest_port_setting`, 기본 `rest_port`).
 /// 다른 `*_port` 모듈 설정은 모듈이 `import_settings`로 아무 값이나 넣을 수 있어 넣지 않는다
-pub fn instance_ports(config: &Value) -> Vec<u16> {
+pub fn instance_ports(config: &Value, rest_port_setting: &str) -> Vec<u16> {
     let Some(map) = config.as_object() else {
         return Vec::new();
     };
     let mut ports: Vec<u16> = map
         .iter()
-        .filter(|(key, _)| matches!(key.as_str(), "port" | "rest_port"))
+        .filter(|(key, _)| *key == "port" || *key == rest_port_setting)
         .filter_map(|(_, value)| match value {
             Value::Number(n) => n.as_u64(),
             Value::String(s) => s.trim().parse().ok(),
@@ -397,10 +397,11 @@ mod tests {
         assert!(!owned_by(&[], 20, parent), "nobody listens");
     }
 
-    /// 모듈 설정의 `*_port` 값은 모듈이 정할 수 있으므로 넣지 않는다: 데몬 인스턴스 값 `port`·`rest_port`만
+    /// 모듈 설정의 `*_port` 값은 모듈이 정할 수 있으므로 넣지 않는다: 게임 포트 `port`와 모듈이 선언한 REST 포트 설정만
     #[test]
     fn the_instance_ports_are_the_game_and_rest_ports() {
         let config = json!({ "port": 8211, "rest_port": "8212", "query_port": 27015, "x_port": 22, "max_players": 32, "pid": 4 });
-        assert_eq!(instance_ports(&config), vec![8211, 8212]);
+        assert_eq!(instance_ports(&config, "rest_port"), vec![8211, 8212]);
+        assert_eq!(instance_ports(&config, "query_port"), vec![8211, 27015]);
     }
 }

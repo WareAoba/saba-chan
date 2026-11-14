@@ -26,8 +26,6 @@ pub struct Lifecycle {
     child: Mutex<Option<Child>>,
     /// 이 GUI가 띄우지 않았지만 이미 떠 있어 붙은 데몬 (트레이가 꺼짐으로 보이지 않게)
     attached_daemon: AtomicBool,
-    /// 이 GUI가 띄운 데몬이 job breakaway를 거절당해 GUI를 띄운 프로그램의 job 안에서 돈다
-    daemon_in_parent_job: AtomicBool,
     /// 사용자가 트레이에서 데몬을 껐다: 데몬이 없어도 상주 GUI는 남아 다시 켤 수 있게 한다 (`TRAY_STOP_*`)
     stopped_from_tray: AtomicU8,
     init_started: AtomicBool,
@@ -48,7 +46,6 @@ pub struct Lifecycle {
     events_stop: Arc<AtomicBool>,
     heartbeat_task: Mutex<Option<JoinHandle<()>>>,
     events_task: Mutex<Option<JoinHandle<()>>>,
-    update_task: Mutex<Option<JoinHandle<()>>>,
     /// 다른 인터페이스(CLI의 `gui`)가 이 GUI를 띄우며 고른 서버. 렌더러가 준비되면(app_ready) 넘긴다
     open_server: Mutex<Option<String>>,
     /// 렌더러가 리스너를 달았다 (app_ready를 한 번 받았다). open_server 잠금 안에서만 바꾼다
@@ -152,7 +149,6 @@ async fn finish_background_init(app: &AppHandle) {
     register_with_daemon(app).await;
     start_heartbeat(app);
     start_events(app);
-    start_update_checker(app);
     // 바탕화면 오버레이를 쓸 익스텐션이 켜져 있으면 띄운다
     crate::overlay::sync(app).await;
 
@@ -171,24 +167,16 @@ async fn finish_background_init(app: &AppHandle) {
 
 // ── 데몬 기동 ──
 
-pub fn daemon_file_name() -> &'static str {
-    if cfg!(windows) {
-        "saba-core.exe"
-    } else {
-        "saba-core"
-    }
-}
-
 /// 개발: 저장소의 target/release(없으면 debug), 배포: 설치 루트
 fn daemon_path(install_root: &Path) -> PathBuf {
     if cfg!(debug_assertions) {
-        let release = install_root.join("target").join("release").join(daemon_file_name());
+        let release = install_root.join("target").join("release").join(saba_chan_updater_lib::CORE_EXE);
         if release.exists() {
             return release;
         }
-        return install_root.join("target").join("debug").join(daemon_file_name());
+        return install_root.join("target").join("debug").join(saba_chan_updater_lib::CORE_EXE);
     }
-    install_root.join(daemon_file_name())
+    install_root.join(saba_chan_updater_lib::CORE_EXE)
 }
 
 impl Lifecycle {
@@ -258,14 +246,8 @@ impl Lifecycle {
     }
 
     /// 이 GUI가 데몬을 새로 띄웠다: 예전에 붙었던 데몬 표시는 버린다 (이제는 띄운 데몬의 생사만 본다)
-    fn own_daemon_started(&self, in_parent_job: bool) {
+    fn own_daemon_started(&self) {
         self.attached_daemon.store(false, Ordering::SeqCst);
-        self.daemon_in_parent_job.store(in_parent_job, Ordering::SeqCst);
-    }
-
-    /// 지금 붙어 있는 데몬이 이 GUI가 job 안에 띄운 그 데몬인가 (붙기만 한 데몬이나 이미 끝난 데몬은 아니다)
-    pub fn daemon_in_parent_job(&self) -> bool {
-        self.daemon_in_parent_job.load(Ordering::SeqCst) && self.child.lock().unwrap().is_some()
     }
 }
 
@@ -384,17 +366,15 @@ pub fn start_daemon(app: &AppHandle) {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     detach(&mut cmd, true);
-    let mut in_parent_job = false;
     let spawned = cmd.spawn().or_else(|e| {
         // GUI를 띄운 쪽의 job이 breakaway를 막으면 CreateProcess가 거부된다: 그때는 떼지 않고 띄운다.
-        // 그러면 GUI를 띄운 프로그램이 꺼질 때 데몬도 함께 꺼질 수 있어 화면에 경고한다 (daemon_status `in_parent_job`)
+        // 그러면 GUI를 띄운 프로그램이 꺼질 때 데몬도 함께 꺼질 수 있어 데몬이 `/health` `stops_with_launcher`로 알린다
         if cfg!(windows) {
             tracing::warn!(
                 "[Daemon] spawn with job breakaway failed ({}), retrying without: the daemon will run inside the job of the program that launched this app and may stop when that program exits",
                 e
             );
             detach(&mut cmd, false);
-            in_parent_job = true;
             cmd.spawn()
         } else {
             Err(e)
@@ -414,7 +394,7 @@ pub fn start_daemon(app: &AppHandle) {
             }
             *state.life.child.lock().unwrap() = Some(child);
             state.life.daemon_stop_asked.store(false, Ordering::SeqCst);
-            state.life.own_daemon_started(in_parent_job);
+            state.life.own_daemon_started();
             watch_daemon_exit(app.clone(), pid);
         }
         Err(e) => tracing::error!("Failed to start Core Daemon: {}", e),
@@ -706,7 +686,7 @@ pub fn report_resident(app: &AppHandle, resident: bool) {
 }
 
 /// 업데이트 쪽에 GUI 창이 열려 있는지 알린다: 창이 열려 있으면 데몬이 GUI 교체를 '준비됨'으로 미루고,
-/// 트레이에만 있으면 자동으로 바꾼다. 이 경로를 모르는 옛 데몬은 404를 주므로 결과는 보지 않는다
+/// 트레이에만 있으면 자동으로 바꾼다. 알리기만 하므로 결과는 보지 않는다
 fn report_gui_window(app: &AppHandle, resident: bool) {
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
@@ -890,10 +870,12 @@ fn start_events(app: &AppHandle) {
                 if ev.kind == "update.restarting" && from.is_none() {
                     on_daemon_swap(&app2, &ev.data);
                 }
-                if ev.kind == "update.available" && from.is_none() {
-                    // 이 PC 데몬이 새 업데이트를 찾았다: 10분 주기를 기다리지 않고 바로 알린다
-                    let app3 = app2.clone();
-                    tauri::async_runtime::spawn(async move { check_for_updates(&app3).await });
+                if from.is_none() && matches!(ev.kind.as_str(), "update.status" | "update.progress") {
+                    // 이 PC 데몬의 업데이트 상태·받기 진행: 원격을 골라도 메인 창의 업데이트 화면은 이 PC 것을 보인다
+                    emit_main(&app2, "updates:event", &ev);
+                    if ev.kind == "update.status" {
+                        on_update_status(&app2, &ev.data);
+                    }
                 }
                 if feed == Feed::Chosen {
                     emit_main(&app2, "events:message", &ev);
@@ -904,6 +886,12 @@ fn start_events(app: &AppHandle) {
             move |up: bool| {
                 if feed == Feed::Chosen {
                     emit_main(&app_live, "events:live", up);
+                }
+                // 이 PC 데몬에 (다시) 붙었다: 붙지 못한 동안의 업데이트 상태를 한 번 읽는다 (데몬이 다시 뜬 처음 붙기에는 버퍼가 없다)
+                let local = feed == Feed::LocalWhileRemote || app_live.state::<AppState>().client.target().is_none();
+                if up && local {
+                    let app3 = app_live.clone();
+                    tauri::async_runtime::spawn(async move { read_update_status(&app3).await });
                 }
             },
         )
@@ -945,27 +933,22 @@ fn swap_closes_gui(data: &Value, own_pid: u32) -> bool {
         .is_some_and(|pids| pids.iter().any(|p| p.as_u64() == Some(u64::from(own_pid))))
 }
 
-fn start_update_checker(app: &AppHandle) {
-    let app2 = app.clone();
-    let task = tauri::async_runtime::spawn(async move {
-        let mut tick = tokio::time::interval(events::UPDATE_STATUS_POLL);
-        loop {
-            tick.tick().await;
-            check_for_updates(&app2).await;
-        }
-    });
-    replace_task(&app.state::<AppState>().life.update_task, Some(task));
-}
-
-/// 데몬이 마지막으로 확인한 결과를 읽어 새 업데이트가 생겼을 때만 알린다
-async fn check_for_updates(app: &AppHandle) {
+/// 이 PC 데몬의 업데이트 상태를 한 번 읽어 `update.status`를 받은 것처럼 다룬다 (메인 창에도 넘긴다)
+async fn read_update_status(app: &AppHandle) {
     let state = app.state::<AppState>();
     let data = match state.client.get("/api/updates/status", 5000).await {
         Ok(d) => d,
         Err(e) => return tracing::warn!("[UpdateChecker] Check failed: {}", e.message),
     };
-    let Some(notice) = events::update_notice(&data) else {
-        if events::updates_cleared(&data) {
+    emit_main(app, "updates:event", SseEvent { id: None, kind: "update.status".into(), data: data.clone() });
+    on_update_status(app, &data);
+}
+
+/// 데몬이 알린 업데이트 상태(`update.status`, 상태 조회와 같은 본문)를 보고 새 업데이트가 생겼을 때만 알린다
+fn on_update_status(app: &AppHandle, data: &Value) {
+    let state = app.state::<AppState>();
+    let Some(notice) = events::update_notice(data) else {
+        if events::updates_cleared(data) {
             // 받을 것이 없어졌다: 남은 업데이트 알림을 지우고, 다시 생기면 OS 알림도 다시 띄운다
             *state.life.last_update_key.lock().unwrap() = None;
             emit_main(
@@ -987,11 +970,8 @@ async fn check_for_updates(app: &AppHandle) {
         .into_iter()
         .flatten()
         .filter(|c| c["update_available"].as_bool().unwrap_or(false))
-        .filter(|c| {
-            c["component"]
-                .as_str()
-                .is_some_and(|k| k.starts_with("module-") || k.starts_with("ext-"))
-        })
+        // 종류는 데몬이 정한다(`kind`)
+        .filter(|c| matches!(c["kind"].as_str(), Some("module" | "extension")))
         .filter_map(|c| c["display_name"].as_str().map(String::from))
         .collect();
     let addon_key = {
@@ -999,7 +979,7 @@ async fn check_for_updates(app: &AppHandle) {
         sorted.sort();
         sorted.join("\0")
     };
-    // 확인과 기록을 한 잠금 안에서: 이벤트로 부른 확인과 주기 확인이 겹쳐도 한 번만 알린다
+    // 확인과 기록을 한 잠금 안에서: 이벤트와 다시 붙을 때의 읽기가 겹쳐도 한 번만 알린다
     let is_new = !addon_names.is_empty() && {
         let mut last = state.life.last_update_key.lock().unwrap();
         let is_new = last.as_deref() != Some(addon_key.as_str());
@@ -1140,7 +1120,6 @@ pub async fn daemon_restart(app: &AppHandle) -> Value {
 fn stop_background(state: &AppState) {
     state.life.events_stop.store(true, Ordering::SeqCst);
     replace_task(&state.life.events_task, None);
-    replace_task(&state.life.update_task, None);
     replace_task(&state.life.heartbeat_task, None);
 }
 
@@ -1422,7 +1401,7 @@ mod tests {
     fn spawning_our_own_daemon_drops_the_attached_mark() {
         let life = Lifecycle::default();
         life.attached_daemon.store(true, Ordering::SeqCst);
-        life.own_daemon_started(false);
+        life.own_daemon_started();
         // 띄운 데몬이 죽으면 트레이에 꺼짐으로 보여야 한다
         assert!(!life.shows_running(false));
     }

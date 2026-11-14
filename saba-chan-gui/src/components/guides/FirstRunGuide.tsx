@@ -2,21 +2,14 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useServerStore } from '../../stores/useServerStore';
 import { localizedDescription, localizedName } from '../../utils/localizedText';
+import type { CatalogModule } from '../../utils/moduleSupport';
 import { claimOpeningSound } from '../../utils/opening';
 import { openScreen } from '../../utils/openScreen';
+import { cachedModuleCatalog, loadModuleCatalog } from '../../utils/storeCache';
 import { Icon } from '../Icon';
+import { AddonIcon } from '../ui/AddonIcon';
 import { SabaSpinner } from '../ui/SabaUI';
 import { closeGuide, type GuideStep, openAddServer, startAddServer, useGuideStore } from './guides';
-
-interface CatalogModule {
-    id: string;
-    display_name?: string;
-    display_names?: Record<string, string>;
-    description?: string;
-    descriptions?: Record<string, string>;
-    icon?: string;
-    platform_supported?: boolean;
-}
 
 /**
  * 처음 시작하기 (사용자 11-08~10): 서버가 없을 때 서버 화면.
@@ -114,7 +107,7 @@ function ModuleGuide() {
     const { t, i18n } = useTranslation('gui');
     const installed = useServerStore((s) => s.modules);
     const after = useGuideStore((s) => s.after);
-    const [catalog, setCatalog] = useState<CatalogModule[] | null>(null);
+    const [catalog, setCatalog] = useState<CatalogModule[] | null>(cachedModuleCatalog);
     const [failed, setFailed] = useState(false);
     const [busy, setBusy] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -123,10 +116,9 @@ function ModuleGuide() {
         let alive = true;
         (async () => {
             try {
-                const res = await window.api?.moduleManifest?.();
+                const res = await loadModuleCatalog();
                 if (!alive) return;
-                const mods = res?.ok && res.manifest?.modules ? (res.manifest.modules as Record<string, Omit<CatalogModule, 'id'>>) : null;
-                if (mods) setCatalog(Object.entries(mods).map(([id, info]) => ({ ...info, id })));
+                if (res.ok) setCatalog(res.modules);
                 else setFailed(true);
             } catch {
                 if (alive) setFailed(true);
@@ -142,7 +134,7 @@ function ModuleGuide() {
         setError(null);
         try {
             const res = await window.api?.moduleInstallFromManifest?.(id);
-            if (!res?.ok) {
+            if (!res?.success) {
                 setError(t('guides.module_failed'));
                 return;
             }
@@ -167,14 +159,14 @@ function ModuleGuide() {
                     <SabaSpinner size="md" />
                 </div>
             )}
-            {failed && <p className="guide-error">{t('guides.modules_load_failed')}</p>}
+            {failed && !catalog && <p className="guide-error">{t('guides.modules_load_failed')}</p>}
             {shown.length > 0 && (
                 <ul className="guide-module-list">
                     {shown.map((m) => {
                         const have = installed.some((x) => x.name === m.id);
                         return (
                             <li key={m.id} className="guide-module">
-                                {m.icon ? <img src={m.icon} alt="" /> : <Icon name="gamepad" size="md" />}
+                                <AddonIcon storeKey={`module-${m.id}`} hasIcon={m.has_icon} version={m.version} fallback="gamepad" />
                                 <span className="guide-module-text">
                                     <strong>{localizedName(m, i18n.language) || m.id}</strong>
                                     <span>{localizedDescription(m, i18n.language)}</span>

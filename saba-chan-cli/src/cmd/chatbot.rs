@@ -141,9 +141,8 @@ fn print_settings(m: &Map<String, Value>) {
 /// 공통 메뉴의 기본값 표: 데몬이 공통 키(`commonKeys`)를 주면 그 키만 (나머지는 서버마다 정한다)
 fn common_defaults(r: &Value) -> Map<String, Value> {
     let mut defaults = r.get("defaults").and_then(Value::as_object).cloned().unwrap_or_default();
-    if let Some(keys) = r.get("commonKeys").and_then(Value::as_array) {
-        defaults.retain(|k, _| keys.iter().any(|c| c.as_str() == Some(k)));
-    }
+    let keys = r.get("commonKeys").and_then(Value::as_array).map(Vec::as_slice).unwrap_or_default();
+    defaults.retain(|k, _| keys.iter().any(|c| c.as_str() == Some(k)));
     defaults
 }
 
@@ -466,9 +465,6 @@ mod tests {
     fn the_common_table_holds_only_the_common_keys() {
         let r = json!({ "defaults": { "model": "m", "effort": "medium" }, "commonKeys": ["model"] });
         assert_eq!(common_defaults(&r).keys().collect::<Vec<_>>(), vec!["model"]);
-        // 옛 데몬은 공통 키를 주지 않는다: 그때는 전부
-        let old = json!({ "defaults": { "model": "m", "effort": "medium" } });
-        assert_eq!(common_defaults(&old).len(), 2);
     }
 
     /// 바꿀 수 있는 키는 데몬이 주는 기본값 표에서 온다: 바꾸지 않은 키도 기본값과 함께 보인다

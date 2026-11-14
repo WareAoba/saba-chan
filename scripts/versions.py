@@ -339,6 +339,12 @@ def addon_components(args: argparse.Namespace, assets: Path) -> dict:
                 "has_gui": "gui" in ext,
                 "has_i18n": (folder / "i18n").is_dir(),
             }
+            # 받기 전 목록에서도 앱 언어의 설명과 아이콘이 보이도록 (모듈과 같이)
+            if isinstance(ext.get("descriptions"), dict) and ext["descriptions"]:
+                meta["descriptions"] = ext["descriptions"]
+            icon = raw_url("WareAoba/saba-chan-extensions", getattr(args, "extensions_ref", None), f"{folder.name}/icon.png")
+            if icon and (folder / "icon.png").is_file():
+                meta["icon"] = icon
             comp = {"version": ext["version"], "asset": asset, "install_dir": f"extensions/{folder.name}",
                     "meta": {k: v for k, v in meta.items() if v is not None}}
             core = extension_core_requirement(ext)
@@ -994,6 +1000,7 @@ def main() -> int:
     m.add_argument("--modules-repo", help="saba-chan-modules 체크아웃 (모듈을 같이 싣는다)")
     m.add_argument("--extensions-repo", help="saba-chan-extensions 체크아웃")
     m.add_argument("--addons-ref", help="아이콘 URL에 쓸 모듈 저장소 커밋")
+    m.add_argument("--extensions-ref", help="아이콘 URL에 쓸 익스텐션 저장소 커밋")
     m.add_argument("--previous", help="지난 릴리즈의 (서명된) manifest. 버전이 같은 앱 컴포넌트는 그 항목을 그대로 싣고, "
                    "바뀐 모듈·익스텐션의 버전이 오르지 않았으면 멈춘다")
     m.add_argument("--runner-source", help="READS_RUNNER_FORMATS 상수가 든 데몬 소스 (기본: src/supervisor/managed_process/runner.rs)")
@@ -1019,6 +1026,7 @@ def main() -> int:
     a.add_argument("--modules-repo")
     a.add_argument("--extensions-repo")
     a.add_argument("--addons-ref", help="아이콘 URL에 쓸 모듈 저장소 커밋")
+    a.add_argument("--extensions-ref", help="아이콘 URL에 쓸 익스텐션 저장소 커밋")
     a.add_argument("--out")
     ar = sub.add_parser("addon-registration")
     ar.add_argument("--signed", required=True, help="release_signing sign-each 출력 (서명 봉투 배열)")

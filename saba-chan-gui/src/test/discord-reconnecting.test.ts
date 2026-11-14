@@ -9,7 +9,7 @@ describe('봇 다시 붙는 중', () => {
     beforeEach(() => {
         useDiscordStore.getState()._resetForTest();
         window.api = {
-            discordBotStatus: vi.fn().mockResolvedValue('running'),
+            discordBotStatus: vi.fn().mockResolvedValue({ status: 'running', running: true, link: { connected: false, error: '', heard: true } }),
             relayCheckHostStatus: vi.fn().mockResolvedValue({ online: true }),
         } as unknown as typeof window.api;
         useDiscordStore.setState({ discordCloudHostId: 'host-1' });

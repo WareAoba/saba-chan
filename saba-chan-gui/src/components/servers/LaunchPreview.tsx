@@ -3,24 +3,13 @@ import { useTranslation } from 'react-i18next';
 import type { ApiBody, JsonObject, SettingField } from '../../types/daemon';
 import { Icon } from '../Icon';
 import { safeShowToast } from '../../utils/helpers';
+import { launchDraft } from '../../utils/launchDraft';
 import { SabaSpinner } from '../ui/SabaUI';
 
 export const DEBOUNCE_MS = 400;
 
 /** 미리보기를 물어볼 IPC가 있는지. 실제로 띄울지는 데몬 응답의 has_launch_args가 정한다 */
 export const launchPreviewAvailable = () => Boolean(window.api?.instanceLaunchPreview);
-
-/** 아직 저장하지 않은 설정값 (저장할 때와 같은 변환) */
-export function launchDraft(fields: Pick<SettingField, 'name' | 'field_type'>[] | null | undefined, values: JsonObject | null | undefined) {
-    const out: JsonObject = {};
-    for (const f of fields || []) {
-        const v = values?.[f.name];
-        if (f.field_type === 'boolean') out[f.name] = v === true || v === 'true';
-        else if (v === '' || v === null || v === undefined) continue;
-        else out[f.name] = f.field_type === 'number' ? Number(v) : v;
-    }
-    return out;
-}
 
 /** 남는 인자 배열 → 안내 글자 (공백이 든 인자는 따옴표로) */
 export const joinArgs = (args: unknown) =>

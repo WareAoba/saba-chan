@@ -70,27 +70,7 @@ pub fn os_language() -> String {
 
 /// 요청 언어를 지원 언어 코드로 맞춥니다. 모르는 언어는 영어.
 pub fn normalize_language(requested: &str) -> String {
-    let req = requested.trim().replace('_', "-");
-    if let Some((code, _)) = EMBEDDED.iter().find(|(c, _)| c.eq_ignore_ascii_case(&req)) {
-        return code.to_string();
-    }
-    let base = req.split('-').next().unwrap_or("").to_ascii_lowercase();
-    // zh는 번체 쓰는 곳(Hant·홍콩·마카오)이면 번체, 그 밖은 간체로 본다
-    if base == "zh" {
-        let tags = req.to_ascii_lowercase();
-        let subtags: Vec<&str> = tags.split('-').skip(1).collect();
-        // 스크립트 태그(Hans·Hant)가 지역보다 먼저다: zh-Hans-HK는 간체
-        let traditional = !subtags.contains(&"hans") && subtags.iter().any(|t| ["hant", "tw", "hk", "mo"].contains(t));
-        return if traditional { "zh-TW" } else { "zh-CN" }.into();
-    }
-    if base == "pt" {
-        return "pt-BR".into();
-    }
-    EMBEDDED
-        .iter()
-        .find(|(c, _)| c.eq_ignore_ascii_case(&base))
-        .map(|(c, _)| c.to_string())
-        .unwrap_or_else(|| FALLBACK_LANGUAGE.to_string())
+    saba_chan_updater_lib::constants::resolve_locale(requested).unwrap_or_else(|| FALLBACK_LANGUAGE.to_string())
 }
 
 fn load_bundle(language: &str) -> Value {

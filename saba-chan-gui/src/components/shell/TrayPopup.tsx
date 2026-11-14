@@ -20,57 +20,34 @@ export function TrayPopup() {
     const { t } = useTranslation('gui');
     const rootRef = useRef<HTMLDivElement>(null);
     const [canCli, setCanCli] = useState(false);
-    const { daemonUp, servers, remote, targetRef, refresh } = useQuickServers();
+    const { daemonUp, servers, remote, run, refresh } = useQuickServers(REFRESH_MS);
 
     useEffect(() => {
-        refresh();
         Promise.resolve(window.api?.clientsLaunchable?.())
             .then((r) => setCanCli(r?.cli === true))
             .catch(() => {});
-        const timer = setInterval(refresh, REFRESH_MS);
         const onKey = (e: KeyboardEvent) => {
             if (e.key === 'Escape') window.api?.trayAction?.('close');
         };
         window.addEventListener('keydown', onKey);
-        return () => {
-            clearInterval(timer);
-            window.removeEventListener('keydown', onKey);
-        };
-    }, [refresh]);
+        return () => window.removeEventListener('keydown', onKey);
+    }, []);
 
     // 내용이 바뀔 때마다 높이를 셸에 알린다 (첫 알림에 창이 보인다)
     usePanelFit(rootRef, (height) => window.api?.trayPopupFit?.(height));
 
     const act = (action: string) => window.api?.trayAction?.(action);
 
-    // 익스텐션 칸(`TrayPopup.section`)의 host: 원격 데몬 서버의 정지·재시작은 이 창에서 두 번 눌러 확정하므로 익스텐션은 하지 못한다.
-    // 이 PC 데몬이라고 확인한 때(targetRef null)에만 보낸다. 아직 모르면(undefined) 원격으로 본다
+    // 익스텐션 칸(`TrayPopup.section`)의 host
     const serversRef = useRef(servers);
     serversRef.current = servers;
     const hostWindow = useMemo<HostWindow>(
         () => ({
             servers: () => serversRef.current,
-            run: async (instanceId, action) => {
-                if (action !== 'start' && targetRef.current !== null) return false;
-                const call =
-                    action === 'start'
-                        ? window.api.instanceStart
-                        : action === 'stop'
-                          ? window.api.instanceStop
-                          : window.api.instanceRestart;
-                if (typeof call !== 'function') return false;
-                try {
-                    const res = await call(instanceId);
-                    return !(res?.error || res?.success === false);
-                } catch {
-                    return false;
-                } finally {
-                    refresh();
-                }
-            },
+            run,
             openApp: () => window.api?.trayAction?.('open_window'),
         }),
-        [refresh, targetRef],
+        [run],
     );
 
     return (

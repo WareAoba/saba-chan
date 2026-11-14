@@ -4,7 +4,8 @@
  */
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { RestartNotice, SettingsField } from '../components/ServerSettingsModal';
+import { RestartNotice } from '../components/ServerSettingsModal';
+import { SettingsField } from '../components/ServerSettingsParts';
 import '../i18n';
 import type { SettingField } from '../types/daemon';
 

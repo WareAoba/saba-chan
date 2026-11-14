@@ -1,7 +1,7 @@
 /**
  * 얇은 클라이언트 점검 1번 (2026-11-12): 앱이 5초마다 데몬을 시켜 릴레이에 다녀오던 연결 확인을 없앴다.
  * 데몬 에이전트가 하트비트로 아는 연결 상태(`connected`)를 그대로 쓰고, 바뀌면 `relay.status` 이벤트로 바로 다시 읽는다.
- * 그 값을 주지 않는 옛 데몬과 꺼 둔 봇은 예전처럼 릴레이에 묻고, 끊겼을 때도 왜인지(토큰 거절 등) 릴레이에 묻는다.
+ * 꺼 둔 봇은 릴레이에 묻고, 끊겼을 때도 왜인지(토큰 거절 등) 릴레이에 묻는다.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useDiscordStore } from '../stores/useDiscordStore';
@@ -110,13 +110,5 @@ describe('릴레이 연결은 데몬 에이전트가 안다', () => {
         await vi.advanceTimersByTimeAsync(30_000);
         expect(window.api.discordBotStatus).toHaveBeenCalledTimes(3);
         expect(window.api.relayCheckHostStatus).not.toHaveBeenCalled();
-    });
-
-    it('연결 상태를 주지 않는 옛 데몬이면 예전처럼 5초마다 릴레이에 묻는다', async () => {
-        vi.mocked(window.api.discordBotStatus).mockResolvedValue('running' as never);
-        useDiscordStore.getState().startStatusPolling();
-        await vi.advanceTimersByTimeAsync(300);
-        await vi.advanceTimersByTimeAsync(5_000);
-        expect(window.api.relayCheckHostStatus).toHaveBeenCalledTimes(2);
     });
 });

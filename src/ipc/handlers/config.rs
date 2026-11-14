@@ -35,23 +35,15 @@ async fn write_gui_config(state: &IPCServer, mut settings: Value, how: crate::co
         Ok((saved, revision)) => {
             // 저장에 성공한 뒤에만 런타임 포트 검사 플래그를 맞춘다
             state.supervisor.read().await.skip_port_check.store(!saved.port_conflict_check, std::sync::atomic::Ordering::Relaxed);
-            (StatusCode::OK, Json(json!({ "ok": true, "revision": revision }))).into_response()
+            (StatusCode::OK, Json(json!({ "success": true, "revision": revision }))).into_response()
         }
         Err(crate::config_store::ConfigStoreError::RevisionConflict(revision)) => (
             StatusCode::CONFLICT,
-            Json(json!({ "ok": false, "error": "The settings were changed elsewhere; read them again", "error_code": "settings_changed", "revision": revision })),
+            Json(json!({ "success": false, "error": "The settings were changed elsewhere; read them again", "error_code": "settings_changed", "revision": revision })),
         )
             .into_response(),
-        Err(crate::config_store::ConfigStoreError::InvalidData(msg)) => (
-            StatusCode::BAD_REQUEST,
-            Json(json!({ "ok": false, "error": msg, "error_code": "invalid_request" })),
-        )
-            .into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "ok": false, "error": format!("{}", e) })),
-        )
-            .into_response(),
+        Err(crate::config_store::ConfigStoreError::InvalidData(msg)) => super::error(StatusCode::BAD_REQUEST, "invalid_request", msg),
+        Err(e) => super::error(StatusCode::INTERNAL_SERVER_ERROR, "save_failed", e.to_string()),
     }
 }
 
@@ -60,12 +52,8 @@ async fn write_gui_config(state: &IPCServer, mut settings: Value, how: crate::co
 /// GET /api/config/:kind/defaults — `gui` 또는 `bot` 설정의 기본값
 pub async fn get_config_defaults(Path(kind): Path<String>) -> impl IntoResponse {
     match crate::config_store::ConfigStore::defaults_json(&kind) {
-        Some(defaults) => (StatusCode::OK, Json(json!({ "ok": true, "defaults": defaults }))).into_response(),
-        None => (
-            StatusCode::NOT_FOUND,
-            Json(json!({ "ok": false, "error": format!("Unknown config: {}", kind), "error_code": "not_found" })),
-        )
-            .into_response(),
+        Some(defaults) => (StatusCode::OK, Json(json!({ "success": true, "defaults": defaults }))).into_response(),
+        None => super::error(StatusCode::NOT_FOUND, "not_found", format!("Unknown config: {}", kind)),
     }
 }
 
@@ -75,9 +63,7 @@ pub async fn reset_config(
     Path(kind): Path<String>,
     body: axum::body::Bytes,
 ) -> impl IntoResponse {
-    let bad = |msg: &str| {
-        (StatusCode::BAD_REQUEST, Json(json!({ "ok": false, "error": msg, "error_code": "invalid_request" }))).into_response()
-    };
+    let bad = |msg: &str| super::error(StatusCode::BAD_REQUEST, "invalid_request", msg);
     // 빈 본문 = 전부. 깨진 JSON은 전부 초기화로 치지 않고 거부한다
     let body: Option<Value> = if body.iter().all(u8::is_ascii_whitespace) {
         None
@@ -110,13 +96,9 @@ pub async fn reset_config(
             if kind == "bot" && new_relay.trim() != old_relay.trim() && state.relay_agent.status().running {
                 crate::relay_agent::restart(&state).await;
             }
-            (StatusCode::OK, Json(json!({ "ok": true, "config": config }))).into_response()
+            (StatusCode::OK, Json(json!({ "success": true, "config": config }))).into_response()
         }
-        Err(e) => (
-            StatusCode::BAD_REQUEST,
-            Json(json!({ "ok": false, "error": e.to_string(), "error_code": "invalid_request" })),
-        )
-            .into_response(),
+        Err(e) => super::error(StatusCode::BAD_REQUEST, "invalid_request", e.to_string()),
     }
 }
 
@@ -129,7 +111,7 @@ pub async fn get_client_config(
 ) -> impl IntoResponse {
     match state.config_store.get_client_section(&kind) {
         Ok(v) => (StatusCode::OK, Json(v)).into_response(),
-        Err(e) => (StatusCode::BAD_REQUEST, Json(json!({ "error": e.to_string() }))).into_response(),
+        Err(e) => super::error(StatusCode::BAD_REQUEST, "invalid_request", e.to_string()),
     }
 }
 
@@ -141,10 +123,8 @@ pub async fn save_client_config(
 ) -> impl IntoResponse {
     match state.config_store.merge_client_section(&kind, patch) {
         Ok(v) => (StatusCode::OK, Json(v)).into_response(),
-        Err(crate::config_store::ConfigStoreError::InvalidData(msg)) => {
-            (StatusCode::BAD_REQUEST, Json(json!({ "error": msg }))).into_response()
-        }
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.to_string() }))).into_response(),
+        Err(crate::config_store::ConfigStoreError::InvalidData(msg)) => super::error(StatusCode::BAD_REQUEST, "invalid_request", msg),
+        Err(e) => super::error(StatusCode::INTERNAL_SERVER_ERROR, "save_failed", e.to_string()),
     }
 }
 
@@ -160,29 +140,21 @@ pub async fn save_node_token(
         .and_then(|v| v.as_str())
         .unwrap_or("");
     // 페어링 완료 때 데몬이 이미 저장하고 재시작했으면 같은 토큰을 다시 받아도 재시작하지 않는다
-    match super::relay::write_node_token(Some(token)) {
+    match crate::relay_client::write_node_token(Some(token)) {
         Ok(changed) => {
-            super::relay::adopt_node_token(&state, token, changed).await;
-            (StatusCode::OK, Json(json!({ "ok": true }))).into_response()
+            crate::relay_client::adopt_node_token(&state, token, changed).await;
+            (StatusCode::OK, Json(json!({ "success": true }))).into_response()
         }
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": format!("Failed to write node token: {}", e) })),
-        )
-            .into_response(),
+        Err(e) => super::error(StatusCode::INTERNAL_SERVER_ERROR, "save_failed", format!("Failed to write node token: {}", e)),
     }
 }
 
 /// DELETE /api/config/node-token — 연결 해제 (`relay::disconnect`)
 pub async fn delete_node_token(State(state): State<IPCServer>) -> impl IntoResponse {
-    if let Err(e) = super::relay::disconnect(&state).await {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": format!("Failed to delete node token: {}", e) })),
-        )
-            .into_response();
+    if let Err(e) = crate::relay_client::disconnect(&state).await {
+        return super::error(StatusCode::INTERNAL_SERVER_ERROR, "save_failed", format!("Failed to delete node token: {}", e));
     }
-    (StatusCode::OK, Json(json!({ "ok": true }))).into_response()
+    (StatusCode::OK, Json(json!({ "success": true }))).into_response()
 }
 
 // ── Module Locales ──

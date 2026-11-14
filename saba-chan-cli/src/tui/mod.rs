@@ -309,7 +309,7 @@ pub async fn run(ctx: &Ctx, server: Option<&str>) -> Result<()> {
                 refresh_pane(&ctx, &mut app, &tx, &mut pane_loading, &mut seq, &mut task, live);
             }
             Msg::Event(kind) => {
-                if kind != "provision.progress" {
+                if refreshes_on(&kind) {
                     refreshing = refresh(&ctx, &app, tx.clone(), refreshing);
                 }
             }
@@ -646,5 +646,22 @@ async fn one(ctx: &Ctx, words: &[String]) -> Result<()> {
     match cli.cmd {
         Some(cmd) => crate::cmd::dispatch(&ctx, cmd).await,
         None => Ok(()),
+    }
+}
+
+/// 이 이벤트가 오면 화면을 다시 읽는가. 자주 오는 진행 알림(설치·업데이트 받기)에는 다시 읽지 않는다
+fn refreshes_on(kind: &str) -> bool {
+    !matches!(kind, "provision.progress" | "update.progress")
+}
+
+#[cfg(test)]
+mod tests {
+    /// 업데이트를 받는 동안 0.2초마다 오는 진행 알림마다 데몬 상태를 다시 읽지 않는다. 상태가 바뀐 알림에는 다시 읽는다
+    #[test]
+    fn progress_events_do_not_refetch_the_screen() {
+        assert!(!super::refreshes_on("update.progress"));
+        assert!(!super::refreshes_on("provision.progress"));
+        assert!(super::refreshes_on("update.status"));
+        assert!(super::refreshes_on("instance.started"));
     }
 }

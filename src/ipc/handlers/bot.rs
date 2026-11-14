@@ -36,8 +36,8 @@ async fn write_bot_config(state: &IPCServer, mut config: Value, how: crate::conf
                 crate::relay_agent::restart(state).await;
             }
             // hostId는 노드 토큰이 기준이다: 클라이언트가 예전 값을 다시 보내도 토큰에 맞춘다
-            let token = super::relay::load_node_token();
-            super::relay::sync_host_id(state, token.as_deref()).await;
+            let token = crate::relay_client::load_node_token();
+            crate::relay_client::sync_host_id(state, token.as_deref()).await;
             // hostId를 토큰에 맞춘 뒤의 값
             let revision = state.config_store.bot_revision().await;
             let mut body = json!({ "success": true, "message": "Bot config saved", "revision": revision });
@@ -52,21 +52,8 @@ async fn write_bot_config(state: &IPCServer, mut config: Value, how: crate::conf
             Json(json!({ "success": false, "error": "The bot settings were changed elsewhere; read them again", "error_code": "settings_changed", "revision": revision })),
         )
             .into_response(),
-        Err(crate::config_store::ConfigStoreError::InvalidRelayUrl(msg)) => (
-            StatusCode::BAD_REQUEST,
-            Json(json!({ "success": false, "error": msg, "error_code": "invalid_relay_url" })),
-        )
-            .into_response(),
-        Err(crate::config_store::ConfigStoreError::InvalidData(msg)) => (
-            StatusCode::BAD_REQUEST,
-            Json(json!({ "success": false, "error": msg, "error_code": "invalid_request" })),
-        )
-            .into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({
-                "error": format!("{}", e)
-            })),
-        ).into_response(),
+        Err(crate::config_store::ConfigStoreError::InvalidRelayUrl(msg)) => super::error(StatusCode::BAD_REQUEST, "invalid_relay_url", msg),
+        Err(crate::config_store::ConfigStoreError::InvalidData(msg)) => super::error(StatusCode::BAD_REQUEST, "invalid_request", msg),
+        Err(e) => super::error(StatusCode::INTERNAL_SERVER_ERROR, "save_failed", e.to_string()),
     }
 }

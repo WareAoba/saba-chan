@@ -103,11 +103,7 @@ pub fn resolve_extensions_dir() -> std::path::PathBuf {
 ///
 /// 디렉토리가 존재하지 않으면 생성을 시도합니다.
 pub fn resolve_modules_dir() -> std::path::PathBuf {
-    let candidate = saba_chan_updater_lib::constants::resolve_modules_dir();
-    if !candidate.exists() {
-        let _ = std::fs::create_dir_all(&candidate);
-    }
-    candidate
+    saba_chan_updater_lib::constants::ensure_modules_dir()
 }
 
 /// import 가드(`sitecustomize.py`)를 둔 폴더. 데이터 폴더에 한 번 쓰고, 내용이 바뀌었을 때만 다시 쓴다.
@@ -170,9 +166,10 @@ impl std::fmt::Display for ModuleCallError {
 
 impl std::error::Error for ModuleCallError {}
 
+/// 모듈 호출 실패 → 응답 본문. 모듈 호출 오류가 아니면 `internal_server_error`
 pub fn error_response(error: &anyhow::Error) -> Value {
     error.downcast_ref::<ModuleCallError>().map_or_else(
-        || serde_json::json!({"success": false, "error": error.to_string()}),
+        || serde_json::json!({"success": false, "error": error.to_string(), "error_code": "internal_server_error"}),
         |error| error.response.clone(),
     )
 }
@@ -369,7 +366,14 @@ struct Declared {
     file: std::path::PathBuf,
     name: String,
     runtime: Runtime,
+    /// 모듈이 런타임 실행 파일 경로로 선언한 설정 `(설정 이름, 런타임 종류)` (`[[settings.fields]] runtime`, 종류는 `sandbox::RUNTIME_KINDS`의 id)
+    runtime_settings: Vec<(String, String)>,
+    /// REST 포트가 든 설정 이름 (`[protocols.rest] port_setting`)
+    rest_port_setting: String,
 }
+
+/// `[protocols.rest] port_setting`을 적지 않은 모듈의 REST 포트 설정 이름 (`module_loader::RestSettings`)
+const DEFAULT_REST_PORT_SETTING: &str = "rest_port";
 
 fn declared(entry: &str) -> Option<Declared> {
     let path = std::path::Path::new(entry);
@@ -378,7 +382,18 @@ fn declared(entry: &str) -> Option<Declared> {
         if let Some(declared) = std::fs::read_to_string(&file).ok().and_then(|text| text.parse::<toml::Table>().ok()).and_then(|value| {
             let name = value.get("module")?.get("name")?.as_str()?.to_string();
             let runtime = value.get("runtime").and_then(|r| r.clone().try_into().ok()).unwrap_or_default();
-            Some(Declared { file: file.clone(), name, runtime })
+            let fields = value.get("settings").and_then(|s| s.get("fields")).and_then(|f| f.as_array());
+            let runtime_settings = fields
+                .into_iter()
+                .flatten()
+                .filter_map(|f| {
+                    let name = f.get("name")?.as_str()?;
+                    let kind = crate::module_loader::setting_runtime(name, f.get("runtime").and_then(|r| r.as_str()))?;
+                    Some((name.to_string(), kind.to_string()))
+                })
+                .collect();
+            let rest_port_setting = value.get("protocols").and_then(|p| p.get("rest")).and_then(|r| r.get("port_setting")).and_then(|s| s.as_str());
+            Some(Declared { file: file.clone(), name, runtime, runtime_settings, rest_port_setting: rest_port_setting.unwrap_or(DEFAULT_REST_PORT_SETTING).to_string() })
         }) {
             return Some(declared);
         }
@@ -386,7 +401,7 @@ fn declared(entry: &str) -> Option<Declared> {
         if let Some(declared) = std::fs::read_to_string(&file).ok().and_then(|text| serde_json::from_str::<Value>(&text).ok()).and_then(|value| {
             let name = value.get("id")?.as_str()?.to_string();
             let runtime = value.get("runtime").and_then(|r| serde_json::from_value(r.clone()).ok()).unwrap_or_default();
-            Some(Declared { file: file.clone(), name, runtime })
+            Some(Declared { file: file.clone(), name, runtime, runtime_settings: Vec::new(), rest_port_setting: DEFAULT_REST_PORT_SETTING.to_string() })
         }) {
             return Some(declared);
         }
@@ -855,6 +870,8 @@ fn explain_unverified_extensions(result: &mut Value, unverified: &[String]) {
 pub const OPTIONAL_MODULE_FUNCTIONS: &[&str] = &[
     "reset_server", "reset_preview", "read_lists", "list_versions", "get_version_details", "get_installed_version", "diagnose_log",
     "read_properties", "reset_properties", "configure", "import_settings", "install_server", "validate", "config_files",
+    // 없으면 데몬이 추적하는 PID로 답한다 (`Supervisor::get_server_status`)
+    "status",
 ];
 
 /// 예약 함수: 모듈이 구현한 lifecycle 함수 이름(자신 제외)을 `{"success": true, "functions": [...]}`로 답한다
@@ -1016,8 +1033,9 @@ async fn spawn_plugin(call: PluginCall, on_progress: Option<Progress>) -> Result
     }
     let config_json = serde_json::to_string(&config).map_err(|error| call_error(module_path, function, "module_execution_failed", "prepare", error, Vec::new()))?;
     let (mut on_progress, mut prepared) = (on_progress, None);
-    if let Some(declared) = declared(module_path).filter(|d| d.runtime.persistent) {
-        let launch = Launch::prepare(module_path, function, &config, &deadline).await?;
+    let declared = declared(module_path);
+    if let Some(declared) = declared.as_ref().filter(|d| d.runtime.persistent) {
+        let launch = Launch::prepare(module_path, function, &config, Some(declared), &deadline).await?;
         let request = worker::Request { function, config: &config, server, timeout_secs, declaration: &declared.file };
         match Box::pin(worker::call(launch, request, &deadline, on_progress)).await {
             worker::Outcome::Done(result) => return result,
@@ -1026,7 +1044,7 @@ async fn spawn_plugin(call: PluginCall, on_progress: Option<Progress>) -> Result
     }
     let mut launch = match prepared {
         Some(launch) => launch,
-        None => Launch::prepare(module_path, function, &config, &deadline).await?,
+        None => Launch::prepare(module_path, function, &config, declared.as_ref(), &deadline).await?,
     };
 
     std::fs::create_dir_all(&launch.host_root).map_err(|error| call_error(module_path, function, "module_execution_failed", "prepare", error, Vec::new()))?;
@@ -1047,7 +1065,8 @@ async fn spawn_plugin(call: PluginCall, on_progress: Option<Progress>) -> Result
         Ok(child) => child,
         Err(blocked) => return Ok(blocked),
     };
-    let loopback = launch.loopback_dir.take().map(|dir| loopback::Proxy { dir, ports: loopback::instance_ports(&config), server });
+    let rest_port_setting = declared.as_ref().map_or(DEFAULT_REST_PORT_SETTING, |d| d.rest_port_setting.as_str());
+    let loopback = launch.loopback_dir.take().map(|dir| loopback::Proxy { dir, ports: loopback::instance_ports(&config, rest_port_setting), server });
     let status = drive(&mut child, config_json.as_bytes(), on_progress, loopback, Some(host_proxy), deadline.remaining()).await;
     drop(clear_entries);
 
@@ -1109,7 +1128,7 @@ struct Launch {
 }
 
 impl Launch {
-    async fn prepare(module_path: &str, function: &str, config: &Value, deadline: &CallDeadline) -> Result<Self> {
+    async fn prepare(module_path: &str, function: &str, config: &Value, declared: Option<&Declared>, deadline: &CallDeadline) -> Result<Self> {
         let python_exe = prepare(module_path, function, deadline.clone(), crate::python_env::get_python_path()).await?;
         tracing::debug!("Using Python: {}", python_exe.display());
 
@@ -1149,7 +1168,9 @@ impl Launch {
         let import_guard = import_guard_dir();
 
         // 확인되지 않은 구성요소: AppContainer(Windows)·bubblewrap(리눅스) 안에서 돌린다. 토큰 파일 경로는 주지 않는다
-        let isolation = crate::sandbox::isolation_for(std::path::Path::new(module_path), config, &python_exe);
+        let runtime_settings = declared.map(|d| d.runtime_settings.as_slice()).unwrap_or_default();
+        let runtime_names: Vec<String> = runtime_settings.iter().map(|(name, _)| name.clone()).collect();
+        let isolation = crate::sandbox::isolation_for(std::path::Path::new(module_path), config, &runtime_names, &python_exe);
 
         // PYTHONPATH 경로 리스트 구분자 (Windows: ';', Unix: ':')
         #[cfg(windows)]
@@ -1189,9 +1210,10 @@ impl Launch {
             cmd.env("PYTHONPATH", paths.join(&PYPATH_SEP.to_string()));
         }
 
-        // 데몬이 찾은 Java 런타임 (`[{java, home, version, major}]`, JAVA_HOME·PATH·설치 위치 순). 모듈은 필요한 주 버전을 여기서 고른다
-        if let Ok(runtimes) = serde_json::to_string(&crate::sandbox::java_runtimes()) {
-            cmd.env("SABA_JAVA_RUNTIMES", runtimes);
+        // 모듈이 경로 설정으로 고르게 한 런타임(`[[settings.fields]] runtime`)만 찾아 넘긴다.
+        // Java는 `SABA_JAVA_RUNTIMES`(`[{java, home, version, major}]`, JAVA_HOME·PATH·설치 위치 순): 모듈은 필요한 주 버전을 여기서 고른다
+        for kind in crate::sandbox::RUNTIME_KINDS.iter().filter(|kind| runtime_settings.iter().any(|(_, id)| id == kind.id)) {
+            cmd.env(kind.env, (kind.discover)().to_string());
         }
         // PC 전체 메모리(바이트). 모듈이 힙 크기 같은 기본값을 PC에 맞춰 정할 때 쓴다
         if let Some(total) = crate::system_monitor::host_memory_bytes() {
@@ -1614,6 +1636,29 @@ mod tests {
         assert!(stderr.contains("ImportError: no module named game"), "{stderr}");
     }
 
+    /// D4: 데몬이 찾은 런타임 목록은 그 런타임을 경로 설정으로 선언한 모듈의 호출에만 넘긴다.
+    /// 선언 전 모듈(0.1.14-beta.1까지)의 `java_path` 설정은 선언 없이도 Java로 읽는다
+    #[tokio::test]
+    async fn found_runtimes_go_only_to_modules_that_declare_that_runtime() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut seen = Vec::new();
+        for (name, field) in [
+            ("declares", "[[settings.fields]]\nname = \"jre\"\ntype = \"file\"\nruntime = \"java\"\n"),
+            ("legacy", "[[settings.fields]]\nname = \"java_path\"\ntype = \"file\"\n"),
+            ("plain", "[[settings.fields]]\nname = \"motd\"\ntype = \"text\"\n"),
+        ] {
+            let dir = tmp.path().join(name);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("module.toml"), format!("[module]\nschema_version = 1\nname = \"{name}\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n{field}")).unwrap();
+            let entry = dir.join("lifecycle.py");
+            std::fs::write(&entry, "import json, os, sys\nsys.stdin.read()\nprint(json.dumps({'success': True, 'java': 'SABA_JAVA_RUNTIMES' in os.environ}))\n").unwrap();
+            crate::sandbox::consent_test_component(&entry);
+            let reply = run_plugin(entry.to_str().unwrap(), "status", serde_json::json!({})).await.unwrap();
+            seen.push((name, reply["java"].clone()));
+        }
+        assert_eq!(seen, [("declares", serde_json::json!(true)), ("legacy", serde_json::json!(true)), ("plain", serde_json::json!(false))]);
+    }
+
     #[tokio::test]
     async fn stdout_at_the_four_mib_boundary_is_allowed() {
         let mut child = python_process("import sys; sys.stdin.read(); sys.stdout.write('x' * (4 * 1024 * 1024)); sys.stdout.flush()").await;
@@ -1774,8 +1819,8 @@ print(json.dumps(codes))
 
     #[tokio::test]
     async fn an_http_credentials_callback_does_not_wait_for_a_full_general_lane() {
-        use axum::{extract::{Path, State}, http::StatusCode, Json};
-        use crate::ipc::{handlers::command, internal::into_internal, IPCServer};
+        use axum::http::StatusCode;
+        use crate::ipc::IPCServer;
         let dir = tempfile::tempdir().unwrap();
         let modules = dir.path().join("modules");
         let module = modules.join("credentials-boundary");
@@ -1794,7 +1839,7 @@ print(json.dumps(codes))
         let _slots = lanes.general.acquire_many(GENERAL_SLOTS as u32).await.unwrap();
         // HTTP 요청 작업은 바깥 모듈의 task-local을 물려받지 않는다
         let mut callback = tokio::spawn(async move {
-            into_internal(command::execute_rest_command(Path(id), State(state), Json(serde_json::json!({"endpoint": "info"}))).await).await
+            crate::ipc::internal::InternalResponse::from(crate::service::command::rest_for(&state.supervisor, &state.credentials, &id, serde_json::json!({"endpoint": "info"}), None).await)
         });
         let response = tokio::time::timeout(std::time::Duration::from_secs(1), &mut callback).await;
         if response.is_err() {

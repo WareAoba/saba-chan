@@ -32,7 +32,7 @@ fn state_of(state: &IPCServer) -> crate::guides::State {
 
 /// 완료 조건을 판단할 지금 상태
 async fn facts(state: &IPCServer) -> crate::guides::Facts {
-    let onboarding = super::diagnostics::onboarding_now(state).await;
+    let onboarding = crate::service::onboarding::now(state).await;
     let step_done = |id: &str| {
         onboarding["steps"].as_array().is_some_and(|a| a.iter().any(|s| s["id"] == id && s["done"] == true))
     };
@@ -114,7 +114,7 @@ fn spawn_sync(state: &IPCServer) {
         struct Body {
             guides: Vec<crate::guides::Served>,
         }
-        let base = super::chatbot::relay_base(&state).await;
+        let base = crate::service::chatbot::relay_base(&state).await;
         let failed = || sync_failed(&NEXT_SYNC, std::time::Instant::now());
         let Ok(http) = super::relay::client() else { return failed() };
         let url = format!("{}/v1/guides?core={}", base, env!("CARGO_PKG_VERSION"));
@@ -218,18 +218,18 @@ fn spawn_pull(state: &IPCServer) {
 pub async fn update(State(state): State<IPCServer>, Path(id): Path<String>, LooseJson(body): LooseJson<PatchBody>) -> Response {
     let body = body.map(|b| b.0).unwrap_or_default();
     if !crate::guides::load(Some(&crate::guides::installed_dir())).iter().any(|g| g.id == id) {
-        return (StatusCode::NOT_FOUND, Json(json!({ "ok": false, "error": "unknown guide", "error_code": "not_found" }))).into_response();
+        return super::error(StatusCode::NOT_FOUND, "not_found", "unknown guide");
     }
     let patch = crate::guides::patch(&state_of(&state), &id, body.opened, body.step, body.finished);
     if patch.as_object().is_some_and(|o| o.is_empty()) {
-        return Json(json!({ "ok": true })).into_response();
+        return Json(json!({ "success": true })).into_response();
     }
     match state.config_store.merge_client_section(crate::guides::SECTION, patch.clone()) {
         Ok(_) => {
             spawn_share(&state, only_this_step(patch, &id));
-            Json(json!({ "ok": true })).into_response()
+            Json(json!({ "success": true })).into_response()
         }
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "ok": false, "error": e.to_string() }))).into_response(),
+        Err(e) => super::error(StatusCode::INTERNAL_SERVER_ERROR, "save_failed", e.to_string()),
     }
 }
 

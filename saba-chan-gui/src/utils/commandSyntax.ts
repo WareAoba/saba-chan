@@ -9,7 +9,7 @@ import type { CommandField } from './commandRisk';
  */
 
 /** 직접 치는 명령(콘솔로 가는 명령). 나머지(rest·module)는 칸이 있는 입력 창으로 받는다 */
-export const isLineCommand = (c: { method?: string | null }) => ['console', 'rcon'].includes(c.method ?? '');
+export const isLineCommand = (c: { method?: string | null }) => c.method === 'console';
 
 export type TokenKind = 'space' | 'name' | 'ok' | 'bad' | 'extra' | 'free';
 

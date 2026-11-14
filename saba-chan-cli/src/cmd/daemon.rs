@@ -247,13 +247,12 @@ fn diagnostics_rows(d: &Value) -> Vec<(String, String)> {
 mod tests {
     use super::*;
 
-    /// 데몬이 자신을 띄운 프로그램과 함께 끝날 수 있으면 GUI와 같은 뜻으로 알린다 (L46). 옛 데몬은 값이 없다
+    /// 데몬이 자신을 띄운 프로그램과 함께 끝날 수 있으면 GUI와 같은 뜻으로 알린다 (L46)
     #[test]
     fn a_daemon_tied_to_its_launcher_is_called_out() {
         crate::i18n::init("ko");
         assert!(launcher_warning(&json!({ "stops_with_launcher": true })).is_some_and(|m| m.contains("묶여")));
         assert_eq!(launcher_warning(&json!({ "stops_with_launcher": false })), None);
-        assert_eq!(launcher_warning(&json!({ "version": "0.1.8" })), None);
     }
 
     /// 데몬의 종료 hook 한도(30초)가 지나기 전에 강제 종료를 묻지 않는다 (L59)

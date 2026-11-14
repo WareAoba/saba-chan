@@ -25,9 +25,9 @@ async fn result(kind: Consent, component: String, allow: bool) -> (StatusCode, J
         Ok(fingerprint) => (StatusCode::OK, Json(json!({ "success": true, "component": component, "fingerprint": fingerprint }))),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => (
             StatusCode::NOT_FOUND,
-            Json(json!({ "error": format!("Unknown component: {}", component), "error_code": "unknown_component" })),
+            Json(json!({ "success": false, "error": format!("Unknown component: {}", component), "error_code": "unknown_component" })),
         ),
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.to_string() }))),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "error": e.to_string(), "error_code": "save_failed" }))),
     }
 }
 

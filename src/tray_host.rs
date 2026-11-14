@@ -149,13 +149,30 @@ async fn host_alive(registry: &crate::ipc::ClientRegistry, started: Option<(u32,
     guis.into_iter().any(is_process_alive) || started.is_some_and(|(pid, at)| is_same_process(pid, at))
 }
 
+/// 띄울 GUI가 붙을 데몬 주소 (`IPC_BASE`). GUI는 설정 포트(`gui.ipcPort`)를 읽으므로, 이 데몬이 그와 다른 포트에서
+/// 들을 때만(`SABA_IPC_PORT`) 알려 준다. 같으면 넘기지 않아 GUI가 나중에 바꾼 포트 설정을 따른다
+pub(crate) fn gui_ipc_base(listen_addr: &str, configured: u16) -> Option<String> {
+    let port = listen_addr.parse::<std::net::SocketAddr>().ok()?.port();
+    (port != configured).then(|| format!("http://127.0.0.1:{port}"))
+}
+
+/// GUI가 읽는 설정 포트 (main.rs와 같은 자리, 없으면 기본값)
+pub(crate) fn configured_gui_port() -> u16 {
+    saba_chan_updater_lib::config_file::ConfigFile::default_location()
+        .section("gui")
+        .get("ipcPort")
+        .and_then(|v| v.as_u64())
+        .and_then(|p| u16::try_from(p).ok())
+        .unwrap_or(saba_chan_updater_lib::constants::DEFAULT_IPC_PORT)
+}
+
 /// 감독 루프. 화면이 없거나 GUI 실행 파일이 없으면 바로 끝난다
 pub async fn run(server: crate::ipc::IPCServer) {
     if disabled_by_env() || !has_desktop() {
         tracing::info!("[Tray] No desktop session; the tray is not shown");
         return;
     }
-    let Some(gui) = crate::boot_selector::find_interface_binary("saba-chan-gui") else {
+    let Some(gui) = crate::boot_selector::find_interface_binary(saba_chan_updater_lib::GUI_STEM) else {
         tracing::info!("[Tray] saba-chan-gui was not found next to the daemon; the tray is not shown");
         return;
     };
@@ -175,9 +192,9 @@ pub async fn run(server: crate::ipc::IPCServer) {
         if host_alive(&server.client_registry, started).await {
             state.host_seen(now);
         } else if state.may_spawn(now) {
-            let env: Vec<(&str, String)> = crate::ipc::handlers::client::gui_ipc_base(
+            let env: Vec<(&str, String)> = gui_ipc_base(
                 &server.listen_addr,
-                crate::ipc::handlers::client::configured_gui_port(),
+                configured_gui_port(),
             )
             .map(|b| ("IPC_BASE", b))
             .into_iter()

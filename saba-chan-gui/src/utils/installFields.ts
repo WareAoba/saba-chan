@@ -24,26 +24,13 @@ export const installChoices = (field?: Pick<SettingField, 'install_options' | 'o
 export const optionLabel = (t: TFunction, moduleName: string, field: { name: string }, value: unknown) =>
     t(`settings.${field.name}.options.${value}`, { ns: `mod_${moduleName}`, nsSeparator: false, defaultValue: String(value) });
 
-/** 같은 이름의 서버가 있는가 (대소문자·앞뒤 공백 무시, CLI `server add`와 같다) */
-export const nameTaken = (servers?: { name?: string }[] | null, name?: string | null) => {
-    const wanted = String(name || '')
-        .trim()
-        .toLowerCase();
-    return !!wanted && (servers || []).some((s) => String(s.name || '').toLowerCase() === wanted);
-};
-
-/** 기본 이름: 모듈 이름 그대로, 겹치면 `-2`부터 붙인다 */
-/**
- * 쉼표가 든 서버 이름: 데몬이 만들기·이름 바꾸기를 400 `invalid_name`으로 막는다 (디스코드에서 부르는 말을 쉼표로 나눈다,
- * 사용자 11-06 #2. 띄어쓰기는 된다). 데몬 `chat::words::is_comma`와 같은 글자
- */
-export const nameHasComma = (name?: string | null) => /[,，、､]/.test(String(name || ''));
-
-export const suggestName = (moduleName: string, servers?: { name?: string }[] | null) => {
-    for (let i = 1; ; i++) {
-        const name = i === 1 ? moduleName : `${moduleName}-${i}`;
-        if (!nameTaken(servers, name)) return name;
-    }
+/** 확인 답(`/api/instances/check`)의 이름 판정 `{value, taken, suggested, invalid?}`.
+ *  이름 규칙(대소문자·공백 칸 수 무시, 쉼표, 기본 이름)은 데몬 하나가 정하므로 지금 칸의 이름에 대한 답일 때만 쓴다 */
+export const nameVerdict = (check?: ApiBody | null, name?: string | null) => {
+    const verdict = check?.name;
+    return verdict && verdict.value === String(name || '').trim()
+        ? (verdict as { value: string; taken?: boolean; suggested?: string | null; invalid?: string })
+        : null;
 };
 
 /** 버전 목록을 물을 설정: 고른 추천 설정 위에 고친 설치 칸 (데몬 만들기가 합치는 순서와 같다) */
@@ -68,7 +55,7 @@ export const latestRelease = (res?: ApiBody | null): string => {
 };
 
 /** 데몬이 인스턴스 포트로 다루는 칸 (module_loader CORE_PORT_FIELDS) */
-const CORE_PORT_FIELDS = ['port', 'rest_port'];
+const CORE_PORT_FIELDS = ['port'];
 
 /** 상세 설정에서 뺄 칸 종류: 비밀번호(데몬이 정한다)·파일 경로는 만든 뒤 서버 설정에서 */
 const NOT_PRESET_TYPES = ['password', 'file'];

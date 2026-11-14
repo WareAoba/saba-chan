@@ -46,9 +46,6 @@ pub fn is_last_install(entries: &[(String, String)], install_dir: Option<&Path>)
     entries.iter().all(|(_, loc)| crate::same_path(Path::new(loc), dir))
 }
 
-/// 데몬 실행 파일 이름: 목록의 폴더에 이것이 남아 있어야 설치본으로 친다
-pub const CORE_EXE: &str = if cfg!(windows) { "saba-core.exe" } else { "saba-core" };
-
 /// 설치한 폴더 목록 (사용자 데이터 폴더의 `installs.json`). 제거 항목이 없는 설치(CLI `install --dir`)도 여기에 남는다
 pub fn installs_file() -> std::path::PathBuf {
     crate::constants::resolve_data_dir().join("installs.json")
@@ -93,7 +90,7 @@ pub fn forget_install(file: &Path, install_dir: &Path) -> std::io::Result<()> {
 pub fn other_listed_install(file: &Path, install_dir: &Path) -> bool {
     listed_installs(file)
         .iter()
-        .any(|d| !crate::same_path(Path::new(d), install_dir) && Path::new(d).join(CORE_EXE).is_file())
+        .any(|d| !crate::same_path(Path::new(d), install_dir) && Path::new(d).join(crate::CORE_EXE).is_file())
 }
 
 /// 사용자 데이터 폴더에서 앱이 만들지 않는 항목: 제거기는 어떤 경우에도 지우지 않는다 (업데이트 서명 키)
@@ -246,7 +243,7 @@ mod tests {
         let cli = tmp.path().join("cli");
         for dir in [&gui, &cli] {
             std::fs::create_dir_all(dir).unwrap();
-            std::fs::write(dir.join(CORE_EXE), b"").unwrap();
+            std::fs::write(dir.join(crate::CORE_EXE), b"").unwrap();
             remember_install(&file, dir).unwrap();
         }
         remember_install(&file, &cli).unwrap();
@@ -254,10 +251,10 @@ mod tests {
         assert!(other_listed_install(&file, &gui), "the CLI copy is another install");
 
         // 지운 폴더(데몬 실행 파일이 없는 폴더)는 남은 설치본이 아니다
-        std::fs::remove_file(cli.join(CORE_EXE)).unwrap();
+        std::fs::remove_file(cli.join(crate::CORE_EXE)).unwrap();
         assert!(!other_listed_install(&file, &gui));
 
-        std::fs::write(cli.join(CORE_EXE), b"").unwrap();
+        std::fs::write(cli.join(crate::CORE_EXE), b"").unwrap();
         forget_install(&file, &cli).unwrap();
         assert!(!other_listed_install(&file, &gui));
         assert!(!other_listed_install(&tmp.path().join("missing.json"), &gui), "no list: nothing else known");

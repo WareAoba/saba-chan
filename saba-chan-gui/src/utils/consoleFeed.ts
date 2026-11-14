@@ -116,7 +116,7 @@ export function consoleStep<L extends FeedLine>(
     const next = { ...feed };
     const none = { feed: next, refetch: false, lines: [] as L[], replace: false, stdin: undefined };
     if (!Array.isArray(res?.lines)) return none;
-    // epoch가 없는 응답(디스크 기록, 옛 데몬)은 지금처럼 이어 읽는다
+    // epoch가 없는 응답(디스크 기록)은 지금처럼 이어 읽는다
     if (typeof res.epoch === 'number') {
         const epochChanged = (feed.epoch !== null && res.epoch !== feed.epoch) || res.reset === true;
         next.epoch = res.epoch;

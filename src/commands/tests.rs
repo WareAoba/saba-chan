@@ -1,5 +1,5 @@
 use super::*;
-use crate::supervisor::module_loader::{CommandAliasInfo, ModuleCommands};
+use crate::module_loader::{CommandAliasInfo, ModuleCommands};
 use serde_json::json;
 
 fn input(name: &str, ty: &str, required: bool) -> CommandInput {
@@ -56,7 +56,7 @@ fn module() -> ModuleMetadata {
     }]);
     weather.console_template = Some("weather {type}".into());
 
-    let mut meta = crate::supervisor::module_loader::parse_module_toml(
+    let mut meta = crate::module_loader::parse_module_toml(
         "[module]\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n",
     )
     .expect("minimal module.toml");
@@ -333,6 +333,45 @@ mod properties {
             if let Ok(Plan::Console { line }) = plan(&module(), &Request::parse("give", &json!({ "player": player, "item": item }))) {
                 prop_assert!(!line.contains(['\n', '\r']), "{:?}", line);
             }
+        }
+    }
+}
+
+/// 명령 줄 표본(`tests/fixtures/command-lines.json`): GUI 명령 줄 표시(`commandSyntax.ts`)도 같은 표본을 같게 읽는다
+#[test]
+fn command_lines_read_like_the_shared_fixture() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/command-lines.json");
+    let fixture: Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+    let mut meta = crate::module_loader::parse_module_toml(
+        "[module]\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n",
+    )
+    .expect("minimal module.toml");
+    let fields: Vec<CommandField> = serde_json::from_value(fixture["commands"].clone()).unwrap();
+    for c in fixture["commands"].as_array().unwrap() {
+        if let Some(aliases) = c["aliases"].as_array() {
+            let aliases = aliases.iter().filter_map(Value::as_str).map(str::to_string).collect();
+            meta.command_aliases.insert(c["name"].as_str().unwrap().into(), CommandAliasInfo { aliases, description: None });
+        }
+    }
+    meta.commands = Some(ModuleCommands { fields, hook: false, failure_patterns: Vec::new() });
+
+    for case in fixture["lines"].as_array().unwrap() {
+        let line = case["line"].as_str().unwrap();
+        let req = Request::parse(line, &Value::Null);
+        let found = find(&meta, &req.name).map(|f| f.name.clone());
+        assert_eq!(json!(found), case["command"], "{line}");
+        let planned = plan(&meta, &req);
+        match (&case["error"], found) {
+            (Value::Object(want), _) => {
+                let err = planned.expect_err(line);
+                assert_eq!((json!(err.rule), json!(err.field)), (want["rule"].clone(), want["field"].clone()), "{line}");
+            }
+            (_, Some(name)) => {
+                assert!(planned.is_ok(), "{line}: {planned:?}");
+                let bound = bind(&find(&meta, &name).unwrap().inputs, &req.args).unwrap();
+                assert_eq!(Value::Object(bound), case["args"], "{line}");
+            }
+            (_, None) => assert_eq!(planned, Ok(Plan::Raw { line: line.to_string() }), "{line}"),
         }
     }
 }

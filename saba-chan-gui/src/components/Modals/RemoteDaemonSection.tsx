@@ -54,8 +54,8 @@ const ERRORS = [
     'invalid_code',
 ];
 
-/** 화면에 보일 PC 이름: 데몬이 정한 `디스코드 이름(PC 이름)`, 옛 데몬이면 PC 이름 */
-export const pcName = (pc?: ApiBody | null) => pc?.label || pc?.name || pc?.hostId || '';
+/** 화면에 보일 PC 이름: 데몬이 정한 `디스코드 이름(PC 이름)`. 둘 다 비었으면 hostId */
+export const pcName = (pc?: ApiBody | null) => pc?.label || pc?.hostId || '';
 
 /** 실패 → 한 줄 (아는 코드는 번역, 나머지는 데몬 문구) */
 export function remoteErrorText(res: ApiBody | null | undefined, t: TFunction) {

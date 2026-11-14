@@ -1,6 +1,7 @@
 //! 인스턴스 지우기: 삭제 전 hook, 가져온 서버 폴더 떼어 두기
 
 use super::*;
+use crate::service::instance::{other_instance_folders, pre_delete_hook};
 
 /// 가져온 서버를 지우기 전에 거둔 결과
 struct Unlinked {
@@ -52,37 +53,6 @@ async fn unlink_server_folder(state: &IPCServer, instance: &crate::instance::Ser
     Some(Unlinked { folder, restored })
 }
 
-/// `id` 말고 다른 인스턴스들의 인스턴스 폴더와 서버 폴더 (`sandbox::release`가 그들이 함께 쓰는 위 폴더를 둔다)
-pub(super) fn other_instance_folders(supervisor: &crate::supervisor::Supervisor, id: &str) -> Vec<std::path::PathBuf> {
-    supervisor.instance_store.list().iter()
-        .filter(|i| i.id != id)
-        .flat_map(|i| [Some(supervisor.instance_store.instance_dir(&i.id)), i.working_dir.as_deref().map(std::path::PathBuf::from)])
-        .flatten()
-        .collect()
-}
-
-/// 인스턴스를 지우기 전 익스텐션 hook `server.pre_delete`. 익스텐션이 정리했으면 파일 잠금이 풀리기를 잠깐 기다린다
-pub(super) async fn pre_delete_hook(state: &IPCServer, instance: &crate::instance::ServerInstance) {
-    let ext_mgr = state.extension_manager.clone();
-    let ctx = serde_json::json!({
-        "instance_id": &instance.id,
-        "instance_name": &instance.name,
-        "module": &instance.module_name,
-        "extension_data": &instance.extension_data,
-    });
-    let results = crate::plugin::with_instance(Some(state.host_context(&instance.id)), crate::extension::run_hook(&ext_mgr, "server.pre_delete", ctx)).await;
-    let handled = results.iter().any(|(_id, r)| {
-        r.as_ref()
-            .map(|v| v.get("handled").and_then(|h| h.as_bool()) == Some(true))
-            .unwrap_or(false)
-    });
-    if handled {
-        tracing::info!("Extension handled pre_delete cleanup for '{}'", instance.name);
-        // 익스텐션 정리 후 파일 잠금 해제 대기
-        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-    }
-}
-
 /// `DELETE /api/instance/:id`의 선택 값
 #[derive(Debug, Default, serde::Deserialize)]
 pub struct DeleteQuery {
@@ -98,7 +68,7 @@ pub async fn delete_instance(
     Query(query): Query<DeleteQuery>,
 ) -> impl IntoResponse {
     // 백업·복원·업데이트 중에는 폴더를 지우지 않는다
-    let Some(guard) = super::super::backup::InstanceLock::take_for_writes(&id).await else {
+    let Some(guard) = crate::instance::lock::InstanceLock::take_for_writes(&id).await else {
         return super::super::backup::instance_busy();
     };
     // 요청이 끊겨도 정지·삭제를 끝까지 한다: 추적을 뺀 채 멈추면 돌던 서버가 추적 밖에 남는다
@@ -108,8 +78,7 @@ pub async fn delete_instance(
         delete_instance_held(state, id, query.keep_settings).await
     });
     work.await.unwrap_or_else(|e| {
-        let error = json!({ "success": false, "error": format!("Failed to delete instance: {}", e) });
-        (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response()
+        super::super::error(StatusCode::INTERNAL_SERVER_ERROR, "internal_server_error", format!("Failed to delete instance: {}", e))
     })
 }
 
@@ -121,8 +90,7 @@ async fn delete_instance_held(state: IPCServer, id: String, keep_settings: bool)
     let instance = match supervisor.instance_store.get(&id) {
         Some(inst) => inst.clone(),
         None => {
-            let error = json!({ "success": false, "error": "Instance not found" });
-            return (StatusCode::NOT_FOUND, Json(error)).into_response();
+            return super::super::error(StatusCode::NOT_FOUND, "not_found", "Instance not found");
         }
     };
 
@@ -159,8 +127,7 @@ async fn delete_instance_held(state: IPCServer, id: String, keep_settings: bool)
                 supervisor.managed_store.insert(&id, m).await;
             }
             let _ = supervisor.tracker.track_since(&id, pid, started.unwrap_or_default());
-            let error = json!({ "success": false, "error": "The server is still running and could not be stopped", "error_code": "server_running" });
-            return (StatusCode::CONFLICT, Json(error)).into_response();
+            return super::super::error(StatusCode::CONFLICT, "server_running", "The server is still running and could not be stopped");
         }
     }
 
@@ -190,8 +157,7 @@ async fn delete_instance_held(state: IPCServer, id: String, keep_settings: bool)
     }
     let Some(detached) = detached else {
         let err_msg = last_err.map(|e| format!("{:#}", e)).unwrap_or_else(|| "Unknown error".to_string());
-        let error = json!({ "success": false, "error": format!("Failed to delete instance: {}", err_msg) });
-        return (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response();
+        return super::super::error(StatusCode::INTERNAL_SERVER_ERROR, "delete_failed", format!("Failed to delete instance: {}", err_msg));
     };
 
     // ── 가져온 서버: 서버 폴더는 두고, 사바쨩이 남긴 것을 거둔다 ──
@@ -263,8 +229,7 @@ async fn delete_instance_held(state: IPCServer, id: String, keep_settings: bool)
             (StatusCode::OK, Json(response)).into_response()
         }
         Err(e) => {
-            let error = json!({ "success": false, "error": format!("Failed to delete instance: {}", e) });
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response()
+            super::super::error(StatusCode::INTERNAL_SERVER_ERROR, "delete_failed", format!("Failed to delete instance: {}", e))
         }
     }
 }
@@ -439,7 +404,7 @@ mod tests {
         let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
         let runtime = state.supervisor.read().await.runtime.clone();
         // 정지를 한 번 거치면 정지 문과 실행 세대가, 콘솔로 세기 시작하면 접속자 목록이 생긴다
-        let _ = super::super::super::server::stop(&state, &id, false).await;
+        let _ = crate::service::lifecycle::stop(&state, &id, false).await;
         let roster = crate::supervisor::players::roster_start(&runtime, &id);
         crate::supervisor::players::roster_change(&runtime, &id, roster, "alice", true);
         assert_eq!(crate::supervisor::players::counted(&runtime, &id), Some(1));

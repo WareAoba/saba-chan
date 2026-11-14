@@ -1,4 +1,5 @@
 pub mod supervisor;
+pub mod module_loader;  // module.toml 계약: 메타데이터 타입·TOML 읽기·모듈 폴더 로더
 pub mod plugin;  // Keep - used for Python lifecycle integration
 pub mod python_env;  // Python 가상환경 관리 (venv 부트스트랩, pip)
 pub mod protocol;  // 새로운 프로토콜 통신 모듈
@@ -26,6 +27,9 @@ pub mod sandbox;  // 확인되지 않은 모듈·익스텐션 실행 제한 (Win
 pub mod actions;  // 데몬 액션 카탈로그 (P2): 모든 표면이 읽는 기능 목록
 pub mod launch_args;  // 실행 인자 미리보기: 추가 인자 ↔ 설정 필드
 pub mod relay_agent;  // 클라우드 릴레이 ↔ 데몬 에이전트
+pub mod relay_client;  // 릴레이 클라이언트: 주소·노드 토큰·서명
+pub mod service;  // 서비스 계층: 핸들러·채팅·예약·릴레이가 같이 부르는 기능 본체
+pub(crate) mod component_lock;  // 모듈·익스텐션 폴더 쓰기와 폴더 옮기기를 가르는 잠금
 pub mod remote;  // 사바쨩 웹: 릴레이 웹소켓으로 받는 원격 요청과 문지기
 pub mod remote_daemon;  // 원격 데몬 (D1): 같은 주인의 PC가 TLS로 직접 붙는 원격 포트
 pub mod tray_host;  // 상주 GUI(트레이) 감독: 화면이 있을 때만 띄우고 죽으면 되살린다

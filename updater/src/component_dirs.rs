@@ -570,6 +570,12 @@ fn remaining(src: &Path) -> Vec<PathBuf> {
     left
 }
 
+/// 익스텐션 폴더: 설치는 id의 '-'를 '_'로 바꾼 이름(Python import 호환)에 한다. 그 폴더가 없으면 id 그대로 (예전 설치).
+/// 둘 다 있으면 '_' 이름이다 (데몬 발견 `scan`도 그 폴더를 쓴다). 둘 다 없으면 None. 데몬·업데이터가 함께 쓴다
+pub fn extension_dir(root: &Path, ext_id: &str) -> Option<PathBuf> {
+    [root.join(ext_id.replace('-', "_")), root.join(ext_id)].into_iter().find(|d| d.is_dir())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
