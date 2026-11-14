@@ -48,10 +48,10 @@ def test_backup_restore_roundtrip(mc):
     assert (folder / "server.jar").exists()
 
     # 복원 전 상태도 자동으로 남는다 (되돌리기용)
-    kinds = sorted(b["kind"] for b in _backups(daemon, iid))
+    kinds = sorted(b["kind"] for b in _backups(daemon, iid) if _name(b) not in before)
     assert kinds == ["manual", "pre-restore"], kinds
     daemon.api.ok("DELETE", f"/api/instance/{iid}/backups/{name}")
-    assert [b["kind"] for b in _backups(daemon, iid)] == ["pre-restore"]
+    assert [b["kind"] for b in _backups(daemon, iid) if _name(b) not in before] == ["pre-restore"]
 
 
 def test_backup_of_stopped_server(mc):
