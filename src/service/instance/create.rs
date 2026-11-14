@@ -579,6 +579,10 @@ fn apply_imported(
             imported.executable_path = Some(resolved.to_string_lossy().to_string());
         }
     }
+    // 쓰던 시작 스크립트에만 있던 실행 인자 (모듈이 자기가 정하는 메모리·GC 같은 인자는 뺀 것)
+    if let Some(args) = result.get("extra_args").filter(|v| v.is_array()).and_then(super::settings::extra_args_from) {
+        imported.extra_args = args;
+    }
     Ok((imported, result.get("detected").cloned()))
 }
 

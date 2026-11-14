@@ -833,5 +833,36 @@ mod tests {
             assert_eq!((bad.status.as_u16(), &bad.body["error_code"]), (400, &json!("invalid_format")), "{port}");
         }
     }
-}
 
+    /// 가져온 서버의 시작 스크립트에만 있던 실행 인자(모듈 `import_settings`의 `extra_args`)는 인스턴스의 추가 실행 인자가 된다.
+    /// 모양이 틀린 값(문자열이 아닌 항목, 줄바꿈)은 받지 않는다
+    #[tokio::test]
+    async fn a_migration_keeps_the_launch_args_of_the_old_start_script() {
+        use axum::{extract::State, Json};
+        use serde_json::json;
+        for (returned, expected) in [
+            (json!(["-javaagent:agent.jar", "-Dmod.flag=1"]), vec!["-javaagent:agent.jar".to_string(), "-Dmod.flag=1".to_string()]),
+            (json!(["-Dok=1", 3]), Vec::new()),
+            (json!(["-Dbad=1\nrm"]), Vec::new()),
+        ] {
+            let tmp = tempfile::tempdir().unwrap();
+            let modules = tmp.path().join("modules");
+            let dir = modules.join("game");
+            let server = tmp.path().join("server");
+            for folder in [&dir, &server] { std::fs::create_dir_all(folder).unwrap(); }
+            std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = 'game'\nversion = '1.0.0'\nentry = 'lifecycle.py'\n").unwrap();
+            let result = json!({"success":true,"settings":{},"extra_args":returned});
+            std::fs::write(dir.join("lifecycle.py"), format!("import sys\nprint('{{\"success\":true,\"functions\":[\"import_settings\"]}}' if sys.argv[1] == 'functions' else {:?})\n", result.to_string())).unwrap();
+            crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
+            let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+            for module in sup.module_loader.discover_modules().unwrap() { crate::sandbox::consent_test_component(std::path::Path::new(&module.entry_path())); }
+            sup.initialize().await.unwrap();
+            let state = crate::ipc::IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+            let response = crate::ipc::internal::into_internal(super::create_instance(State(state.clone()), Json(json!({"name":"g", "module_name":"game", "migration_source":server}))).await).await;
+            assert_eq!(response.status.as_u16(), 201, "{}", response.body);
+            let sup = state.supervisor.read().await;
+            let instance = sup.instance_store.get(response.body["id"].as_str().unwrap()).unwrap();
+            assert_eq!(instance.extra_args, expected, "{returned}");
+        }
+    }
+}
