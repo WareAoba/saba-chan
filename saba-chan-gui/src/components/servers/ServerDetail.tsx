@@ -430,17 +430,6 @@ export function ServerDetail({ server, moduleData, modules, servers, onBack, con
                             spot="server.tab"
                         />
                         {findable && <PageFindButton />}
-                        {activeTab === 'console' && !poppedOut && typeof window.api?.consolePopout === 'function' && (
-                            <button
-                                type="button"
-                                data-spot="console.popout"
-                                className="btn btn-ghost detail-pip-btn"
-                                onClick={popoutConsole}
-                            >
-                                <Icon name="pictureInPicture" size={15} />
-                                {t('console.popout')}
-                            </button>
-                        )}
                     </div>
                 )}
             </div>
@@ -468,7 +457,7 @@ export function ServerDetail({ server, moduleData, modules, servers, onBack, con
                                 setConsoleInput={consoleProps.setConsoleInput}
                                 sendConsoleCommand={consoleProps.sendConsoleCommand}
                                 poppedOut={poppedOut}
-                                onPopout={popoutConsole}
+                                onPopout={typeof window.api?.consolePopout === 'function' ? popoutConsole : undefined}
                                 onPopin={() => consoleProps.popinConsole(server.id)}
                             />
                         )}

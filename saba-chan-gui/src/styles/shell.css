@@ -802,11 +802,22 @@
     text-align: center;
 }
 /* 수준 칩(전체·경고·오류): 콘솔 위에 늘 둔다. 모양은 "자주 쓰는 명령" 칩과 같다 */
+/* 콘솔 상단바: 왼쪽 수준 칩, 오른쪽 PIP 띄우기 (사용자 11-14) */
+.term-bar {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--sp-2);
+    padding: var(--sp-3) var(--sp-3) 0;
+}
 .term-levels {
     display: flex;
     flex-wrap: wrap;
     gap: var(--sp-1-5);
-    padding: var(--sp-3) var(--sp-3) 0;
+}
+.term-pip {
+    flex: none;
+    gap: var(--sp-1);
 }
 /* 출력과 그 위에 뜨는 "맨 아래로" 단추 */
 .term-view {
@@ -1023,23 +1034,15 @@
     gap: var(--sp-2);
     margin-top: var(--sp-1);
 }
-.term-popped-actions .btn,
-.detail-pip-btn {
+.term-popped-actions .btn {
     --btn-height: 32px;
     --btn-padding: 0 14px;
     --btn-font-size: var(--fs-sm);
     --btn-radius: var(--r-pill);
 }
-/* 탭 줄 오른쪽 끝 */
-.detail-pip-btn {
-    margin-left: auto;
-}
-/* 콘솔 탭: 찾기 단추와 PIP 단추가 함께 오른쪽 끝에 모인다 */
+/* 탭 줄 오른쪽 끝: 찾기 단추 */
 .detail-tabrow > .page-find-btn {
     margin-left: auto;
-}
-.page-find-btn + .detail-pip-btn {
-    margin-left: 0;
 }
 
 /* 줄 앞 시각 (설정에서 켤 때만). 줄 색과 상관없이 흐리게 */
