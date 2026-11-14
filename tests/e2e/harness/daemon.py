@@ -176,7 +176,13 @@ class Daemon:
             extra["accept_agreements"] = self.agreement_ids(module)
         body = {"name": name, "module_name": module, "migration_source": str(folder), **extra}
         data = self.api.ok("POST", "/api/instances", body)
-        return data["id"]
+        iid = data["id"]
+        # 데몬은 가져온 시점을 뒤에서 백업한다(사바쨩 밖에서 켜 둔 서버는 건너뛴다). 그 백업이 작업 잠금을 쥐는 동안
+        # 시작·백업은 409라서, 사람이 다음 단추를 누르기까지의 틈처럼 그 백업이 목록에 생기기를 기다린다
+        if "server_running" not in (data.get("notices") or []):
+            wait_until(lambda: (self.api.ok("GET", f"/api/instance/{iid}/backups") or {}).get("backups"), 60, "가져온 시점 백업")
+            time.sleep(0.5)  # 백업 파일을 다 쓴 뒤 잠금을 놓기까지
+        return iid
 
     def server_status(self, iid: str) -> str:
         for s in self.api.ok("GET", "/api/servers").get("servers", []):
