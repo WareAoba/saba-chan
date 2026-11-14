@@ -345,6 +345,7 @@
     "execute": "执行",
     "server_not_running_message": "必须运行服务器'{{name}}'才能执行命令。\n\n当前状态：{{status}}",
     "execution_failed": "命令执行失败",
+    "rejected": "服务器拒绝了命令",
     "success": "成功",
     "command_executed": "命令'{{command}}'已执行",
     "show_more": "再显示 {{count}} 个",

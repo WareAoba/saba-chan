@@ -303,6 +303,7 @@
     "start_cancelled": "시작 중 정지 요청이 들어와 시작 취소",
     "still_stopping": "서버가 아직 정지 중이라 시작하지 않음. 완전히 정지된 뒤 시작해 주세요.",
     "generic": "요청 처리 실패",
+    "command_rejected": "서버가 명령을 거절함",
     "remote_not_allowed": "PC의 사바쨩 앱에서만 할 수 있는 작업",
     "remote_field_blocked": "PC에서만 바꿀 수 있는 설정: {{fields}}",
     "remote_bad_path": "받을 수 없는 요청",

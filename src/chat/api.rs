@@ -53,8 +53,6 @@ pub struct ModuleView {
     pub errors: HashMap<String, String>,
     /// [[presets]] 추천 설정 묶음 (heartbeat로 relay에 id·이름만 나간다)
     pub presets: Vec<crate::module_loader::ModulePreset>,
-    /// `[commands] failure_patterns`: 콘솔 답이 맞으면 실패
-    pub failure_patterns: Vec<String>,
     /// 모듈 폴더 (`locales/<lang>.json`을 읽는다). 없으면 module.toml 문구만
     pub locale_dir: Option<std::path::PathBuf>,
     /// `[status] players`를 선언했다 (채팅 `players`가 접속자 조회)
@@ -244,7 +242,6 @@ impl DaemonApi for IPCServer {
                     name: meta.name,
                     module_aliases: meta.module_aliases,
                     command_aliases,
-                    failure_patterns: meta.commands.as_ref().map(|c| c.failure_patterns.clone()).unwrap_or_default(),
                     commands: meta.commands.map(|c| c.fields).unwrap_or_default(),
                     errors: meta.errors,
                     presets: meta.presets,

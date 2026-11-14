@@ -890,11 +890,10 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
         let label = self.command_label(module, field);
         let data = resp.body.get("data").filter(|d| !d.is_null());
         let console = data.and_then(|d| d.get("response")).and_then(Value::as_str).unwrap_or("");
-        for pattern in &module.failure_patterns {
-            if let Some(caps) = regex::Regex::new(pattern).ok().and_then(|re| re.captures(console)) {
-                let reason = caps.name("reason").map(|m| Text::from(m.as_str().trim())).unwrap_or_else(|| self.t("reasons.rejected", &[]));
-                return (self.failed_line(server, label, reason), false);
-            }
+        // 서버가 거절한 명령은 데몬 명령 라우트가 `rejected`로 표시한다 (모듈의 실패 모양)
+        if let Some(rejected) = resp.body.get("rejected") {
+            let reason = rejected.get("reason").and_then(Value::as_str).map(Text::from).unwrap_or_else(|| self.t("reasons.rejected", &[]));
+            return (self.failed_line(server, label, reason), false);
         }
         if let Some(caps) = field.reply_pattern.as_deref().and_then(|p| regex::Regex::new(p).ok()).and_then(|re| re.captures(console)) {
             if let Some(template) = module.text(self.cat.language(), &format!("/commands/{}/done", field.name)) {

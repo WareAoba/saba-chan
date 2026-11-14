@@ -345,6 +345,7 @@
     "execute": "Execute",
     "server_not_running_message": "'{{name}}' must be running to execute commands.\n\nCurrent status: {{status}}",
     "execution_failed": "Command Execution Failed",
+    "rejected": "Server rejected the command",
     "success": "Success",
     "command_executed": "Command '{{command}}' executed",
     "show_more": "Show {{count}} more",

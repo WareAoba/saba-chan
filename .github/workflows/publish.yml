@@ -14,7 +14,7 @@ name: Publish release
 #                버전이 같은 컴포넌트는 빌드하지 않고 지난 manifest 항목(url·sha256·version)을 그대로 싣는다.
 #                실행 파일 컴포넌트가 하나도 안 바뀌었으면 세 플랫폼 빌드를 건너뛴다.
 #   조합 관문    서명 전에 그 조합(새로 빌드한 것 + 지난 릴리즈 파일)의 linux-x64 데몬·러너·CLI로 E2E를 돌린다.
-#   베타 먼저    등록은 늘 beta. manifest는 versions.toml 채널로 서명한다(승격할 수 있는 끝).
+#   베타 먼저    베타·RC 번호는 그 채널, 정식 번호는 beta에 먼저 등록한다. manifest는 versions.toml 채널로 서명한다(승격할 수 있는 끝).
 #                정식 승격은 사용자가 promote-release.yml을 손으로 실행할 때만.
 #
 # 같은 소스: prepare가 main 커밋 하나를 고르고 모든 작업이 그 커밋을 빌드한다.
@@ -74,6 +74,8 @@ jobs:
       sha: ${{ steps.src.outputs.sha }}
       version: ${{ steps.src.outputs.version }}
       channel: ${{ steps.src.outputs.channel }}
+      # 릴레이에 등록할 채널: 베타·RC 번호는 그 채널, 정식 번호는 베타 먼저 (versions.py registration_channel)
+      register: ${{ steps.src.outputs.register }}
       # 묶을 모듈·익스텐션 저장소 커밋: 소스의 .github/release-addons.env(MODULES_REF·EXTENSIONS_REF), 없으면 main
       modules_ref: ${{ steps.src.outputs.modules_ref }}
       extensions_ref: ${{ steps.src.outputs.extensions_ref }}
@@ -118,6 +120,7 @@ jobs:
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
+          echo "register=$(python -c "import sys;sys.path.insert(0,'scripts');import versions;print(versions.registration_channel('$CHANNEL'))")" >> "$GITHUB_OUTPUT"
           # 지난 발행 소스를 다시 낼 때는 그때의 모듈·익스텐션을 묶는다 (main의 애드온은 옛 데몬이 읽지 못할 수 있다)
           MODULES_REF=main; EXTENSIONS_REF=main
           if [ -f .github/release-addons.env ]; then . ./.github/release-addons.env; fi
@@ -615,9 +618,9 @@ jobs:
           # 번들된 공개키로 검증까지 통과해야 출력된다
           ./target/debug/examples/release_signing \
             sign release-manifest.unsigned.json saba-updater-v1 > release-manifest.signed.json
-          # 등록은 늘 베타 먼저. 정식은 promote-release.yml로 사용자가 올린다
+          # 베타·RC 번호는 그 채널에, 정식 번호는 베타에 먼저 건다. 정식은 promote-release.yml로 사용자가 올린다
           python scripts/versions.py registration --signed release-manifest.signed.json \
-            --channel beta --rollout "$ROLLOUT" --out release-registration.json
+            --channel ${{ needs.prepare.outputs.register }} --rollout "$ROLLOUT" --out release-registration.json
 
       - name: Keep manifest
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -630,7 +633,7 @@ jobs:
           retention-days: 30
 
   publish:
-    name: Upload to R2, register on beta
+    name: Upload to R2, register on the release channel
     needs: [prepare, sign]
     if: ${{ !cancelled() && needs.sign.result == 'success' && !inputs.dry_run }}
     runs-on: ubuntu-22.04
@@ -709,7 +712,7 @@ jobs:
             -H "Content-Type: application/json; charset=utf-8" \
             --data-binary @release-registration.json > /dev/null
           curl -fsS -H 'X-Saba-Client: 1' "${{ vars.RELAY_URL }}/v1/updates/manifest/$VERSION" > /dev/null
-          echo "### Registered $VERSION on beta (signed for ${{ needs.prepare.outputs.channel }}; promote with promote-release.yml)" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Registered $VERSION on ${{ needs.prepare.outputs.register }} (signed for ${{ needs.prepare.outputs.channel }}; promote with promote-release.yml)" >> "$GITHUB_STEP_SUMMARY"
 
   # 앱은 GitHub를 보지 않는다. 공개 기록용으로 R2와 같은 파일을 올린다
   github-release:
@@ -722,5 +725,5 @@ jobs:
     with:
       version: ${{ needs.prepare.outputs.version }}
       sha: ${{ needs.prepare.outputs.sha }}
-      # 릴레이에는 늘 beta로 등록한다: 정식 승격(promote-release.yml) 전까지 사전 릴리스로 둔다
-      channel: beta
+      # 릴레이 등록 채널과 같다: 정식 번호는 승격(promote-release.yml) 전까지 사전 릴리스로 둔다
+      channel: ${{ needs.prepare.outputs.register }}

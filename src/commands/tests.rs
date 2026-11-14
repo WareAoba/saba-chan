@@ -375,3 +375,16 @@ fn command_lines_read_like_the_shared_fixture() {
         }
     }
 }
+
+/// 서버가 명령을 거절한 답(모듈의 `[commands] failure_patterns`)이면 그 까닭을, 아니면 None
+#[test]
+fn a_console_answer_matching_a_failure_pattern_is_a_rejection() {
+    let patterns = vec![r"(?m)^\[\d\d:\d\d:\d\d\] .*: (?:System chat: )?(?P<reason>Incorrect argument for command)".to_string(), "(?m)^denied".to_string()];
+    let reply = "[02:33:25] [Server thread/INFO]: System chat: Incorrect argument for command\n[02:33:25] [Server thread/INFO]: System chat: gamerule keepInventory<--[HERE]";
+    assert_eq!(rejected(reply, &patterns), Some(Some("Incorrect argument for command".to_string())));
+    // reason 묶음이 없는 모양은 까닭 없이 거절
+    assert_eq!(rejected("denied", &patterns), Some(None));
+    assert_eq!(rejected("[02:33:25] [Server thread/INFO]: Gamerule keep_inventory is currently set to: false", &patterns), None);
+    // 틀린 정규식은 건너뛴다 (로드 때 이미 걸러진다)
+    assert_eq!(rejected("denied", &["(".to_string()]), None);
+}

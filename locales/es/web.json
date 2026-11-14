@@ -303,6 +303,7 @@
     "start_cancelled": "Inicio cancelado: llegó una solicitud de detención durante el inicio",
     "still_stopping": "El servidor aún se está deteniendo; no se inició. Inícialo cuando se haya detenido por completo.",
     "generic": "Error al procesar la solicitud",
+    "command_rejected": "El servidor rechazó el comando",
     "remote_not_allowed": "Acción que solo se puede hacer en la app Saba-chan del PC",
     "remote_field_blocked": "Ajustes que solo se pueden cambiar en el PC: {{fields}}",
     "remote_bad_path": "Solicitud no aceptada",

@@ -169,6 +169,17 @@ async fn run_command(id: &str, state: &IPCServer, req: CommandRequest) -> Outcom
         },
     };
     let mut resp = resp;
+    // 콘솔 답이 모듈의 실패 모양이면 서버가 거절한 것이다: 앱·웹·CLI·채팅이 이 표시로 실패를 알린다.
+    // 콘솔·RCON 경로는 `data.response`, 모듈 명령(`method = "module"`)은 모듈이 돌려준 서버 답 `message`
+    let failures = metadata.as_ref().and_then(|m| m.commands.as_ref()).map(|c| c.failure_patterns.as_slice()).unwrap_or_default();
+    let console = match resp.str_field("protocol") {
+        Some("module") => resp.str_field("message"),
+        _ => resp.body.pointer("/data/response").and_then(Value::as_str),
+    }
+    .filter(|_| resp.status.is_success());
+    if let Some(reason) = console.and_then(|reply| crate::commands::rejected(reply, failures)) {
+        resp.body["rejected"] = json!({ "reason": reason });
+    }
     let rest_answer = resp.status.is_success() && resp.str_field("protocol") == Some("rest");
     if let Some(m) = output_module.filter(|_| rest_answer) {
         let settings = m.metadata.settings.as_ref().map(|s| s.fields.as_slice()).unwrap_or_default();
@@ -744,6 +755,44 @@ mod tests {
         assert_eq!(rejected["error_message"], "비밀번호를 확인하세요");
         let other = body(reply(ProtocolError::HttpStatus(500, "boom".into())));
         assert_eq!(other["error_code"], "internal_server_error");
+    }
+
+    /// 콘솔 답이 모듈의 실패 모양이면 명령 라우트가 `rejected`로 표시한다 (앱·웹·CLI·채팅이 실패로 알린다)
+    #[tokio::test]
+    async fn a_command_the_server_rejects_is_marked_rejected() {
+        use std::sync::Arc;
+        use tokio::sync::RwLock;
+        let probe = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = probe.local_addr().unwrap().port();
+        drop(probe);
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("plain");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            format!("[module]\nschema_version = 1\nname = \"plain\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n[protocols]\nsupported = [\"rcon\"]\nrcon_port = {port}\n[commands]\nfailure_patterns = ['^ran: (?P<reason>bad)', '^ran: worse']\n"),
+        )
+        .unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let inst = crate::instance::ServerInstance::new("srv", "plain");
+        let id = inst.id.clone();
+        sup.instance_store.add(inst.clone()).unwrap();
+        sup.tracker.track(&id, std::process::id()).unwrap();
+        sup.ensure_rcon_access(&inst).unwrap();
+        let access = crate::protocol::rcon::load(&sup.instance_store.instance_dir(&id)).unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let _seen = crate::protocol::rcon::fake_server_on(port, &access.password).await;
+        let run = |line: &str| {
+            let (state, id) = (state.clone(), id.clone());
+            let req = CommandRequest { command: line.into(), args: Value::Null };
+            async move { crate::ipc::internal::InternalResponse::from(run_command(&id, &state, req).await).body }
+        };
+        assert_eq!(run("bad").await["rejected"], json!({ "reason": "bad" }));
+        assert_eq!(run("worse").await["rejected"], json!({ "reason": null }));
+        assert!(run("fine").await.get("rejected").is_none());
     }
 
     /// 팔레트는 지금 보낼 수 있는 명령만 보여준다: 목록의 `ready`가 실제 실행 경로(`run_command`)와 같은 판정이어야 한다

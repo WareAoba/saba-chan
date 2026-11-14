@@ -8,7 +8,7 @@
   signing   빌드된 exe 폴더를 versions.toml(`exes`)과 SignPath 제약에 대조하고 서명 요청 매개변수를 낸다
   registration  서명된 봉투로 릴레이 `POST /admin/releases` 본문을 만든다.
             `release-notes/<version>.json`({언어: 본문})을 notes로 같이 싣는다(stable은 필수).
-            publish.yml은 `--channel beta`로 늘 베타에 먼저 등록한다.
+            publish.yml은 베타·RC 번호를 그 채널에, 정식 번호를 베타에 먼저 등록한다 (`registration_channel`).
   plan      지난 릴리즈 manifest와 비교해 빌드할 컴포넌트와 지난 항목을 그대로 쓸 컴포넌트를 정한다 (부분 릴리즈)
   assemble  조합 관문용: 서명 전 manifest의 한 플랫폼 에셋을 이번 빌드 또는 지난 릴리즈 R2에서 모아 sha256을 대조한다
   uploads   등록 본문 중 이번 릴리즈 자리에 올릴 파일 (`--reused`: 그대로 쓰는 지난 파일)
@@ -60,6 +60,9 @@ def load() -> dict:
         errors.append(f"[release] channel {channel!r} is not one of {', '.join(CHANNELS)}")
     elif channel == "stable" and "-" in release:
         errors.append(f"[release] stable channel cannot carry a prerelease version ({release})")
+    elif channel != "stable" and not re.fullmatch(rf"\d+\.\d+\.\d+-{channel}\.\d+", release):
+        # 번호가 채널을 말한다: 베타는 X.Y.Z-beta.N, RC는 X.Y.Z-rc.N (꼬리표 없는 번호를 베타로 내면 다음 베타가 더 낮은 번호가 된다)
+        errors.append(f"[release] {channel} channel needs an X.Y.Z-{channel}.N version ({release})")
     for key, comp in data.get("components", {}).items():
         if not SEMVER.match(comp.get("version", "")):
             errors.append(f"[components.{key}] version {comp.get('version')!r} is not semver")
@@ -177,6 +180,11 @@ def lock_sync(data: dict) -> bool:
 
 
 # ── 명령 ───────────────────────────────────────────────────
+
+def registration_channel(channel: str) -> str:
+    """릴레이에 등록할 채널: 베타·RC 번호는 그 채널, 정식 번호는 베타에 먼저 걸고 promote-release.yml로 올린다"""
+    return "beta" if channel == "stable" else channel
+
 
 def cmd_check(data: dict) -> int:
     problems = []

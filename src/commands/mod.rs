@@ -313,6 +313,15 @@ pub fn render_template(template: &str, inputs: &Map<String, Value>) -> String {
     line.trim().to_string()
 }
 
+/// 서버가 명령을 거절했는지 (콘솔 답이 모듈의 `[commands] failure_patterns` 하나와 맞음).
+/// 거절이면 `Some(까닭)`: 실패 모양의 `reason` 이름 묶음, 없으면 `None`. 콘솔 원문은 밖으로 내지 않는다
+pub fn rejected(reply: &str, patterns: &[String]) -> Option<Option<String>> {
+    patterns
+        .iter()
+        .filter_map(|p| regex::Regex::new(p).ok())
+        .find_map(|re| re.captures(reply).map(|c| c.name("reason").map(|m| m.as_str().trim().to_string())))
+}
+
 /// 실패 응답의 오류 코드. 본문에 있으면 그것, 없으면 상태 코드로 정한다.
 pub fn error_code(status: u16, body: &Value) -> String {
     if let Some(code) = body.get("error_code").and_then(|v| v.as_str()) {

@@ -1105,6 +1105,34 @@ mod tests {
         assert_eq!(picked("0.1.14", vec![release("0.1.15-beta.1", "beta", 100)]), None);
     }
 
+    /// 0.1.14(첫 베타)에서 베타 채널은 다음 베타를 받는다. 다음 베타는 0.1.14보다 높아야 한다:
+    /// `0.1.14-beta.2`는 0.1.14보다 낮아 받지 않는다
+    #[test]
+    fn a_beta_client_on_0_1_14_takes_the_next_higher_beta_only() {
+        let picked = |list: Vec<LatestRelease>| select_release("beta", "0.1.14", "c", list).map(|r| r.version);
+        assert_eq!(picked(vec![release("0.1.15-beta.1", "beta", 100), release("0.1.13", "stable", 100)]).as_deref(), Some("0.1.15-beta.1"));
+        assert_eq!(picked(vec![release("0.1.15", "beta", 100)]).as_deref(), Some("0.1.15"));
+        assert_eq!(picked(vec![release("0.1.14-beta.2", "beta", 100)]), None);
+    }
+
+    /// 베타 채널은 같은 번호의 RC와 정식까지 이어 받는다: beta.N → rc.N → 정식 → 다음 번호의 베타 (사용자 규칙 2026-11-14)
+    #[test]
+    fn a_beta_client_follows_betas_rcs_and_the_release_of_the_same_number() {
+        let picked = |current: &str, list: Vec<LatestRelease>| select_release("beta", current, "c", list).map(|r| r.version);
+        let all = || {
+            vec![
+                release("0.1.14-beta.10", "beta", 100),
+                release("0.1.14-rc.1", "rc", 100),
+                release("0.1.14", "stable", 100),
+            ]
+        };
+        assert_eq!(picked("0.1.14-beta.2", vec![release("0.1.14-beta.10", "beta", 100)]).as_deref(), Some("0.1.14-beta.10"));
+        assert_eq!(picked("0.1.14-beta.10", vec![release("0.1.14-rc.1", "rc", 100)]).as_deref(), Some("0.1.14-rc.1"));
+        assert_eq!(picked("0.1.14-rc.1", vec![release("0.1.14", "stable", 100)]).as_deref(), Some("0.1.14"));
+        assert_eq!(picked("0.1.14-beta.2", all()).as_deref(), Some("0.1.14"), "the highest of them wins");
+        assert_eq!(picked("0.1.14", vec![release("0.1.15-beta.1", "beta", 100)]).as_deref(), Some("0.1.15-beta.1"));
+    }
+
     /// 러너 형식 범위: manifest에 없으면 [0, 1]로 본다
     #[test]
     fn a_core_without_runner_formats_reads_formats_zero_and_one() {

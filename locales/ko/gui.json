@@ -345,6 +345,7 @@
     "execute": "실행",
     "server_not_running_message": "'{{name}}' 서버가 실행 중이어야 명령어를 실행할 수 있습니다.\n\n현재 상태: {{status}}",
     "execution_failed": "명령어 실행 실패",
+    "rejected": "서버가 명령을 거절함",
     "success": "성공",
     "command_executed": "명령어 '{{command}}' 실행됨",
     "show_more": "{{count}}개 더 보기",

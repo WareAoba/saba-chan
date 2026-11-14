@@ -303,6 +303,7 @@
     "start_cancelled": "Início cancelado: pedido de parada durante a inicialização",
     "still_stopping": "O servidor ainda está parando e não foi iniciado. Inicie-o depois que parar por completo.",
     "generic": "Falha ao processar a requisição",
+    "command_rejected": "O servidor recusou o comando",
     "remote_not_allowed": "Ação possível só no app Saba-chan do PC",
     "remote_field_blocked": "Configurações alteráveis só no PC: {{fields}}",
     "remote_bad_path": "Requisição não aceita",

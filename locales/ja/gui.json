@@ -293,6 +293,7 @@
     "execute": "実行",
     "server_not_running_message": "コマンドを実行するには、サーバー '{{name}}' が実行中である必要があります。\n\n現在の状態: {{status}}",
     "execution_failed": "コマンド実行に失敗しました",
+    "rejected": "サーバーがコマンドを拒否しました",
     "success": "成功",
     "command_executed": "コマンド '{{command}}' を実行しました",
     "show_more": "あと{{count}}件を表示",

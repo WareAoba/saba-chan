@@ -11,6 +11,9 @@ export { failed } from '@gui/utils/apiResult';
 
 /** 실패 결과 → 사람이 읽을 한 줄. 문지기·중계가 막은 것은 이유를 번역해 보인다 */
 export function errorText(t: TFn, res: ApiBody | null | undefined) {
+    // 서버가 거절한 명령: 모듈의 실패 모양이 뽑은 까닭 (없으면 기본 문구)
+    const rejected = res?.rejected as { reason?: string | null } | undefined;
+    if (rejected) return rejected.reason || t('errors.command_rejected');
     const code = res?.error_code;
     if (typeof code === 'string' && code.startsWith('remote_')) {
         const fields = Array.isArray(res?.fields) ? res.fields.join(', ') : '';
