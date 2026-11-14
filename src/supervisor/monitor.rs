@@ -4,6 +4,28 @@ use super::*;
 use super::start::announce_started;
 
 impl Supervisor {
+    /// 표본을 뜰 인스턴스 목록 (프로세스 PID와 폴더)
+    pub(crate) fn sample_roots(&self) -> Vec<crate::system_monitor::InstanceRoot> {
+        self.instance_store
+            .list()
+            .iter()
+            .map(|inst| {
+                let mut dirs = vec![self.instance_store.instance_dir(&inst.id)];
+                if let Some(wd) = inst.working_dir.as_deref().filter(|w| !w.is_empty()) {
+                    dirs.push(std::path::PathBuf::from(wd));
+                }
+                let module = self.module_loader.get_module(&inst.module_name).ok();
+                crate::system_monitor::InstanceRoot {
+                    id: inst.id.clone(),
+                    name: inst.name.clone(),
+                    pid: self.tracker.get_pid(&inst.id).ok(),
+                    dirs,
+                    ports: crate::port_check::public_ports(inst, module.as_ref().and_then(|m| m.metadata.settings.as_ref())),
+                }
+            })
+            .collect()
+    }
+
     /// 인스턴스 서버 파일이 있을 수 있는 폴더들 (작업 폴더, 실행 파일 폴더, 인스턴스 폴더)
     fn instance_roots(&self, instance: &crate::instance::ServerInstance) -> Vec<String> {
         let mut roots = Vec::new();
@@ -82,15 +104,13 @@ impl Supervisor {
             }
             
             // 프로비저닝 중인 인스턴스는 auto-detect 건너뛰기
-            if let Some(ref pt) = self.provision_tracker {
-                if let Some(progress) = pt.get(&instance.id) {
-                    if !progress.done {
-                        tracing::debug!(
-                            "Skipping auto-detect for '{}' (provisioning in progress)",
-                            instance.name
-                        );
-                        continue;
-                    }
+            if let Some(progress) = self.provision_tracker.get(&instance.id) {
+                if !progress.done {
+                    tracing::debug!(
+                        "Skipping auto-detect for '{}' (provisioning in progress)",
+                        instance.name
+                    );
+                    continue;
                 }
             }
 
@@ -163,8 +183,7 @@ impl Supervisor {
                                     .filter(|i| i.id != instance.id && self.tracker.get_pid(&i.id).is_ok())
                                     .map(|i| i.id.clone())
                                     .collect();
-                                let module_protocols = self.build_module_protocols_map();
-                                let conflicts = crate::validator::check_port_conflicts(instance, all_instances, &running_ids, Some(&module_protocols));
+                                let conflicts = crate::validator::check_port_conflicts(instance, all_instances, &running_ids, &self.rest_port_settings());
                                 if !conflicts.is_empty() {
                                     let details: Vec<String> = conflicts.iter().map(|c| c.to_string()).collect();
                                     tracing::warn!(

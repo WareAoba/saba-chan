@@ -68,7 +68,7 @@ pub struct Entry {
 impl Entry {
     /// 데몬을 바로 돌리는 서비스 항목인가 (GUI 없는 리눅스의 systemd 사용자 서비스, 맥의 LaunchAgent)
     pub fn is_service(&self) -> bool {
-        self.program.file_name().is_some_and(|n| n == crate::uninstall_entry::CORE_EXE)
+        self.program.file_name().is_some_and(|n| n == crate::CORE_EXE)
     }
 
     /// 이 항목이 켜는 모드: 트레이 인자나 데몬 서비스면 데몬만, 아니면 GUI까지 전체
@@ -116,7 +116,7 @@ fn supported_with(data_dir_env: Option<std::ffi::OsString>) -> bool {
 pub fn entry_for(mode: Mode, install_dir: &Path) -> Result<Option<Entry>, AutostartError> {
     let gui = crate::find_gui_exe(install_dir);
     // 데스크톱에서는 데몬을 직접 등록하지 않는다: Windows의 데몬은 콘솔 프로그램이라 로그인할 때 콘솔 창이 뜬다
-    let core = install_dir.join(crate::uninstall_entry::CORE_EXE);
+    let core = install_dir.join(crate::CORE_EXE);
     let entry = match (mode, gui) {
         (Mode::Off, _) => return Ok(None),
         (Mode::Daemon, None) if cfg!(any(target_os = "linux", target_os = "macos")) && core.is_file() => Entry { program: core, args: Vec::new() },
@@ -751,7 +751,7 @@ mod tests {
 
     #[test]
     fn daemon_only_starts_the_tray_gui_and_full_starts_the_gui() {
-        let dir = install_with(&[crate::GUI_EXE_NAMES[0], crate::uninstall_entry::CORE_EXE]);
+        let dir = install_with(&[crate::GUI_EXE_NAMES[0], crate::CORE_EXE]);
         let gui = dir.path().join(crate::GUI_EXE_NAMES[0]);
         assert_eq!(entry_for(Mode::Off, dir.path()).unwrap(), None);
         let daemon = entry_for(Mode::Daemon, dir.path()).unwrap().unwrap();
@@ -764,12 +764,12 @@ mod tests {
 
     #[test]
     fn without_a_gui_nothing_can_be_turned_on_but_off_still_works() {
-        let dir = install_with(&[crate::uninstall_entry::CORE_EXE]);
+        let dir = install_with(&[crate::CORE_EXE]);
         assert_eq!(entry_for(Mode::Full, dir.path()).unwrap_err().code, "gui_missing");
         if cfg!(any(target_os = "linux", target_os = "macos")) {
             // 화면 없는 리눅스 서버 (D3)·맥: 데몬만은 데몬을 바로 서비스(systemd 사용자 서비스, LaunchAgent)로 등록한다
             let daemon = entry_for(Mode::Daemon, dir.path()).unwrap().unwrap();
-            assert_eq!(daemon, Entry { program: dir.path().join(crate::uninstall_entry::CORE_EXE), args: vec![] });
+            assert_eq!(daemon, Entry { program: dir.path().join(crate::CORE_EXE), args: vec![] });
             assert_eq!(daemon.mode(), Mode::Daemon);
             assert!(daemon.is_service());
         } else {
@@ -813,16 +813,16 @@ mod tests {
     #[test]
     fn a_daemon_registered_as_the_service_is_started_through_it() {
         let dir = tempfile::tempdir().unwrap();
-        let core = dir.path().join(crate::uninstall_entry::CORE_EXE);
+        let core = dir.path().join(crate::CORE_EXE);
         std::fs::write(&core, b"").unwrap();
         let start = Some(vec!["/usr/bin/systemctl".to_string(), "--user".into(), "start".into(), SERVICE_FILE.into()]);
         let service = Entry { program: core.clone(), args: Vec::new() };
         assert_eq!(service_start_from(Some(&service), &core, start.clone()), start);
         // 같은 파일을 다른 표기로 가리켜도 같은 설치다
-        let dotted = dir.path().join(".").join(crate::uninstall_entry::CORE_EXE);
+        let dotted = dir.path().join(".").join(crate::CORE_EXE);
         assert_eq!(service_start_from(Some(&service), &dotted, start.clone()), start);
 
-        let other = Entry { program: dir.path().join("elsewhere").join(crate::uninstall_entry::CORE_EXE), args: Vec::new() };
+        let other = Entry { program: dir.path().join("elsewhere").join(crate::CORE_EXE), args: Vec::new() };
         assert_eq!(service_start_from(Some(&other), &core, start.clone()), None, "another install's service");
         let tray = Entry { program: dir.path().join("saba-chan-gui"), args: vec![TRAY_ARG.to_string()] };
         assert_eq!(service_start_from(Some(&tray), &core, start.clone()), None, "a desktop entry starts the GUI, not a service");

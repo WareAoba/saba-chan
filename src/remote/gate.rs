@@ -150,6 +150,7 @@ pub static ROUTES: &[Route] = &[
     deny("GET", "/api/maker"),
     deny("POST", "/api/modules/detect"),
     allow("GET", "/api/modules/manifest"),
+    allow("GET", "/api/store/icons/{key}"),
     allow("POST", "/api/modules/manifest/{id}/install"),
     deny("DELETE", "/api/modules/{id}"),
     allow("GET", "/api/module/{name}"),
@@ -322,7 +323,6 @@ pub static ROUTES: &[Route] = &[
     deny("GET", "/api/updates/status"),
     deny("POST", "/api/updates/check"),
     deny("POST", "/api/updates/download"),
-    deny("GET", "/api/updates/download/progress"),
     deny("POST", "/api/updates/apply"),
     deny("POST", "/api/updates/launch-updater"),
     deny("GET", "/api/updates/rollback"),
@@ -477,7 +477,7 @@ pub(crate) fn percent_decode(s: &str) -> Option<String> {
 
 /// 본문이 JSON이 아닌 그림이라 웹 원격에 base64 글자로 싣는 라우트 (GUI 브리지의 `responseType: 'base64'`와 같은 값)
 pub fn base64_body(method: &str, pattern: &str) -> bool {
-    method == "GET" && pattern == "/api/extensions/{id}/icon"
+    method == "GET" && matches!(pattern, "/api/extensions/{id}/icon" | "/api/store/icons/{key}")
 }
 
 /// 답을 콘솔 스트림(SSE)으로 흘려보내는 라우트: 웹 중계는 조각(`chunk`)으로 나눠 보낸다 (`link::dispatch`)

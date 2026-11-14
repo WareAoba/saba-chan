@@ -39,16 +39,16 @@ describe('서버 설정 창: 실제 설정', () => {
             .fn()
             .mockResolvedValue({ success: true, settings: { title: '진짜 이름' } });
         const { result } = setup();
-        const server = { id: 's', name: 'S', module: 'game', port: 2222, module_settings: { title: '캐시' } };
+        const server = { id: 's', name: 'S', module: 'game', port: 2222, module_settings: { title: '캐시' }, stored: { port: 2222, title: '캐시' } };
         await act(async () => result.current.handleOpenSettings(server as never));
         expect(window.api.instanceReadLiveSettings).toHaveBeenCalledWith('s');
         expect(result.current.settingsValues).toMatchObject({ port: '2222', title: '진짜 이름' });
     });
 
-    it('실제 설정을 못 읽으면 port는 데몬이 저장하는 최상위 값을 쓴다 (module_settings는 낡을 수 있다)', async () => {
+    it('실제 설정을 못 읽으면 데몬이 칸마다 정한 저장값(stored)을 쓴다 (module_settings는 낡을 수 있다)', async () => {
         window.api.instanceReadLiveSettings = vi.fn().mockResolvedValue({ success: false });
         const { result } = setup();
-        const server = { id: 's', name: 'S', module: 'game', port: 2222, module_settings: { port: 1 } };
+        const server = { id: 's', name: 'S', module: 'game', port: 2222, module_settings: { port: 1 }, stored: { port: 2222 } };
         await act(async () => result.current.handleOpenSettings(server as never));
         expect(result.current.settingsValues.port).toBe('2222');
     });
@@ -57,7 +57,7 @@ describe('서버 설정 창: 실제 설정', () => {
         const settings = { password: 123, title: 7 };
         window.api.instanceReadLiveSettings = vi.fn().mockResolvedValue({ success: true, settings });
         const { result } = setup();
-        const server = { id: 's', name: 'S', module: 'game', module_settings: { password: '000123' } };
+        const server = { id: 's', name: 'S', module: 'game', module_settings: { password: '000123' }, stored: { password: '000123' } };
         await act(async () => result.current.handleOpenSettings(server as never));
         expect(result.current.settingsValues).toMatchObject({ password: '000123', title: '7' });
     });
@@ -79,7 +79,7 @@ describe('서버 설정 창: 실제 설정', () => {
     it('실제 설정을 읽었으면 그 값과 (데몬이 맞춘) 캐시 값은 저장하고, 기본값만 있던 칸은 뺀다', async () => {
         window.api.instanceReadLiveSettings = vi.fn().mockResolvedValue({ success: true, settings: { title: '진짜' } });
         const { result } = setup();
-        await act(async () => result.current.handleOpenSettings({ id: 's', name: 'S', module: 'game', port: 2222 } as never));
+        await act(async () => result.current.handleOpenSettings({ id: 's', name: 'S', module: 'game', port: 2222, stored: { port: 2222 } } as never));
         expect(result.current.settingsSource).toBe('live');
         await act(async () => result.current.handleSaveSettings());
         const sent = vi.mocked(window.api.instanceUpdateSettings).mock.calls[0][1];

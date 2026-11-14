@@ -67,7 +67,7 @@ describe('콘솔: 화면에 보이는 콘솔은 스트림으로 받는다', () =
         expect(close).toHaveBeenCalledTimes(1);
     });
 
-    it('스트림을 열지 못하면(옛 데몬·옛 릴레이) 기다리는 조회로 읽고, 한동안 다시 열어 보지 않는다', async () => {
+    it('스트림을 열지 못하면(옛 릴레이·연결 실패) 기다리는 조회로 읽고, 한동안 다시 열어 보지 않는다', async () => {
         const stream = vi.fn(async () => null);
         const { result } = setup(stream);
         act(() => result.current.openConsole('a', 'A'));

@@ -15,7 +15,6 @@ const renderNew = async (trust: string) => {
     render(
         <AddInstanceNewServer
             extensions={[{ name: 'game', version: '1.0.0', trust }]}
-            servers={[]}
             onAddServer={vi.fn()}
         />,
     );
@@ -36,14 +35,14 @@ describe('서버 만들 때 신뢰 안내', () => {
         expect(screen.getByRole('note').textContent).toMatch(/changed after install/);
     });
 
-    it('확인된 모듈이나 trust가 없는 옛 데몬이면 알리지 않는다', async () => {
+    it('확인된 모듈이나 trust가 없으면 알리지 않는다', async () => {
         await renderNew('verified');
         expect(screen.queryByRole('note')).toBeNull();
     });
 
     it('기존 서버 가져오기에서도 확인 안 된 모듈이면 알린다', async () => {
         window.api.openFolderDialog = vi.fn().mockResolvedValue('/srv/old') as never;
-        window.api.migrationScanDir = vi.fn().mockResolvedValue({ ok: true, matches: [{ name: 'game' }] }) as never;
+        window.api.migrationScanDir = vi.fn().mockResolvedValue({ success: true, matches: [{ name: 'game' }] }) as never;
         render(
             <AddInstanceMigration
                 extensions={[{ name: 'game', trust: 'unverified' }]}

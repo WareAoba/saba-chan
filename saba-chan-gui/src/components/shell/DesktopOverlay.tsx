@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { type HostWindow, HostWindowContext, isAppRoute, type ServerAction } from '../../extensions/host';
-import type { ServerInfo } from '../../types/daemon';
-import { SERVER_CHANGING, subscribeDaemonEvents } from '../../utils/daemonEvents';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { type HostWindow, HostWindowContext, isAppRoute } from '../../extensions/host';
 import ExtensionSlot from '../ExtensionSlot';
 import './DesktopOverlay.css';
+import { useQuickServers } from './ServerQuickList';
 
 /** 서버 목록을 다시 읽는 간격 (이벤트로도 다시 읽는다) */
 const REFRESH_MS = 10_000;
@@ -24,79 +23,22 @@ function initialScale() {
  */
 export function DesktopOverlay() {
     const rootRef = useRef<HTMLDivElement>(null);
-    const [servers, setServers] = useState<ServerInfo[]>([]);
+    const { servers, run } = useQuickServers(REFRESH_MS);
     const [scale, setScale] = useState(initialScale);
     const serversRef = useRef(servers);
     serversRef.current = servers;
-    /** 마지막으로 확인한 고른 데몬: 이 PC면 null, 아직 모르면 undefined */
-    const targetRef = useRef<string | null | undefined>(undefined);
-
-    const refresh = useCallback(async () => {
-        const [status, current] = await Promise.all([
-            Promise.resolve(window.api?.daemonStatus?.()).catch(() => null),
-            Promise.resolve(window.api?.daemonTarget?.()).catch(() => null),
-        ]);
-        targetRef.current =
-            typeof window.api?.daemonTarget !== 'function'
-                ? null
-                : current && 'target' in current
-                  ? current.target || null
-                  : undefined;
-        if (status?.running !== true) {
-            setServers([]);
-            return;
-        }
-        const list = await Promise.resolve(window.api?.serverList?.()).catch(() => null);
-        setServers(Array.isArray(list?.servers) ? (list.servers as ServerInfo[]) : []);
-    }, []);
-
-    useEffect(() => {
-        refresh();
-        const timer = setInterval(refresh, REFRESH_MS);
-        const off = subscribeDaemonEvents((ev) => {
-            if (SERVER_CHANGING.includes(ev.type)) refresh();
-        });
-        return () => {
-            clearInterval(timer);
-            off();
-        };
-    }, [refresh]);
-
-    const runServer = useCallback(
-        async (instanceId: string, action: ServerAction) => {
-            const call =
-                action === 'start'
-                    ? window.api.instanceStart
-                    : action === 'stop'
-                      ? window.api.instanceStop
-                      : window.api.instanceRestart;
-            if (typeof call !== 'function') return false;
-            try {
-                const res = await call(instanceId);
-                return !(res?.error || res?.success === false);
-            } catch {
-                return false;
-            } finally {
-                refresh();
-            }
-        },
-        [refresh],
-    );
 
     const hostWindow = useMemo<HostWindow>(
         () => ({
             servers: () => serversRef.current,
-            run: async (instanceId, action) => {
-                if (action !== 'start' && targetRef.current !== null) return false;
-                return runServer(instanceId, action);
-            },
+            run,
             // 고른 화면(서버·탭)은 셸이 메인 창에 바로 연다. 모르는 화면은 앱만 연다
             openApp: (route) =>
                 isAppRoute(route)
                     ? window.api?.overlayAction?.('open_app', route)
                     : window.api?.overlayAction?.('open_app'),
         }),
-        [runServer],
+        [run],
     );
 
     // 판의 크기 막대

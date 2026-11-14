@@ -41,7 +41,6 @@ async fn server_running(module: &str, lifecycle: &str) -> (IPCServer, String, te
     let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), instances.to_str().unwrap());
     sup.initialize().await.unwrap();
     let mut inst = crate::instance::ServerInstance::new("srv", "plain");
-    inst.rest_password = Some("S3CRET-REST".into());
     inst.module_settings.insert("admin_pass".into(), json!("S3CRET-MOD"));
     let id = inst.id.clone();
     sup.instance_store.add(inst).unwrap();
@@ -52,6 +51,13 @@ async fn server_running(module: &str, lifecycle: &str) -> (IPCServer, String, te
 fn relay(user: &str, chatbot: bool) -> Caller {
     let who = Requester { guild_id: Some("g".into()), user_id: Some(user.into()), owner_id: Some("owner".into()), via_chatbot: chatbot, ..Default::default() };
     Caller { surface: if chatbot { Chatbot } else { Discord }, remote: Some(who), origin: crate::audit::Origin::new("discord"), locale: "ko".into() }
+}
+
+/// 챗봇은 읽은 판(`revision`)을 실어야 예약을 바꾼다: 지금 판을 붙인 입력
+async fn with_revision(state: &IPCServer, id: &str, mut input: Value) -> Value {
+    let got = query(state, "instance.schedule.get", Some(id), &json!({}), &gui()).await.unwrap();
+    input["revision"] = got["result"]["revision"].clone();
+    input
 }
 
 /// 확인 버튼을 누른 요청자 (릴레이 `confirmedBy`)
@@ -190,7 +196,7 @@ async fn plans_belong_to_their_requester_and_keep_the_chatbot_cap() {
 async fn a_chatbot_plan_runs_as_the_chatbot_whoever_confirms_it() {
     let (state, id, _tmp) = server().await;
     open_everything(&state).await;
-    let lower = json!({ "schedule": [], "backup_keep": 1 });
+    let lower = with_revision(&state, &id, json!({ "schedule": [], "backup_keep": 1 })).await;
     let made = plan(&state, "instance.schedule.set", Some(&id), &lower, &relay("owner", true)).await.unwrap();
     let plan_id = made["planId"].as_str().unwrap().to_string();
     let ran = run(&state, "", None, &Value::Null, Some(&plan_id), &pressed("owner")).await.unwrap();
@@ -379,7 +385,7 @@ fn field_titles_go_first_when_the_heartbeat_is_too_big() {
     }
     std::fs::write(dir.join("module.toml"), toml).unwrap();
     std::fs::write(dir.join("lifecycle.py"), "").unwrap();
-    let modules = vec![crate::supervisor::module_loader::load_module_dir(&dir).unwrap()];
+    let modules = vec![crate::module_loader::load_module_dir(&dir).unwrap()];
     let (actions, truncated) = heartbeat_actions(&crate::chat::i18n::languages(), &modules);
     assert!(!truncated, "every action still fits without field titles");
     assert!(serde_json::to_vec(&actions).unwrap().len() <= HEARTBEAT_MAX_BYTES);
@@ -430,13 +436,13 @@ fn summaries_read_like_sentences() {
     assert!(lines[1].contains("b11") && lines[1].contains("예약") && lines[1].contains("1.5 GB"), "newest first: {text}");
     assert!(lines.len() <= 12 && lines.last().unwrap().contains("[actions.summary.more count=2]"), "the rest is counted: {text}");
 
-    let updates = json!({ "ok": true, "updates_available": 1, "components": [
+    let updates = json!({ "success": true, "updates_available": 1, "components": [
         { "display_name": "Saba-chan GUI", "current_version": "0.1.7", "latest_version": "0.1.8", "update_available": true },
         { "display_name": "Saba-chan CLI", "current_version": "0.1.7", "latest_version": "0.1.7", "update_available": false },
     ] });
     let text = summary_of("update.check", updates).unwrap();
     assert!(text.contains("Saba-chan GUI") && text.contains("current=0.1.7 latest=0.1.8") && !text.contains("CLI"), "{text}");
-    assert!(summary_of("update.check", json!({ "ok": true, "updates_available": 0, "components": [] })).unwrap().contains("updates_none"));
+    assert!(summary_of("update.check", json!({ "success": true, "updates_available": 0, "components": [] })).unwrap().contains("updates_none"));
 
     let events = json!({ "events": [{ "at": 1_700_000_000, "kind": "crash" }, { "at": 1_700_000_600, "kind": "user_stop" }] });
     let text = summary_of("instance.events", events).unwrap();
@@ -524,8 +530,11 @@ async fn remote_settings_cannot_touch_launch_values_at_any_depth() {
     assert!(ok.is_ok(), "{:?}", ok);
     let create = json!({ "name": "n", "module_name": "plain", "module_settings": { "java_path": "x" } });
     assert_eq!(plan(&state, "instance.create", None, &create, &owner_bot).await.unwrap_err().code, "invalid_input");
-    // java_path는 모듈이 글자 형식으로 선언해도 막는다
-    assert_eq!(forbidden_remote_key(&json!({ "java_path": "x" }), &FieldRules::default()).as_deref(), Some("java_path"));
+    // 런타임 경로 설정(`runtime`)은 모듈이 글자 형식으로 선언해도 막는다
+    let (state, id, _tmp) = server_with(&format!("{MODULE}\n[[settings.fields]]\nname = \"jre\"\ntype = \"text\"\nlabel = \"jre\"\nruntime = \"java\"\n")).await;
+    set_node(&state, json!({ "ownerDiscordId": "owner", "chatbotCap": 2 })).await;
+    assert_eq!(plan(&state, "instance.settings.set", Some(&id), &json!({ "jre": "x" }), &owner_bot).await.unwrap_err().code, "invalid_input");
+    assert!(plan(&state, "instance.settings.set", Some(&id), &json!({ "jre": "x" }), &gui()).await.is_ok());
 }
 
 #[tokio::test]
@@ -684,7 +693,7 @@ async fn module_queries_are_safe_read_actions_on_every_surface() {
     assert_eq!((resp.status.as_u16(), resp.body["error_code"].as_str()), (400, Some("invalid_argument")));
 
     // heartbeat: 고정 액션 뒤에 모듈 조회가 모듈 이름과 함께 실린다
-    let modules = vec![crate::supervisor::module_loader::load_module_dir(&tmp.path().join("modules").join("plain")).unwrap()];
+    let modules = vec![crate::module_loader::load_module_dir(&tmp.path().join("modules").join("plain")).unwrap()];
     let (actions, truncated) = heartbeat_actions(&crate::chat::i18n::languages(), &modules);
     assert!(!truncated);
     let q = actions.iter().find(|a| a["id"] == action).unwrap();
@@ -859,11 +868,11 @@ async fn plan_summaries_never_show_stored_or_new_secrets() {
     let (state, id, _tmp) = server().await;
     set_node(&state, json!({ "ownerDiscordId": "owner", "chatbotCap": 2 })).await;
     run(&state, "instance.settings.set", Some(&id), &json!({ "players": 2 }), None, &gui()).await.unwrap();
-    assert_eq!(run(&state, "instance.settings.set", Some(&id), &json!({ "rest_password": "OLD-PW" }), None, &gui()).await.unwrap()["success"], true);
+    assert_eq!(run(&state, "instance.settings.set", Some(&id), &json!({ "admin_pass": "OLD-PW" }), None, &gui()).await.unwrap()["success"], true);
     let row = |planned: &Value, key: &str| planned["summary"].as_array().unwrap().iter().find(|r| r["labelKey"] == format!("actions.field.{}", key)).cloned().unwrap();
     // 로컬도 요약에는 가린 값만
-    let planned = plan(&state, "instance.settings.set", Some(&id), &json!({ "rest_password": "NEW-PW" }), &gui()).await.unwrap();
-    assert_eq!((row(&planned, "rest_password")["before"].clone(), row(&planned, "rest_password")["value"].clone()), (json!("***"), json!("***")));
+    let planned = plan(&state, "instance.settings.set", Some(&id), &json!({ "admin_pass": "NEW-PW" }), &gui()).await.unwrap();
+    assert_eq!((row(&planned, "admin_pass")["before"].clone(), row(&planned, "admin_pass")["value"].clone()), (json!("***"), json!("***")));
     // 묶음 값의 이전 값은 바꾸는 칸만
     let planned = plan(&state, "instance.settings.set", Some(&id), &json!({ "module_settings": { "players": 4 } }), &gui()).await.unwrap();
     assert_eq!(row(&planned, "module_settings")["before"], json!({ "players": 2 }));
@@ -1112,8 +1121,9 @@ async fn scheduling_a_command_needs_the_requesters_permission_for_it() {
         let err = plan(&state, "instance.schedule.set", Some(&id), &input, &admin).await.unwrap_err();
         assert_eq!((err.code, &err.data["args"]["need"]), ("PERMISSION_DENIED", &json!(3)), "{}", what);
     }
-    assert!(plan(&state, "instance.schedule.set", Some(&id), &task("start", None), &admin).await.is_ok(), "only the limited commands");
-    let off = json!({ "schedule": [{ "action": "command", "at": "04:00", "command": "say", "enabled": false }] });
+    let start = with_revision(&state, &id, task("start", None)).await;
+    assert!(plan(&state, "instance.schedule.set", Some(&id), &start, &admin).await.is_ok(), "only the limited commands");
+    let off = with_revision(&state, &id, json!({ "schedule": [{ "action": "command", "at": "04:00", "command": "say", "enabled": false }] })).await;
     assert!(plan(&state, "instance.schedule.set", Some(&id), &off, &admin).await.is_ok(), "a disabled task never runs");
 }
 
@@ -1244,8 +1254,8 @@ async fn port_check_reads_as_a_verdict_without_the_address() {
     let mut modules = state.supervisor.read().await.module_loader.discover_modules().unwrap();
     let (actions, _) = heartbeat_actions(&["ko"], &modules);
     assert_eq!(actions.iter().find(|a| a["id"] == "server.port_check").unwrap()["modules"], json!([]));
-    let settings = modules[0].metadata.settings.get_or_insert_with(|| crate::supervisor::module_loader::ModuleSettings { fields: Vec::new() });
-    settings.fields.push(crate::supervisor::module_loader::SettingField { name: "port".into(), port: true, public: Some("udp".into()), ..Default::default() });
+    let settings = modules[0].metadata.settings.get_or_insert_with(|| crate::module_loader::ModuleSettings { fields: Vec::new() });
+    settings.fields.push(crate::module_loader::SettingField { name: "port".into(), port: true, public: Some("udp".into()), ..Default::default() });
     let (actions, _) = heartbeat_actions(&["ko"], &modules);
     let item = actions.iter().find(|a| a["id"] == "server.port_check").unwrap();
     assert_eq!((item["modules"].clone(), item["title"]["ko"].clone(), item["surfaces"].clone()), (json!(["plain"]), json!("포트포워딩 확인"), json!(["discord"])));
@@ -1528,7 +1538,7 @@ async fn local_surfaces_ask_for_danger_and_for_stopping_a_server() {
 /// 확인 단계 값은 정해진 넷만 받는다
 #[test]
 fn the_direct_confirm_level_takes_only_known_values() {
-    let mut s = crate::ipc::handlers::discord::GuildSettings::default();
+    let mut s = crate::service::discord::GuildSettings::default();
     assert_eq!(s.confirm_level, "danger");
     s.apply(json!({ "confirmLevel": "none" }).as_object().unwrap()).unwrap();
     assert_eq!(s.confirm_level, "none");
@@ -1601,7 +1611,7 @@ async fn a_guild_can_retier_one_command_for_discord_confirms() {
 /// 명령별 위험 단계는 safe·caution·danger만 받고, null이면 지운다
 #[test]
 fn command_risks_take_known_tiers_and_null_removes() {
-    let mut s = crate::ipc::handlers::discord::GuildSettings::default();
+    let mut s = crate::service::discord::GuildSettings::default();
     s.apply(json!({ "commandRisks": { "i/server.start": "danger" } }).as_object().unwrap()).unwrap();
     assert_eq!(s.command_risks.get("i/server.start").map(String::as_str), Some("danger"));
     assert_eq!(s.apply(json!({ "commandRisks": { "i/x": "scary" } }).as_object().unwrap()).unwrap_err().0, "commandRisks.i/x");
@@ -1634,15 +1644,17 @@ async fn an_mcp_owner_reaches_what_the_app_screens_do() {
         "backup.delete",
     ] {
         assert!(ids.contains(&want), "{want} missing from the app catalog");
-        // 디스코드·챗봇 표면은 넓히지 않는다. 게임 서버 업데이트만 디스코드에도 연다 (사용자 결정 2026-11-10, 챗봇은 아니다)
+        // 디스코드·챗봇 표면은 넓히지 않는다. 게임 서버 업데이트만 디스코드에도 연다 (사용자 결정 2026-11-10, 챗봇은 아니다).
+        // 예약 읽기는 말하는 사바쨩에도 연다 (사용자 결정 2026-11-13)
         let discord_ok = want.starts_with("server.update.");
-        assert!(!find(want).unwrap().surfaces.iter().any(|s| matches!(s, Chatbot) || (matches!(s, Discord) && !discord_ok)), "{want}");
+        let chatbot_ok = want == "instance.schedule.get";
+        assert!(!find(want).unwrap().surfaces.iter().any(|s| (matches!(s, Chatbot) && !chatbot_ok) || (matches!(s, Discord) && !discord_ok)), "{want}");
     }
 
     let got = query(&state, "instance.get", Some(&id), &json!({}), &owner).await.unwrap();
     let text = got.to_string();
     assert_eq!(got["result"]["name"], "srv", "{got}");
-    assert!(!text.contains("S3CRET-REST") && !text.contains("S3CRET-MOD"), "{text}");
+    assert!(!text.contains("S3CRET-MOD"), "{text}");
     let schedule = query(&state, "instance.schedule.get", Some(&id), &json!({}), &owner).await.unwrap();
     assert!(schedule["result"]["schedule"].is_array(), "{schedule}");
     let modules = query(&state, "module.list", None, &json!({}), &owner).await.unwrap();
@@ -1896,4 +1908,133 @@ async fn the_chatbot_always_asks_before_a_stop_unless_asking_is_off() {
     // 시작은 단계를 따른다
     set_confirm(&state, "danger", "danger").await;
     assert_eq!(plan(&state, "server.start", Some(&id), &json!({}), &relay("owner", true)).await.unwrap()["needsConfirm"], false);
+}
+
+/// heartbeat `permissions[guild].required`: 릴레이가 규칙을 따로 갖지 않게 데몬이 판정과 같은 함수로 요구 레벨을 싣는다.
+/// 덮어쓰기가 없는 서버의 값(`actions`·`commands`)과, 서버마다 그와 다른 것(`servers`)만 싣는다
+#[test]
+fn the_required_snapshot_carries_the_levels_authorize_would_ask() {
+    let action = |id: &str, kind: &str, risk: &str, scope: &str| json!({ "id": id, "kind": kind, "risk": risk, "scope": scope });
+    let targets = RemoteTargets {
+        actions: vec![
+            action("server.start", "command", "safe", "instance"),
+            action("server.status", "query", "safe", "instance"),
+            action("backup.restore", "admin", "danger", "instance"),
+            action("module.install", "admin", "caution", "none"),
+            action("server.query:tps", "query", "safe", "instance"),
+        ],
+        commands: vec![("mc".into(), vec![("say".into(), "safe".into()), ("kick".into(), "danger".into())])],
+        instances: vec![("i1".into(), "mc".into()), ("i2".into(), "mc".into()), ("i3".into(), "pal".into())],
+    };
+    // 엄격 프리셋: 시작은 위험도가 아니라 유저부터다 (릴레이가 따로 셈하다 어긋났던 값)
+    let strict = NodePermissions::from_node(Some(&json!({ "preset": "strict" })));
+    let plain = required_snapshot(&strict, None, &targets);
+    assert_eq!(plain["actions"], json!({ "server.start": 1, "server.status": 1, "backup.restore": 3, "module.install": 3, "server.query:tps": 1 }));
+    assert_eq!(plain["commands"], json!({ "mc": { "say": 1, "kick": 3 } }));
+    assert_eq!(plain["servers"], json!({}), "no overrides, nothing per server");
+
+    // 덮어쓰기: 내장 명령 키(`i1/start`)는 그 액션에, 모듈 명령 키는 그 서버의 명령에만 닿는다. 서버 없는 액션은 최종값을 싣는다
+    let levels = json!({ "i1/start": 2, "i1/kick": 2, "i2/server.status": 3, "module.install": 2, "i9/say": 3 });
+    let set = NodePermissions::from_node(Some(&json!({ "commandLevels": levels })));
+    let snap = required_snapshot(&set, Some(&["i1", "i2"]), &targets);
+    assert_eq!(snap["actions"]["module.install"], 2);
+    assert_eq!(snap["actions"]["server.start"], 1);
+    assert_eq!(snap["commands"]["mc"], json!({ "say": 0, "kick": 2 }));
+    assert_eq!(snap["servers"], json!({ "i1": { "actions": { "server.start": 2 } }, "i2": { "actions": { "server.status": 3 } } }), "only what differs; kick already is 2 by default");
+    let unlisted = required_snapshot(&set, Some(&["i2"]), &targets);
+    assert!(unlisted["servers"].get("i1").is_none(), "servers the guild cannot see are left out");
+}
+
+/// 말하는 사바쨩의 예약 편집 (사용자 결정 2026-11-13): 목록을 읽을 수 있고, 읽은 판(`revision`)을 실어야 바꾼다.
+/// 확인 글은 달라지는 작업만 적고, 확인을 기다리는 사이 다른 곳에서 바뀐 일정은 덮어쓰지 않는다
+#[tokio::test]
+async fn the_chatbot_reads_the_schedule_and_changes_it_only_from_what_it_read() {
+    let (state, id, _tmp) = server().await;
+    open_everything(&state).await;
+    let chatbot = relay("owner", true);
+    let listed = list(&state, Some(Chatbot), None, "en").await;
+    let offered = |want: &str| listed["actions"].as_array().unwrap().iter().any(|a| a["id"] == want);
+    assert!(offered("instance.schedule.get") && offered("instance.schedule.set"));
+
+    let restart = json!({ "action": "restart", "at": "04:00", "enabled": true });
+    let saved = run(&state, "instance.schedule.set", Some(&id), &json!({ "schedule": [restart] }), None, &gui()).await.unwrap();
+    assert_eq!(saved["success"], true, "{saved}");
+    let read = query(&state, "instance.schedule.get", Some(&id), &json!({}), &chatbot).await.unwrap();
+    assert_eq!(read["result"]["schedule"], json!([restart]), "{read}");
+    // 실행 이력은 길어서 모델에 주지 않는다 (일정과 판이 잘리지 않게)
+    assert!(read["result"].get("history").is_none(), "{read}");
+    let revision = read["result"]["revision"].clone();
+
+    let later = json!({ "action": "restart", "at": "05:00", "enabled": true });
+    let blind = plan(&state, "instance.schedule.set", Some(&id), &json!({ "schedule": [later] }), &chatbot).await.unwrap_err();
+    assert_eq!((blind.code, &blind.data["field"]), ("invalid_input", &json!("revision")), "the chatbot must read first");
+    let stale = plan(&state, "instance.schedule.set", Some(&id), &json!({ "schedule": [later], "revision": "old" }), &chatbot).await.unwrap_err();
+    assert_eq!((stale.status, stale.code), (409, "schedule_changed"));
+    // 여러 단계 계획으로 돌아가도 같다
+    let steps = json!([{ "id": "instance.schedule.set", "instance": id, "input": { "schedule": [later] } }]);
+    assert_eq!(plan_steps(&state, &steps, &chatbot).await.unwrap_err().code, "invalid_input");
+
+    let made = plan(&state, "instance.schedule.set", Some(&id), &json!({ "schedule": [later], "revision": revision }), &chatbot).await.unwrap();
+    assert_eq!(made["text"][0]["key"], "actions.summary.schedule.changed", "{made}");
+    // 이 PC 화면의 계획에는 원격용 글을 싣지 않는다
+    let local = plan(&state, "instance.schedule.set", Some(&id), &json!({ "schedule": [later] }), &gui()).await.unwrap();
+    assert!(local.get("text").is_none(), "{local}");
+
+    // 확인을 기다리는 사이 앱에서 일정이 바뀌면 덮어쓰지 않는다
+    let saved = run(&state, "instance.schedule.set", Some(&id), &json!({ "schedule": [] }), None, &gui()).await.unwrap();
+    assert_eq!(saved["success"], true, "{saved}");
+    let ran = run(&state, "", None, &Value::Null, made["planId"].as_str(), &pressed("owner")).await.unwrap();
+    assert_eq!((&ran["success"], &ran["status"], &ran["result"]["error_code"]), (&json!(false), &json!(409), &json!("schedule_changed")), "{ran}");
+    let now = query(&state, "instance.schedule.get", Some(&id), &json!({}), &gui()).await.unwrap();
+    assert_eq!(now["result"]["schedule"], json!([]), "{now}");
+    assert!(now["result"]["history"].is_array(), "the app still gets the run history");
+}
+
+/// 챗봇에 싣는 예약 작업 모양(`schedule.items`)은 실제 작업 구조와 같은 칸을 가진다
+#[test]
+fn the_schedule_item_schema_names_the_fields_of_a_task() {
+    let (actions, _) = heartbeat_actions(&["en"], &[]);
+    let items = actions.iter().find(|a| a["id"] == "instance.schedule.set").unwrap()["input"]["properties"]["schedule"]["items"].clone();
+    let full = json!({
+        "action": "command", "every_minutes": 30, "at": "04:00", "every_days": 2, "start_date": "2026-01-01", "weekdays": ["mon"], "date": "2026-01-01",
+        "warn_minutes": [5], "message": "m", "command": "say", "args": { "a": 1 }, "enabled": true
+    });
+    let task: crate::scheduler::ScheduledTask = serde_json::from_value(full.clone()).unwrap();
+    let mut fields: Vec<String> = serde_json::to_value(&task).unwrap().as_object().unwrap().keys().cloned().collect();
+    let mut declared: Vec<String> = items["properties"].as_object().unwrap().keys().cloned().collect();
+    fields.sort();
+    declared.sort();
+    assert_eq!(declared, fields);
+    let all = crate::scheduler::TaskAction::Command;
+    assert!(items["properties"]["action"]["enum"].as_array().unwrap().contains(&serde_json::to_value(all).unwrap()));
+}
+
+/// 실패한 요청은 어느 라우트든 2xx가 아닌 상태와 `{success:false, error, error_code}`로 답한다 (D7)
+#[tokio::test]
+async fn failures_share_one_shape() {
+    let (state, _, tmp) = server().await;
+    let missing_dir = tmp.path().join("no-such-folder").to_string_lossy().replace('\\', "/");
+    let browse = format!("/api/system/browse?path={}", missing_dir);
+    let cases: Vec<(&str, &str, Option<Value>, u16, &str)> = vec![
+        ("GET", "/api/instance/nope", None, 404, "instance_not_found"),
+        ("POST", "/api/instances", Some(json!({})), 400, "invalid_request"),
+        ("POST", "/api/instance/nope/command", Some(json!({ "command": "say", "args": {} })), 404, "not_found"),
+        ("POST", "/api/modules/manifest/..%2Fx/install", None, 400, "invalid_request"),
+        ("DELETE", "/api/modules/nope", None, 404, "not_found"),
+        ("PUT", "/api/system/autostart", Some(json!({ "mode": "sometimes" })), 400, "autostart_unknown_mode"),
+        ("POST", "/api/system/paths/move", Some(json!({ "kind": "nope", "target": missing_dir })), 400, "paths_unknown_kind"),
+        ("GET", &browse, None, 404, "browse_not_found"),
+        ("POST", "/api/config/nope/reset", None, 400, "invalid_request"),
+        ("POST", "/api/client/nope/heartbeat", Some(json!({})), 404, "client_not_registered"),
+        ("POST", "/api/updates/launch-updater", None, 409, "nothing_to_apply"),
+    ];
+    let mut odd = Vec::new();
+    for (method, uri, body, status, code) in cases {
+        let res = call_as(&state, method, uri, body, None).await;
+        let shaped = res.body["success"] == json!(false) && res.body["error"].as_str().is_some_and(|text| !text.is_empty()) && res.body.get("ok").is_none();
+        if !shaped || res.status.as_u16() != status || res.body["error_code"] != json!(code) {
+            odd.push(format!("{method} {uri} → {} {}", res.status.as_u16(), res.body));
+        }
+    }
+    assert!(odd.is_empty(), "{}", odd.join("\n"));
 }

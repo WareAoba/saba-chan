@@ -12,7 +12,7 @@ describe('AddInstanceMigration 폴더 스캔', () => {
 
     it('scanDir 한 번의 결과(matches)로 모듈을 고른다', async () => {
         window.api.openFolderDialog = vi.fn().mockResolvedValue('/srv/old');
-        window.api.migrationScanDir = vi.fn().mockResolvedValue({ ok: true, matches: [{ name: 'minecraft' }] });
+        window.api.migrationScanDir = vi.fn().mockResolvedValue({ success: true, matches: [{ name: 'minecraft' }] });
         (window.api as unknown as Record<string, unknown>).moduleDetect = vi.fn();
         render(
             <AddInstanceMigration
@@ -30,7 +30,7 @@ describe('AddInstanceMigration 폴더 스캔', () => {
 
     it('스캔 뒤 경로를 고치면 옛 경로의 감지 결과를 지운다 (다른 폴더를 옛 모듈로 가져오지 않게)', async () => {
         window.api.openFolderDialog = vi.fn().mockResolvedValue('/srv/old');
-        window.api.migrationScanDir = vi.fn().mockResolvedValue({ ok: true, matches: [{ name: 'minecraft' }] });
+        window.api.migrationScanDir = vi.fn().mockResolvedValue({ success: true, matches: [{ name: 'minecraft' }] });
         render(
             <AddInstanceMigration
                 extensions={[{ name: 'minecraft', display_name: 'Minecraft Java' }] as ModuleInfo[]}
@@ -47,7 +47,7 @@ describe('AddInstanceMigration 폴더 스캔', () => {
 
     it('그 자리에 연결할지 사바쨩 폴더로 옮길지 고르고, 고른 방식으로 가져온다', async () => {
         window.api.openFolderDialog = vi.fn().mockResolvedValue('/srv/old');
-        window.api.migrationScanDir = vi.fn().mockResolvedValue({ ok: true, matches: [{ name: 'minecraft' }] });
+        window.api.migrationScanDir = vi.fn().mockResolvedValue({ success: true, matches: [{ name: 'minecraft' }] });
         const onAddServer = vi.fn().mockResolvedValue(true);
         render(
             <AddInstanceMigration
@@ -72,7 +72,7 @@ describe('AddInstanceMigration 폴더 스캔', () => {
         window.api.openFolderDialog = vi.fn().mockResolvedValue('/srv/old');
         window.api.migrationScanDir = vi
             .fn()
-            .mockResolvedValue({ ok: true, matches: [{ name: 'minecraft' }], notices: ['server_running'] });
+            .mockResolvedValue({ success: true, matches: [{ name: 'minecraft' }], notices: ['server_running'] });
         render(
             <AddInstanceMigration
                 extensions={[{ name: 'minecraft', display_name: 'Minecraft Java' }] as ModuleInfo[]}

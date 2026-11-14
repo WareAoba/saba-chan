@@ -14,7 +14,8 @@
 use crate::chat::permissions::{NodePermissions, Requester};
 use crate::ipc::internal::{into_internal, InternalResponse};
 use crate::ipc::IPCServer;
-use crate::supervisor::module_loader::{LoadedModule, ModuleQuery};
+use crate::module_loader::{LoadedModule, ModuleQuery};
+use saba_chan_updater_lib::CLI_STEM;
 use serde_json::{json, Map, Value};
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -71,6 +72,8 @@ pub struct Field {
     pub in_path: bool,
     /// 다른 조회 액션의 결과에서 고르는 값 (스키마의 `optionsFrom`)
     pub options_from: Option<OptionsFrom>,
+    /// 배열 칸의 항목 모양 (JSON Schema 글, 스키마의 `items`). 말하는 사바쨩이 항목을 만들 때 본다
+    pub items: Option<&'static str>,
 }
 
 /// 입력 칸의 값을 고를 목록: 같은 인스턴스에서 `action`을 부른 결과의 `list` 배열, 항목의 `value` 키가 값이고 `label` 키가 보일 이름
@@ -83,11 +86,11 @@ pub struct OptionsFrom {
 }
 
 const fn field(name: &'static str, ty: &'static str, required: bool) -> Field {
-    Field { name, ty, required, in_path: false, options_from: None }
+    Field { name, ty, required, in_path: false, options_from: None, items: None }
 }
 
 const fn path_field(name: &'static str) -> Field {
-    Field { name, ty: "string", required: true, in_path: true, options_from: None }
+    Field { name, ty: "string", required: true, in_path: true, options_from: None, items: None }
 }
 
 /// 액션 선언
@@ -126,6 +129,27 @@ use Surface::{Chatbot, Cli, Discord, Gui};
 const ALL: &[Surface] = &[Gui, Cli, Discord, Chatbot];
 const LOCAL: &[Surface] = &[Gui, Cli];
 const LOCAL_AND_CHATBOT: &[Surface] = &[Gui, Cli, Chatbot];
+
+/// 예약 작업 하나의 모양 (`scheduler::ScheduledTask`). 시각은 데몬 PC의 시간대다
+const SCHEDULE_ITEM: &str = r#"{
+  "type": "object",
+  "required": ["action"],
+  "description": "Set every_minutes, or at (HH:MM, the PC's local time). With at, at most one of weekdays, every_days or date; none means every day.",
+  "properties": {
+    "action": { "enum": ["backup", "restart", "announce", "update", "start", "stop", "save", "command"] },
+    "every_minutes": { "type": "integer" },
+    "at": { "type": "string" },
+    "weekdays": { "type": "array", "items": { "enum": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] } },
+    "every_days": { "type": "integer" },
+    "start_date": { "type": "string", "description": "YYYY-MM-DD, with every_days" },
+    "date": { "type": "string", "description": "YYYY-MM-DD, once" },
+    "warn_minutes": { "type": "array", "items": { "type": "integer" }, "description": "restart, update, stop: in-game warnings this many minutes before" },
+    "message": { "type": "string", "description": "announce" },
+    "command": { "type": "string", "description": "command: a game command name" },
+    "args": { "type": "object", "description": "command: input name to value" },
+    "enabled": { "type": "boolean" }
+  }
+}"#;
 const LOCAL_AND_DISCORD: &[Surface] = &[Gui, Cli, Discord];
 
 const fn def(id: &'static str, kind: Kind, risk: &'static str, surfaces: &'static [Surface], instance: bool, method: &'static str, path: &'static str) -> Def {
@@ -192,8 +216,14 @@ pub static ACTIONS: &[Def] = &[
         ..def("instance.create", Kind::Admin, "caution", LOCAL_AND_CHATBOT, false, "POST", "/api/instances")
     },
     Def { open_input: true, ..def("instance.settings.set", Kind::Admin, "caution", LOCAL_AND_CHATBOT, true, "PATCH", "/api/instance/:id") },
+    // 목록을 통째로 바꾼다: `revision`은 `instance.schedule.get`에서 읽은 판이다. 그사이 바뀐 일정은 덮어쓰지 않는다.
+    // 말하는 사바쨩은 읽은 판을 꼭 실어야 한다 (`refuse_unread_schedule`)
     Def {
-        fields: &[field("schedule", "array", true), field("backup_keep", "integer", false)],
+        fields: &[
+            Field { items: Some(SCHEDULE_ITEM), ..field("schedule", "array", true) },
+            field("backup_keep", "integer", false),
+            field("revision", "string", false),
+        ],
         ..def("instance.schedule.set", Kind::Admin, "caution", LOCAL_AND_CHATBOT, true, "PUT", "/api/instance/:id/schedule")
     },
     def("instance.delete", Kind::Admin, "danger", LOCAL, true, "DELETE", "/api/instance/:id"),
@@ -258,7 +288,8 @@ pub static ACTIONS: &[Def] = &[
     },
     // 앱 화면에서 하던 일을 액션으로 (원격 MCP가 앱과 같은 표면으로 닿게). 디스코드·챗봇 표면은 넓히지 않는다
     def("instance.get", Kind::Query, "safe", LOCAL, true, "GET", "/api/instance/:id"),
-    def("instance.schedule.get", Kind::Query, "safe", LOCAL, true, "GET", "/api/instance/:id/schedule"),
+    // 말하는 사바쨩도 읽는다: 읽어야 기존 예약을 지우지 않고 더하거나 고친다 (SINCE 0.1.14-beta.2)
+    def("instance.schedule.get", Kind::Query, "safe", LOCAL_AND_CHATBOT, true, "GET", "/api/instance/:id/schedule"),
     Def { fields: &[field("name", "string", true)], ..def("instance.rename", Kind::Admin, "caution", LOCAL, true, "POST", "/api/instance/:id/rename") },
     def("module.list", Kind::Query, "safe", LOCAL, false, "GET", "/api/modules"),
     def("module.available", Kind::Query, "safe", LOCAL, false, "GET", "/api/modules/manifest"),
@@ -318,8 +349,7 @@ pub(crate) fn is_secret_key(key: &str, password_fields: &[String]) -> bool {
     password_fields.iter().any(|f| f == key) || SECRET_KEYS.iter().any(|s| lower == *s || lower.ends_with(&format!("_{}", s)))
 }
 
-/// 원격(디스코드·챗봇)에서 바꿀 수 없는 인스턴스 키: 실행 파일·폴더·인자·메모리 상한과 그 밖으로 새는 연결 대상.
-/// `java_path`는 모듈이 어떤 형식으로 선언하든 실행 대상 검사가 인정하는 런타임이라 늘 막는다
+/// 원격(디스코드·챗봇)에서 바꿀 수 없는 인스턴스 키: 실행 파일·폴더·인자·메모리 상한과 그 밖으로 새는 연결 대상
 const LAUNCH_KEYS: &[&str] = &[
     "executable_path",
     "working_dir",
@@ -328,7 +358,6 @@ const LAUNCH_KEYS: &[&str] = &[
     "extension_data",
     "rest_host",
     "memory_limit_mb",
-    "java_path",
     // 사용 모드와 그 명단·자동 강퇴: PC 앱·웹에서만 바꾼다 (디스코드·말하는 사바쨩 불가, 사용자 지정 2026-11-08)
     "access",
     "controllers",
@@ -343,21 +372,24 @@ const LAUNCH_KEYS: &[&str] = &[
 struct FieldRules {
     /// password 형식
     secret: Vec<String>,
-    /// 실행 대상·인자가 되는 값: file 형식, path 형식, 형식·정규식 없이 실행 인자로 들어가는 글자 값
+    /// 실행 대상·인자가 되는 값: file 형식, path 형식, 형식·정규식 없이 실행 인자로 들어가는 글자 값,
+    /// 런타임 경로 설정(`runtime`: 어떤 형식으로 선언하든 실행 대상 검사가 런타임으로 인정한다), REST 접속 대상
     launch: Vec<String>,
 }
 
-fn field_rules(module: &crate::supervisor::module_loader::LoadedModule) -> FieldRules {
+fn field_rules(module: &crate::module_loader::LoadedModule) -> FieldRules {
     let mut rules = FieldRules::default();
     for f in module.metadata.settings.iter().flat_map(|s| s.fields.iter()) {
         if f.field_type == "password" {
             rules.secret.push(f.name.clone());
         }
         let free_text_arg = !f.arg.is_empty() && f.field_type == "text" && f.format.is_none() && f.pattern.is_none();
-        if f.field_type == "file" || f.format.as_deref() == Some("path") || free_text_arg {
+        if f.field_type == "file" || f.format.as_deref() == Some("path") || free_text_arg || f.runtime.is_some() {
             rules.launch.push(f.name.clone());
         }
     }
+    // 데몬이 REST로 붙을 곳을 정하는 설정 (`[protocols.rest]`)
+    rules.launch.extend(module.metadata.rest_target_settings().into_iter().map(str::to_string));
     rules
 }
 
@@ -509,6 +541,9 @@ fn schema(def: &Def) -> Value {
             if let Some(o) = &f.options_from {
                 prop["optionsFrom"] = json!({ "action": o.action, "list": o.list, "value": o.value, "label": o.label });
             }
+            if let Some(items) = f.items.and_then(|s| serde_json::from_str::<Value>(s).ok()) {
+                prop["items"] = items;
+            }
             (f.name.to_string(), prop)
         })
         .collect();
@@ -528,17 +563,14 @@ fn remote_schema(def: &Def) -> Value {
     input
 }
 
-/// 같은 일을 하는 CLI 한 줄 (I4-c "CLI로 보기"). `<server>`·`<필드>` 자리는 화면이 채운다
-/// 배포되는 CLI 실행 파일 이름
-const CLI_BIN: &str = "saba-chan-cli";
-
 /// 필수 입력마다 ` 이름=<이름>`
 fn cli_args(required: &[&str]) -> String {
     required.iter().map(|n| format!(" {}=<{}>", n, n)).collect()
 }
 
+/// 같은 일을 하는 CLI 한 줄 (I4-c "CLI로 보기"). `<server>`·`<필드>` 자리는 화면이 채운다
 fn cli_line(def: &Def) -> String {
-    let mut line = format!("{} do {}", CLI_BIN, def.id);
+    let mut line = format!("{} do {}", CLI_STEM, def.id);
     if def.instance {
         line.push_str(" --server <server>");
     }
@@ -599,7 +631,7 @@ fn command_view(cmd: &Value, locale: &Value) -> Option<Value> {
         "description": text("description").map(Value::from).or_else(|| cmd.get("description").cloned()),
         "source": cmd.get("source"),
         "route": "POST /api/instance/:id/command",
-        "cli": format!("{} do {}{} --server <server>{}", CLI_BIN, COMMAND_PREFIX, name, cli_args(&required)),
+        "cli": format!("{} do {}{} --server <server>{}", CLI_STEM, COMMAND_PREFIX, name, cli_args(&required)),
     }))
 }
 
@@ -642,7 +674,7 @@ fn query_view(query: &ModuleQuery, locale: &Value) -> Value {
         "title": query_text(locale, query, "label").unwrap_or_else(|| query.name.clone()),
         "description": query_text(locale, query, "description"),
         "route": "POST /api/instance/:id/query/:name",
-        "cli": format!("{} do {}{} --server <server>{}", CLI_BIN, QUERY_PREFIX, query.name, cli_args(&query.inputs.iter().filter(|i| i.required == Some(true)).map(|i| i.name.as_str()).collect::<Vec<_>>())),
+        "cli": format!("{} do {}{} --server <server>{}", CLI_STEM, QUERY_PREFIX, query.name, cli_args(&query.inputs.iter().filter(|i| i.required == Some(true)).map(|i| i.name.as_str()).collect::<Vec<_>>())),
     })
 }
 
@@ -698,7 +730,7 @@ pub async fn permission_board(server: &IPCServer, guild_id: &str, locale: &str) 
     let bot = server.config_store.get_bot_config().await;
     let node = bot.node_settings.get(guild_id);
     let perms = NodePermissions::from_node(node);
-    let risks = crate::ipc::handlers::discord::GuildSettings::from_node(node).unwrap_or_default().command_risks;
+    let risks = crate::service::discord::GuildSettings::from_node(node).unwrap_or_default().command_risks;
     let allowed: Option<Vec<String>> =
         node.and_then(|n| n.get("allowedInstances")).and_then(Value::as_array).map(|l| l.iter().filter_map(|v| v.as_str().map(str::to_string)).collect());
     let instances: Vec<(String, String, String)> = {
@@ -1247,6 +1279,63 @@ fn preset_need(perms: &NodePermissions, kind: Kind, risk: &str) -> i64 {
     }
 }
 
+/// 요구 레벨 스냅샷의 재료: 디스코드·챗봇에서 부를 수 있는 액션과 모듈 명령, 서버 목록 (heartbeat가 싣는 것과 같은 목록)
+#[derive(Default)]
+pub struct RemoteTargets {
+    /// heartbeat `actions` 항목 (`heartbeat_actions`): `id`·`risk`·`scope`를 읽는다
+    pub actions: Vec<Value>,
+    /// 모듈 이름 → 원격으로 부르는 명령 (이름, risk)
+    pub commands: Vec<(String, Vec<(String, String)>)>,
+    /// (인스턴스 id, 모듈 이름)
+    pub instances: Vec<(String, String)>,
+}
+
+/// heartbeat `permissions[guild].required` (SINCE 0.1.14-beta.2): 한 길드에서 액션·모듈 명령마다 지금 요구 레벨.
+/// 판정(`authorize`)·권한 계단과 같은 `required_level`로 세어, 릴레이가 규칙을 따로 갖지 않고 이 값만 읽게 한다.
+/// `actions`·`commands`는 덮어쓰기가 없는 서버에서의 값이고(서버 없는 액션은 최종값), `servers`에는 서버마다 그와 다른 것만 싣는다.
+/// `allowed`는 그 길드가 볼 수 있는 서버다 (없으면 모두)
+pub fn required_snapshot(perms: &NodePermissions, allowed: Option<&[&str]>, targets: &RemoteTargets) -> Value {
+    let instances: Vec<&(String, String)> = targets.instances.iter().filter(|(id, _)| allowed.is_none_or(|a| a.contains(&id.as_str()))).collect();
+    let mut actions = Map::new();
+    let mut commands = Map::new();
+    let mut servers: Map<String, Value> = Map::new();
+    for a in &targets.actions {
+        let Some(id) = a["id"].as_str() else { continue };
+        // 모듈 조회(`server.query:<이름>`)는 표에 없다: 권한 계단과 같이 조회로 본다
+        let def = find(id);
+        let kind = def.map_or(Kind::Query, |d| d.kind);
+        let risk = a["risk"].as_str().unwrap_or("safe");
+        let fixed = def.and_then(|d| d.discord_level);
+        if a["scope"] != "instance" {
+            actions.insert(id.to_string(), json!(required_level(perms, "", id, None, kind, risk, fixed)));
+            continue;
+        }
+        let base = fixed.unwrap_or_else(|| preset_need(perms, kind, risk));
+        actions.insert(id.to_string(), json!(base));
+        for (instance, _) in &instances {
+            let level = required_level(perms, instance, id, None, kind, risk, fixed);
+            if level != base {
+                servers.entry(instance.clone()).or_insert_with(|| json!({}))["actions"][id] = json!(level);
+            }
+        }
+    }
+    for (module, list) in &targets.commands {
+        let mut defaults = Map::new();
+        for (name, risk) in list {
+            let base = perms.default_required(name, risk);
+            defaults.insert(name.clone(), json!(base));
+            for (instance, _) in instances.iter().filter(|(_, m)| m == module) {
+                let level = perms.required(instance, name, risk);
+                if level != base {
+                    servers.entry(instance.clone()).or_insert_with(|| json!({}))["commands"][name.as_str()] = json!(level);
+                }
+            }
+        }
+        commands.insert(module.clone(), Value::Object(defaults));
+    }
+    json!({ "actions": actions, "commands": commands, "servers": servers })
+}
+
 /// 액션의 덮어쓰기 키 (먼저 보는 것부터). 내장 서버 액션은 명령 경로·권한 화면과 같은 키(`<instance>/stop` 등)가 먼저다
 fn override_keys(instance: &str, id: &str) -> Vec<String> {
     if instance.is_empty() {
@@ -1379,7 +1468,7 @@ async fn scheduled_commands(server: &IPCServer, instance: &str, body: Option<&Va
 }
 
 /// 예약 작업이 돌릴 모듈 게임 명령의 이름 (명령·공지·저장). 그 밖의 작업이나 모듈이 선언하지 않았으면 None
-pub(crate) fn scheduled_command_name(meta: &crate::supervisor::module_loader::ModuleMetadata, task: &crate::scheduler::ScheduledTask) -> Option<String> {
+pub(crate) fn scheduled_command_name(meta: &crate::module_loader::ModuleMetadata, task: &crate::scheduler::ScheduledTask) -> Option<String> {
     use crate::scheduler::TaskAction;
     match task.action {
         TaskAction::Command => task.command.clone(),
@@ -1442,7 +1531,7 @@ pub async fn needs_confirm(server: &IPCServer, action: &str, instance: Option<&s
     };
     let guild = who.guild_id.as_deref().unwrap_or("");
     let node = server.config_store.get_bot_config().await.node_settings.get(guild).cloned();
-    let settings = crate::ipc::handlers::discord::GuildSettings::from_node(node.as_ref()).unwrap_or_default();
+    let settings = crate::service::discord::GuildSettings::from_node(node.as_ref()).unwrap_or_default();
     // 길드가 이 명령의 위험 단계를 바꿨으면 그 단계로 묻는다
     let key = instance.map_or_else(|| action.to_string(), |i| format!("{i}/{action}"));
     let risk = settings.command_risks.get(&key).map_or(risk, String::as_str);
@@ -1523,10 +1612,11 @@ async fn plan_one(server: &IPCServer, id: &str, instance: Option<&str>, input: &
     let r = resolve(server, id, instance, input, caller).await?;
     authorize(server, &r, caller).await?;
     refuse_restore_while_running(server, &r).await?;
+    refuse_unread_schedule(server, &r, caller).await?;
     let summary = summarize(server, &r, &caller.locale).await;
     let plan_id = new_plan_id();
     let confirm = !confirmed && needs_confirm(server, &r.id, r.instance.as_deref(), r.kind, &r.risk, caller).await;
-    let view = json!({
+    let mut view = json!({
         "success": true,
         "planId": plan_id,
         "actionId": r.id,
@@ -1536,6 +1626,12 @@ async fn plan_one(server: &IPCServer, id: &str, instance: Option<&str>, input: &
         "needsConfirm": confirm,
         "expiresAt": expires_at(),
     });
+    // 원격 화면은 요약 줄 대신 이 글을 보인다 (`Text`, 문장은 릴레이가 만든다). 글이 없는 액션은 요약 줄 그대로
+    if caller.remote.is_some() {
+        if let Some(text) = plan_text_of(server, &r).await {
+            view["text"] = text.to_json();
+        }
+    }
     store_plan(plan_id, StoredPlan::new(PlanBody::One(Box::new(r)), caller, confirm));
     Ok(view)
 }
@@ -1693,11 +1789,39 @@ fn chat_json(reply: crate::chat::Reply, ok: bool, caller: &Caller) -> Value {
 /// 켜진 서버의 복원은 계획부터 거절한다 (먼저 끄는 단계가 앞에 있는 여러 단계 계획은 실행 때 라우트가 본다)
 async fn refuse_restore_while_running(server: &IPCServer, r: &Resolved) -> Result<(), ActionError> {
     match (r.id.as_str(), &r.instance) {
-        ("backup.restore", Some(i)) if crate::ipc::handlers::backup::is_running(server, i).await => {
+        ("backup.restore", Some(i)) if crate::service::backup::is_running(server, i).await => {
             Err(ActionError::new(409, "server_running", "Stop the server before restoring a backup"))
         }
         _ => Ok(()),
     }
+}
+
+/// 예약 바꾸기는 목록을 통째로 보낸다: 읽은 판(`revision`)이 지금과 다르면 계획부터 거절한다 (저장 때 한 번 더 본다).
+/// 말하는 사바쨩은 읽은 판 없이 바꾸지 못한다 (읽지 않고 보내면 기존 예약이 지워진다)
+async fn refuse_unread_schedule(server: &IPCServer, r: &Resolved, caller: &Caller) -> Result<(), ActionError> {
+    let ("instance.schedule.set", Some(i)) = (r.id.as_str(), &r.instance) else { return Ok(()) };
+    let sup = server.supervisor.read().await;
+    let Some(instance) = sup.instance_store.get(i) else { return Ok(()) };
+    match r.input.get("revision").and_then(Value::as_str) {
+        Some(read) if read != crate::scheduler::schedule_revision(instance) => {
+            Err(ActionError::new(409, "schedule_changed", "The schedule was changed elsewhere; read it again"))
+        }
+        None if caller.surface == Chatbot || caller.remote.as_ref().is_some_and(|w| w.via_chatbot) => {
+            Err(bad_input("revision", "read the schedule first (instance.schedule.get) and send its revision"))
+        }
+        _ => Ok(()),
+    }
+}
+
+/// 계획의 원격용 확인 글. 예약 바꾸기는 달라지는 작업만 적는다
+async fn plan_text_of(server: &IPCServer, r: &Resolved) -> Option<crate::chat::Text> {
+    let ("instance.schedule.set", Some(i)) = (r.id.as_str(), &r.instance) else { return None };
+    let after: Vec<crate::scheduler::ScheduledTask> = serde_json::from_value(r.input.get("schedule")?.clone()).ok()?;
+    let sup = server.supervisor.read().await;
+    let instance = sup.instance_store.get(i)?;
+    let keep = instance.backup_keep.unwrap_or(crate::service::backup::DEFAULT_KEEP as u32);
+    let keep_after = r.input.get("backup_keep").and_then(Value::as_u64).map_or(keep, |k| k as u32);
+    Some(summary::schedule_changes(&instance.schedule, &after, (keep, keep_after)))
 }
 
 /// 원격 설정 변경의 바꾸기 전 값 (`input`의 키마다). 인스턴스 칸에 없으면 모듈 설정에서, 그것도 없으면 Null
@@ -1954,6 +2078,12 @@ async fn execute(server: &IPCServer, r: &Resolved, caller: &Caller) -> Value {
         localize_port_labels(server, instance, &mut result, &caller.locale).await;
         hide_address(caller.surface, &mut result);
     }
+    // 예약의 실행 이력은 길다: 말하는 사바쨩에는 일정과 판이 잘리지 않게 뺀다
+    if r.id == "instance.schedule.get" && caller.surface == Chatbot {
+        if let Some(map) = result.as_object_mut() {
+            map.remove("history");
+        }
+    }
     // 백업 목록 항목에 사람이 읽을 이름을 붙인다 (복원 칸에서 고를 때 보인다)
     if ok && r.id == "backup.list" {
         summary::label_backups(&mut result, &catalog(&caller.locale));
@@ -2097,7 +2227,7 @@ async fn call(server: &IPCServer, method: &str, uri: &str, body: Option<Value>) 
 pub(crate) async fn call_as(server: &IPCServer, method: &str, uri: &str, body: Option<Value>, origin: Option<crate::audit::Origin>) -> InternalResponse {
     match route_once(server, method, uri, body, origin).await {
         Ok(resp) => into_internal(resp).await,
-        Err(e) => InternalResponse { status: axum::http::StatusCode::INTERNAL_SERVER_ERROR, body: json!({ "error": e }) },
+        Err(e) => crate::service::Failure::coded(axum::http::StatusCode::INTERNAL_SERVER_ERROR, "internal_server_error", e).into(),
     }
 }
 
@@ -2108,12 +2238,12 @@ const RAW_BODY_LIMIT: usize = 4 * 1024 * 1024;
 pub(crate) async fn call_raw_as(server: &IPCServer, method: &str, uri: &str, origin: Option<crate::audit::Origin>) -> (axum::http::StatusCode, axum::body::Bytes) {
     let resp = match route_once(server, method, uri, None, origin).await {
         Ok(resp) => resp,
-        Err(e) => return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, json!({ "error": e }).to_string().into()),
+        Err(e) => return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, json!({ "success": false, "error": e, "error_code": "internal_server_error" }).to_string().into()),
     };
     let status = resp.status();
     match axum::body::to_bytes(resp.into_body(), RAW_BODY_LIMIT).await {
         Ok(bytes) => (status, bytes),
-        Err(e) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, json!({ "error": e.to_string() }).to_string().into()),
+        Err(e) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, json!({ "success": false, "error": e.to_string(), "error_code": "internal_server_error" }).to_string().into()),
     }
 }
 

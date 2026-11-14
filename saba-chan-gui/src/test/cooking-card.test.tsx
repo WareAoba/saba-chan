@@ -78,7 +78,7 @@ describe('서버 설치 카드 (요리)', () => {
 
     it('설치가 끝난 것을 본 서버는 데몬이 진행 표시를 지운 뒤에도 완성 카드를 남긴다', async () => {
         window.api.instanceProvisionProgress = vi.fn().mockResolvedValue({ active: true, done: true, percent: 100 }) as never;
-        const { rerender } = renderHook(({ s }) => useInstanceMaintenance(s, undefined), { initialProps: { s: server } });
+        const { rerender } = renderHook(({ s }) => useInstanceMaintenance(s), { initialProps: { s: server } });
         await act(async () => {});
         expect(useMaintenanceStore.getState().byId['mc-1'].cooked).toBe(true);
         // 데몬이 5초 뒤 진행 표시를 지우면 provisioning이 false가 된다
@@ -90,7 +90,7 @@ describe('서버 설치 카드 (요리)', () => {
     it('새 설치·업데이트가 시작되면 예전 완성 카드를 지운다', async () => {
         useMaintenanceStore.getState().patch('mc-1', { cooked: true });
         window.api.instanceProvisionProgress = vi.fn().mockResolvedValue({ active: true, done: true, error: 'x' }) as never;
-        renderHook(() => useInstanceMaintenance(server, undefined));
+        renderHook(() => useInstanceMaintenance(server));
         await act(async () => {});
         expect(useMaintenanceStore.getState().byId['mc-1'].cooked).toBe(false);
     });
@@ -105,7 +105,7 @@ describe('서버 설치 카드 (요리)', () => {
 
     it('실패로 끝난 설치는 완성으로 치지 않는다', async () => {
         window.api.instanceProvisionProgress = vi.fn().mockResolvedValue({ active: true, done: true, error: 'x' }) as never;
-        renderHook(() => useInstanceMaintenance(server, undefined));
+        renderHook(() => useInstanceMaintenance(server));
         await act(async () => {});
         expect(useMaintenanceStore.getState().byId['mc-1'].cooked).toBeFalsy();
     });

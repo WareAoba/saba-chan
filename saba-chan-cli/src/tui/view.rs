@@ -125,7 +125,7 @@ fn status_label(status: &str) -> String {
 fn uptime(v: &Value) -> String {
     v.get("start_time")
         .and_then(Value::as_u64)
-        .filter(|_| s(v, "status") == "running")
+        .filter(|_| crate::output::status_of(v) == "running")
         .map(|st| {
             let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(st);
             crate::output::duration(now.saturating_sub(st))
@@ -675,12 +675,12 @@ fn draw_servers(f: &mut Frame, app: &mut App, area: Rect) {
             .servers
             .iter()
             .map(|v| {
-                let (dot, color) = status_dot(s(v, "status"));
+                let (dot, color) = status_dot(crate::output::status_of(v));
                 let name = head_fit(s(v, "name"), inner_w.saturating_sub(4));
                 let game = head_fit(s(v, "module"), inner_w.saturating_sub(name.width() + 6));
                 let pad = " ".repeat(inner_w.saturating_sub(3 + name.width() + game.width()));
                 let mut sub: Vec<String> = Vec::new();
-                if matches!(s(v, "status"), "running" | "starting") {
+                if matches!(crate::output::status_of(v), "running" | "starting") {
                     if let Some(p) = crate::output::players(v) {
                         sub.push(t!("tui.list.players", count = p));
                     }
@@ -689,7 +689,7 @@ fn draw_servers(f: &mut Frame, app: &mut App, area: Rect) {
                         sub.push(up);
                     }
                 } else {
-                    sub.push(status_label(s(v, "status")));
+                    sub.push(status_label(crate::output::status_of(v)));
                 }
                 if let Some(p) = v.get("port").filter(|p| !p.is_null()) {
                     sub.push(format!("{} {p}", t!("tui.col.port")));
@@ -718,8 +718,8 @@ fn draw_servers(f: &mut Frame, app: &mut App, area: Rect) {
         f.render_widget(Paragraph::new(Span::styled(t!("tui.no_servers"), dim())).wrap(Wrap { trim: false }), inner);
         return;
     };
-    let (dot, color) = status_dot(s(&v, "status"));
-    let block = panel(format!("{dot} {}  {}", s(&v, "name"), status_label(s(&v, "status"))), focused).title_style(Style::default().fg(color).add_modifier(Modifier::BOLD));
+    let (dot, color) = status_dot(crate::output::status_of(&v));
+    let block = panel(format!("{dot} {}  {}", s(&v, "name"), status_label(crate::output::status_of(&v))), focused).title_style(Style::default().fg(color).add_modifier(Modifier::BOLD));
     let mut inner = block.inner(right);
     f.render_widget(block, right);
     if app.narrow && inner.height > 4 {

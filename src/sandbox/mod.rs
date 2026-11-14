@@ -113,15 +113,39 @@ const BLOCKED_PROGRAMS: &[&str] = &[
 /// 그 자체로 셸이 실행하는 파일 (CreateProcess가 `.bat`·`.cmd`를 cmd로 연다)
 const SCRIPT_EXTENSIONS: &[&str] = &["bat", "cmd", "ps1", "vbs", "vbe", "js", "jse", "wsf", "wsh", "hta", "msc", "lnk", "scr"];
 
-/// `java`처럼 PATH에서 찾는 런타임으로 인정하는 이름
-const RUNTIME_NAMES: &[&str] = &["java", "javaw"];
+/// 데몬이 아는 런타임 종류 하나. module.toml 설정 필드의 `runtime = "<id>"`가 가리킨다
+pub struct RuntimeKind {
+    pub id: &'static str,
+    /// `java`처럼 PATH에서 찾는 런타임으로 인정하는 실행 파일 이름 (확장자 없이)
+    names: &'static [&'static str],
+    /// 찾은 런타임 목록(JSON 배열)을 넘기는 환경 변수. 이 종류를 선언한 모듈의 호출에만 넣는다
+    pub env: &'static str,
+    /// 데몬 환경과 알려진 설치 위치에서 찾은 런타임 목록
+    pub discover: fn() -> serde_json::Value,
+}
+
+/// 런타임 종류 표. 새 종류(.NET 등)는 여기에 한 줄과 그 탐색 함수를 더한다
+pub const RUNTIME_KINDS: &[RuntimeKind] =
+    &[RuntimeKind { id: "java", names: &["java", "javaw"], env: "SABA_JAVA_RUNTIMES", discover: discover_java }];
+
+pub fn runtime_kind(id: &str) -> Option<&'static RuntimeKind> {
+    RUNTIME_KINDS.iter().find(|k| k.id == id)
+}
+
+fn is_runtime_name(name: &str) -> bool {
+    RUNTIME_KINDS.iter().any(|k| k.names.contains(&name))
+}
+
+fn discover_java() -> serde_json::Value {
+    serde_json::json!(java_runtimes())
+}
 
 /// 실행 대상 검사에 쓰는 허용 위치
 #[derive(Debug, Default, Clone)]
 pub struct LaunchRoots {
     /// 인스턴스 폴더, 서버 폴더(작업 폴더·마이그레이션 원본)
     pub dirs: Vec<PathBuf>,
-    /// 사용자가 설정한 런타임 경로 (이름이 `RUNTIME_NAMES`일 때만 인정)
+    /// 사용자가 설정한 런타임 경로 (이름이 `RUNTIME_KINDS`의 실행 파일 이름일 때만 인정)
     pub runtimes: Vec<PathBuf>,
 }
 
@@ -154,7 +178,7 @@ pub fn check_launch(program: &str, roots: &LaunchRoots) -> Result<(), &'static s
     }
     // 경로 없는 이름: PATH의 java 같은 런타임만
     if path.components().count() == 1 && !path.is_absolute() {
-        return if RUNTIME_NAMES.contains(&name.as_str()) { Ok(()) } else { Err(OUTSIDE) };
+        return if is_runtime_name(&name) { Ok(()) } else { Err(OUTSIDE) };
     }
     // 모듈이 준 경로는 파일 시스템에 묻기 전에 거른다 (UNC 등)
     if !plain_local_path(path) {
@@ -163,7 +187,7 @@ pub fn check_launch(program: &str, roots: &LaunchRoots) -> Result<(), &'static s
     // 링크·`..`로 빠져나가지 않게 실제 경로로 비교한다. 없는 파일은 거부
     let Ok(real) = std::fs::canonicalize(path) else { return Err(OUTSIDE) };
     let inside = roots.dirs.iter().filter_map(|d| std::fs::canonicalize(d).ok()).any(|d| real.starts_with(d));
-    let runtime = RUNTIME_NAMES.contains(&name.as_str())
+    let runtime = is_runtime_name(&name)
         && roots.runtimes.iter().filter_map(|r| std::fs::canonicalize(r).ok()).any(|r| r == real);
     if inside || runtime {
         Ok(())
@@ -706,7 +730,7 @@ fn java_major(version: &str) -> Option<u32> {
 /// `release` 파일이 있는 JDK·JRE 폴더만 인정한다 (`bin`이 있는 아무 도구 폴더를 통째로 열지 않는다)
 fn runtime_home(exe: &Path) -> Option<PathBuf> {
     let real = std::fs::canonicalize(exe).ok()?;
-    if !real.is_file() || !RUNTIME_NAMES.contains(&stem(&real).as_str()) {
+    if !real.is_file() || !is_runtime_name(&stem(&real)) {
         return None;
     }
     let bin = real.parent()?;
@@ -728,7 +752,7 @@ pub fn plain_local_path(path: &Path) -> bool {
     }
 }
 
-/// 사용자가 설정에서 정한 런타임(`java_path`)을 그 구성요소의 격리 실행에 연다 (Windows, 확인되지 않은 것만).
+/// 사용자가 런타임 경로 설정에 정한 런타임(`java_path`: 그 실행 파일 경로)을 그 구성요소의 격리 실행에 연다 (Windows, 확인되지 않은 것만).
 /// 설정을 저장할 때 데몬이 부른다: 실행 때 받는 config의 값은 모듈 기본값과 구별할 수 없다
 pub fn open_user_runtime(entry: &Path, java_path: &str) {
     if !cfg!(windows) || !restricted(trust_of_entry(entry)) {
@@ -835,7 +859,7 @@ pub fn reset() -> Result<usize, Vec<String>> {
 }
 
 /// 데몬이 시작할 때: 예전에 준 런타임 읽기 권한 중 지금 쓰지 않는 것을 거둔다. 지금 쓰는 것은 데몬이 아는 런타임과
-/// 인스턴스마다 사용자가 정한 `java_path`(`(모듈 진입 파일, java_path)`)다. Windows에서만 한다
+/// 인스턴스마다 사용자가 런타임 경로 설정에 정한 값(`(모듈 진입 파일, 런타임 실행 파일 경로)`)이다. Windows에서만 한다
 pub fn reconcile_runtimes(user_runtimes: &[(String, String)]) {
     if !cfg!(windows) {
         return;
@@ -870,7 +894,7 @@ fn runtime_homes_in(java_path: Option<&str>, java_home: Option<&OsStr>, path: Op
                 return Vec::new();
             }
             exes.push(java.to_path_buf());
-        } else if java.components().count() == 1 && RUNTIME_NAMES.contains(&stem(java).as_str()) {
+        } else if java.components().count() == 1 && is_runtime_name(&stem(java)) {
             exes.extend(find_on_path(&stem(java), path).into_iter().next());
         }
     }
@@ -956,7 +980,7 @@ fn runtime_executables(homes: Vec<PathBuf>) -> Vec<PathBuf> {
 
 /// 확인되지 않은 구성요소의 Python 실행이면 격리 계획을 만든다. `config`의 `instance_dir`·`working_dir`에
 /// 쓰기를 준다 (데몬이 넣는 값. 데이터 폴더 자체와 그 위는 `Grants::push`가 버린다)
-pub fn isolation_for(entry: &Path, config: &Value, python_exe: &Path) -> Option<Isolation> {
+pub fn isolation_for(entry: &Path, config: &Value, runtime_settings: &[String], python_exe: &Path) -> Option<Isolation> {
     use appcontainer::Access;
     if !python_isolation_required(trust_of_entry(entry)) {
         return None;
@@ -1057,10 +1081,12 @@ pub fn isolation_for(entry: &Path, config: &Value, python_exe: &Path) -> Option<
             grants.shared.push(entry);
         }
     }
-    // 설정한 Java: Windows는 설정을 저장할 때 연다(`open_user_runtime`). 리눅스는 실행마다 붙이므로 여기서 붙인다.
-    // 모듈 기본값과 구별할 수 없지만 Java 설치 모양인 폴더(`runtime_home`)를 읽기로만 붙인다
+    // 런타임 경로 설정(`runtime_settings`)에 정한 런타임: Windows는 설정을 저장할 때 연다(`open_user_runtime`). 리눅스는 실행마다
+    // 붙이므로 여기서 붙인다. 모듈 기본값과 구별할 수 없지만 런타임 설치 모양인 폴더(`runtime_home`)를 읽기로만 붙인다
+    #[cfg(windows)]
+    let _ = runtime_settings;
     #[cfg(not(windows))]
-    if let Some(java) = config.get("java_path").and_then(Value::as_str) {
+    for java in runtime_settings.iter().filter_map(|name| config.get(name).and_then(Value::as_str)) {
         let runtimes = runtime_homes_in(Some(java), None, std::env::var_os("PATH").as_deref(), &[]);
         for runtime in &runtimes {
             grants.push_optional(runtime, Access::Read, &data_dir, home);
@@ -1312,11 +1338,11 @@ mod tests {
         std::fs::write(venv.join("pyvenv.cfg"), format!("home = {}\n", base.join("bin").display())).unwrap();
         let entry = root.join("lifecycle.py");
         std::fs::write(&entry, "").unwrap();
-        let iso = isolation_for(&entry, &serde_json::json!({}), &venv.join("bin").join("python")).unwrap();
+        let iso = isolation_for(&entry, &serde_json::json!({}), &[], &venv.join("bin").join("python")).unwrap();
         assert!(iso.grants.entries.contains(&(base, appcontainer::Access::Read)), "{:?}", iso.grants.entries);
     }
 
-    /// 리눅스는 실행마다 붙이므로, 설정한 Java(`java_path`)도 그 실행에 읽기로 붙인다 (Java 설치 모양인 폴더만)
+    /// 리눅스는 실행마다 붙이므로, 런타임 경로 설정에 정한 Java도 그 실행에 읽기로 붙인다 (Java 설치 모양인 폴더만)
     #[cfg(not(windows))]
     #[test]
     fn a_configured_java_is_mounted_for_the_run() {
@@ -1328,14 +1354,15 @@ mod tests {
         std::fs::write(jdk.join("release"), "JAVA_VERSION=\"21\"\n").unwrap();
         let entry = root.join("lifecycle.py");
         std::fs::write(&entry, "").unwrap();
-        let config = serde_json::json!({ "java_path": jdk.join("bin").join("java") });
-        let iso = isolation_for(&entry, &config, Path::new("python")).unwrap();
+        let config = serde_json::json!({ "jre": jdk.join("bin").join("java"), "java_path": root.join("other").join("bin").join("java") });
+        let declared = ["jre".to_string()];
+        let iso = isolation_for(&entry, &config, &declared, Path::new("python")).unwrap();
         assert!(iso.grants.entries.contains(&(jdk.clone(), appcontainer::Access::Read)), "{:?}", iso.grants.entries);
         // `~/.sdkman/.../current/bin/java`처럼 링크를 거친 설정 경로도 격리 안에서 그대로 실행되게 링크를 남긴다
         let current = root.join("current");
         std::os::unix::fs::symlink(&jdk, &current).unwrap();
-        let config = serde_json::json!({ "java_path": current.join("bin").join("java") });
-        let iso = isolation_for(&entry, &config, Path::new("python")).unwrap();
+        let config = serde_json::json!({ "jre": current.join("bin").join("java") });
+        let iso = isolation_for(&entry, &config, &declared, Path::new("python")).unwrap();
         assert!(iso.grants.entries.contains(&(jdk, appcontainer::Access::Read)), "{:?}", iso.grants.entries);
         assert!(iso.grants.links.contains(&current), "{:?}", iso.grants.links);
     }
@@ -1347,7 +1374,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let entry = tmp.path().join("lifecycle.py");
         std::fs::write(&entry, "").unwrap();
-        assert!(isolation_for(&entry, &serde_json::json!({}), Path::new("python")).is_some());
+        assert!(isolation_for(&entry, &serde_json::json!({}), &[], Path::new("python")).is_some());
     }
 
     #[cfg(not(windows))]

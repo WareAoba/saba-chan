@@ -208,8 +208,9 @@ def test_port_conflict_between_instances_is_refused(daemon, fake_server):
     daemon.start_instance(a)
     daemon.wait_console(a, DONE)
     r = daemon.api.post(f"/api/instance/{b}/start")
-    # 시작 실패를 HTTP 200 + success:false로 돌려준다 (실패 상태 코드가 섞여 있다: 01 §2.1)
+    # 감독자가 켜기 전에 거절한 것은 409다 (01 §2.1, 0.1.14-beta.2~)
     body = r.json()
+    assert r.status_code == 409, r.text
     assert body.get("success") is False and body.get("error_code") == "port_conflict", r.text
     assert daemon.server_status(b) == "stopped"
     assert daemon.server_status(a) == "running"
@@ -222,8 +223,9 @@ def test_port_used_by_foreign_process_is_reported(mc):
         squatter.listen()
         r = daemon.api.post(f"/api/instance/{iid}/start")
         daemon.wait_status(iid, "stopped", timeout=30)
-    # 인스턴스끼리 겹칠 때와 같은 응답이다 (HTTP 200 + success:false)
+    # 인스턴스끼리 겹칠 때와 같은 응답이다 (HTTP 409 + success:false)
     body = r.json()
+    assert r.status_code == 409, r.text
     assert body.get("success") is False and body.get("error_code") == "port_conflict", r.text
     assert any(str(port) in c for c in body.get("conflicts", [])), r.text
 

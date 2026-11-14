@@ -2,7 +2,8 @@ import { create } from 'zustand';
 import type { CommandAliasInfo, ModuleInfo, ModuleLoadError, ServerInfo } from '../types/daemon';
 import { debugWarn, retryWithBackoff, safeShowToast, waitForDaemon } from '../utils/helpers';
 import { branchesUnderParents } from '../utils/serverView';
-import { resetServerActions, type ServerActions, serverActions } from './serverActions';
+import { type ServerActions, serverActions } from './serverActions';
+import { resetServerActions } from './serverActionsState';
 import { serverI18n, t, translateError } from './serverI18n';
 import { useUIStore } from './useUIStore';
 

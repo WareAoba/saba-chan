@@ -52,6 +52,17 @@ pub fn is_downgrade(installed: &str, offered: &str) -> bool {
     matches!((SemVer::parse(installed), SemVer::parse(offered)), (Some(i), Some(o)) if i > o)
 }
 
+/// 최소 버전 요구(`">=1.2.0"` 또는 `"1.2.0"`)의 그 버전. 읽지 못하면 None
+pub fn min_required(req: &str) -> Option<SemVer> {
+    SemVer::parse(req.trim_start_matches(">=").trim())
+}
+
+/// `have`가 최소 버전 요구 `req`를 만족하는가. 모듈 의존성·익스텐션 의존성·업데이트 `requires`가 같이 쓴다.
+/// 둘 중 하나라도 읽지 못하면 만족하지 않는다
+pub fn satisfies(have: &str, req: &str) -> bool {
+    matches!((SemVer::parse(have), min_required(req)), (Some(have), Some(min)) if have >= min)
+}
+
 impl fmt::Display for SemVer {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}.{}.{}", self.major, self.minor, self.patch)?;
@@ -118,6 +129,24 @@ impl PartialOrd for SemVer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 요구는 `>=`가 있든 없든 최소 버전이고, 프리릴리스는 같은 판의 정식보다 낮다. 읽지 못하면 만족하지 않는다
+    #[test]
+    fn a_requirement_is_a_minimum_version() {
+        for (have, req, ok) in [
+            ("0.1.15", ">=0.1.15", true),
+            ("0.1.15", "0.1.15", true),
+            ("0.2.0", ">= 0.1.15", true),
+            ("0.1.14", ">=0.1.15", false),
+            ("0.1.15-0", ">=0.1.15", false),
+            ("0.1.15", ">=0.1.15-0", true),
+            ("0.1.15-beta.2", ">=0.1.15-beta.10", false),
+            ("0.1.15", ">=latest", false),
+            ("dev", ">=0.1.0", false),
+        ] {
+            assert_eq!(satisfies(have, req), ok, "{have} vs {req}");
+        }
+    }
 
     #[test]
     fn parse_basic() {

@@ -23,7 +23,7 @@ function mockApi(overrides = {}) {
             settingsGetPath: vi.fn().mockResolvedValue('/mock/settings.json'),
             botConfigLoad: vi.fn().mockResolvedValue({}),
             botConfigSave: vi.fn().mockResolvedValue({ success: true }),
-            discordBotStatus: vi.fn().mockResolvedValue('stopped'),
+            discordBotStatus: vi.fn().mockResolvedValue({ status: 'stopped', running: false, link: { connected: false, error: '', heard: true } }),
             daemonStatus: vi.fn().mockResolvedValue({ running: true }),
             ...overrides,
         },

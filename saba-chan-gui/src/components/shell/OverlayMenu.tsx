@@ -25,21 +25,16 @@ function initialScale() {
 export function OverlayMenu() {
     const { t } = useTranslation('gui');
     const rootRef = useRef<HTMLDivElement>(null);
-    const { daemonUp, servers, remote, refresh } = useQuickServers();
+    const { daemonUp, servers, remote, refresh } = useQuickServers(REFRESH_MS);
     const [scale, setScale] = useState(initialScale);
 
     useEffect(() => {
-        refresh();
-        const timer = setInterval(refresh, REFRESH_MS);
         const onKey = (e: KeyboardEvent) => {
             if (e.key === 'Escape') window.api?.overlayAction?.('close');
         };
         window.addEventListener('keydown', onKey);
-        return () => {
-            clearInterval(timer);
-            window.removeEventListener('keydown', onKey);
-        };
-    }, [refresh]);
+        return () => window.removeEventListener('keydown', onKey);
+    }, []);
 
     usePanelFit(rootRef, (height) => window.api?.overlayMenuFit?.(height));
 

@@ -267,7 +267,7 @@ fn dispatch(
     streams: &Streams,
 ) {
     let id = frame.get("id").cloned().unwrap_or(Value::Null);
-    let busy = || json!({ "ok": false, "success": false, "error": "Too many requests", "error_code": "remote_busy" });
+    let busy = || json!({ "success": false, "error": "Too many requests", "error_code": "remote_busy" });
     let req = request_of(frame);
     if exec::is_stream(&req) {
         let token = CancellationToken::new();

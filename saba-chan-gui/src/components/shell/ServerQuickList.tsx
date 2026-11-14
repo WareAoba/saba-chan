@@ -1,7 +1,10 @@
 import clsx from 'clsx';
-import { type RefObject, useCallback, useLayoutEffect, useRef, useState } from 'react';
+import { type RefObject, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import type { ServerAction } from '../../extensions/host';
 import type { ServerInfo } from '../../types/daemon';
+import { failed } from '../../utils/apiResult';
+import { SERVER_CHANGING, subscribeDaemonEvents } from '../../utils/daemonEvents';
 import { isTransitional, playersText, primaryAction, STATUS_TONE, viewStatus } from '../../utils/serverView';
 import { Icon } from '../Icon';
 import { StatusChip } from '../ui/StatusChip';
@@ -13,11 +16,12 @@ export interface RemoteState {
 }
 
 /**
- * 작은 판 창(트레이 팝업·펫 우클릭 판)이 보이는 데몬 상태와 서버 목록.
+ * 메인 창 밖의 작은 창(트레이 팝업·펫 우클릭 판·바탕화면 펫)이 보이는 데몬 상태와 서버 목록.
+ * `refreshMs`마다, 그리고 서버가 바뀌었다는 데몬 이벤트가 오면 다시 읽는다.
  * 상단 바에서 원격 데몬을 골랐으면 목록이 그 데몬의 것이라, 그 데몬의 이름과 닿는지(`remote`)를 함께 본다.
  * 닿지 않는 원격 데몬의 지난 목록은 남기지 않는다
  */
-export function useQuickServers() {
+export function useQuickServers(refreshMs: number) {
     const [daemonUp, setDaemonUp] = useState<boolean | null>(null);
     const [servers, setServers] = useState<ServerInfo[]>([]);
     const [remote, setRemote] = useState<RemoteState | null>(null);
@@ -57,7 +61,44 @@ export function useQuickServers() {
         if (reachable) setServers(list.servers as ServerInfo[]);
     }, []);
 
-    return { daemonUp, servers, remote, targetRef, refresh };
+    useEffect(() => {
+        refresh();
+        const timer = setInterval(refresh, refreshMs);
+        const off = subscribeDaemonEvents((ev) => {
+            if (SERVER_CHANGING.includes(ev.type)) refresh();
+        });
+        return () => {
+            clearInterval(timer);
+            off();
+        };
+    }, [refresh, refreshMs]);
+
+    /**
+     * 익스텐션 slot의 `host.run`. 원격 데몬 서버의 정지·재시작은 창에서 두 번 눌러 확정하므로 익스텐션은 하지 못한다:
+     * 이 PC 데몬이라고 확인한 때(targetRef null)에만 보낸다. 아직 모르면(undefined) 원격으로 본다
+     */
+    const run = useCallback(
+        async (instanceId: string, action: ServerAction) => {
+            if (action !== 'start' && targetRef.current !== null) return false;
+            const call =
+                action === 'start'
+                    ? window.api.instanceStart
+                    : action === 'stop'
+                      ? window.api.instanceStop
+                      : window.api.instanceRestart;
+            if (typeof call !== 'function') return false;
+            try {
+                return !failed(await call(instanceId));
+            } catch {
+                return false;
+            } finally {
+                refresh();
+            }
+        },
+        [refresh],
+    );
+
+    return { daemonUp, servers, remote, run, refresh };
 }
 
 /** 판 내용 높이(논리 px)가 바뀔 때마다 셸에 알린다. 셸은 첫 알림에 판을 놓고 보인다 */
@@ -115,7 +156,7 @@ interface ServerQuickListProps {
 export function ServerQuickList({ servers, confirmStop, refresh }: ServerQuickListProps) {
     const { t } = useTranslation('gui');
     const [busy, setBusy] = useState<Record<string, boolean>>({});
-    const [failed, setFailed] = useState<Record<string, boolean>>({});
+    const [actionFailed, setActionFailed] = useState<Record<string, boolean>>({});
     const [armed, setArmed] = useState<string | null>(null); // 두 번 눌러 확정할 정지 (서버 id)
 
     if (servers.length === 0) return <p className="quick-panel-empty">{t('tray_popup.no_servers')}</p>;
@@ -127,15 +168,15 @@ export function ServerQuickList({ servers, confirmStop, refresh }: ServerQuickLi
         }
         setArmed(null);
         setBusy((b) => ({ ...b, [server.id]: true }));
-        setFailed((f) => ({ ...f, [server.id]: false }));
+        setActionFailed((f) => ({ ...f, [server.id]: false }));
         try {
             const res =
                 action === 'stop'
                     ? await window.api.instanceStop(server.id)
                     : await window.api.instanceStart(server.id);
-            if (res?.error || res?.success === false) setFailed((f) => ({ ...f, [server.id]: true }));
+            if (failed(res)) setActionFailed((f) => ({ ...f, [server.id]: true }));
         } catch {
-            setFailed((f) => ({ ...f, [server.id]: true }));
+            setActionFailed((f) => ({ ...f, [server.id]: true }));
         }
         setBusy((b) => ({ ...b, [server.id]: false }));
         refresh();
@@ -158,8 +199,8 @@ export function ServerQuickList({ servers, confirmStop, refresh }: ServerQuickLi
                             aria-hidden="true"
                         />
                         <span className="quick-panel-server-name">{server.name}</span>
-                        <span className={clsx('quick-panel-server-meta', { failed: failed[server.id] })}>
-                            {failed[server.id] ? t('tray_popup.action_failed') : players || t(`shell.status_${status}`)}
+                        <span className={clsx('quick-panel-server-meta', { failed: actionFailed[server.id] })}>
+                            {actionFailed[server.id] ? t('tray_popup.action_failed') : players || t(`shell.status_${status}`)}
                         </span>
                         {confirming ? (
                             <button

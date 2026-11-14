@@ -679,6 +679,7 @@
   "run": {
     "confirm_danger": "{{label}} auf {{name}} ist nicht rückgängig zu machen. Ausführen?",
     "missing_arg": "{{label}} fehlt. Verwendung: {{usage}}",
+    "must_be_boolean": "{{label}} muss true oder false sein (on/off, yes/no).",
     "must_be_number": "{{label}} muss eine Zahl sein.",
     "must_be_one_of": "{{label}} muss eines davon sein: {{options}}",
     "no_commands": "Dieses Spiel hat keine festen Befehle. Direkt an die Konsole senden: saba-chan-cli server send NAME \"line\"",

@@ -22,7 +22,7 @@ beforeEach(() => {
     useDiscordStore.getState()._resetForTest();
     useDiscordStore.setState({ _botConfigLoaded: true, discordCloudHostId: 'host' });
     window.api = {
-        discordBotStatus: vi.fn().mockResolvedValue('running'),
+        discordBotStatus: vi.fn().mockResolvedValue({ status: 'running', running: true, link: { connected: false, error: '', heard: true } }),
         relayCheckHostStatus: vi.fn(),
     } as unknown as typeof window.api;
 });

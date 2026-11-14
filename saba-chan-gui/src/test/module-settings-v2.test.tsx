@@ -1,8 +1,8 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { TFunction } from 'i18next';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
-import { changedForCli } from '../components/CliLine';
-import { SettingsField } from '../components/ServerSettingsModal';
+import { changedForCli } from '../utils/cliValues';
+import { SettingsField } from '../components/ServerSettingsParts';
 import { settleLaunchArgs } from '../stores/useServerSettingsStore';
 import type { Server } from '../stores/useServerStore';
 import type { ModuleInfo, SettingField } from '../types/daemon';
@@ -341,6 +341,7 @@ describe('공통 칸을 가리키는 visible_when', () => {
             status: 'stopped',
             [name]: now,
             module_settings: { [name]: stale },
+            stored: { [name]: now },
         } as unknown as Server;
         window.api = {
             serverList: vi.fn().mockResolvedValue(null),

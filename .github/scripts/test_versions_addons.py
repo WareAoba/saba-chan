@@ -156,6 +156,36 @@ class ModuleCatalogMeta(unittest.TestCase):
             self.assertNotIn(key, meta)
 
 
+class ExtensionCatalogMeta(unittest.TestCase):
+    """받기 전 익스텐션 목록도 앱 언어의 설명과 아이콘을 보이도록 manifest의 `descriptions`와 아이콘 주소를 meta에 싣는다"""
+
+    def meta(self, manifest, icon=True, ref="abc123"):
+        with tempfile.TemporaryDirectory() as d:
+            repo = Path(d) / "extensions"
+            ext = repo / "pet"
+            ext.mkdir(parents=True)
+            (ext / "manifest.json").write_text(manifest, encoding="utf-8")
+            if icon:
+                (ext / "icon.png").write_bytes(b"png")
+            args = type("Args", (), {"modules_repo": None, "extensions_repo": str(repo), "addons_ref": None,
+                                     "extensions_ref": ref})()
+            assets = Path(d) / "assets"
+            assets.mkdir()
+            return versions.addon_components(args, assets)["ext-pet"]["meta"]
+
+    def test_translated_descriptions_and_icon_go_into_meta(self):
+        meta = self.meta('{"id": "pet", "name": "Pet", "version": "0.1.0", "description": "A pet",'
+                         ' "descriptions": {"ko": "펫", "ja": "ペット"}}')
+        self.assertEqual(meta["descriptions"], {"ko": "펫", "ja": "ペット"})
+        self.assertEqual(meta["icon"], "https://raw.githubusercontent.com/WareAoba/saba-chan-extensions/abc123/pet/icon.png")
+
+    def test_no_icon_file_or_ref_leaves_icon_out(self):
+        body = '{"id": "pet", "name": "Pet", "version": "0.1.0"}'
+        self.assertNotIn("icon", self.meta(body, icon=False))
+        self.assertNotIn("icon", self.meta(body, ref=None))
+        self.assertNotIn("descriptions", self.meta(body))
+
+
 if __name__ == "__main__":
     unittest.main()
 

@@ -55,12 +55,11 @@ fn find_in_path(name: &str) -> Option<std::path::PathBuf> {
 pub async fn uninstall(body: Option<Json<UninstallBody>>) -> axum::response::Response {
     let body = body.map(|Json(b)| b).unwrap_or(UninstallBody { keep_settings: true, keep_instances: true });
     if cfg!(windows) {
-        return (StatusCode::NOT_IMPLEMENTED, Json(json!({ "ok": false, "error_code": "unsupported", "error": "Remote uninstall is not available on Windows" })))
-            .into_response();
+        return super::error(StatusCode::NOT_IMPLEMENTED, "unsupported", "Remote uninstall is not available on Windows");
     }
-    let cli = std::env::current_exe().ok().and_then(|me| me.parent().map(|d| d.join("saba-chan-cli"))).filter(|p| p.is_file());
+    let cli = std::env::current_exe().ok().and_then(|me| me.parent().map(|d| d.join(saba_chan_updater_lib::CLI_EXE))).filter(|p| p.is_file());
     let Some(cli) = cli else {
-        return (StatusCode::CONFLICT, Json(json!({ "ok": false, "error_code": "cli_missing", "error": "saba-chan-cli is not next to the daemon" }))).into_response();
+        return super::error(StatusCode::CONFLICT, "cli_missing", "saba-chan-cli is not next to the daemon");
     };
     let systemd_run = cfg!(target_os = "linux").then(|| find_in_path("systemd-run")).flatten().filter(|_| std::env::var_os("XDG_RUNTIME_DIR").is_some());
     let (program, args) = uninstall_command(&cli, body.keep_settings, body.keep_instances, systemd_run.as_deref());
@@ -73,9 +72,9 @@ pub async fn uninstall(body: Option<Json<UninstallBody>>) -> axum::response::Res
     match spawned {
         Ok(_) => {
             tracing::warn!("Uninstall requested by a paired PC (keep settings: {}, keep servers: {})", body.keep_settings, body.keep_instances);
-            (StatusCode::ACCEPTED, Json(json!({ "ok": true }))).into_response()
+            (StatusCode::ACCEPTED, Json(json!({ "success": true }))).into_response()
         }
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "ok": false, "error_code": "spawn_failed", "error": e.to_string() }))).into_response(),
+        Err(e) => super::error(StatusCode::INTERNAL_SERVER_ERROR, "spawn_failed", e.to_string()),
     }
 }
 

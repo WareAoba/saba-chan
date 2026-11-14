@@ -18,7 +18,7 @@ const modules = [
         },
     },
 ];
-const server = { id: 's1', name: 'S', module: 'dl', status: 'stopped', module_settings: { motd: 'a', port: 1 } };
+const server = { id: 's1', name: 'S', module: 'dl', status: 'stopped', module_settings: { motd: 'a', port: 1 }, stored: { motd: 'a', port: 1 } };
 const make = (settingsValues: Record<string, unknown>, extra: Record<string, unknown> = {}) =>
     ({
         section: 'server',

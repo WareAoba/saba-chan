@@ -281,7 +281,16 @@ impl NodePermissions {
             .get(&format!("{}/{}", instance_id, command))
             .or_else(|| action_key().and_then(|k| self.command_levels.get(&k)))
             .copied()
-            .unwrap_or_else(|| if LIFECYCLE_COMMANDS.contains(&command) { self.nearest_builtin(USER, true) } else { self.preset_need(risk) })
+            .unwrap_or_else(|| self.default_required(command, risk))
+    }
+
+    /// 덮어쓰기가 없을 때 이 명령의 요구 레벨: 시작·정지·재시작은 유저부터, 나머지는 프리셋의 risk별 레벨
+    pub fn default_required(&self, command: &str, risk: &str) -> i64 {
+        if LIFECYCLE_COMMANDS.contains(&command) {
+            self.nearest_builtin(USER, true)
+        } else {
+            self.preset_need(risk)
+        }
     }
 
     fn denied(&self, who: &Requester, need: i64) -> Denied {

@@ -151,7 +151,8 @@ jobs:
           python scripts/versions.py addons --assets addon-assets \
             --base-url "${{ vars.R2_PUBLIC_BASE }}" --published published.json \
             --modules-repo addons/modules --extensions-repo addons/extensions \
-            --addons-ref "$(git -C addons/modules rev-parse HEAD)" --out addon-entries.json
+            --addons-ref "$(git -C addons/modules rev-parse HEAD)" --extensions-ref "$(git -C addons/extensions rev-parse HEAD)" \
+            --out addon-entries.json
           count=$(python -c "import json;print(len(json.load(open('addon-entries.json'))))")
           echo "count=$count" >> "$GITHUB_OUTPUT"
           python -c "import json;[print(e['key'], e['version']) for e in json.load(open('addon-entries.json'))]" | tee -a "$GITHUB_STEP_SUMMARY"

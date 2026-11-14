@@ -245,8 +245,8 @@ fn health_rule(launched: &Launched, old_pid: Option<u32>, since_ms: u64) -> live
 }
 
 fn is_daemon_exe(cmd: &str) -> bool {
-    let name = cmd.rsplit(['/', '\\']).next().unwrap_or(cmd);
-    name.eq_ignore_ascii_case("saba-core") || name.eq_ignore_ascii_case("saba-core.exe")
+    let name = cmd.rsplit(['/', '\\']).next().unwrap_or(cmd).to_ascii_lowercase();
+    name.strip_suffix(".exe").unwrap_or(&name) == saba_chan_updater_lib::CORE_STEM
 }
 
 /// 되돌린 뒤 이전 판을 띄우는 명령. 서비스는 이미 떠 있을 수 있으니(관리자가 새 판을 다시 띄움) 다시 시작한다:
@@ -443,12 +443,6 @@ fn resolve_gui_exe() -> Option<PathBuf> {
     saba_chan_updater_lib::find_gui_exe(&resolve_install_root_from_exe()?)
 }
 
-fn resolve_modules_dir() -> String {
-    let p = constants::resolve_modules_dir();
-    if !p.exists() { let _ = std::fs::create_dir_all(&p); }
-    p.to_string_lossy().to_string()
-}
-
 /// 다시 띄울 실행 파일: `--relaunch`로 받은 것, 없으면 설치된 GUI.
 /// 받은 것이 GUI인데 업데이트로 비켜났으면(0.1.1의 `Saba-chan.exe` → `saba-chan-gui.exe`) 설치된 GUI
 fn relaunch_command(requested: Option<String>, installed_gui: Option<PathBuf>) -> Option<String> {
@@ -636,7 +630,7 @@ pub(crate) fn run(args: &[String]) {
         tracing::info!("[Apply] Install root (from exe): {}", root_str);
         cfg.install_root = Some(root_str);
     }
-    let modules_dir = resolve_modules_dir();
+    let modules_dir = constants::ensure_modules_dir().to_string_lossy().to_string();
 
     if headless {
         std::process::exit(run_headless(UpdateManager::new(cfg, &modules_dir), relaunch_exe, relaunch_extra, wait_pid));

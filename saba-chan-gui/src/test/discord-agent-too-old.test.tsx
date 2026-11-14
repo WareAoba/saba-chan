@@ -32,10 +32,10 @@ describe('릴레이가 받지 않는 앱 버전', () => {
     it('브리지는 세션이 살아 있어도 too_old와 최소 버전을 준다', async () => {
         const invoke = vi.fn().mockResolvedValue({
             status: 200,
-            data: { running: true, lastErrorCode: 'agent_too_old', minVersion: '0.1.9' },
+            data: { state: 'too_old', running: true, connected: false, lastErrorCode: 'agent_too_old', minVersion: '0.1.9' },
         });
         const { api } = createApi({ invoke, hub: { dispatch: vi.fn() } as never });
-        expect(await api.discordBotStatus()).toEqual({ status: 'too_old', running: true, minVersion: '0.1.9' });
+        expect(await api.discordBotStatus()).toEqual({ status: 'too_old', running: true, minVersion: '0.1.9', link: { connected: false, error: '', heard: false } });
     });
 
     it('스토어가 최소 버전을 기억하고, 다시 붙으면 지운다', async () => {
@@ -48,7 +48,7 @@ describe('릴레이가 받지 않는 앱 버전', () => {
         expect(useDiscordStore.getState().discordAgentMinVersion).toBe('0.1.9');
         expect(useDiscordStore.getState().discordBotStatus).not.toBe('stopped');
 
-        vi.mocked(window.api.discordBotStatus).mockResolvedValue('running');
+        vi.mocked(window.api.discordBotStatus).mockResolvedValue({ status: 'running', running: true, link: { connected: false, error: '', heard: true } });
         await useDiscordStore.getState().checkStatus();
         expect(useDiscordStore.getState().discordAgentMinVersion).toBeNull();
     });

@@ -31,7 +31,7 @@ afterEach(() => vi.useRealTimers());
 
 describe('설치 진행률', () => {
     it('이벤트를 받는 동안에는 자주 묻지 않고 이벤트로 진행률과 완성을 보인다', async () => {
-        const { unmount } = renderHook(() => useInstanceMaintenance(server, undefined));
+        const { unmount } = renderHook(() => useInstanceMaintenance(server));
         await act(async () => vi.advanceTimersByTimeAsync(5000));
         expect(window.api.instanceProvisionProgress).toHaveBeenCalledTimes(1);
         expect(useMaintenanceStore.getState().byId.s1?.provisionProgress).toMatchObject({ step: 1 });
@@ -48,7 +48,7 @@ describe('설치 진행률', () => {
 
     it('이벤트가 없는 셸에서는 예전처럼 자주 묻는다', async () => {
         (window.api as Partial<typeof window.api>).onDaemonEvent = undefined;
-        const { unmount } = renderHook(() => useInstanceMaintenance(server, undefined));
+        const { unmount } = renderHook(() => useInstanceMaintenance(server));
         await act(async () => vi.advanceTimersByTimeAsync(5000));
         expect((window.api.instanceProvisionProgress as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThanOrEqual(4);
         unmount();

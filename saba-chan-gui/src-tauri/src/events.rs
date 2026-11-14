@@ -21,8 +21,6 @@ pub const EVENTS_IDLE: Duration = Duration::from_secs(45);
 /// 시험은 조용한 연결을 45초씩 기다리지 않는다
 #[cfg(test)]
 pub const EVENTS_IDLE: Duration = Duration::from_millis(300);
-/// 확인 주기는 데몬이 정한다 (U6). GUI는 데몬이 캐시한 결과를 가끔 읽는다
-pub const UPDATE_STATUS_POLL: Duration = Duration::from_secs(10 * 60);
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SseEvent {
@@ -256,12 +254,12 @@ pub fn on_daemon(body: String, daemon: Option<&str>, i18n: &crate::i18n::I18n) -
     }
 }
 
-/// `GET /api/remote/daemons` 결과에서 원격 데몬 이름(`디스코드 이름(PC 이름)`, 옛 데몬이면 PC 이름). 없으면 hostId
+/// `GET /api/remote/daemons` 결과에서 원격 데몬 이름(`디스코드 이름(PC 이름)`). 없으면 hostId
 pub fn daemon_name(list: &Value, host_id: &str) -> String {
     list["daemons"]
         .as_array()
         .and_then(|a| a.iter().find(|d| d["hostId"] == host_id))
-        .and_then(|d| d["label"].as_str().filter(|n| !n.is_empty()).or(d["name"].as_str()))
+        .and_then(|d| d["label"].as_str())
         .filter(|n| !n.is_empty())
         .unwrap_or(host_id)
         .to_string()
@@ -278,7 +276,7 @@ pub struct UpdateNotice {
 
 /// GET /api/updates/status 결과 → 알릴 것 (main.js checkForUpdates)
 pub fn update_notice(data: &Value) -> Option<UpdateNotice> {
-    let ok = data["ok"].as_bool().unwrap_or(false);
+    let ok = data["success"].as_bool().unwrap_or(false);
     let has_error = data.get("error").is_some_and(|e| !e.is_null() && e != "" && e != false);
     if !ok || has_error {
         if has_error {
@@ -320,7 +318,7 @@ pub fn update_notice(data: &Value) -> Option<UpdateNotice> {
 /// 데몬이 확인에 성공했고 알릴 업데이트가 없다 (적용을 마쳤거나 Locales만 남았다).
 /// 데몬이 막 떠 아직 확인하지 않았거나(`last_check` 없음) 확인하는 중이면 목록이 비어 있어도 "없음"이 아니다
 pub fn updates_cleared(data: &Value) -> bool {
-    let ok = data["ok"].as_bool().unwrap_or(false)
+    let ok = data["success"].as_bool().unwrap_or(false)
         && data["last_check"].is_string()
         && !data["checking"].as_bool().unwrap_or(false);
     let has_error = data.get("error").is_some_and(|e| !e.is_null() && e != "" && e != false);
@@ -476,12 +474,10 @@ mod tests {
             on_daemon(body, Some("Living room PC"), &i18n),
             "On Living room PC: Survival crashed and stopped."
         );
-        let list = json!({"daemons": [{"hostId": "host-b", "name": "Living room PC"}, {"hostId": "host-c"}]});
-        assert_eq!(daemon_name(&list, "host-b"), "Living room PC");
+        let list = json!({"daemons": [{"hostId": "host-b", "name": "Living room PC", "label": "Kim(Living room PC)"}, {"hostId": "host-c", "label": ""}]});
+        assert_eq!(daemon_name(&list, "host-b"), "Kim(Living room PC)");
         assert_eq!(daemon_name(&list, "host-c"), "host-c");
         assert_eq!(daemon_name(&json!({}), "host-d"), "host-d");
-        let labelled = json!({"daemons": [{"hostId": "host-b", "name": "Living room PC", "label": "Kim(Living room PC)"}]});
-        assert_eq!(daemon_name(&labelled, "host-b"), "Kim(Living room PC)");
     }
 
     /// 원격 데몬을 고른 동안에도 이 PC 데몬의 중대 알림을 받는다: 이 PC 감시 스트림은 원격을 고른 동안만 붙고
@@ -570,10 +566,10 @@ mod tests {
 
     #[test]
     fn update_notice_skips_locales_only() {
-        let only_locales = json!({"ok": true, "updates_available": 1,
+        let only_locales = json!({"success": true, "updates_available": 1,
             "components": [{"display_name": "Locales", "update_available": true}]});
         assert_eq!(update_notice(&only_locales), None);
-        let mixed = json!({"ok": true, "updates_available": 2, "components": [
+        let mixed = json!({"success": true, "updates_available": 2, "components": [
             {"display_name": "Locales", "update_available": true},
             {"display_name": "GUI", "update_available": true},
             {"display_name": "CLI", "update_available": false}]});
@@ -588,26 +584,26 @@ mod tests {
     fn updates_cleared_only_when_the_check_succeeded_with_nothing_to_show() {
         let at = "2026-10-20T07:00:00Z";
         assert!(updates_cleared(
-            &json!({"ok": true, "last_check": at, "updates_available": 0, "components": []})
+            &json!({"success": true, "last_check": at, "updates_available": 0, "components": []})
         ));
         assert!(updates_cleared(
-            &json!({"ok": true, "last_check": at, "updates_available": 1,
+            &json!({"success": true, "last_check": at, "updates_available": 1,
             "components": [{"display_name": "Locales", "update_available": true}]})
         ));
         assert!(!updates_cleared(
-            &json!({"ok": true, "last_check": at, "updates_available": 1,
+            &json!({"success": true, "last_check": at, "updates_available": 1,
             "components": [{"display_name": "GUI", "update_available": true}]})
         ));
         assert!(!updates_cleared(
-            &json!({"ok": true, "last_check": at, "updates_available": 0, "error": "relay down"})
+            &json!({"success": true, "last_check": at, "updates_available": 0, "error": "relay down"})
         ));
-        assert!(!updates_cleared(&json!({"ok": false})));
+        assert!(!updates_cleared(&json!({"success": false})));
         // 데몬이 막 떠서 아직 확인한 적이 없으면(last_check 없음) "없음"이 아니다
         assert!(!updates_cleared(
-            &json!({"ok": true, "last_check": null, "updates_available": 0, "components": []})
+            &json!({"success": true, "last_check": null, "updates_available": 0, "components": []})
         ));
         assert!(!updates_cleared(
-            &json!({"ok": true, "last_check": "2026-10-20T07:00:00Z",
+            &json!({"success": true, "last_check": "2026-10-20T07:00:00Z",
             "checking": true, "updates_available": 0, "components": []})
         ));
     }

@@ -41,9 +41,9 @@ describe('데몬이 이 앱의 토큰을 받지 않을 때', () => {
     });
 
     it('데몬 창은 다시 시작 버튼 없이 이유를 알린다', async () => {
-        window.api.daemonStatus = vi.fn().mockResolvedValue({ running: false, error_code: 'token_invalid' }) as never;
+        useUIStore.setState({ backgroundDaemonStatus: 'token_invalid' });
         await act(async () => {
-            render(<BackgroundModal isOpen onClose={vi.fn()} />);
+            render(<BackgroundModal onClose={vi.fn()} />);
         });
         expect(screen.getByText(TOKEN_TEXT)).toBeTruthy();
         expect(screen.queryByRole('button', { name: /Restart/ })).toBeNull();

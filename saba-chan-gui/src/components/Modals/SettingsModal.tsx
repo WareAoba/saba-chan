@@ -38,6 +38,7 @@ import { ServersTab } from './settings/ServersTab';
 import { StorageTab } from './settings/StorageTab';
 import { TroubleshootTab } from './settings/TroubleshootTab';
 import { SaveBarHost } from '../ui/SaveBar';
+import { failed } from '../../utils/apiResult';
 
 const TAB_ICONS: Record<SettingsTab, string> = {
     general: 'settings',
@@ -105,7 +106,8 @@ function SettingsModal({
     const active = usePageActive();
     useEffect(() => {
         if (!active) return;
-        if (initialView === 'update' || initialView === 'extensions' || initialView === 'modules') {
+        // 화면 주소 settings/sabaStorage/components 는 'components'로, openSettings('update')는 'update'로 온다
+        if (initialView === 'update' || initialView === 'components' || initialView === 'extensions' || initialView === 'modules') {
             setStorageTab(initialView === 'update' ? 'components' : initialView);
             setActiveTab('sabaStorage');
         } else if ((TABS as readonly string[]).includes(initialView ?? '') || initialView?.startsWith('ext:')) {
@@ -180,7 +182,7 @@ function SettingsModal({
             // 저장하지 못하면 알린다: 화면은 바뀌어도 다음 실행에 옛 언어로 돌아간다 (G-U6)
             try {
                 const res = await window.api.languageSet(lng);
-                if (res?.success === false) safeShowToast(t('gui:settings.save_error'), 'error');
+                if (failed(res)) safeShowToast(t('gui:settings.save_error'), 'error');
             } catch (err) {
                 console.error('Failed to save language to settings:', err);
                 safeShowToast(t('gui:settings.save_error'), 'error');

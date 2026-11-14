@@ -1,5 +1,5 @@
 /**
- * 상단 바 업데이트 알약 (시안 v8, 계약 G): 데몬 GET /api/updates/status 의 phase 네 상태를 보인다.
+ * 상단 바 업데이트 알약 (시안 v8, 계약 G): 데몬 업데이트 상태(`update.status`·GET /api/updates/status)의 phase 네 상태를 보인다.
  * 적용 중·완료·대기 중은 누르면 버전과 패치노트, 준비됨은 다시 시작할지 묻는다
  */
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -8,7 +8,7 @@ import { UpdatePill } from '../components/shell/UpdatePill';
 import { clickOutside } from './outside';
 
 const phase = (state: string, extra: Record<string, unknown> = {}) => ({
-    ok: true,
+    success: true,
     components: [{ component: 'saba-core', current_version: '0.1.13' }],
     phase: {
         state,
@@ -23,15 +23,26 @@ const phase = (state: string, extra: Record<string, unknown> = {}) => ({
 });
 
 let status: ReturnType<typeof vi.fn>;
+let listeners: Set<(ev: unknown) => void>;
+/** 셸이 넘기는 이 PC 데몬의 `update.status` */
+const announce = (body: unknown) =>
+    act(() => {
+        for (const l of listeners) l({ type: 'update.status', data: body });
+    });
 beforeEach(() => {
     status = vi.fn();
+    listeners = new Set();
     window.api.updaterStatus = status as never;
-    window.api.updaterPhaseAck = vi.fn().mockResolvedValue({ ok: true }) as never;
+    window.api.onUpdateEvent = ((cb: (ev: unknown) => void) => {
+        listeners.add(cb);
+        return () => listeners.delete(cb);
+    }) as never;
+    window.api.updaterPhaseAck = vi.fn().mockResolvedValue({ success: true }) as never;
     window.api.updaterRestart = vi.fn().mockResolvedValue({ ok: true, gui_restart: true }) as never;
 });
 
 afterEach(() => {
-    for (const k of ['updaterStatus', 'updaterPhaseAck', 'updaterRestart'])
+    for (const k of ['updaterStatus', 'updaterPhaseAck', 'updaterRestart', 'onUpdateEvent'])
         delete (window.api as unknown as Record<string, unknown>)[k];
     vi.useRealTimers();
 });
@@ -187,7 +198,7 @@ describe('업데이트 알약', () => {
 
     it('데몬이 꺼진 동안(적용 중)엔 마지막 상태를 그대로 보인다', async () => {
         vi.useFakeTimers();
-        status.mockResolvedValueOnce(phase('applying')).mockResolvedValue({ ok: false, error_code: 'ECONNREFUSED' });
+        status.mockResolvedValueOnce(phase('applying')).mockResolvedValue({ success: false, error_code: 'ECONNREFUSED' });
         render(<UpdatePill />);
         await act(async () => {
             await vi.advanceTimersByTimeAsync(0);
@@ -200,7 +211,7 @@ describe('업데이트 알약', () => {
         expect(screen.getByText('Applying update...')).toBeTruthy();
     });
 
-    it('idle이면 60초, 아니면 5초마다 읽는다', async () => {
+    it('적용 중이 아니면 묻지 않고 데몬이 알린 상태로 바뀌며, 적용 중에만 5초마다 묻는다', async () => {
         vi.useFakeTimers();
         status.mockResolvedValue(phase('idle', { version: null }));
         render(<UpdatePill />);
@@ -208,19 +219,18 @@ describe('업데이트 알약', () => {
             await vi.advanceTimersByTimeAsync(0);
         });
         expect(status).toHaveBeenCalledTimes(1);
+        announce(phase('waiting'));
+        expect(screen.getByText('Update waiting...')).toBeTruthy();
         await act(async () => {
-            await vi.advanceTimersByTimeAsync(5000);
+            await vi.advanceTimersByTimeAsync(120_000);
         });
         expect(status).toHaveBeenCalledTimes(1);
-        status.mockResolvedValue(phase('waiting'));
-        await act(async () => {
-            await vi.advanceTimersByTimeAsync(55000);
-        });
-        expect(status).toHaveBeenCalledTimes(2);
+        // 적용 중: 데몬이 내려갔다 돌아오는 동안은 이벤트가 오지 않는다
+        announce(phase('applying'));
         await act(async () => {
             await vi.advanceTimersByTimeAsync(5000);
         });
-        expect(status).toHaveBeenCalledTimes(3);
+        expect(status).toHaveBeenCalledTimes(2);
     });
 
     it('같은 판 베타를 기다리는 것(stable_wait)은 알약에 띄우지 않는다', async () => {

@@ -22,6 +22,7 @@ describe('업데이트가 필요해요', () => {
         const body = {
             error_code: 'module_dependency_unsatisfied',
             missing_dependencies: ['saba-core >=0.1.10 (installed 0.1.9)'],
+            required_core: '0.1.10',
         };
         const text = updateRequiredText(t, body, 'palworld');
         expect(text).toMatch(/^Update required/);
@@ -45,13 +46,13 @@ describe('업데이트가 필요해요', () => {
     });
 
     it('익스텐션이 더 새 앱을 요구하면(min_app_version 또는 saba-core 의존성) 그 버전을 알린다', () => {
-        const app = updateRequiredText(t, { error_code: 'app_version_unsatisfied', related: ['0.1.10'] }, 'steamcmd');
+        const app = updateRequiredText(t, { error_code: 'app_version_unsatisfied', related: ['0.1.10'], required_core: '0.1.10' }, 'steamcmd');
         expect(app).toMatch(/^Update required/);
         expect(app).toContain('steamcmd');
         expect(app).toContain('0.1.10');
         const core = updateRequiredText(
             t,
-            { error_code: 'component_version_unsatisfied', related: ['saba-core', '>=0.1.11'] },
+            { error_code: 'component_version_unsatisfied', related: ['saba-core', '>=0.1.11'], required_core: '0.1.11' },
             'steamcmd',
         );
         expect(core).toContain('0.1.11');
@@ -73,6 +74,7 @@ describe('업데이트가 필요해요', () => {
             error: 'x',
             error_code: 'module_dependency_unsatisfied',
             missing_dependencies: ['saba-core >=0.1.10 (installed 0.1.9)'],
+            required_core: '0.1.10',
         };
         expect(failedModuleReason(failure, t)).toMatch(/^Update required/);
         expect(failedModuleReason({ path: '/m/ark', error_code: 'module_schema_unsupported', required: 3 } as never, t)).toMatch(
@@ -82,7 +84,7 @@ describe('업데이트가 필요해요', () => {
 
     it('익스텐션을 켜거나 받을 때 더 새 앱이 필요하면 업데이트 안내를 띄운다', async () => {
         window.showToast = vi.fn();
-        const refused = { success: false, error: 'raw', error_code: 'app_version_unsatisfied', related: ['0.1.10'] };
+        const refused = { success: false, error: 'raw', error_code: 'app_version_unsatisfied', related: ['0.1.10'], required_core: '0.1.10' };
         window.api = {
             extensionList: vi.fn().mockResolvedValue({ extensions: [] }),
             extensionEnable: vi.fn().mockResolvedValue(refused),

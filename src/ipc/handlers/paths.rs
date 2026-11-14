@@ -14,15 +14,6 @@ use std::path::{Path, PathBuf};
 
 use super::super::IPCServer;
 
-/// 모듈·익스텐션 폴더에 파일을 쓰는 작업(설치·제거)과 폴더 옮기기를 가른다.
-/// 작업은 읽기 잠금을 쥐고 하고, 옮기기는 쓰기 잠금을 바로 잡지 못하면 거절한다
-static IN_USE: tokio::sync::RwLock<()> = tokio::sync::RwLock::const_new(());
-
-/// 모듈·익스텐션 폴더에 쓰는 동안 쥔다 (옮기는 중이면 끝나기를 기다린다)
-pub(crate) async fn components_in_use() -> tokio::sync::RwLockReadGuard<'static, ()> {
-    IN_USE.read().await
-}
-
 fn dir_json(kind: Kind, data_dir: &Path) -> serde_json::Value {
     let (path, source) = component_dirs::resolve(kind);
     json!({ "path": path, "default": component_dirs::default_dir(kind, data_dir), "source": source })
@@ -35,7 +26,7 @@ pub async fn get_paths(State(_state): State<IPCServer>) -> impl IntoResponse {
         .ok()
         .and_then(|exe| exe.parent().map(Path::to_path_buf));
     Json(json!({
-        "ok": true,
+        "success": true,
         "data_dir": data_dir,
         "install_dir": install_dir,
         "default_install_dir": constants::default_install_dir(),
@@ -52,12 +43,12 @@ pub struct MoveRequest {
 }
 
 fn refused(e: PathError) -> axum::response::Response {
-    let code = format!("paths_{}", e.code);
-    (
-        StatusCode::OK,
-        Json(json!({ "ok": false, "error_code": code, "error": e.detail })),
-    )
-        .into_response()
+    let status = match e.code {
+        "unknown_kind" => StatusCode::BAD_REQUEST,
+        "copy_failed" => StatusCode::INTERNAL_SERVER_ERROR,
+        _ => StatusCode::CONFLICT,
+    };
+    super::error(status, &format!("paths_{}", e.code), e.detail)
 }
 
 /// POST /api/system/paths/move
@@ -80,7 +71,7 @@ pub async fn move_dir(State(state): State<IPCServer>, Json(req): Json<MoveReques
     match moved {
         Ok((path, moved)) => (
             StatusCode::OK,
-            Json(json!({ "ok": true, "path": path, "left_behind": moved.left_behind })),
+            Json(json!({ "success": true, "path": path, "left_behind": moved.left_behind })),
         )
             .into_response(),
         Err(e) => refused(e),
@@ -106,7 +97,7 @@ async fn move_component_dir(
     }
     let source = layout.dir(kind).to_path_buf();
 
-    let Ok(_dirs) = IN_USE.try_write() else {
+    let Ok(_dirs) = crate::component_lock::IN_USE.try_write() else {
         return Err(busy("install"));
     };
     // 업데이트를 받거나 적용하는 중이면 그 작업이 매니저를 쥐고 있다: 기다리지 않고 거절한다
@@ -151,7 +142,7 @@ async fn move_component_dir(
             if let Err(e) = supervisor.refresh_modules() {
                 tracing::warn!("[Paths] Could not reload modules from {}: {}", target.display(), e);
             }
-            supervisor.migrate_list_settings();
+            supervisor.migrate_settings();
         }
         Kind::Extensions => {
             if let Err(e) = extensions.set_extensions_dir(target.clone()) {
@@ -177,8 +168,8 @@ pub struct BrowseQuery {
 /// 한 폴더에서 보이는 항목 상한 (넘으면 `truncated`)
 const BROWSE_MAX: usize = 5000;
 
-fn browse_failed(code: &str) -> serde_json::Value {
-    json!({ "ok": false, "error_code": code })
+fn browse_failed(status: StatusCode, code: &str, message: &str) -> super::Failure {
+    super::Failure::coded(status, code, message)
 }
 
 fn home_dir() -> Option<PathBuf> {
@@ -210,24 +201,24 @@ fn hidden(entry: &std::fs::DirEntry, name: &str) -> bool {
     name.starts_with('.')
 }
 
-pub(crate) fn browse_dir(path: &str, files: Option<&str>) -> serde_json::Value {
+pub(crate) fn browse_dir(path: &str, files: Option<&str>) -> super::Outcome {
     let home = home_dir();
     if path.trim().is_empty() {
         let entries: Vec<_> = roots()
             .into_iter()
             .map(|p| json!({ "name": p.to_string_lossy(), "path": p, "dir": true }))
             .collect();
-        return json!({ "ok": true, "path": null, "parent": null, "home": home, "sep": std::path::MAIN_SEPARATOR_STR, "entries": entries });
+        return Ok(json!({ "success": true, "path": null, "parent": null, "home": home, "sep": std::path::MAIN_SEPARATOR_STR, "entries": entries }));
     }
     let dir = PathBuf::from(path);
     if !dir.is_absolute() || dir.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
-        return browse_failed("browse_bad_path");
+        return Err(browse_failed(StatusCode::BAD_REQUEST, "browse_bad_path", "The path must be absolute"));
     }
     let read = match std::fs::read_dir(&dir) {
         Ok(read) => read,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return browse_failed("browse_not_found"),
-        Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => return browse_failed("browse_denied"),
-        Err(_) => return browse_failed("browse_not_a_folder"),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Err(browse_failed(StatusCode::NOT_FOUND, "browse_not_found", "The folder does not exist")),
+        Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => return Err(browse_failed(StatusCode::FORBIDDEN, "browse_denied", "The folder cannot be opened")),
+        Err(_) => return Err(browse_failed(StatusCode::BAD_REQUEST, "browse_not_a_folder", "The path is not a folder")),
     };
     let wanted: Option<Vec<String>> =
         files.map(|f| f.split(',').map(|e| e.trim().trim_start_matches('.').to_ascii_lowercase()).filter(|e| !e.is_empty()).collect());
@@ -255,23 +246,23 @@ pub(crate) fn browse_dir(path: &str, files: Option<&str>) -> serde_json::Value {
     }
     entries.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.to_lowercase().cmp(&b.1.to_lowercase())));
     let entries: Vec<_> = entries.into_iter().map(|(dir, name, path)| json!({ "name": name, "path": path, "dir": dir })).collect();
-    json!({
-        "ok": true,
+    Ok(json!({
+        "success": true,
         "path": dir,
         "parent": dir.parent(),
         "home": home,
         "sep": std::path::MAIN_SEPARATOR_STR,
         "entries": entries,
         "truncated": truncated,
-    })
+    }))
 }
 
 /// GET /api/system/browse
 pub async fn browse(axum::extract::Query(q): axum::extract::Query<BrowseQuery>) -> impl IntoResponse {
-    let value = tokio::task::spawn_blocking(move || browse_dir(&q.path, q.files.as_deref()))
+    let listed = tokio::task::spawn_blocking(move || browse_dir(&q.path, q.files.as_deref()))
         .await
-        .unwrap_or_else(|_| browse_failed("browse_failed"));
-    Json(value)
+        .unwrap_or_else(|_| Err(browse_failed(StatusCode::INTERNAL_SERVER_ERROR, "browse_failed", "Could not read the folder")));
+    super::answer(listed)
 }
 
 #[cfg(test)]
@@ -289,17 +280,17 @@ mod tests {
         std::fs::write(dir.path().join("notes.txt"), b"t").unwrap();
         let path = dir.path().to_string_lossy().to_string();
 
-        let folders = browse_dir(&path, None);
-        assert_eq!(folders["ok"], true, "{folders}");
+        let folders = browse_dir(&path, None).unwrap();
+        assert_eq!(folders["success"], true, "{folders}");
         let names = |v: &serde_json::Value| -> Vec<(String, bool)> {
             v["entries"].as_array().unwrap().iter().map(|e| (e["name"].as_str().unwrap().to_string(), e["dir"].as_bool().unwrap())).collect()
         };
         assert_eq!(names(&folders), vec![("Worlds".to_string(), true)]);
         assert_eq!(folders["parent"].as_str().map(PathBuf::from), dir.path().parent().map(Path::to_path_buf));
 
-        let zips = browse_dir(&path, Some("zip"));
+        let zips = browse_dir(&path, Some("zip")).unwrap();
         assert_eq!(names(&zips), vec![("Worlds".to_string(), true), ("backup.ZIP".to_string(), false)]);
-        assert_eq!(names(&browse_dir(&path, Some("*"))).len(), 3);
+        assert_eq!(names(&browse_dir(&path, Some("*")).unwrap()).len(), 3);
         assert_eq!(
             zips["entries"][1]["path"].as_str().map(PathBuf::from),
             Some(dir.path().join("backup.ZIP"))
@@ -321,21 +312,22 @@ mod tests {
             // FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM
             assert_ne!(unsafe { windows_sys::Win32::Storage::FileSystem::SetFileAttributesW(wide.as_ptr(), 0x2 | 0x4) }, 0);
         }
-        let listed = browse_dir(&dir.path().to_string_lossy(), Some("*"));
+        let listed = browse_dir(&dir.path().to_string_lossy(), Some("*")).unwrap();
         let names: Vec<&str> = listed["entries"].as_array().unwrap().iter().map(|e| e["name"].as_str().unwrap()).collect();
         assert_eq!(names, vec!["Worlds"]);
     }
 
     #[test]
     fn browsing_starts_at_the_roots_and_says_why_it_cannot_open_a_folder() {
-        let roots = browse_dir("", None);
-        assert_eq!(roots["ok"], true);
+        let roots = browse_dir("", None).unwrap();
+        assert_eq!(roots["success"], true);
         assert!(roots["path"].is_null());
         assert!(!roots["entries"].as_array().unwrap().is_empty());
-        assert_eq!(browse_dir("relative/dir", None)["error_code"], "browse_bad_path");
+        let refused = |path: &str| browse_dir(path, None).unwrap_err();
+        assert_eq!((refused("relative/dir").status, refused("relative/dir").code().as_deref()), (StatusCode::BAD_REQUEST, Some("browse_bad_path")));
         let dir = tempfile::tempdir().unwrap();
         let gone = dir.path().join("gone").to_string_lossy().to_string();
-        assert_eq!(browse_dir(&gone, None)["error_code"], "browse_not_found");
+        assert_eq!((refused(&gone).status, refused(&gone).code().as_deref()), (StatusCode::NOT_FOUND, Some("browse_not_found")));
     }
 
     fn module(root: &Path, name: &str) {
@@ -382,7 +374,7 @@ mod tests {
         let old = layout.modules.clone();
         let chosen = tmp.path().join("games");
         {
-            let _installing = components_in_use().await;
+            let _installing = crate::component_lock::in_use().await;
             let err = move_component_dir(&state, Kind::Modules, &chosen, layout.clone(), config.clone())
                 .await
                 .unwrap_err();

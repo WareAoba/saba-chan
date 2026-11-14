@@ -36,48 +36,17 @@ impl Supervisor {
                 r.run_generation
             });
             let _ = STOPPED_AT.try_with(|at| at.set(Some(generation)));
-            let hook = s.extension_manager.clone().map(|ext_mgr| {
-                let instance_dir = s.instance_store.instance_dir(&instance.id);
-                let ctx = json!({
-                    "instance_id": instance.id.clone(),
-                    "instance_dir": instance_dir.to_string_lossy(),
-                    "module": module_name,
-                    "extension_data": &instance.extension_data,
-                });
-                (ext_mgr, ctx)
-            });
+            let module = s.module_loader.get_module(module_name).ok();
+            let ctx = crate::extension::hook_context(&instance, &s.instance_store.instance_dir(&instance.id), module.as_ref().map(|m| &m.metadata));
+            let hook = (s.extension_manager.clone(), ctx);
             let managed = s.managed_store.get(&instance.id).await;
             (instance, hook, managed, s.runtime.clone())
         };
-        // 받은 키가 id여도 메시지·응답에는 이름을 쓴다
-        let server_name = instance.name.as_str();
 
         // ── Extension hook: server.stop ──
         // 정지 전에 불린다. 익스텐션(예: 컨테이너)이 정지를 맡으면 handled=true를 돌려준다.
-        if let Some((ext_mgr, ctx)) = hook {
-            let host_context = sup.read().await.host_context(&instance.id);
-            let results = crate::plugin::with_instance(host_context, crate::extension::run_hook(&ext_mgr, "server.stop", ctx)).await;
-            for (_ext_id, result) in &results {
-                if let Ok(val) = result {
-                    if val.get("handled").and_then(|h| h.as_bool()) == Some(true) {
-                        sup.write().await.runtime.with(&instance.id, |r| r.stop_cooldown = Some(Instant::now()));
-                        if val.get("success").and_then(Value::as_bool) != Some(false) {
-                            announce_stopped(&instance.id, server_name, crash::ExitKind::UserStop, &crate::audit::current());
-                        }
-                        return Ok(val.clone());
-                    }
-                }
-            }
-            // 정지를 맡을 수 있는 익스텐션이 실패했으면 "안 돌고 있음"으로 덮지 않고 실패를 돌려준다
-            let failed = results.iter().find_map(|(_, result)| match result {
-                Err(e) => Some(crate::plugin::error_response(e)),
-                Ok(val) if val.get("success").and_then(Value::as_bool) == Some(false) => Some(val.clone()),
-                Ok(_) => None,
-            });
-            if let Some(mut error) = failed {
-                error["server"] = json!(server_name);
-                return Ok(error);
-            }
+        if let Some(answer) = Self::stop_by_extensions(sup, &instance, hook).await {
+            return Ok(answer);
         }
 
         // ── Native 모드 ──
@@ -94,158 +63,227 @@ impl Supervisor {
             let tracked_pid = s.tracker.get_pid(&instance.id).ok();
             (module, config_obj, tracked_pid, s.host_context(&instance.id))
         };
-        let module_path = module.entry_path();
 
         // ── Managed mode: stdin에 stop_command 전송으로 graceful shutdown ──
         if let Some(managed) = managed {
-            if managed.is_running() {
-                // 정지 방법
-                // - force: 즉시 PID 강제 종료
-                // - 모듈이 `stop_signal = "interrupt"`: Ctrl+C (보내지 못하면 다음 길로)
-                // - 모듈이 stdin을 받고 stdin이 열려 있음: stop_command를 stdin으로
-                // - 그 밖(REST 전용 게임, stdin 없는 재부착): 모듈 lifecycle.py `stop()`에
-                //   PID와 managed=true를 넘겨 맡긴다. 시간 안에 안 끝나면 아래에서 강제 종료.
-                let module_has_stdin = module.metadata.protocols_supported.as_ref()
-                    .is_some_and(|p| p.iter().any(|s| s == "stdin"));
-                let via_stdin = module_has_stdin && managed.is_stdin_available();
-                // 모듈에서 stop_command를 가져옴 (없으면 "stop" 기본값)
-                let stop_cmd = module.metadata.stop_command.clone().unwrap_or_else(|| "stop".to_string());
-
-                let wants_interrupt = module.metadata.stop_signal == Some(module_loader::StopSignal::Interrupt);
-
-                // 준비 문구 전에 받은 명령을 실패하는 서버가 있다 (마인크래프트 26.3은 오류만 찍고 계속 돈다).
-                // Ctrl+C 저장 처리기도 준비 뒤에야 붙는다. 켜지는 중이면 준비될 때까지(정지 대기 시간 안에서) 들고 있다가 보낸다
-                if !force && (wants_interrupt || via_stdin) && ready::is_waiting(&rt, &instance.id) {
-                    tracing::info!("'{}' is still starting; holding the stop until it is ready", server_name);
-                    let hold = Duration::from_secs(stop_timeout_of(&instance, module.metadata.stop_timeout));
-                    let until = tokio::time::Instant::now() + hold;
-                    while ready::is_waiting(&rt, &instance.id) && managed.is_running() && tokio::time::Instant::now() < until {
-                        tokio::time::sleep(Duration::from_millis(250)).await;
-                    }
-                }
-
-                // Ctrl+C로 저장하고 끝내는 서버 (`[config] stop_signal = "interrupt"`). 보내지 못하면 아래 길로 넘어간다
-                let interrupted = !force
-                    && wants_interrupt
-                    && match managed.interrupt().await {
-                        Ok(()) => {
-                            tracing::info!("Sent Ctrl+C to managed server '{}'", server_name);
-                            true
-                        }
-                        Err(e) => {
-                            tracing::warn!("Could not send Ctrl+C to '{}': {}", server_name, e);
-                            false
-                        }
-                    };
-
-                if force {
-                    tracing::info!("Force-killing managed server '{}'", server_name);
-                    if let Err(e) = managed.force_kill().await {
-                        tracing::warn!("Force kill of '{}' failed: {}", server_name, e);
-                    }
-                } else if interrupted {
-                    // 서버가 저장하고 스스로 끝나기를 아래에서 기다린다
-                } else if via_stdin {
-                    tracing::info!("Sending '{}' to managed server '{}' via stdin", stop_cmd, server_name);
-                    if let Err(e) = managed.send_command(&stop_cmd).await {
-                        tracing::warn!("Failed to send stop command via stdin: {}", e);
-                    }
-                } else {
-                    tracing::info!("Asking module '{}' to stop managed server '{}'", module_name, server_name);
-                    let mut config_obj = stop_config;
-                    config_obj.insert("pid".to_string(), json!(managed.pid));
-                    config_obj.insert("managed".to_string(), json!(true));
-                    config_obj.insert("force".to_string(), json!(false));
-                    config_obj.insert("stop_call_limit".to_string(), json!(crate::plugin::DEFAULT_PLUGIN_TIMEOUT_SECS));
-                    if let Some(port) = instance.rest_port {
-                        config_obj.insert("rest_port".to_string(), json!(port));
-                    }
-                    match crate::plugin::PluginCall::new(module_path.clone(), "stop", Value::Object(config_obj)).serving(Some(managed.pid)).in_instance(host_context.clone()).run().await {
-                        // 저장 후 종료를 요청할 길이 없다: 기다렸다 강제 종료하지 않고 사용자가 고르게 돌려준다 (MK10)
-                        Ok(result) if is_graceful_stop_unavailable(&result) => return Ok(graceful_stop_unavailable(server_name, &result)),
-                        Ok(_) => {}
-                        Err(e) => tracing::warn!("Module stop for '{}' failed: {} (will force kill on timeout)", server_name, e),
-                    }
-                }
-
-                // 프로세스 종료 대기 (force kill 시 5초, graceful 시 인스턴스 설정 `stop_timeout`, 모듈 값, 기본 30초 순)
-                let timeout_secs = if force { 5 } else { stop_timeout_of(&instance, module.metadata.stop_timeout) };
-                let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(timeout_secs);
-                loop {
-                    if !managed.is_running() {
-                        break;
-                    }
-                    if tokio::time::Instant::now() >= deadline {
-                        tracing::warn!("Managed server '{}' did not exit in {}s, force killing", server_name, timeout_secs);
-                        if let Err(e) = managed.force_kill().await {
-                            tracing::warn!("Force kill of '{}' failed: {}", server_name, e);
-                        }
-                        // 끝난 것을 확인하기 전에는 추적을 놓지 않는다 (종료가 거부됐으면 아직 돌고 있다)
-                        if !process::wait_gone(Duration::from_secs(5), || managed.is_running()).await {
-                            return Err(anyhow::anyhow!("Server '{}' is still running: force kill did not take effect", server_name));
-                        }
-                        break;
-                    }
-                    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-                }
-
-                let mut s = sup.write().await;
-                // managed store에서 제거 (그새 모니터가 치웠으면 그쪽이 이미 종료를 기록했다)
-                if s.managed_store.get(&instance.id).await.is_some_and(|p| Arc::ptr_eq(&p, &managed)) {
-                    s.managed_store.remove(&instance.id).await;
-                    // 종료 기록 (user_stop)과 정지 표시 정리
-                    s.judge_exit(&instance.id, &managed, false).await;
-                    if force {
-                        s.runtime.existing(&instance.id, |r| {
-                            if let Some(last) = r.exit_events.as_mut().and_then(|e| e.back_mut()) {
-                                last.verdict.evidence = "force stop requested through saba-chan".into();
-                            }
-                        });
-                        s.save_exit_events(&instance.id);
-                    }
-                }
-
-                // Clean up managed.pid
-                let pid_file = s.instance_store.managed_pid_file(&instance.id);
-                let _ = std::fs::remove_file(&pid_file);
-
-                tracing::info!("Managed server '{}' stopped", server_name);
-                // auto-detect 쿨다운 등록
-                s.runtime.with(&instance.id, |r| r.stop_cooldown = Some(Instant::now()));
-                return Ok(json!({
-                    "success": true,
-                    "server": server_name,
-                    "message": format!("Server '{}' stopped", server_name)
-                }));
+            return if managed.is_running() {
+                Self::stop_running_managed(sup, &instance, module_name, &module, stop_config, host_context, managed, &rt, force).await
             } else {
-                // 프로세스가 이미 종료됨 (유저가 콘솔에서 직접 stop 명령어 입력 등)
-                // managed store 정리 후 정상 종료로 간주
-                tracing::info!(
-                    "Managed server '{}' already exited (user-initiated stop command), cleaning up",
-                    server_name
-                );
-                let mut s = sup.write().await;
-                // 이미 스스로 끝났다: 정지 요청 때문이 아니므로 표시를 지우고 기록한다
-                s.runtime.existing(&instance.id, |r| r.stop_requested = None);
-                // 크래시였어도 다시 켜지 않는다: 사용자가 정지를 눌렀다 (D-S6)
-                if let Some(proc) = s.managed_store.remove(&instance.id).await {
-                    s.judge_exit(&instance.id, &proc, false).await;
+                Self::clean_up_exited_managed(sup, &instance).await
+            };
+        }
+
+        Self::stop_unmanaged(sup, &instance, module_name, &module, stop_config, tracked_pid, host_context, force).await
+    }
+
+    /// 익스텐션 `server.stop` hook: 정지를 맡은 익스텐션의 답이나, 맡을 수 있는 익스텐션의 실패. 없으면 None (모듈이 멈춘다)
+    async fn stop_by_extensions(
+        sup: &tokio::sync::RwLock<Self>,
+        instance: &crate::instance::ServerInstance,
+        hook: (std::sync::Arc<tokio::sync::RwLock<crate::extension::ExtensionManager>>, Value),
+    ) -> Option<Value> {
+        let (ext_mgr, ctx) = hook;
+        // 받은 키가 id여도 메시지·응답에는 이름을 쓴다
+        let server_name = instance.name.as_str();
+        let host_context = sup.read().await.host_context(&instance.id);
+        let results = crate::plugin::with_instance(host_context, crate::extension::run_hook(&ext_mgr, "server.stop", ctx)).await;
+        for (_ext_id, result) in &results {
+            if let Ok(val) = result {
+                if val.get("handled").and_then(|h| h.as_bool()) == Some(true) {
+                    sup.write().await.runtime.with(&instance.id, |r| r.stop_cooldown = Some(Instant::now()));
+                    if val.get("success").and_then(Value::as_bool) != Some(false) {
+                        announce_stopped(&instance.id, server_name, crash::ExitKind::UserStop, &crate::audit::current());
+                    }
+                    return Some(val.clone());
                 }
-                let pid_file = s.instance_store.managed_pid_file(&instance.id);
-                let _ = std::fs::remove_file(&pid_file);
-                s.runtime.with(&instance.id, |r| r.stop_cooldown = Some(Instant::now()));
+            }
+        }
+        // 정지를 맡을 수 있는 익스텐션이 실패했으면 "안 돌고 있음"으로 덮지 않고 실패를 돌려준다
+        let failed = results.iter().find_map(|(_, result)| match result {
+            Err(e) => Some(crate::plugin::error_response(e)),
+            Ok(val) if val.get("success").and_then(Value::as_bool) == Some(false) => Some(val.clone()),
+            Ok(_) => None,
+        });
+        if let Some(mut error) = failed {
+            error["server"] = json!(server_name);
+            return Some(error);
+        }
+        None
+    }
 
-                // tracker에서도 제거
-                let _ = s.tracker.untrack(&instance.id);
+    /// 데몬이 띄운(managed) 서버가 돌고 있을 때: Ctrl+C·stdin·모듈 `stop()`으로 멈추고, 시간 안에 안 끝나면 강제 종료한다
+    async fn stop_running_managed(
+        sup: &tokio::sync::RwLock<Self>,
+        instance: &crate::instance::ServerInstance,
+        module_name: &str,
+        module: &LoadedModule,
+        stop_config: serde_json::Map<String, Value>,
+        host_context: Option<crate::plugin::host::Context>,
+        managed: Arc<ManagedProcess>,
+        rt: &runtime::Runtimes,
+        force: bool,
+    ) -> Result<Value> {
+        let server_name = instance.name.as_str();
+        let module_path = module.entry_path();
+        // 정지 방법
+        // - force: 즉시 PID 강제 종료
+        // - 모듈이 `stop_signal = "interrupt"`: Ctrl+C (보내지 못하면 다음 길로)
+        // - 모듈이 stdin을 받고 stdin이 열려 있음: stop_command를 stdin으로
+        // - 그 밖(REST 전용 게임, stdin 없는 재부착): 모듈 lifecycle.py `stop()`에
+        //   PID와 managed=true를 넘겨 맡긴다. 시간 안에 안 끝나면 아래에서 강제 종료.
+        let module_has_stdin = module.metadata.supports_protocol("stdin");
+        let via_stdin = module_has_stdin && managed.is_stdin_available();
+        // 모듈에서 stop_command를 가져옴 (없으면 "stop" 기본값)
+        let stop_cmd = module.metadata.stop_command.clone().unwrap_or_else(|| "stop".to_string());
 
-                return Ok(json!({
-                    "success": true,
-                    "server": server_name,
-                    "message": format!("Server '{}' already stopped", server_name)
-                }));
+        let wants_interrupt = module.metadata.stop_signal == Some(module_loader::StopSignal::Interrupt);
+
+        // 준비 문구 전에 받은 명령을 실패하는 서버가 있다 (마인크래프트 26.3은 오류만 찍고 계속 돈다).
+        // Ctrl+C 저장 처리기도 준비 뒤에야 붙는다. 켜지는 중이면 준비될 때까지(정지 대기 시간 안에서) 들고 있다가 보낸다
+        if !force && (wants_interrupt || via_stdin) && ready::is_waiting(rt, &instance.id) {
+            tracing::info!("'{}' is still starting; holding the stop until it is ready", server_name);
+            let hold = Duration::from_secs(stop_timeout_of(instance, module.metadata.stop_timeout));
+            let until = tokio::time::Instant::now() + hold;
+            while ready::is_waiting(rt, &instance.id) && managed.is_running() && tokio::time::Instant::now() < until {
+                tokio::time::sleep(Duration::from_millis(250)).await;
             }
         }
 
+        // Ctrl+C로 저장하고 끝내는 서버 (`[config] stop_signal = "interrupt"`). 보내지 못하면 아래 길로 넘어간다
+        let interrupted = !force
+            && wants_interrupt
+            && match managed.interrupt().await {
+                Ok(()) => {
+                    tracing::info!("Sent Ctrl+C to managed server '{}'", server_name);
+                    true
+                }
+                Err(e) => {
+                    tracing::warn!("Could not send Ctrl+C to '{}': {}", server_name, e);
+                    false
+                }
+            };
+
+        if force {
+            tracing::info!("Force-killing managed server '{}'", server_name);
+            if let Err(e) = managed.force_kill().await {
+                tracing::warn!("Force kill of '{}' failed: {}", server_name, e);
+            }
+        } else if interrupted {
+            // 서버가 저장하고 스스로 끝나기를 아래에서 기다린다
+        } else if via_stdin {
+            tracing::info!("Sending '{}' to managed server '{}' via stdin", stop_cmd, server_name);
+            if let Err(e) = managed.send_command(&stop_cmd).await {
+                tracing::warn!("Failed to send stop command via stdin: {}", e);
+            }
+        } else {
+            tracing::info!("Asking module '{}' to stop managed server '{}'", module_name, server_name);
+            let mut config_obj = stop_config;
+            config_obj.insert("pid".to_string(), json!(managed.pid));
+            config_obj.insert("managed".to_string(), json!(true));
+            config_obj.insert("force".to_string(), json!(false));
+            config_obj.insert("stop_call_limit".to_string(), json!(crate::plugin::DEFAULT_PLUGIN_TIMEOUT_SECS));
+            match crate::plugin::PluginCall::new(module_path.clone(), "stop", Value::Object(config_obj)).serving(Some(managed.pid)).in_instance(host_context.clone()).run().await {
+                // 저장 후 종료를 요청할 길이 없다: 기다렸다 강제 종료하지 않고 사용자가 고르게 돌려준다 (MK10)
+                Ok(result) if is_graceful_stop_unavailable(&result) => return Ok(graceful_stop_unavailable(server_name, &result)),
+                Ok(_) => {}
+                Err(e) => tracing::warn!("Module stop for '{}' failed: {} (will force kill on timeout)", server_name, e),
+            }
+        }
+
+        // 프로세스 종료 대기 (force kill 시 5초, graceful 시 인스턴스 설정 `stop_timeout`, 모듈 값, 기본 30초 순)
+        let timeout_secs = if force { 5 } else { stop_timeout_of(instance, module.metadata.stop_timeout) };
+        let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(timeout_secs);
+        loop {
+            if !managed.is_running() {
+                break;
+            }
+            if tokio::time::Instant::now() >= deadline {
+                tracing::warn!("Managed server '{}' did not exit in {}s, force killing", server_name, timeout_secs);
+                if let Err(e) = managed.force_kill().await {
+                    tracing::warn!("Force kill of '{}' failed: {}", server_name, e);
+                }
+                // 끝난 것을 확인하기 전에는 추적을 놓지 않는다 (종료가 거부됐으면 아직 돌고 있다)
+                if !process::wait_gone(Duration::from_secs(5), || managed.is_running()).await {
+                    return Err(anyhow::anyhow!("Server '{}' is still running: force kill did not take effect", server_name));
+                }
+                break;
+            }
+            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        }
+
+        let mut s = sup.write().await;
+        // managed store에서 제거 (그새 모니터가 치웠으면 그쪽이 이미 종료를 기록했다)
+        if s.managed_store.get(&instance.id).await.is_some_and(|p| Arc::ptr_eq(&p, &managed)) {
+            s.managed_store.remove(&instance.id).await;
+            // 종료 기록 (user_stop)과 정지 표시 정리
+            s.judge_exit(&instance.id, &managed, false).await;
+            if force {
+                s.runtime.existing(&instance.id, |r| {
+                    if let Some(last) = r.exit_events.as_mut().and_then(|e| e.back_mut()) {
+                        last.verdict.evidence = "force stop requested through saba-chan".into();
+                    }
+                });
+                s.save_exit_events(&instance.id);
+            }
+        }
+
+        // Clean up managed.pid
+        let pid_file = s.instance_store.managed_pid_file(&instance.id);
+        let _ = std::fs::remove_file(&pid_file);
+
+        tracing::info!("Managed server '{}' stopped", server_name);
+        // auto-detect 쿨다운 등록
+        s.runtime.with(&instance.id, |r| r.stop_cooldown = Some(Instant::now()));
+        Ok(json!({
+            "success": true,
+            "server": server_name,
+            "message": format!("Server '{}' stopped", server_name)
+        }))
+    }
+
+    /// managed 서버가 이미 끝나 있을 때: 추적을 치우고 정지된 것으로 답한다
+    async fn clean_up_exited_managed(sup: &tokio::sync::RwLock<Self>, instance: &crate::instance::ServerInstance) -> Result<Value> {
+        let server_name = instance.name.as_str();
+        // 프로세스가 이미 종료됨 (유저가 콘솔에서 직접 stop 명령어 입력 등)
+        // managed store 정리 후 정상 종료로 간주
+        tracing::info!(
+            "Managed server '{}' already exited (user-initiated stop command), cleaning up",
+            server_name
+        );
+        let mut s = sup.write().await;
+        // 이미 스스로 끝났다: 정지 요청 때문이 아니므로 표시를 지우고 기록한다
+        s.runtime.existing(&instance.id, |r| r.stop_requested = None);
+        // 크래시였어도 다시 켜지 않는다: 사용자가 정지를 눌렀다 (D-S6)
+        if let Some(proc) = s.managed_store.remove(&instance.id).await {
+            s.judge_exit(&instance.id, &proc, false).await;
+        }
+        let pid_file = s.instance_store.managed_pid_file(&instance.id);
+        let _ = std::fs::remove_file(&pid_file);
+        s.runtime.with(&instance.id, |r| r.stop_cooldown = Some(Instant::now()));
+
+        // tracker에서도 제거
+        let _ = s.tracker.untrack(&instance.id);
+
+        Ok(json!({
+            "success": true,
+            "server": server_name,
+            "message": format!("Server '{}' already stopped", server_name)
+        }))
+    }
+
+    /// 데몬이 띄우지 않은(non-managed) 서버: 추적 중인 PID를 모듈 `stop()`에 넘겨 멈춘다
+    async fn stop_unmanaged(
+        sup: &tokio::sync::RwLock<Self>,
+        instance: &crate::instance::ServerInstance,
+        module_name: &str,
+        module: &LoadedModule,
+        stop_config: serde_json::Map<String, Value>,
+        tracked_pid: Option<u32>,
+        host_context: Option<crate::plugin::host::Context>,
+        force: bool,
+    ) -> Result<Value> {
+        let server_name = instance.name.as_str();
+        let module_path = module.entry_path();
         // ── Non-managed mode: Python lifecycle.py를 통한 정지 ──
         // 데몬이 추적하는 PID가 없으면 멈출 것이 없다. 모듈 stop()을 PID 없이 부르면
         // 이미지 이름으로 같은 게임의 다른 서버까지 끝낼 수 있다
@@ -265,7 +303,7 @@ impl Supervisor {
         // managed 서버는 위에서 데몬이 직접 멈춘다. 여기까지 오면 항상 non-managed.
         config_obj.insert("managed".to_string(), json!(false));
         // 모듈이 `stop_timeout`만큼 기다리므로 호출은 그보다 조금 더 기다린다. 그 한도를 모듈에도 알린다
-        let limit = module_stop_limit(stop_timeout_of(&instance, module.metadata.stop_timeout));
+        let limit = module_stop_limit(stop_timeout_of(instance, module.metadata.stop_timeout));
         config_obj.insert("stop_call_limit".to_string(), json!(limit));
         let config = Value::Object(config_obj);
 

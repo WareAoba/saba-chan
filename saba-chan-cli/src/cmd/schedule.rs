@@ -621,7 +621,7 @@ mod tests {
         assert_eq!(save_body(Some(&read), vec![], Some(3)), json!({ "schedule": [], "backup_keep": 3, "revision": "ab12" }));
     }
 
-    /// 이미 지난 날의 한 번 작업은 저장되지만 돌지 않는다: 데몬의 `warnings`를 1부터 센 번호로 알린다. 옛 데몬은 싣지 않는다
+    /// 이미 지난 날의 한 번 작업은 저장되지만 돌지 않는다: 데몬의 `warnings`를 1부터 센 번호로 알린다
     #[test]
     fn a_once_task_whose_date_passed_is_warned_about() {
         crate::i18n::init("en");

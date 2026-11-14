@@ -1,12 +1,9 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
 import type { Server } from '../stores/useServerStore';
-import type { ApiBody, ModuleInfo } from '../types/daemon';
+import type { ApiBody } from '../types/daemon';
 import { eventsLive, subscribeDaemonEvents } from '../utils/daemonEvents';
-import { extensionInstallMethod } from '../utils/installMethod';
 
-/** 데몬이 목록에 확인 결과를 싣지 않는 옛 데몬일 때만 화면이 직접 확인을 시킨다 */
-const UPDATE_CHECK_INTERVAL_MS = 3 * 60 * 60 * 1000; // 3시간
 const PROVISION_POLL_MS = 1200;
 /** 데몬의 `provision.progress` 이벤트를 받는 동안 놓친 것을 메우는 간격 */
 const PROVISION_SLOW_POLL_MS = 10_000;
@@ -44,48 +41,15 @@ export function useMaintenanceOf(id: string) {
 }
 
 /** 확인 작업 실행: 서버마다 정확히 한 곳(목록 줄)에서 호출한다 */
-export function useInstanceMaintenance(server: Server, module: ModuleInfo | undefined) {
+export function useInstanceMaintenance(server: Server) {
     const patch = useMaintenanceStore((s) => s.patch);
-    const installMethod = extensionInstallMethod(server, module);
 
-    // 데몬이 주기적으로 확인한 결과 (0.1.14~): 목록에 실려 오므로 여기서는 읽기만 한다
-    const daemonChecks = server.update_check !== undefined;
+    // 데몬이 주기적으로 확인한 결과: 목록에 실려 오므로 여기서는 읽기만 한다
     const checkKey = JSON.stringify(server.update_check ?? null);
     // biome-ignore lint/correctness/useExhaustiveDependencies: 결과가 바뀔 때만 (목록을 받을 때마다 새 객체다)
     useEffect(() => {
-        if (!daemonChecks) return;
         patch(server.id, updateStateOf(server.update_check ?? null));
-    }, [server.id, daemonChecks, checkKey, patch]);
-
-    // 옛 데몬: 익스텐션 설치 방식으로 설치한 인스턴스의 게임 서버 업데이트를 화면이 확인시킨다 (3시간 주기)
-    useEffect(() => {
-        if (daemonChecks) return;
-        if (server.provisioning) return;
-        if (!installMethod) return;
-        if (!window.api?.instanceCheckUpdate) return;
-
-        let cancelled = false;
-        const doCheck = async () => {
-            try {
-                const result = await window.api.instanceCheckUpdate(server.id);
-                if (cancelled || !result) return;
-                // 확인 실패는 "업데이트 없음"과 다르다: 줄에 경고로 보인다 (예전에 찾은 업데이트 표시는 그대로 둔다)
-                if (result.reason === 'check_failed') {
-                    patch(server.id, { updateCheckError: String(result.error || '') });
-                    return;
-                }
-                patch(server.id, { updateInfo: result.update_available ? result : null, updateCheckError: null });
-            } catch {
-                // 백그라운드 확인 — 실패는 무시
-            }
-        };
-        doCheck();
-        const timer = setInterval(doCheck, UPDATE_CHECK_INTERVAL_MS);
-        return () => {
-            cancelled = true;
-            clearInterval(timer);
-        };
-    }, [server.id, server.provisioning, installMethod, patch, daemonChecks]);
+    }, [server.id, checkKey, patch]);
 
     // 프로비저닝 진행률 폴링 — server.provisioning이 true인 동안
     useEffect(() => {

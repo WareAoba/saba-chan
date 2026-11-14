@@ -3,11 +3,9 @@
 //! 처리기는 이 트레이트만 알고, 실제 구현은 IPCServer(기존 핸들러 재사용)가
 //! 맡습니다. 테스트에서는 가짜 구현을 꽂아 처리기만 따로 검증합니다.
 
-use crate::ipc::internal::{into_internal, InternalResponse};
+use crate::ipc::internal::InternalResponse;
 use crate::ipc::{CommandRequest, IPCServer};
-use crate::supervisor::module_loader::CommandField;
-use axum::extract::{Path, State};
-use axum::Json;
+use crate::module_loader::CommandField;
 use serde::Deserialize;
 use serde_json::json;
 use std::collections::HashMap;
@@ -54,7 +52,7 @@ pub struct ModuleView {
     /// [errors] 오류 코드 → 문구
     pub errors: HashMap<String, String>,
     /// [[presets]] 추천 설정 묶음 (heartbeat로 relay에 id·이름만 나간다)
-    pub presets: Vec<crate::supervisor::module_loader::ModulePreset>,
+    pub presets: Vec<crate::module_loader::ModulePreset>,
     /// `[commands] failure_patterns`: 콘솔 답이 맞으면 실패
     pub failure_patterns: Vec<String>,
     /// 모듈 폴더 (`locales/<lang>.json`을 읽는다). 없으면 module.toml 문구만
@@ -62,7 +60,7 @@ pub struct ModuleView {
     /// `[status] players`를 선언했다 (채팅 `players`가 접속자 조회)
     pub players: bool,
     /// 설정 스키마 (명령 결과 칸 이름을 설정 이름으로, `commands::output::labels`)
-    pub settings: Vec<crate::supervisor::module_loader::SettingField>,
+    pub settings: Vec<crate::module_loader::SettingField>,
 }
 
 impl ModuleView {
@@ -206,7 +204,7 @@ pub trait DaemonApi {
 
 impl DaemonApi for IPCServer {
     async fn servers(&self) -> Result<Vec<ServerView>, String> {
-        let resp = into_internal(crate::ipc::handlers::server::list_servers_internal(self).await).await;
+        let resp = InternalResponse::from(crate::service::servers::list(self, 0).await);
         if !resp.is_success() {
             return Err(resp.str_field("error").unwrap_or("failed to list servers").to_string());
         }
@@ -259,21 +257,20 @@ impl DaemonApi for IPCServer {
     }
 
     async fn start(&self, server: &ServerView) -> InternalResponse {
-        crate::ipc::handlers::server::start(self, &server.id).await.into()
+        crate::service::lifecycle::start(self, &server.id).await.into()
     }
 
     async fn stop(&self, server: &ServerView) -> InternalResponse {
-        crate::ipc::handlers::server::user_stop(self, &server.id, false).await.into()
+        crate::service::lifecycle::user_stop(self, &server.id, false).await.into()
     }
 
     async fn command(&self, instance_id: &str, command: &str, args: Vec<String>) -> InternalResponse {
         let req = CommandRequest { command: command.to_string(), args: json!(args) };
-        into_internal(crate::ipc::handlers::command::execute_command(Path(instance_id.to_string()), State(self.clone()), Json(req)).await).await
+        crate::service::command::execute(self, instance_id, req).await.into()
     }
 
     async fn players(&self, server: &ServerView) -> InternalResponse {
-        use axum::response::IntoResponse;
-        into_internal(crate::ipc::handlers::managed::players_handler(Path(server.id.clone()), State(self.clone())).await.into_response()).await
+        crate::service::servers::players(self, &server.id).await.into()
     }
 }
 

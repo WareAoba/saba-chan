@@ -11,14 +11,18 @@ describe('서버 동작은 id로 서버를 찾는다', () => {
 
     beforeEach(() => {
         vi.useFakeTimers({ shouldAdvanceTime: true });
-        const list = [
+        const list: Record<string, unknown>[] = [
             { id: 'x', name: 'Same', module: 'game', status: 'stopped' },
             { id: 'y', name: 'Same', module: 'game', status: 'stopped' },
         ];
         servers = list.map((s) => ({ ...s }));
         window.api = {
             serverList: vi.fn().mockResolvedValue({ servers: list }),
-            instanceStart: vi.fn().mockResolvedValue({ success: true }),
+            // 데몬은 켜는 중인 서버에 transition을 싣는다
+            instanceStart: vi.fn(async (id: string) => {
+                list.find((s) => s.id === id)!.transition = 'starting';
+                return { success: true };
+            }),
             instanceStatus: vi.fn().mockResolvedValue({ status: 'starting' }),
         } as unknown as typeof window.api;
         window.showToast = vi.fn();

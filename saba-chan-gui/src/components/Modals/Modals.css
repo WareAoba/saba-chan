@@ -1190,35 +1190,7 @@
     color: var(--text-3);
 }
 
-.update-panel-actions {
-    display: none;
-}
-
 /* ── Extension Store & Version Management ───────────────────── */
-
-.ss-section-label {
-    font-size: var(--fs-md);
-    font-weight: 700;
-    color: var(--text-1);
-    margin: var(--sp-6) 0 var(--sp-2);
-}
-
-.ss-store-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--sp-2);
-    margin: var(--sp-6) 0 var(--sp-2);
-}
-
-.saba-storage-tab-content > .ss-store-header:first-child,
-.saba-storage-tab-content > .update-modal-status-bar + .ss-store-header {
-    margin-top: 0;
-}
-
-.ss-store-header .ss-section-label {
-    margin: 0;
-}
 
 .ss-card {
     display: flex;
@@ -1432,76 +1404,6 @@
     color: var(--stop);
 }
 
-/* ── 다운로드 진행률 링 ─────────────────────────── */
-.download-ring-wrapper {
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 32px;
-    height: 32px;
-    flex-shrink: 0;
-}
-
-.download-ring-svg {
-    display: block;
-}
-
-.download-ring-bg {
-    stroke: var(--line);
-}
-
-.download-ring-fill {
-    stroke: var(--accent);
-    transition: stroke-dashoffset 0.25s ease;
-}
-
-.download-ring-fill.indeterminate {
-    animation: download-ring-spin 1s linear infinite;
-    transition: none;
-}
-
-@keyframes download-ring-spin {
-    to {
-        transform: rotate(270deg);
-        transform-origin: center;
-    }
-}
-
-/* transform-origin이 SVG에서 제대로 작동하려면 */
-.download-ring-fill.indeterminate {
-    transform-origin: 16px 16px;
-    animation: download-ring-spin 0.9s linear infinite;
-}
-
-@keyframes download-ring-spin {
-    from {
-        transform: rotate(-90deg);
-    }
-    to {
-        transform: rotate(270deg);
-    }
-}
-
-.download-ring-label {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: calc(8px * var(--font-scale));
-    font-weight: 700;
-    color: var(--text-1);
-    pointer-events: none;
-    line-height: 1;
-}
-
-.download-ring-label small {
-    font-size: calc(5px * var(--font-scale));
-    font-weight: 600;
-    opacity: 0.7;
-}
-
 .ss-card-icon {
     width: 32px;
     height: 32px;
@@ -1599,24 +1501,175 @@
     gap: var(--sp-1);
 }
 
-/* 이 데몬의 OS·CPU에서 돌지 않는 모듈: 접힌 묶음, 설치 버튼 없음 */
-.ss-unsupported {
+/* 사바 스토리지 묶음 (설치됨·설치 가능·실행 불가): 머리가 큰 막대이고 처음엔 펼쳐 둔다. 접기는 남긴다 */
+.ss-section {
     border: 1px solid var(--line);
     border-radius: var(--r-md);
-    background: var(--bg-1);
+    background: var(--surface-gradient);
+    box-shadow: var(--neu-up);
     overflow: hidden;
     margin-bottom: var(--sp-4);
 }
-
-.ss-unsupported > .saba-disclosure-head {
+.ss-section > .saba-disclosure-bar {
     display: flex;
-    width: 100%;
+    align-items: center;
+    gap: var(--sp-2);
+    padding-right: var(--sp-3);
+}
+.ss-section > .saba-disclosure-bar > .saba-disclosure-head {
+    flex: 1;
+    display: flex;
+    justify-content: flex-start;
+    min-width: 0;
     margin: 0;
     padding: var(--sp-3) var(--sp-4);
     border-radius: 0;
+    color: var(--text-1);
+    font-size: var(--fs-md);
+    font-weight: 700;
 }
-.ss-unsupported > .saba-disclosure-body {
+.ss-section > .saba-disclosure-bar > .saba-disclosure-head:hover {
+    background: none;
+    color: var(--brand-primary);
+}
+.ss-section > .saba-disclosure-body {
     padding-top: 0;
+    border-top: 1px solid var(--line);
+}
+.ss-section-count {
+    display: inline-flex;
+    align-items: center;
+    height: 20px;
+    padding: 0 var(--sp-2);
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--accent) 16%, transparent);
+    color: var(--brand-primary);
+    font-size: var(--fs-xs);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+.ss-section.muted .ss-section-count {
+    background: var(--bg-3);
+    color: var(--text-2);
+}
+/* 묶음 안의 목록은 묶음 테두리를 같이 쓴다 */
+.ss-section .ss-cards {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    margin: 0;
+}
+.ss-section .ss-catalog {
+    padding: var(--sp-3);
+    margin: 0;
+}
+.ss-section .ss-empty {
+    padding: var(--sp-3) var(--sp-4);
+}
+
+/* 컴포넌트 탭 머리 카드: 새 버전과 업데이트 버튼 하나 */
+.ss-hero {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+    padding: var(--sp-4);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    background: var(--surface-gradient);
+    box-shadow: var(--neu-up);
+    margin-bottom: var(--sp-4);
+}
+.ss-hero-top {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--sp-3);
+}
+.ss-hero-text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-0-5);
+}
+.ss-hero-title {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+    font-size: var(--fs-lg);
+    font-weight: 700;
+    color: var(--text-1);
+}
+.ss-hero-sub {
+    font-size: var(--fs-sm);
+    color: var(--text-2);
+}
+.ss-hero-note {
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+}
+.ss-update-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+}
+.ss-progress {
+    height: 8px;
+    border-radius: 999px;
+    background: var(--field);
+    box-shadow: var(--neu-in);
+    overflow: hidden;
+}
+.ss-progress > i {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--brand-gradient);
+    transition: width var(--dur) var(--ease);
+}
+.ss-progress.indeterminate > i {
+    width: 35%;
+    animation: ss-progress-slide 1.2s var(--ease) infinite alternate;
+}
+@keyframes ss-progress-slide {
+    from {
+        transform: translateX(0);
+    }
+    to {
+        transform: translateX(185%);
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .ss-progress.indeterminate > i {
+        animation: none;
+    }
+}
+.ss-progress-row {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--sp-2);
+    margin-top: var(--sp-1);
+    font-size: var(--fs-xs);
+    color: var(--text-2);
+    font-variant-numeric: tabular-nums;
+}
+.ss-ok-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1);
+    height: 20px;
+    padding: 0 var(--sp-2);
+    border-radius: 999px;
+    background: var(--ok-soft);
+    color: var(--ok);
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    white-space: nowrap;
+}
+.ss-version-arrow {
+    color: var(--brand-primary);
+    font-weight: 700;
 }
 
 .ss-unsupported-row {
@@ -1624,8 +1677,10 @@
     align-items: center;
     gap: var(--sp-3);
     padding: var(--sp-3) var(--sp-4);
-    border-top: 1px solid var(--line);
     opacity: 0.75;
+}
+.ss-unsupported-row + .ss-unsupported-row {
+    border-top: 1px solid var(--line);
 }
 
 .ss-unsupported-chip {

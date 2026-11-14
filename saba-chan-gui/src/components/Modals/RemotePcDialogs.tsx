@@ -4,7 +4,7 @@ import type { ApiBody } from '../../types/daemon';
 import { Icon } from '../Icon';
 import { Dialog } from '../ui/Dialog';
 import { SabaCheckbox, SabaNumberInput, SabaSpinner, SabaToggle } from '../ui/SabaUI';
-import { SettingRow } from '../ServerSettingsModal';
+import { SettingRow } from '../ServerSettingsParts';
 import { ConfirmIcon } from './Modals';
 import { failed } from '../../utils/apiResult';
 

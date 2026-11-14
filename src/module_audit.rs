@@ -11,7 +11,7 @@ use std::io::Write;
 use std::path::Path;
 use std::process::Stdio;
 
-use crate::supervisor::module_loader::ModulePermissions;
+use crate::module_loader::ModulePermissions;
 
 /// 검사기 원본. 데몬이 공용 유틸리티와 함께 배포한다
 pub const SCRIPT: &str = include_str!("../modules/saba_audit.py");
@@ -41,7 +41,7 @@ pub fn scan_blocking(python: &Path, dir: &Path) -> Result<Vec<Finding>> {
         let manifest: toml::Value = toml::from_str(source.trim_start_matches('\u{feff}'))
             .with_context(|| format!("parse {}", manifest_path.display()))?;
         Some(manifest.get("module").and_then(|value| value.get("dependencies"))
-            .and_then(|value| value.get("saba-core")).and_then(toml::Value::as_str).unwrap_or("missing").to_string())
+            .and_then(|value| value.get(crate::module_loader::CORE_COMPONENT)).and_then(toml::Value::as_str).unwrap_or("missing").to_string())
     } else {
         None
     };
@@ -87,6 +87,27 @@ pub fn tool_python() -> std::path::PathBuf {
     std::env::var_os("SABA_PYTHON")
         .map(Into::into)
         .unwrap_or_else(|| if cfg!(windows) { "python".into() } else { "python3".into() })
+}
+
+/// 모듈 폴더의 신뢰 표시 (설치 기록의 키는 폴더 이름)
+pub(crate) fn module_trust(path: &str) -> saba_chan_updater_lib::integrity::Trust {
+    let folder = std::path::Path::new(path).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    saba_chan_updater_lib::integrity::trust_of(
+        &format!("{}{}", saba_chan_updater_lib::relay::MODULE_PREFIX, folder),
+        std::path::Path::new(path),
+    )
+}
+
+/// 서명된 카탈로그에서 받지 않았거나 받은 뒤 바뀐 구성요소를 쓸 때 응답에 싣는 알림 (실행은 막지 않는다)
+pub(crate) fn trust_warnings(kind: &str, id: &str, trust: saba_chan_updater_lib::integrity::Trust) -> Vec<serde_json::Value> {
+    use saba_chan_updater_lib::integrity::Trust;
+    let code = match trust {
+        Trust::Verified => return Vec::new(),
+        Trust::Modified => format!("{}_modified", kind),
+        Trust::Unverified => format!("{}_unverified", kind),
+    };
+    // isolated: 이 플랫폼에서 격리된 환경(허용된 폴더만)에서 돈다
+    vec![serde_json::json!({ "code": code, kind: id, "isolated": crate::sandbox::enforced() })]
 }
 
 #[cfg(test)]

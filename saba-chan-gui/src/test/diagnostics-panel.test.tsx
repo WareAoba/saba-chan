@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DiagnosticsPanel } from '../components/DiagnosticsPanel';
 
 const diag = {
-    ok: true,
+    success: true,
     version: '0.1.5',
     pid: 4242,
     uptime_secs: 3725,

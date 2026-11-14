@@ -679,6 +679,7 @@
   "run": {
     "confirm_danger": "{{label}} на {{name}} нельзя отменить. Выполнить?",
     "missing_arg": "Не указано: {{label}}. Использование: {{usage}}",
+    "must_be_boolean": "{{label}} должно быть true или false (on/off, yes/no).",
     "must_be_number": "{{label}} должно быть числом.",
     "must_be_one_of": "{{label}} должно быть одним из: {{options}}",
     "no_commands": "В этой игре нет команд. Отправляйте строки как есть: saba-chan-cli server send NAME \"line\"",

@@ -3,8 +3,7 @@ import { useTranslation } from 'react-i18next';
 import type { ApiBody } from '../../types/daemon';
 import { Segmented } from '../ui/StatusChip';
 import { SabaToggle } from '../ui/SabaUI';
-
-const failed = (res: ApiBody | null | undefined) => !res || res.success === false || Boolean(res.error_code);
+import { failed } from '../../utils/apiResult';
 
 /** 고칠 값: 공개 주소(빈 값이면 공인 IP 그대로)와 디스코드 `/<서버> 주소`로 알려 주기 */
 export interface AddressDraft {

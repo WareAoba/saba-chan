@@ -1,5 +1,5 @@
 use super::*;
-use crate::supervisor::module_loader::SettingField;
+use crate::module_loader::SettingField;
 use axum::{extract::State, http::StatusCode, routing::post, Json, Router};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 

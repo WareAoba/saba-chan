@@ -11,7 +11,7 @@
 //! 시험 리스너를 여는 동안 같은 인스턴스의 시작은 기다리고, 시작하는 중인 인스턴스의 포트는 잡지 않는다 (`begin_start`). 결과는 인스턴스마다 마지막 한 번을 메모리에 둔다.
 
 use crate::instance::ServerInstance;
-use crate::supervisor::module_loader::ModuleSettings;
+use crate::module_loader::ModuleSettings;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
@@ -73,11 +73,7 @@ pub fn public_ports(instance: &ServerInstance, settings: Option<&ModuleSettings>
     let mut out = Vec::new();
     for field in settings.map(|s| s.fields.as_slice()).unwrap_or_default() {
         let Some(protocols) = field.public.as_deref().and_then(protocols_of) else { continue };
-        let core = match field.name.as_str() {
-            "port" => instance.port,
-            "rest_port" => instance.rest_port,
-            _ => None,
-        };
+        let core = if field.name == "port" { instance.port } else { None };
         let value = core
             .or_else(|| instance.module_settings.get(&field.name).and_then(as_port))
             .or_else(|| field.default.as_ref().and_then(|d| serde_json::to_value(d).ok()).as_ref().and_then(as_port));
@@ -483,7 +479,7 @@ async fn ask_relay(relay: &Relay, nonce: &str, ports: &[(u16, Protocol)]) -> Res
         body["host"] = json!(host);
     }
     let body = body.to_string();
-    let req = crate::ipc::handlers::relay::signed_request(&relay_client()?, reqwest::Method::POST, &relay.base, path, &relay.token, Some(body))
+    let req = crate::relay_client::signed_request(&relay_client()?, reqwest::Method::POST, &relay.base, path, &relay.token, Some(body))
         .ok_or(CheckError::NotPaired)?;
     let res = req.header("X-Saba-Client", "1").send().await.map_err(|e| CheckError::Relay(e.to_string()))?;
     match res.status().as_u16() {
@@ -735,10 +731,10 @@ pub async fn targets(state: &crate::ipc::IPCServer, ids: &[String]) -> Vec<Targe
 }
 
 async fn relay_target(state: &crate::ipc::IPCServer) -> Result<Relay, CheckError> {
-    let token = crate::ipc::handlers::relay::load_node_token().ok_or(CheckError::NotPaired)?;
+    let token = crate::relay_client::load_node_token().ok_or(CheckError::NotPaired)?;
     let configured = state.config_store.get_bot_config().await.cloud.relay_url;
     let host = crate::remote_daemon::configured_address(&crate::remote_daemon::config::settings_in(&saba_chan_updater_lib::config_file::ConfigFile::default_location()));
-    Ok(Relay { base: crate::ipc::handlers::relay::signed_relay_url(&configured, None), token, host })
+    Ok(Relay { base: crate::relay_client::signed_relay_url(&configured, None), token, host })
 }
 
 fn bind_ip() -> IpAddr {
@@ -776,7 +772,7 @@ pub async fn check(state: &crate::ipc::IPCServer, ids: &[String]) -> Result<Vec<
 
 /// 자동 확인이 켜져 있고 릴레이에 연결돼 있으면 조용히 확인한다 (실패는 로그만)
 pub async fn auto_check(state: &crate::ipc::IPCServer, ids: Vec<String>) {
-    if !state.config_store.get_gui_settings().await.auto_port_check || crate::ipc::handlers::relay::load_node_token().is_none() {
+    if !state.config_store.get_gui_settings().await.auto_port_check || crate::relay_client::load_node_token().is_none() {
         return;
     }
     // 릴레이 한 번에 실을 수 있는 만큼씩 나눈다

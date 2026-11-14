@@ -57,8 +57,6 @@ type ReleaseIds = std::collections::BTreeMap<String, u64>;
 #[derive(Clone)]
 pub struct UpdateState {
     pub manager: Arc<RwLock<UpdateManager>>,
-    /// 다운로드 진행률 (Manager 잠금 없이 폴링 가능)
-    pub download_progress: Arc<std::sync::Mutex<DownloadProgress>>,
     /// 모듈/익스텐션 업데이트 적용 후 핫로드를 위한 참조
     pub supervisor: Option<Arc<RwLock<crate::supervisor::Supervisor>>>,
     pub extension_manager: Option<Arc<RwLock<crate::extension::ExtensionManager>>>,
@@ -85,6 +83,10 @@ pub struct UpdateState {
     release_unconfirmed: Arc<std::sync::Mutex<Option<(ReleaseIds, std::time::Instant)>>>,
     /// 앱 업데이트 적용 반복이 도는 중인가 (`spawn_core_apply`, 한 번에 하나)
     core_applying: Arc<std::sync::atomic::AtomicBool>,
+    /// 상태가 바뀌었을 수 있다: 상태 알림 반복(`spawn_status_events`)을 깨운다
+    status_changed: Arc<tokio::sync::Notify>,
+    /// 마지막으로 `update.status`로 알린 본문
+    announced: Arc<std::sync::Mutex<Option<Value>>>,
     /// 적용 반복이 새로 받아 볼 확인이 있었다: 반복이 다음 차례에 받고, 끝난 뒤에 왔으면 반복을 다시 띄운다
     apply_recheck: Arc<std::sync::atomic::AtomicBool>,
 }
@@ -93,8 +95,8 @@ impl UpdateState {
     /// 내장 기본값으로 업데이트 매니저 생성
     pub fn new() -> Self {
         let cfg = load_updater_config();
-        let modules_dir = resolve_modules_dir();
-        let mut mgr = UpdateManager::new(cfg, &modules_dir);
+        let modules_dir = crate::plugin::resolve_modules_dir();
+        let mut mgr = UpdateManager::new(cfg, &modules_dir.to_string_lossy());
         let live_path = LiveState::path();
         let mut live = LiveState::load_from(&live_path);
         #[cfg(not(test))]
@@ -119,11 +121,11 @@ impl UpdateState {
             }
             mgr.update_config(cfg);
         }
-        let progress = mgr.download_progress.clone();
+        // 받는 진행은 지금 붙은 클라이언트에게만 알린다: 클라이언트는 진행을 묻지 않는다
+        mgr.set_download_listener(Arc::new(|p: &DownloadProgress| crate::events::emit_live("update.progress", progress_event(p))));
         let manager = Arc::new(RwLock::new(mgr));
         Self {
             manager,
-            download_progress: progress,
             supervisor: None,
             extension_manager: None,
             stop_requested: None,
@@ -139,6 +141,8 @@ impl UpdateState {
             release_unconfirmed: Arc::default(),
             core_applying: Arc::default(),
             apply_recheck: Arc::default(),
+            status_changed: Arc::default(),
+            announced: Arc::default(),
         }
     }
 
@@ -164,6 +168,27 @@ impl UpdateState {
         }
         live.phase = phase;
         live.save_to(&self.live_path);
+        drop(live);
+        self.status_may_have_changed();
+    }
+
+    /// 클라이언트가 보는 상태(단계·구성요소·고정·번역 판)를 바꿨다: 상태 알림 반복이 다시 보고 달라졌으면 `update.status`를 낸다.
+    /// 잠금을 쥔 채 불러도 된다 (기다리지 않는다)
+    fn status_may_have_changed(&self) {
+        self.status_changed.notify_one();
+    }
+
+    /// 상태 본문이 지난번 알린 것과 다르면 `update.status`로 낸다
+    async fn announce_status(&self) {
+        let body = status_body(self).await;
+        {
+            let mut last = self.announced.lock().unwrap_or_else(|e| e.into_inner());
+            if last.as_ref() == Some(&body) {
+                return;
+            }
+            *last = Some(body.clone());
+        }
+        crate::events::emit("update.status", body);
     }
 
     /// 코어 업데이트가 데몬 작업만 기다리는 중이다: 새 예약 작업(백업·게임 서버 업데이트)은 업데이트 뒤로 미룬다.
@@ -293,7 +318,6 @@ pub fn updates_router(state: UpdateState) -> Router {
         .route("/api/updates/status", get(get_status))
         .route("/api/updates/check", post(check_updates))
         .route("/api/updates/download", post(download_components))
-        .route("/api/updates/download/progress", get(get_download_progress))
         .route("/api/updates/apply", post(apply_updates))
         .route("/api/updates/launch-updater", post(launch_updater))
         .route("/api/updates/rollback", get(get_rollback).post(roll_back))
@@ -324,6 +348,11 @@ pub fn updates_router(state: UpdateState) -> Router {
 async fn get_status(
     State(state): State<UpdateState>,
 ) -> impl IntoResponse {
+    Json(status_body(&state).await)
+}
+
+/// 상태 본문. 조회(`GET /api/updates/status`)와 상태 알림(`update.status`)이 같은 모양을 쓴다
+async fn status_body(state: &UpdateState) -> Value {
     let mgr = state.manager.read().await;
     let status = mgr.get_status();
     // 고른 뒤 다른 판이 깔린 고정은 싣지 않는다 (`AddonChoice::as_installed`). 다음 확인이 푼다
@@ -350,6 +379,7 @@ async fn get_status(
                 // 사용자가 고른 판 `{version, until_newer_than}` (고정하지 않았으면 null)
                 "pinned": pins.get(&key).and_then(|p| p.pinned.as_ref()),
                 "component": key,
+                "kind": c.component.kind(),
             })
         }).collect();
 
@@ -357,8 +387,8 @@ async fn get_status(
         .filter(|c| c.update_available && !matches!(c.component, Component::Locales))
         .count();
 
-    Json(json!({
-        "ok": true,
+    json!({
+        "success": true,
         "last_check": status.last_check,
         "next_check": status.next_check,
         "checking": status.checking,
@@ -370,7 +400,45 @@ async fn get_status(
         "stable_wait": status.stable_wait,
         // 설치된 번역 판 (locales/version). 바뀌면 GUI·TUI가 번역을 다시 읽는다
         "locales_version": crate::chat::i18n::installed_version(),
-    }))
+    })
+}
+
+/// 상태가 바뀔 때마다(`UpdateState::status_may_have_changed`) 상태 본문을 다시 만들어, 달라졌으면 `update.status`로 낸다.
+/// 띄우자마자 한 번 낸다: 데몬이 다시 뜬 뒤 마지막 번호로 다시 붙는 클라이언트가 버퍼에서 받는다
+pub fn spawn_status_events(state: UpdateState, shutdown: tokio_util::sync::CancellationToken) {
+    /// 한꺼번에 바뀌는 것(확인 → 받기 → 단계)을 한 번에 알린다
+    const SETTLE: std::time::Duration = std::time::Duration::from_millis(200);
+    tokio::spawn(async move {
+        loop {
+            state.announce_status().await;
+            tokio::select! {
+                _ = shutdown.cancelled() => break,
+                _ = state.status_changed.notified() => {}
+            }
+            tokio::time::sleep(SETTLE).await;
+        }
+    });
+}
+
+/// 받기·적용·판 고르기가 어느 길로 끝나든 상태가 바뀌었을 수 있다고 알린다 (`UpdateState::status_may_have_changed`)
+struct StatusTouched<'a>(&'a UpdateState);
+
+impl Drop for StatusTouched<'_> {
+    fn drop(&mut self) {
+        self.0.status_may_have_changed();
+    }
+}
+
+/// 받는 진행 한 번 → `update.progress` 본문. 퍼센트는 데몬이 계산한다(전체 크기를 모르면 null)
+fn progress_event(p: &DownloadProgress) -> Value {
+    let percent = (p.total_bytes > 0).then(|| (p.bytes_received as f64 * 100.0 / p.total_bytes as f64).round() as u64);
+    json!({
+        "component": p.component,
+        "active": p.active,
+        "bytesReceived": p.bytes_received,
+        "totalBytes": p.total_bytes,
+        "percent": percent,
+    })
 }
 
 /// POST /api/updates/check — 릴레이에서 최신 릴리즈 확인
@@ -391,6 +459,7 @@ async fn check_updates(
                     json!({
                         "pinned": pins.get(&c.component.manifest_key()).and_then(|p| p.pinned.as_ref()),
                         "component": c.component.manifest_key(),
+                        "kind": c.component.kind(),
                         "display_name": c.component.display_name(),
                         "current_version": c.current_version,
                         "latest_version": c.latest_version,
@@ -407,19 +476,15 @@ async fn check_updates(
                 .collect();
 
             Json(json!({
-                "ok": true,
+                "success": true,
                 "updates_available": update_names.len(),
                 "update_names": update_names,
                 "components": components,
                 "last_check": status.last_check,
             }))
+            .into_response()
         }
-        Err(e) => {
-            Json(json!({
-                "ok": false,
-                "error": e.to_string(),
-            }))
-        }
+        Err(e) => crate::ipc::handlers::error(axum::http::StatusCode::BAD_GATEWAY, "update_check_failed", e.to_string()),
     }
 }
 
@@ -432,8 +497,9 @@ async fn check_and_follow_up(state: &UpdateState) -> anyhow::Result<saba_chan_up
 
 /// `check_and_follow_up`에 heartbeat가 알린 릴리즈 id를 릴레이 캐시 키로 붙인다. 확인 결과와 `/latest` 응답에 담긴 가장 큰 릴리즈 id
 async fn check_and_follow_up_hinted(state: &UpdateState, hint: Option<u64>) -> anyhow::Result<(saba_chan_updater_lib::UpdateStatus, Option<u64>)> {
-    let (status, latest_id) = state.manager.write().await.check_for_updates_hinted(hint).await?;
+    let (status, latest_id) = saba_chan_updater_lib::check_shared(&state.manager, hint).await?;
     announce_new_updates(&status);
+    state.status_may_have_changed();
 
     // 모듈·익스텐션은 묻지 않고 바꿔 끼운다 (사용자 결정 2026-11-09). 확인을 끈 설정이면 주기 확인 자체가 돌지 않는다
     if status.components.iter().any(|c| c.update_available && is_addon(&c.component)) {
@@ -443,9 +509,11 @@ async fn check_and_follow_up_hinted(state: &UpdateState, hint: Option<u64>) -> a
     let has_locale_update = status.components.iter()
         .any(|c| matches!(c.component, Component::Locales) && c.update_available);
     if has_locale_update {
-        let mgr_clone = state.manager.clone();
+        let state = state.clone();
         tokio::spawn(async move {
-            silent_apply_locales(&mgr_clone).await;
+            silent_apply_locales(&state.manager).await;
+            // 번역 판이 바뀌었다
+            state.status_may_have_changed();
         });
     }
 
@@ -506,7 +574,15 @@ fn spawn_addon_replace(state: UpdateState) {
         return;
     }
     tokio::spawn(async move {
-        replace_addons_until_done(|| replace_addons_once(&state), &ADDON_RECHECK).await;
+        replace_addons_until_done(
+            || async {
+                let left = replace_addons_once(&state).await;
+                state.status_may_have_changed();
+                left
+            },
+            &ADDON_RECHECK,
+        )
+        .await;
         ADDON_REPLACING.store(false, Ordering::SeqCst);
     });
 }
@@ -532,15 +608,13 @@ async fn replace_addons_once(state: &UpdateState) -> Leftover {
         return Leftover::default();
     }
     // 이 코어로 돌아가지 않는 판(릴리즈 manifest에만 있는 더 새 판)은 앱을 올릴 때까지 둔다: 적용이 requires 검사로 거절한다
-    let core = std::collections::HashMap::from([("saba-core".to_string(), env!("CARGO_PKG_VERSION").to_string())]);
     let pending: Vec<Component> = state.manager.read().await.get_status().components.into_iter()
         .filter(|c| c.update_available && is_addon(&c.component))
         .filter(|c| enabled || chosen.contains(&c.component.manifest_key()))
-        .filter(|c| c.requires.as_ref().is_none_or(|r| {
-            let core_only: std::collections::HashMap<String, String> =
-                r.iter().filter(|(k, _)| k.as_str() == "saba-core").map(|(k, v)| (k.clone(), v.clone())).collect();
-            saba_chan_updater_lib::unmet_requires(&c.component.manifest_key(), &core_only, &core).is_empty()
-        }))
+        .filter(|c| {
+            let core = c.requires.as_ref().and_then(|r| r.get(crate::module_loader::CORE_COMPONENT));
+            core.is_none_or(|req| saba_chan_updater_lib::version::satisfies(crate::module_loader::DAEMON_VERSION, req))
+        })
         .map(|c| c.component)
         .collect();
     if pending.is_empty() {
@@ -558,8 +632,8 @@ async fn replace_addons_once(state: &UpdateState) -> Leftover {
     let mut failed = false;
     let mut downloaded = Vec::new();
     for comp in ready {
-        // 판마다 잠갔다 놓는다: 판 하나를 받는 동안만 상태 조회·업데이트 화면이 기다린다
-        let result = state.manager.write().await.download_component(&comp).await;
+        // 받는 동안은 관리자를 잠그지 않는다: 상태 조회·업데이트 화면이 기다리지 않는다
+        let result = saba_chan_updater_lib::download_shared(&state.manager, &comp).await;
         match result {
             Ok(_) => downloaded.push(comp),
             Err(e) => {
@@ -821,11 +895,11 @@ async fn core_apply(state: &UpdateState) {
                 let answer = into_internal(apply_updates_with(state.clone(), ApplyRequest { components: targets, ..Default::default() }).await).await.body;
                 if answer.get("requires_updater").and_then(Value::as_bool) == Some(true) {
                     let launched = into_internal(launch_updater(State(state.clone()), LooseJson(None)).await).await.body;
-                    if launched.get("ok").and_then(Value::as_bool) != Some(true) {
+                    if launched.get("success").and_then(Value::as_bool) != Some(true) {
                         tracing::warn!("[Updates] Could not start the updater: {}", launched);
                         state.set_phase(Phase::default());
                     }
-                } else if answer.get("ok").and_then(Value::as_bool) == Some(true) {
+                } else if answer.get("success").and_then(Value::as_bool) == Some(true) {
                     // 데몬이 내려가지 않고 바꾼 것(CLI·설치기)
                     state.set_phase(Phase::new(PhaseState::Done, version, notes));
                 } else {
@@ -972,7 +1046,7 @@ async fn get_daemon_update(State(state): State<UpdateState>) -> impl IntoRespons
     let visible = status.components.iter().filter(|c| c.update_available && !matches!(c.component, Component::Locales));
     let latest = status.components.iter().find(|c| matches!(c.component, Component::CoreDaemon) && c.update_available).and_then(|c| c.latest_version.clone());
     Json(json!({
-        "ok": true,
+        "success": true,
         "version": crate::relay_agent::AGENT_VERSION,
         "profile": saba_chan_updater_lib::profile::Profile::load().as_str(),
         "auto": cfg.enabled && cfg.auto_apply,
@@ -1011,7 +1085,7 @@ async fn put_daemon_update(State(state): State<UpdateState>, Json(body): Json<Da
             }
         });
     }
-    Json(json!({ "ok": true, "auto": body.auto }))
+    Json(json!({ "success": true, "auto": body.auto }))
 }
 
 /// 데몬 기동 후 업데이트를 주기적으로 확인한다 (U6). 24시간마다.
@@ -1030,6 +1104,8 @@ pub fn spawn_update_scheduler(state: UpdateState, shutdown: tokio_util::sync::Ca
                 _ = tokio::time::sleep(wait) => {}
             }
             let cfg = state.manager.read().await.get_config();
+            // 사바 스토리지 목록·아이콘도 이때 받아 둔다: 창을 열면 바로 보이게
+            crate::ipc::store_cache::store().refresh_in_background(&cfg.channel);
             if !cfg.enabled {
                 wait = RETRY;
                 continue;
@@ -1147,8 +1223,7 @@ fn announce_new_updates(status: &saba_chan_updater_lib::UpdateStatus) {
 async fn silent_apply_locales(manager: &Arc<RwLock<UpdateManager>>) {
     // 1. 다운로드
     let download_ok = {
-        let mut mgr = manager.write().await;
-        match mgr.download_component(&Component::Locales).await {
+        match saba_chan_updater_lib::download_shared(manager, &Component::Locales).await {
             Ok(_) => {
                 tracing::info!("[Updates] Locales silently downloaded");
                 true
@@ -1193,7 +1268,7 @@ fn body_or_default<T: serde::de::DeserializeOwned + Default>(bytes: &[u8]) -> Re
 }
 
 fn bad_body(error: String) -> axum::response::Response {
-    (axum::http::StatusCode::BAD_REQUEST, Json(json!({ "ok": false, "error": error, "error_code": "invalid_body" }))).into_response()
+    crate::ipc::handlers::error(axum::http::StatusCode::BAD_REQUEST, "invalid_body", error)
 }
 
 #[derive(Deserialize, Default)]
@@ -1210,39 +1285,35 @@ async fn download_components(State(state): State<UpdateState>, raw: axum::body::
     }
 }
 
-async fn download_components_with(state: UpdateState, body: DownloadRequest) -> impl IntoResponse {
-    let mut mgr = state.manager.write().await;
-
-    // 아직 체크하지 않았으면 먼저 체크
-    if mgr.get_status().components.is_empty() {
-        if let Err(e) = mgr.check_for_updates().await {
-            return Json(json!({
-                "ok": false,
-                "error": format!("Auto-check failed: {}", e),
-            }));
+async fn download_components_with(state: UpdateState, body: DownloadRequest) -> axum::response::Response {
+    let _touched = StatusTouched(&state);
+    // 아직 체크하지 않았으면 먼저 체크. 묻고 받는 동안은 관리자를 잠그지 않는다 (`check_shared`·`download_shared`):
+    // 상태 조회·`update.status`가 기다리지 않는다
+    let unchecked = state.manager.read().await.get_status().components.is_empty();
+    if unchecked {
+        if let Err(e) = saba_chan_updater_lib::check_shared(&state.manager, None).await {
+            return crate::ipc::handlers::error(axum::http::StatusCode::BAD_GATEWAY, "update_check_failed", format!("Auto-check failed: {}", e));
         }
     }
 
     if body.components.is_empty() {
         // 전체 다운로드. 하나가 실패해도 받은 것은 적용할 수 있게 남기고, 선택 다운로드처럼 받은 것과 실패한 것을 함께 알린다
-        match mgr.download_available_updates_report().await {
+        match saba_chan_updater_lib::download_available_shared(&state.manager).await {
             Ok((downloaded, failed)) => {
                 // 업데이터 --apply 모드를 위해 매니페스트 저장
-                if let Err(e) = mgr.save_pending_manifest() {
+                if let Err(e) = state.manager.read().await.save_pending_manifest() {
                     tracing::warn!("[Updates] Failed to save pending manifest: {}", e);
                 }
                 let errors: Vec<Value> = failed.iter().map(|(k, e)| json!({ "component": k, "error": e })).collect();
                 Json(json!({
-                    "ok": errors.is_empty(),
+                    "success": errors.is_empty(),
                     "downloaded": downloaded,
                     "count": downloaded.len(),
                     "errors": errors,
                 }))
+                .into_response()
             }
-            Err(e) => Json(json!({
-                "ok": false,
-                "error": e.to_string(),
-            })),
+            Err(e) => crate::ipc::handlers::error(axum::http::StatusCode::BAD_GATEWAY, "download_failed", e.to_string()),
         }
     } else {
         // 선택 컴포넌트만 다운로드
@@ -1251,7 +1322,7 @@ async fn download_components_with(state: UpdateState, body: DownloadRequest) -> 
 
         for key in &body.components {
             let component = Component::from_manifest_key(key);
-            match mgr.download_component(&component).await {
+            match saba_chan_updater_lib::download_shared(&state.manager, &component).await {
                 Ok(asset) => {
                     downloaded.push(json!({
                         "component": key,
@@ -1269,36 +1340,21 @@ async fn download_components_with(state: UpdateState, body: DownloadRequest) -> 
 
         // 업데이터 --apply 모드를 위해 매니페스트 저장
         if !downloaded.is_empty() {
-            if let Err(e) = mgr.save_pending_manifest() {
+            if let Err(e) = state.manager.read().await.save_pending_manifest() {
                 tracing::warn!("[Updates] Failed to save pending manifest: {}", e);
             }
         }
 
         Json(json!({
-            "ok": errors.is_empty(),
+            "success": errors.is_empty(),
             "downloaded": downloaded,
             "count": downloaded.len(),
             "errors": errors,
         }))
+        .into_response()
     }
 }
 
-/// GET /api/updates/download/progress — 현재 다운로드 진행률 조회
-///
-/// Manager의 RwLock과 독립된 `std::sync::Mutex`를 사용하므로
-/// 다운로드 중에도 블로킹 없이 폴링 가능.
-async fn get_download_progress(
-    State(state): State<UpdateState>,
-) -> impl IntoResponse {
-    let prog = state.download_progress.lock().unwrap_or_else(|e| e.into_inner()).clone();
-    Json(json!({
-        "ok": true,
-        "component": prog.component,
-        "bytes_received": prog.bytes_received,
-        "total_bytes": prog.total_bytes,
-        "active": prog.active,
-    }))
-}
 
 /// POST /api/updates/apply — 다운로드된 업데이트 적용
 ///
@@ -1323,6 +1379,7 @@ async fn apply_updates(State(state): State<UpdateState>, raw: axum::body::Bytes)
 }
 
 async fn apply_updates_with(state: UpdateState, body: ApplyRequest) -> impl IntoResponse {
+    let _touched = StatusTouched(&state);
     let mut mgr = state.manager.write().await;
 
     // 적용 대상 분류
@@ -1435,7 +1492,7 @@ async fn apply_updates_with(state: UpdateState, body: ApplyRequest) -> impl Into
                 match sup.refresh_modules() {
                     Ok(modules) => {
                         tracing::info!("[Updates] Hot-reloaded {} module(s) after update", modules.len());
-                        sup.migrate_list_settings();
+                        sup.migrate_settings();
                     }
                     Err(e) => {
                         tracing::warn!("[Updates] Failed to hot-reload modules after update: {}", e);
@@ -1462,7 +1519,7 @@ async fn apply_updates_with(state: UpdateState, body: ApplyRequest) -> impl Into
     }
 
     Json(json!({
-        "ok": errors.is_empty(),
+        "success": errors.is_empty(),
         "applied": applied,
         "needs_updater": needs_updater,
         "requires_updater": !needs_updater.is_empty(),
@@ -1484,23 +1541,24 @@ fn restore_pending(mgr: &mut saba_chan_updater_lib::UpdateManager) {
 async fn install_updates(State(state): State<UpdateState>) -> axum::response::Response {
     use crate::ipc::internal::into_internal;
     if let Err(e) = check_and_follow_up(&state).await {
-        return Json(json!({ "ok": false, "error": format!("Update check failed: {}", e) })).into_response();
+        return crate::ipc::handlers::error(axum::http::StatusCode::BAD_GATEWAY, "update_check_failed", format!("Update check failed: {}", e));
     }
-    let downloaded = into_internal(download_components_with(state.clone(), DownloadRequest::default()).await).await.body;
-    if downloaded.get("ok").and_then(Value::as_bool) == Some(false) && downloaded.get("downloaded").is_none() {
-        return Json(downloaded).into_response();
+    let downloaded = into_internal(download_components_with(state.clone(), DownloadRequest::default()).await).await;
+    if !downloaded.status.is_success() {
+        return (downloaded.status, Json(downloaded.body)).into_response();
     }
+    let downloaded = downloaded.body;
     let mut applied = into_internal(apply_updates_with(state.clone(), ApplyRequest::default()).await).await.body;
     applied["downloaded"] = downloaded.get("downloaded").cloned().unwrap_or(Value::Null);
     // 일부만 받았으면 받은 것은 적용하고 받지 못한 것을 함께 알린다
     if let Some(failed) = downloaded.get("errors").and_then(Value::as_array).filter(|e| !e.is_empty()) {
-        applied["ok"] = json!(false);
+        applied["success"] = json!(false);
         applied["download_errors"] = json!(failed);
     }
     if applied.get("requires_updater").and_then(Value::as_bool) == Some(true) {
         let launched = into_internal(launch_updater(State(state), LooseJson(None)).await).await.body;
-        if launched.get("ok").and_then(Value::as_bool) == Some(false) {
-            applied["ok"] = json!(false);
+        if launched.get("success").and_then(Value::as_bool) == Some(false) {
+            applied["success"] = json!(false);
             applied["error"] = launched.get("error").cloned().unwrap_or(Value::Null);
         } else {
             applied["updater_launched"] = json!(true);
@@ -1530,11 +1588,7 @@ async fn launch_updater(
     let body = body.map(|Json(b)| b).unwrap_or_default();
     let targets = state.manager.read().await.updater_targets();
     if targets.is_empty() {
-        return (
-            axum::http::StatusCode::CONFLICT,
-            Json(json!({ "ok": false, "error": "No downloaded updates to apply" })),
-        )
-            .into_response();
+        return crate::ipc::handlers::error(axum::http::StatusCode::CONFLICT, "nothing_to_apply", "No downloaded updates to apply");
     }
     hand_off_to_updater(state, body, targets, false).await
 }
@@ -1552,8 +1606,8 @@ async fn get_rollback(State(state): State<UpdateState>) -> impl IntoResponse {
 /// `{ok, available, current}`, 되돌릴 수 있으면 `version`(돌아갈 판)·`updated_at`(지금 판으로 업데이트한 때)도
 fn rollback_body(previous: Option<&saba_chan_updater_lib::live_apply::PreviousVersion>, current: &str) -> Value {
     match kept_previous(previous, current) {
-        Some(p) => json!({ "ok": true, "available": true, "version": p.version, "current": current, "updated_at": p.updated_at }),
-        None => json!({ "ok": true, "available": false, "current": current }),
+        Some(p) => json!({ "success": true, "available": true, "version": p.version, "current": current, "updated_at": p.updated_at }),
+        None => json!({ "success": true, "available": false, "current": current }),
     }
 }
 
@@ -1603,7 +1657,7 @@ fn versions_body(
         .filter(newer)
         .filter(|held| !latest_core.is_some_and(|latest| update_phase::failed_release_outdated(held, latest)));
     json!({
-        "ok": true,
+        "success": true,
         "channel": cfg.channel,
         "installed": installed,
         "kept_previous": kept_previous(previous, installed).map(|p| json!({
@@ -1625,7 +1679,7 @@ fn hold_baseline<'a>(installed: &'a str, latest_core: Option<&'a str>) -> &'a st
 
 /// 설치된 모듈·익스텐션 키와 그 `saba-core` 요구 (모듈 `[module.dependencies]`, 익스텐션 `dependencies`·`min_app_version`)
 async fn installed_addon_requires(state: &UpdateState) -> Vec<(String, std::collections::HashMap<String, String>)> {
-    let core = crate::supervisor::module_loader::CORE_COMPONENT.to_string();
+    let core = crate::module_loader::CORE_COMPONENT.to_string();
     let mut addons = Vec::new();
     if let Some(sup) = &state.supervisor
         && let Ok(modules) = sup.read().await.list_modules()
@@ -1647,7 +1701,7 @@ async fn installed_addon_requires(state: &UpdateState) -> Vec<(String, std::coll
 /// `version` 코어가 읽지 않을 것: `saba-core` 요구를 채우지 못하는 모듈·익스텐션 키. 사용자 되돌리기는 실행 파일만 되돌려
 /// 이것들은 새 판으로 남는다
 fn addons_needing_core(version: &str, addons: Vec<(String, std::collections::HashMap<String, String>)>) -> Vec<String> {
-    let core = crate::supervisor::module_loader::CORE_COMPONENT.to_string();
+    let core = crate::module_loader::CORE_COMPONENT.to_string();
     let installed = std::collections::HashMap::from([(core.clone(), version.to_string())]);
     addons
         .into_iter()
@@ -1674,11 +1728,7 @@ async fn roll_back_with(
 ) -> axum::response::Response {
     let installed = saba_chan_updater_lib::relay::core_version();
     let Some(mut previous) = previous.filter(|p| kept_previous(Some(p), &installed).is_some()) else {
-        return (
-            axum::http::StatusCode::CONFLICT,
-            Json(json!({ "ok": false, "error": "No previous version is kept", "error_code": "no_previous_version" })),
-        )
-            .into_response();
+        return crate::ipc::handlers::error(axum::http::StatusCode::CONFLICT, "no_previous_version", "No previous version is kept");
     };
     // 업데이터가 되돌린 뒤 적을 고정 기준 (`hold_baseline`): 지금 판이 아니면 직전 판 기록에 남겨 넘긴다
     let hold = {
@@ -1702,19 +1752,11 @@ async fn roll_back_with(
 /// 업데이터를 띄우고 데몬을 끈다. `targets`는 바꿀 구성요소 키(GUI를 다시 띄울지 정한다), `rollback`이면 적용 대신 직전 판으로 되돌린다
 async fn hand_off_to_updater(state: UpdateState, body: LaunchUpdaterRequest, targets: Vec<String>, rollback: bool) -> axum::response::Response {
     let Some(updater) = updater_binary() else {
-        return (
-            axum::http::StatusCode::NOT_FOUND,
-            Json(json!({ "ok": false, "error": "saba-chan-installer not found next to the daemon" })),
-        )
-            .into_response();
+        return crate::ipc::handlers::error(axum::http::StatusCode::NOT_FOUND, "updater_not_started", "saba-chan-installer not found next to the daemon");
     };
     use std::sync::atomic::Ordering;
     if state.updater_launched.swap(true, Ordering::SeqCst) {
-        return (
-            axum::http::StatusCode::CONFLICT,
-            Json(json!({ "ok": false, "error": "The updater is already launching", "error_code": "updater_already_launched" })),
-        )
-            .into_response();
+        return crate::ipc::handlers::error(axum::http::StatusCode::CONFLICT, "updater_already_launched", "The updater is already launching");
     }
 
     // 이번 적용에만 쓰는 실행 표 (업데이터는 표 없이 --apply를 거절한다)
@@ -1722,11 +1764,7 @@ async fn hand_off_to_updater(state: UpdateState, body: LaunchUpdaterRequest, tar
         Ok(t) => t,
         Err(e) => {
             state.updater_launched.store(false, Ordering::SeqCst);
-            return (
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "ok": false, "error": format!("Failed to prepare updater launch: {}", e) })),
-            )
-                .into_response()
+            return crate::ipc::handlers::error(axum::http::StatusCode::INTERNAL_SERVER_ERROR, "updater_not_started", format!("Failed to prepare updater launch: {}", e));
         }
     };
     // 떠 있는 GUI는 실행 파일을 쥐고 있어 바꿀 수 없다. GUI가 바뀌면 GUI가 부른 게 아니어도(CLI·자동 업데이트) 데몬이 끄고
@@ -1755,11 +1793,7 @@ async fn hand_off_to_updater(state: UpdateState, body: LaunchUpdaterRequest, tar
     // 바로 끝난 업데이터(라이브러리 없음·백신 차단)는 데몬을 내리기 전에 실패로 돌린다. --wait-pid로 데몬을 기다리므로 살아 있어야 한다
     if let Err(e) = spawn_and_confirm(&updater, &args, std::time::Duration::from_millis(700)).await {
         state.updater_launched.store(false, Ordering::SeqCst);
-        return (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "ok": false, "error": format!("Failed to start updater: {}", e) })),
-        )
-            .into_response();
+        return crate::ipc::handlers::error(axum::http::StatusCode::INTERNAL_SERVER_ERROR, "updater_not_started", format!("Failed to start updater: {}", e));
     }
     tracing::info!("[Updates] Launched updater {} {:?}; daemon is shutting down", updater.display(), args);
     if !rollback && state.phase().state != PhaseState::Applying {
@@ -1784,7 +1818,7 @@ async fn hand_off_to_updater(state: UpdateState, body: LaunchUpdaterRequest, tar
             stop.cancel();
         });
     }
-    Json(json!({ "ok": true, "updater_launched": true, "daemon_stopping": true, "gui_restart": gui_restart })).into_response()
+    Json(json!({ "success": true, "updater_launched": true, "daemon_stopping": true, "gui_restart": gui_restart })).into_response()
 }
 
 /// 업데이터 실행 인자. 헤드리스 설치는 창 없이 적용하게 `--headless`를 붙이고,
@@ -2013,15 +2047,15 @@ fn record_daemon_apply(path: &std::path::Path, targets: &[String], applied: &[St
 fn last_result_body(marker: Option<saba_chan_updater_lib::UpdateCompletionMarker>, lang: &str) -> Value {
     let notes = marker.as_ref().and_then(|m| m.release.as_ref()).and_then(|r| r.notes_for(lang)).map(str::to_string);
     let version = marker.as_ref().and_then(|m| m.release.as_ref()).map(|r| r.version.clone());
-    json!({ "ok": true, "result": marker, "version": version, "notes": notes })
+    json!({ "success": true, "result": marker, "version": version, "notes": notes })
 }
 
 /// DELETE /api/updates/last-result — 사용자가 결과를 확인했다. 결과는 지우지 않고 확인했다고만 적는다
 /// (다른 클라이언트도 `?include_seen=true`로 패치노트를 다시 본다)
 async fn clear_last_result() -> impl IntoResponse {
     match saba_chan_updater_lib::UpdateCompletionMarker::acknowledge_at(&saba_chan_updater_lib::UpdateCompletionMarker::path()) {
-        Ok(()) => Json(json!({ "ok": true })),
-        Err(e) => Json(json!({ "ok": false, "error": e })),
+        Ok(()) => Json(json!({ "success": true })).into_response(),
+        Err(e) => crate::ipc::handlers::error(axum::http::StatusCode::INTERNAL_SERVER_ERROR, "save_failed", e),
     }
 }
 
@@ -2030,7 +2064,7 @@ async fn ack_phase(State(state): State<UpdateState>) -> impl IntoResponse {
     if state.phase().state == PhaseState::Done {
         state.set_phase(Phase::default());
     }
-    Json(json!({ "ok": true, "phase": state.phase() }))
+    Json(json!({ "success": true, "phase": state.phase() }))
 }
 
 #[derive(Deserialize)]
@@ -2046,7 +2080,7 @@ async fn set_gui_window(State(state): State<UpdateState>, Json(body): Json<GuiWi
     if !body.open && phase.state == PhaseState::Ready && phase.reason == Some(ReadyReason::GuiWindowOpen) {
         spawn_core_apply(state.clone());
     }
-    Json(json!({ "ok": true, "open": body.open }))
+    Json(json!({ "success": true, "open": body.open }))
 }
 
 /// POST /api/updates/restart — `ready`에서 "지금 다시 시작". 실패한 판 기록을 지우고, 받아 둔 것(없으면 받을 것)을 적용한다.
@@ -2067,9 +2101,9 @@ async fn restart_now(State(state): State<UpdateState>, body: LooseJson<LaunchUpd
     }
     let nothing_staged = state.manager.read().await.get_pending_components().is_empty();
     if nothing_staged {
-        let downloaded = into_internal(download_components_with(state.clone(), DownloadRequest::default()).await).await.body;
-        if downloaded.get("ok").and_then(Value::as_bool) == Some(false) && downloaded.get("downloaded").is_none() {
-            return (axum::http::StatusCode::BAD_GATEWAY, Json(downloaded)).into_response();
+        let downloaded = into_internal(download_components_with(state.clone(), DownloadRequest::default()).await).await;
+        if !downloaded.status.is_success() {
+            return (downloaded.status, Json(downloaded.body)).into_response();
         }
     }
     // 받을 것도 없다 (고정만 풀었거나 준비됨이던 판이 내려갔다): 완료로 알리지 않는다
@@ -2077,18 +2111,18 @@ async fn restart_now(State(state): State<UpdateState>, body: LooseJson<LaunchUpd
         if state.phase().state == PhaseState::Ready {
             state.set_phase(Phase::default());
         }
-        return Json(json!({ "ok": true, "updater_launched": false, "daemon_stopping": false, "gui_restart": false, "errors": [] })).into_response();
+        return Json(json!({ "success": true, "updater_launched": false, "daemon_stopping": false, "gui_restart": false, "errors": [] })).into_response();
     }
     let applied = into_internal(apply_updates_with(state.clone(), ApplyRequest::default()).await).await.body;
     if applied.get("requires_updater").and_then(Value::as_bool) == Some(true) {
         return launch_updater(State(state), body).await;
     }
-    if applied.get("ok").and_then(Value::as_bool) == Some(true) {
+    if applied.get("success").and_then(Value::as_bool) == Some(true) {
         let release = state.manager.read().await.applying_release();
         state.set_phase(Phase::new(PhaseState::Done, release.as_ref().map(|r| r.version.clone()), release.map(|r| r.notes).filter(|n| !n.is_empty())));
     }
     Json(json!({
-        "ok": applied.get("ok").and_then(Value::as_bool).unwrap_or(false),
+        "success": applied.get("success").and_then(Value::as_bool).unwrap_or(false),
         "updater_launched": false,
         "daemon_stopping": false,
         "gui_restart": false,
@@ -2116,7 +2150,7 @@ async fn check_integrity(
     }).collect();
 
     Json(json!({
-        "ok": true,
+        "success": true,
         "checked_at": report.checked_at,
         "overall": format!("{:?}", report.overall),
         "total": report.total,
@@ -2131,17 +2165,17 @@ async fn check_integrity(
 /// `mark`면 고칠 것을 다시 받을 수 있게 표시한다
 async fn repair_plan(state: &UpdateState, mark: bool) -> Result<Value, String> {
     let report = state.manager.read().await.verify_integrity();
-    let mut mgr = state.manager.write().await;
     let broken = report.components.iter().any(|c| matches!(c.status, IntegrityStatus::Tampered | IntegrityStatus::FileNotFound));
-    if broken && mgr.get_status().components.is_empty() {
-        mgr.check_for_updates().await.map_err(|e| format!("Update check failed: {}", e))?;
+    if broken && state.manager.read().await.get_status().components.is_empty() {
+        saba_chan_updater_lib::check_shared(&state.manager, None).await.map_err(|e| format!("Update check failed: {}", e))?;
     }
+    let mut mgr = state.manager.write().await;
     let plan = mgr.repair_plan(&report);
     if mark && !plan.repair.is_empty() {
         mgr.mark_for_repair(&plan);
     }
     Ok(json!({
-        "ok": true,
+        "success": true,
         "verified": report.verified,
         "failed": report.failed,
         "skipped": report.skipped,
@@ -2155,7 +2189,7 @@ async fn repair_plan(state: &UpdateState, mark: bool) -> Result<Value, String> {
 async fn get_repair(State(state): State<UpdateState>) -> axum::response::Response {
     match repair_plan(&state, false).await {
         Ok(plan) => Json(plan).into_response(),
-        Err(e) => Json(json!({ "ok": false, "error": e })).into_response(),
+        Err(e) => crate::ipc::handlers::error(axum::http::StatusCode::BAD_GATEWAY, "update_check_failed", e),
     }
 }
 
@@ -2166,7 +2200,7 @@ async fn repair(State(state): State<UpdateState>) -> axum::response::Response {
     use crate::ipc::internal::into_internal;
     let plan = match repair_plan(&state, true).await {
         Ok(plan) => plan,
-        Err(e) => return Json(json!({ "ok": false, "error": e })).into_response(),
+        Err(e) => return crate::ipc::handlers::error(axum::http::StatusCode::BAD_GATEWAY, "update_check_failed", e),
     };
     let keys: Vec<String> = plan["repair"].as_array().into_iter().flatten().filter_map(|r| r["component"].as_str().map(str::to_string)).collect();
     if keys.is_empty() {
@@ -2197,7 +2231,7 @@ fn repair_result(mut plan: Value, downloaded: &Value, applied: &Value) -> Value 
         .map(|e| json!(format!("{}: {}", e["component"].as_str().unwrap_or_default(), e["error"].as_str().unwrap_or_default())))
         .collect();
     errors.extend(applied["errors"].as_array().into_iter().flatten().cloned());
-    plan["ok"] = json!(errors.is_empty());
+    plan["success"] = json!(errors.is_empty());
     plan["repaired"] = json!(repaired);
     plan["needs_updater"] = applied.get("needs_updater").cloned().unwrap_or_else(|| json!([]));
     plan["requires_updater"] = json!(applied["requires_updater"].as_bool() == Some(true));
@@ -2212,7 +2246,7 @@ async fn get_config(
     let mgr = state.manager.read().await;
     let config = mgr.get_config();
     Json(json!({
-        "ok": true,
+        "success": true,
         "config": config,
         // 이 데몬이 모의 릴레이(scripts/mock-release-server.js)의 서명을 믿는 개발 빌드인가.
         // 아니면 GUI는 MOCK 출처를 감추거나 막는다
@@ -2254,7 +2288,7 @@ async fn set_config(
             return (
                 axum::http::StatusCode::FORBIDDEN,
                 Json(json!({
-                    "ok": false,
+                    "success": false,
                     "error": "The update source can only be changed in config.json (updates.relay_url)",
                     "error_code": "relay_url_not_settable",
                 })),
@@ -2269,7 +2303,7 @@ async fn set_config(
             return (
                 axum::http::StatusCode::BAD_REQUEST,
                 Json(json!({
-                    "ok": false,
+                    "success": false,
                     "error": format!("Unknown update channel '{}' (stable, rc, beta)", v),
                     "error_code": "invalid_channel",
                 })),
@@ -2296,7 +2330,7 @@ async fn set_config(
     }
 
     Json(json!({
-        "ok": true,
+        "success": true,
         "config": cfg,
     }))
     .into_response()
@@ -2355,7 +2389,7 @@ fn addon_component(key: &str) -> Option<Component> {
 }
 
 fn addon_refusal(status: axum::http::StatusCode, code: &str, error: impl std::fmt::Display) -> axum::response::Response {
-    (status, Json(json!({ "ok": false, "error": error.to_string(), "error_code": code }))).into_response()
+    crate::ipc::handlers::error(status, code, error.to_string())
 }
 
 fn not_an_addon(key: &str) -> axum::response::Response {
@@ -2383,7 +2417,7 @@ fn addon_versions_body(
         .into_iter()
         .map(|(version, yanked)| json!({ "version": version, "installed": installed == Some(version), "latest": latest == Some(version), "yanked": yanked }))
         .collect();
-    json!({ "ok": true, "key": key, "core": core, "installed": installed, "versions": versions, "excluded": list.excluded, "pinned": pinned })
+    json!({ "success": true, "key": key, "core": core, "installed": installed, "versions": versions, "excluded": list.excluded, "pinned": pinned })
 }
 
 /// GET /api/updates/addons/{key}/versions — 이 코어로 돌아가는 판(서명 확인)과 내린 판, 더 새 코어가 필요해 뺀 판
@@ -2474,6 +2508,7 @@ async fn switch_addon(
     pin: Option<addon_pins::AddonPin>,
 ) -> axum::response::Response {
     use axum::http::StatusCode;
+    let _touched = StatusTouched(state);
     let key = component.manifest_key();
     let version = entry.version.clone();
     let previous = addon_pins::get(&key);
@@ -2482,7 +2517,7 @@ async fn switch_addon(
             tracing::warn!("[Updates] Could not save the chosen version of {}: {}", key, e);
         }
     };
-    let answer = |state: &str, waiting_for: Vec<String>| Json(json!({ "ok": true, "state": state, "version": version, "waiting_for": waiting_for })).into_response();
+    let answer = |state: &str, waiting_for: Vec<String>| Json(json!({ "success": true, "state": state, "version": version, "waiting_for": waiting_for })).into_response();
     // 이미 깔린 판이면 고정만 바꾼다. 켜진 서버를 기다리던 다른 판은 버린다
     if state.manager.read().await.installed_addon_version(&key).as_deref() == Some(version.as_str()) {
         state.manager.write().await.settle_addon(&key, entry);
@@ -2498,7 +2533,7 @@ async fn switch_addon(
         return addon_refusal(StatusCode::CONFLICT, &code, format!("{} was changed by hand; it is not replaced", key));
     }
     let staged = state.manager.write().await.stage_addon(&key, entry);
-    let downloaded = state.manager.write().await.download_component(component).await;
+    let downloaded = saba_chan_updater_lib::download_shared(&state.manager, component).await;
     if let Err(e) = downloaded {
         state.manager.write().await.unstage_addon(staged);
         use saba_chan_updater_lib::download::DownloadError;
@@ -2529,16 +2564,6 @@ async fn switch_addon(
     }
     answer("applied", Vec::new())
 }
-
-fn resolve_modules_dir() -> String {
-    let dir = saba_chan_updater_lib::constants::resolve_modules_dir();
-    if !dir.exists() {
-        let _ = std::fs::create_dir_all(&dir);
-    }
-    dir.to_string_lossy().to_string()
-}
-
-
 
 #[cfg(test)]
 mod tests {
@@ -3367,20 +3392,20 @@ mod tests {
     /// 복구 답: 받지 못한 것과 적용하지 못한 것은 오류로 모으고, 받아서 적용한 것만 고친 것(`repaired`)이다
     #[test]
     fn a_repair_reports_what_was_fixed_and_what_failed() {
-        let plan = json!({ "ok": true, "verified": 9, "failed": 1, "skipped": 1, "repair": [{ "component": "cli" }, { "component": "module-minecraft" }], "unavailable": [] });
-        let downloaded = json!({ "ok": false, "downloaded": [{ "component": "module-minecraft", "asset": "m.zip" }], "errors": [{ "component": "cli", "error": "net down" }] });
-        let applied = json!({ "ok": true, "applied": ["Module: minecraft"], "needs_updater": [], "requires_updater": false, "errors": [] });
+        let plan = json!({ "success": true, "verified": 9, "failed": 1, "skipped": 1, "repair": [{ "component": "cli" }, { "component": "module-minecraft" }], "unavailable": [] });
+        let downloaded = json!({ "success": false, "downloaded": [{ "component": "module-minecraft", "asset": "m.zip" }], "errors": [{ "component": "cli", "error": "net down" }] });
+        let applied = json!({ "success": true, "applied": ["Module: minecraft"], "needs_updater": [], "requires_updater": false, "errors": [] });
         let r = super::repair_result(plan.clone(), &downloaded, &applied);
-        assert_eq!(r["ok"], json!(false));
+        assert_eq!(r["success"], json!(false));
         assert_eq!(r["repaired"], json!(["module-minecraft"]));
         assert_eq!(r["errors"], json!(["cli: net down"]));
         assert_eq!((r["verified"].clone(), r["requires_updater"].clone()), (json!(9), json!(false)));
 
         // 데몬·GUI가 끼면 고친 것은 업데이터가 적용한 뒤에 안다: 넘길 목록만 싣는다
-        let core = json!({ "ok": true, "downloaded": [{ "component": "saba-core" }], "errors": [] });
-        let handed = json!({ "ok": true, "applied": [], "needs_updater": ["saba-core"], "requires_updater": true, "errors": [] });
+        let core = json!({ "success": true, "downloaded": [{ "component": "saba-core" }], "errors": [] });
+        let handed = json!({ "success": true, "applied": [], "needs_updater": ["saba-core"], "requires_updater": true, "errors": [] });
         let r = super::repair_result(plan, &core, &handed);
-        assert_eq!((r["ok"].clone(), r["requires_updater"].clone(), r["needs_updater"].clone()), (json!(true), json!(true), json!(["saba-core"])));
+        assert_eq!((r["success"].clone(), r["requires_updater"].clone(), r["needs_updater"].clone()), (json!(true), json!(true), json!(["saba-core"])));
         assert_eq!(r["repaired"], json!([]));
     }
 
@@ -3413,7 +3438,7 @@ mod tests {
 
         // 남긴 판 없음, 최신
         let none = super::versions_body(&cfg(None, false), "0.1.14", None, Vec::new(), None, false);
-        assert_eq!(none, json!({ "ok": true, "channel": "beta", "installed": "0.1.14", "kept_previous": null, "latest": null, "held_until_newer_than": null }));
+        assert_eq!(none, json!({ "success": true, "channel": "beta", "installed": "0.1.14", "kept_previous": null, "latest": null, "held_until_newer_than": null }));
 
         // 직전 판을 남겼고 더 새 판이 있다. 그 판을 바꾼 코어가 아니면 남긴 판으로 보이지 않는다
         let previous = super::versions_body(&cfg(None, false), "0.1.14", Some(&kept("0.1.13", "0.1.14")), vec!["module-minecraft".into()], Some("0.1.15"), false);
@@ -3610,7 +3635,7 @@ mod tests {
         assert_eq!((refused.status, refused.body["error_code"].as_str()), (axum::http::StatusCode::CONFLICT, Some("version_unavailable")));
 
         let picked = call(pin("0.1.12").await).await;
-        assert_eq!(picked.body, json!({ "ok": true, "state": "applied", "version": "0.1.12", "waiting_for": [] }));
+        assert_eq!(picked.body, json!({ "success": true, "state": "applied", "version": "0.1.12", "waiting_for": [] }));
         assert!(installed().contains("0.1.12"), "{}", installed());
         let choice = addon_pins::get(&key);
         assert_eq!(choice.pinned, Some(addon_pins::AddonPin { version: "0.1.12".into(), until_newer_than: "0.1.13".into() }));
@@ -3625,14 +3650,14 @@ mod tests {
 
         std::fs::remove_file(dir.join("my-notes.txt")).unwrap();
         let back = call(unpin_addon(State(state.clone()), Path(key.clone())).await).await;
-        assert_eq!(back.body, json!({ "ok": true, "state": "applied", "version": "0.1.13", "waiting_for": [] }));
+        assert_eq!(back.body, json!({ "success": true, "state": "applied", "version": "0.1.13", "waiting_for": [] }));
         assert!(installed().contains("0.1.13"));
         assert_eq!(addon_pins::get(&key), addon_pins::AddonChoice::default());
 
         // 가장 새 판을 고르면 고정 없이 바꾼다: 고정을 푼 것과 같다
         assert_eq!(call(pin("0.1.12").await).await.body["state"], "applied");
         let newest = call(pin("0.1.13").await).await;
-        assert_eq!(newest.body, json!({ "ok": true, "state": "applied", "version": "0.1.13", "waiting_for": [] }));
+        assert_eq!(newest.body, json!({ "success": true, "state": "applied", "version": "0.1.13", "waiting_for": [] }));
         assert!(installed().contains("0.1.13"));
         assert_eq!(addon_pins::get(&key), addon_pins::AddonChoice::default());
         let _ = std::fs::remove_dir_all(&dir);
@@ -3678,7 +3703,7 @@ mod tests {
         let call = |r: axum::response::Response| async { crate::ipc::internal::into_internal(r).await };
         let pin = |version: &str| pin_addon(State(state.clone()), Path(key.clone()), axum::body::Bytes::from(json!({ "version": version }).to_string()));
         let installed = || std::fs::read_to_string(dir.join("module.toml")).unwrap();
-        let waiting = json!({ "ok": true, "state": "waiting", "version": "0.1.12", "waiting_for": ["srv"] });
+        let waiting = json!({ "success": true, "state": "waiting", "version": "0.1.12", "waiting_for": ["srv"] });
 
         set_running(&state, &id, true).await;
         assert_eq!(call(pin("0.1.12").await).await.body, waiting);
@@ -3741,5 +3766,54 @@ mod tests {
 
         let _ = addon_pins::update(&key, |c| *c = addon_pins::AddonChoice::default());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 알약·사바 스토리지·셸이 같은 상태를 따로 묻지 않게 데몬이 상태가 바뀔 때만 `update.status`(상태 조회와 같은 본문)를 낸다:
+    /// 띄우자마자 한 번(다시 붙는 클라이언트가 버퍼에서 받는다), 단계가 바뀔 때마다 한 번, 바뀐 것이 없으면 내지 않는다
+    #[tokio::test]
+    async fn status_changes_reach_clients_as_update_status_events() {
+        const VERSION: &str = "9.9.9-status-event";
+        let tmp = tempfile::tempdir().unwrap();
+        let state = state_in(tmp.path());
+        let mut events = crate::events::bus().subscribe(None).rx;
+        let stop = tokio_util::sync::CancellationToken::new();
+        spawn_status_events(state.clone(), stop.clone());
+        // 이 시험의 상태가 낸 것만: 다른 시험도 같은 버스를 쓴다
+        async fn collect(events: &mut tokio::sync::broadcast::Receiver<Arc<crate::events::Event>>, seen: &mut Vec<Value>, for_ms: u64) {
+            let until = tokio::time::Instant::now() + std::time::Duration::from_millis(for_ms);
+            while let Ok(Ok(e)) = tokio::time::timeout_at(until, events.recv()).await {
+                if e.kind == "update.status" && (e.data["phase"]["version"] == VERSION || seen.is_empty()) {
+                    seen.push(e.data.clone());
+                }
+            }
+        }
+        let mut seen = Vec::new();
+        collect(&mut events, &mut seen, 1000).await;
+        assert_eq!(seen.len(), 1, "one status right after the daemon starts: {seen:?}");
+        assert_eq!(seen[0]["success"], true);
+        assert!(seen[0]["components"].is_array() && seen[0].get("locales_version").is_some(), "the same body as GET /api/updates/status");
+
+        state.set_phase(Phase::new(PhaseState::Waiting, Some(VERSION.into()), None));
+        collect(&mut events, &mut seen, 1000).await;
+        state.status_may_have_changed();
+        collect(&mut events, &mut seen, 1000).await;
+        state.set_phase(Phase::new(PhaseState::Done, Some(VERSION.into()), None));
+        collect(&mut events, &mut seen, 1000).await;
+        let phases: Vec<&Value> = seen[1..].iter().map(|s| &s["phase"]["state"]).collect();
+        assert_eq!(phases, [&json!("waiting"), &json!("done")], "only changes are announced");
+        stop.cancel();
+    }
+
+    /// 받는 진행은 데몬이 퍼센트까지 계산해 `update.progress`로 낸다. 전체 크기를 모르면 퍼센트는 null
+    #[test]
+    fn download_progress_events_carry_the_percent_the_daemon_computed() {
+        let progress = |received, total, active| DownloadProgress { component: Some("module-mc".into()), bytes_received: received, total_bytes: total, active };
+        assert_eq!(
+            progress_event(&progress(1, 3, true)),
+            json!({ "component": "module-mc", "active": true, "bytesReceived": 1, "totalBytes": 3, "percent": 33 })
+        );
+        assert_eq!(progress_event(&progress(2, 3, true))["percent"], 67);
+        assert_eq!(progress_event(&progress(5, 0, true))["percent"], Value::Null);
+        assert_eq!(progress_event(&progress(0, 0, false))["active"], false);
     }
 }

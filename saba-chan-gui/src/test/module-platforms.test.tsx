@@ -21,7 +21,6 @@ describe('새 서버 만들기 — 지원 OS', () => {
         render(
             <AddInstanceNewServer
                 extensions={[palworld] as unknown as ModuleInfo[]}
-                servers={[]}
                 onAddServer={vi.fn()}
                 onClose={undefined as never}
             />,
@@ -38,7 +37,6 @@ describe('새 서버 만들기 — 지원 OS', () => {
         render(
             <AddInstanceNewServer
                 extensions={[arch] as unknown as ModuleInfo[]}
-                servers={[]}
                 onAddServer={vi.fn()}
                 onClose={undefined as never}
             />,

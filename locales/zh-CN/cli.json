@@ -679,6 +679,7 @@
   "run": {
     "confirm_danger": "{{name}} 的 {{label}} 无法撤销。要执行吗？",
     "missing_arg": "缺少 {{label}}。用法：{{usage}}",
+    "must_be_boolean": "{{label}} 必须是 true 或 false（on/off、yes/no）。",
     "must_be_number": "{{label}} 必须是数字。",
     "must_be_one_of": "{{label}} 必须是以下之一：{{options}}",
     "no_commands": "此游戏没有预定义命令。直接发送到控制台：saba-chan-cli server send 名称 \"行\"",

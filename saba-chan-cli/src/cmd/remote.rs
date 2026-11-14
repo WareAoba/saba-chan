@@ -219,7 +219,7 @@ fn server_rows(v: &Value) -> Vec<[String; 4]> {
             rows.push([daemon, "-".into(), String::new(), t!("remote.no_servers")]);
         } else {
             for srv in &servers {
-                rows.push([daemon.clone(), s(srv, "name").to_string(), s(srv, "module").to_string(), state_label(s(srv, "status"))]);
+                rows.push([daemon.clone(), s(srv, "name").to_string(), s(srv, "module").to_string(), state_label(crate::output::status_of(srv))]);
             }
         }
     }

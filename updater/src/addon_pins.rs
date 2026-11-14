@@ -232,7 +232,7 @@ impl UpdateManager {
 
     /// 확인 한 번에 고정 규칙을 적용한다: 고정을 풀 것은 풀고, 미뤄 둔 바꾸기는 고른 판을 다시 찾아 `manifest`에 넣는다
     pub(crate) async fn apply_pins(
-        &self,
+        channel: &str,
         client: &relay::RelayClient,
         manifest: &mut ReleaseManifest,
         local: &HashMap<String, String>,
@@ -252,7 +252,7 @@ impl UpdateManager {
                     continue;
                 }
                 PinRule::Drop => None,
-                PinRule::Switch => match client.fetch_addon_versions(&key, core, &self.config.channel).await {
+                PinRule::Switch => match client.fetch_addon_versions(&key, core, channel).await {
                     Ok(list) => list.find(&pin.version).cloned(),
                     Err(e) => {
                         tracing::warn!("[Updater] Could not look up the chosen version {} of {}: {}", pin.version, key, e);

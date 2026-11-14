@@ -60,7 +60,7 @@ function RemotePathPicker() {
             if (seq !== seqRef.current || requestRef.current !== req) return;
             setBusy(false);
             setReplacing(null);
-            if (!res?.ok) {
+            if (!res?.success) {
                 const key = `remote_picker.err_${res?.error_code}`;
                 setError(t(key, { defaultValue: t('remote_picker.err_generic') }));
                 return;
@@ -89,8 +89,8 @@ function RemotePathPicker() {
                     (async () => {
                         const roots = await window.api.systemBrowse('', null);
                         if (requestRef.current?.resolve !== resolve || seq !== seqRef.current) return;
-                        if (roots?.ok && roots.home) await open(roots.home);
-                        else if (roots?.ok) {
+                        if (roots?.success && roots.home) await open(roots.home);
+                        else if (roots?.success) {
                             setListing(roots);
                             setTyped('');
                         } else setError(t('remote_picker.err_generic'));
