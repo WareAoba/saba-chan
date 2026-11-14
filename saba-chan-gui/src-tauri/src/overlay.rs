@@ -328,7 +328,7 @@ pub fn fit(app: &AppHandle, width: f64, height: f64) {
     }
     *LAST_FIT.lock().unwrap() = Some((width, height));
     let Some((pos, size)) = plan(app, width, height) else {
-        let _ = win.show();
+        crate::window::show_off_taskbar(&win);
         return;
     };
     *PLACED.lock().unwrap() = Some((pos.0 + size.0 / 2.0, pos.1 + size.1));
@@ -337,7 +337,7 @@ pub fn fit(app: &AppHandle, width: f64, height: f64) {
     let _ = win.set_position(tauri::PhysicalPosition::new(pos.0, pos.1));
     let _ = win.set_size(tauri::PhysicalSize::new(size.0, size.1));
     PLACING.store(false, Ordering::SeqCst);
-    let _ = win.show();
+    crate::window::show_off_taskbar(&win);
 }
 
 /// 이 내용 크기(논리 px)를 놓을 자리와 크기 (물리 px). 고른 점이 있는 모니터에, 그 모니터가 없으면 주 모니터의 처음 자리에

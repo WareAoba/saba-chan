@@ -120,6 +120,47 @@ fn apply_icon(_win: &WebviewWindow) {
     }
 }
 
+/// 작업 표시줄에 나오지 않는 창(펫, 판)을 보인다.
+/// Windows: `skip_taskbar`는 만들 때 버튼을 한 번 지울 뿐이고, 숨긴 창을 보이면 tao가 확장 스타일을 다시 쓰며
+/// `WS_EX_APPWINDOW`를 되살려 버튼·미리보기가 다시 생긴다. 보일 때마다 도구 창으로 바꾸고 버튼을 지운다
+/// (보이기 다음 차례로 메인 스레드에서 한다: 먼저 하면 보이기가 스타일을 덮어쓴다)
+pub fn show_off_taskbar(win: &WebviewWindow) {
+    let _ = win.show();
+    #[cfg(windows)]
+    if let Ok(hwnd) = win.hwnd() {
+        let hwnd = hwnd.0 as isize;
+        let w = win.clone();
+        let _ = win.run_on_main_thread(move || {
+            make_tool_window(hwnd as _);
+            let _ = w.set_skip_taskbar(true);
+        });
+    }
+}
+
+/// `WS_EX_APPWINDOW`를 빼고 `WS_EX_TOOLWINDOW`를 넣는다: 작업 표시줄·Alt+Tab에 나오지 않는다
+#[cfg(windows)]
+fn make_tool_window(hwnd: windows_sys::Win32::Foundation::HWND) {
+    use windows_sys::Win32::UI::WindowsAndMessaging::*;
+    unsafe {
+        let ex = GetWindowLongW(hwnd, GWL_EXSTYLE) as u32;
+        let tool = (ex & !WS_EX_APPWINDOW) | WS_EX_TOOLWINDOW;
+        if tool == ex {
+            return;
+        }
+        SetWindowLongW(hwnd, GWL_EXSTYLE, tool as i32);
+        // 바꾼 스타일은 SetWindowPos(SWP_FRAMECHANGED) 뒤에 반영된다
+        SetWindowPos(
+            hwnd,
+            std::ptr::null_mut(),
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+        );
+    }
+}
+
 /// 창 바탕색: 렌더러가 알린 색 > 테마 설정 > 시스템 테마 (모르면 기본 테마인 다크)
 fn pick_background(reported: Option<Color>, theme: Option<&str>, system: Option<tauri::Theme>) -> Color {
     if let Some(c) = reported {
@@ -535,7 +576,7 @@ pub fn fit_popup(app: &AppHandle, popup: &Popup, height: f64) {
         let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
     }
     let _ = win.set_size(tauri::PhysicalSize::new(size.0, size.1));
-    let _ = win.show();
+    show_off_taskbar(&win);
     let _ = win.set_focus();
     popup.shown.store(true, Ordering::SeqCst);
 }
@@ -791,6 +832,37 @@ pub fn toggle_always_on_top(app: &AppHandle, instance_id: &str, pinned: bool) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 보였다 다시 그려진 창도 도구 창이 된다: 작업 표시줄 버튼·미리보기·Alt+Tab에서 빠진다
+    #[cfg(windows)]
+    #[test]
+    fn a_shown_app_window_becomes_a_tool_window() {
+        use windows_sys::Win32::UI::WindowsAndMessaging::*;
+        let class: Vec<u16> = "STATIC\0".encode_utf16().collect();
+        unsafe {
+            let hwnd = CreateWindowExW(
+                WS_EX_APPWINDOW,
+                class.as_ptr(),
+                std::ptr::null(),
+                WS_POPUP,
+                0,
+                0,
+                10,
+                10,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null(),
+            );
+            assert!(!hwnd.is_null());
+            ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+            make_tool_window(hwnd);
+            let ex = GetWindowLongW(hwnd, GWL_EXSTYLE) as u32;
+            DestroyWindow(hwnd);
+            assert_ne!(ex & WS_EX_TOOLWINDOW, 0);
+            assert_eq!(ex & WS_EX_APPWINDOW, 0);
+        }
+    }
 
     #[test]
     fn a_popout_patch_keeps_other_servers_and_earlier_fields() {
