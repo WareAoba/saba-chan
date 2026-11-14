@@ -1,7 +1,8 @@
 import type { TFunction } from 'i18next';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { assignPatch, kindOf, ModerationTab, modErrorText } from '../components/discord/ModerationTab';
+import { ModerationTab } from '../components/discord/ModerationTab';
+import { assignPatch, kindOf, modErrorText } from '../components/discord/ModerationParts';
 import { NodeView as NodeViewImpl } from '../components/discord/NodeView';
 import { pickOption } from './dropdown';
 import type { ComponentType } from 'react';

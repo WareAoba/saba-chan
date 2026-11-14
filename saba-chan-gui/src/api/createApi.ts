@@ -276,6 +276,9 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
                             return { ...data, error: t('server.not_found', { name: instanceId }) };
                         case 409:
                             return { ...data, error: message || t('server.already_running', { name: instanceId }) };
+                        // 데몬이 켜기 전에 거절했다 (익스텐션·의존성·지원 OS, 0.1.14까지는 200): 화면이 코드로 문구를 고른다
+                        case 422:
+                            return data;
                         default:
                             return { ...data, error: t('server.start_failed', { error: message || error.message }) };
                     }
@@ -755,7 +758,7 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
             } catch (caught) {
                 const error = caught as DaemonError;
                 console.warn('[Extension] Failed to fetch manifest:', error.message);
-                return { success: false, error: error.message, extensions: [], updates: [] };
+                return { success: false, error: error.response?.data?.error || error.message, extensions: [], updates: [] };
             }
         },
         extensionInstall: (extId: string, opts = {}) =>
@@ -768,7 +771,7 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
             } catch (caught) {
                 const error = caught as DaemonError;
                 console.warn('[Extension] Failed to check updates:', error.message);
-                return { success: false, error: error.message, updates: [], count: 0 };
+                return { success: false, error: error.response?.data?.error || error.message, updates: [], count: 0 };
             }
         },
         extensionRescan: async () => {
@@ -777,7 +780,7 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
             } catch (caught) {
                 const error = caught as DaemonError;
                 console.warn('[Extension] Failed to rescan extensions:', error.message);
-                return { success: false, error: error.message, newly_found: [] };
+                return { success: false, error: error.response?.data?.error || error.message, newly_found: [] };
             }
         },
         extensionInitStatus: async () => {
@@ -864,7 +867,7 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
             // 알려 남은 업데이트 알림을 지운다
             const visibleNames = (data?.update_names || []).filter((n: string) => n !== 'Locales');
             const visibleComponents = (data?.components || []).filter((c: { display_name?: string }) => c.display_name !== 'Locales');
-            if (data?.ok && !data?.error) {
+            if (data?.success && !data?.error) {
                 hub.dispatch('updates:available', {
                     count: visibleNames.length,
                     updates_available: visibleNames.length,
@@ -897,7 +900,7 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         updaterApply: async (components: string[]) => {
             const body = { components: Array.isArray(components) ? components : [] };
             const data = await call('post', '/api/updates/apply', body, 120000);
-            // 일부만 적용됐으면(ok:false) 성공 알림을 띄우지 않는다: 실패는 부른 화면이 보인다 (G-U9)
+            // 일부만 적용됐으면(success:false) 성공 알림을 띄우지 않는다: 실패는 부른 화면이 보인다 (G-U9)
             if (!failed(data) && data.applied?.length > 0) {
                 hub.dispatch('updates:completed', {
                     count: data.applied.length,
@@ -970,7 +973,7 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
             try {
                 if (!dirPath || typeof dirPath !== 'string') return { error: 'Invalid directory path' };
                 const { data } = await post('/api/modules/detect', { path: dirPath });
-                return { ok: true, ...data };
+                return { success: true, ...data };
             } catch (caught) {
                 const error = caught as DaemonError;
                 return { error: error.response?.data?.error || error.message };
@@ -1197,9 +1200,9 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         remoteInstall: (id: string, since: number) =>
             call('get', `/api/remote/install/${encodeURIComponent(id)}${queryString({ since })}`),
         remoteInstallInput: async (id: string, text: string) =>
-            (await call('post', `/api/remote/install/${encodeURIComponent(id)}/input`, { text })) || { ok: true },
+            (await call('post', `/api/remote/install/${encodeURIComponent(id)}/input`, { text })) || { success: true },
         remoteInstallCancel: async (id: string) =>
-            (await call('delete', `/api/remote/install/${encodeURIComponent(id)}`)) || { ok: true },
+            (await call('delete', `/api/remote/install/${encodeURIComponent(id)}`)) || { success: true },
         // 원격 데몬 자신의 업데이트 (`/api/daemon/update`, 고른 데몬과 상관없이 hostId 데몬에 보낸다): 확인·받기·적용
         remoteDaemonUpdate: async (hostId: string): Promise<ApiBody> => {
             try {
@@ -1337,7 +1340,7 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         relayMcpGrant: () => call('get', '/api/relay/mcp/grant'),
         // id: GET이 준 연결 id (없으면 모든 연결)
         relayMcpGrantRevoke: async (id?: string) =>
-            (await call('delete', id ? `/api/relay/mcp/grant?id=${encodeURIComponent(id)}` : '/api/relay/mcp/grant')) || { ok: true },
+            (await call('delete', id ? `/api/relay/mcp/grant?id=${encodeURIComponent(id)}` : '/api/relay/mcp/grant')) || { success: true },
         // 개인정보 모두 지우기: `{url}`(웹사이트 동의 페이지)을 받고, 끝났는지는 `{status}`로 묻는다
         relayPrivacyErase: (locale: string) => call('post', '/api/relay/privacy/erase', { locale }),
         relayPrivacyEraseStatus: () => call('get', '/api/relay/privacy/erase'),

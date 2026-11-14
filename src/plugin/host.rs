@@ -142,13 +142,10 @@ async fn dispatch(proxy: &Proxy, request: &Value) -> Value {
     }
     // RCON만 받는 서버의 한 줄 (모듈 `stop()`의 정지 명령). 콘솔이 있으면 데몬이 stdin으로 보낸다
     if op == "instance.rcon" {
-        return response(crate::service::command::rcon_for(&supervisor, &context.id, &Value::Object(args.clone())).await).await;
+        return response(crate::ipc::handlers::answer(crate::service::command::rcon_for(&supervisor, &context.id, &Value::Object(args.clone())).await)).await;
     }
     if op == "instance.stdin" {
-        return response(
-            crate::service::command::stdin_for(&supervisor, &context.id, &Value::Object(args.clone())).await,
-        )
-        .await;
+        return response(crate::ipc::handlers::answer(crate::service::command::stdin_for(&supervisor, &context.id, &Value::Object(args.clone())).await)).await;
     }
     let Some(path) = args
         .get("path")
@@ -192,16 +189,9 @@ async fn dispatch(proxy: &Proxy, request: &Value) -> Value {
     if let Some(body) = args.get("body") {
         payload["body"] = body.clone();
     }
-    response(
-        crate::service::command::rest_for(
-            &supervisor,
-            &context.runtime.credentials,
-            &context.id,
-            payload,
-            Some(loopback::MAX_RESPONSE),
-        )
-        .await,
-    )
+    response(crate::ipc::handlers::answer(
+        crate::service::command::rest_for(&supervisor, &context.runtime.credentials, &context.id, payload, Some(loopback::MAX_RESPONSE)).await,
+    ))
     .await
 }
 

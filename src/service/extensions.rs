@@ -50,11 +50,21 @@ pub(crate) async fn install_with_dependencies(
     ext_id: &str,
     explicit_url: Option<String>,
     explicit_sha: Option<String>,
-) -> Result<Vec<String>, Json<serde_json::Value>> {
+) -> Result<Vec<String>, super::Failure> {
     let ext_id = ext_id.to_string();
     let extensions_dir = state.extension_manager.read().await.extensions_dir().to_path_buf();
     let remote = ExtensionManager::fetch_remote().await;
-    let fail = |error: String, code: &str| Err(Json(json!({ "success": false, "error": error, "error_code": code })));
+    let fail = |error: String, code: &str| {
+        let status = match code {
+            "sha256_required" => StatusCode::BAD_REQUEST,
+            "not_in_manifest" => StatusCode::NOT_FOUND,
+            "manifest_fetch_failed" => StatusCode::BAD_GATEWAY,
+            "older_than_installed" => StatusCode::CONFLICT,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        };
+        Err(super::Failure::coded(status, code, error))
+    };
+    let refused = |(status, Json(body)): (StatusCode, Json<serde_json::Value>)| super::Failure::new(status, body);
 
     let mut queue = vec![ext_id.clone()];
     let mut installed: Vec<String> = Vec::new();
@@ -83,7 +93,7 @@ pub(crate) async fn install_with_dependencies(
             Ok(p) => p,
             // 더 새 앱을 요구하는 패키지는 구조화된 이유(app_version_unsatisfied)로 답한다
             Err(e) if e.downcast_ref::<ExtensionError>().is_some_and(|x| x.error_code == "app_version_unsatisfied") => {
-                return Err(naming_extension(extension_err_response(&e), &id).1)
+                return Err(refused(naming_extension(extension_err_response(&e), &id)))
             }
             Err(e) => return fail(format!("{:#}", e), "install_failed"),
         };
@@ -95,11 +105,11 @@ pub(crate) async fn install_with_dependencies(
         // 카탈로그의 주소와 해시로 받았을 때만 공식 설치다
         let official = entry.as_ref().is_some_and(|e| e.download_url == url && e.sha256.is_some() && e.sha256 == sha);
         if let Err(e) = mgr.install_staged(&id, &staged, &refs, official) {
-            let (_, Json(body)) = extension_err_response(&e);
-            if body.get("error_code").and_then(|c| c.as_str()) == Some("internal") {
+            let refusal = extension_err_response(&e);
+            if refusal.1.get("error_code").and_then(|c| c.as_str()) == Some("internal") {
                 return fail(e.to_string(), "install_failed");
             }
-            return Err(Json(body));
+            return Err(refused(refusal));
         }
         installed.push(id.clone());
         if let Ok(r) = &remote {
@@ -148,15 +158,15 @@ pub(crate) async fn prepare_for_module(
                 }
                 match install_with_dependencies(state, &dep, None, None).await {
                     Ok(ids) => installed.extend(ids),
-                    Err(Json(body)) => failed.push(failure(&dep, &body)),
+                    Err(refusal) => failed.push(failure(&dep, &refusal.body)),
                 }
             }
         }
         if !present && !installed.contains(id) {
             match install_with_dependencies(state, id, None, None).await {
                 Ok(ids) => installed.extend(ids),
-                Err(Json(body)) => {
-                    failed.push(failure(id, &body));
+                Err(refusal) => {
+                    failed.push(failure(id, &refusal.body));
                     continue;
                 }
             }

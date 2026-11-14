@@ -174,6 +174,65 @@ describe('명령 팔레트', () => {
         expect(screen.getByRole('dialog').textContent).toContain('boom');
     });
 
+    it('화살표로 줄을 옮겨 고르고, Ctrl+숫자로 카테고리를 켜고 끈다', async () => {
+        render(<CommandPalette />);
+        await open();
+        await flush();
+        const first = screen.getAllByRole('option')[0];
+        expect(first).toHaveAttribute('aria-selected', 'true');
+        press('ArrowDown');
+        expect(screen.getAllByRole('option')[1]).toHaveAttribute('aria-selected', 'true');
+        press('ArrowUp');
+        press('ArrowUp'); // 맨 위에서 더 올라가지 않는다
+        expect(screen.getAllByRole('option')[0]).toHaveAttribute('aria-selected', 'true');
+        fireEvent.keyDown(input(), { key: '2', ctrlKey: true });
+        expect(screen.getByRole('button', { name: 'Game commands' })).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.queryByRole('option', { name: /^Stop/ })).toBeNull();
+        expect(option(/^Broadcast/)).toBeInTheDocument();
+        fireEvent.keyDown(input(), { key: '2', ctrlKey: true });
+        expect(screen.getByRole('button', { name: 'Game commands' })).toHaveAttribute('aria-pressed', 'false');
+        expect(option(/^Stop/)).toBeInTheDocument();
+    });
+
+    it('Tab은 범위 고르기 목록을, Esc는 한 단계 뒤로 가고 목록에서는 닫는다', async () => {
+        render(<CommandPalette />);
+        await open();
+        await flush();
+        press('Tab');
+        expect(input()).toHaveAttribute('placeholder', 'Select scope');
+        expect(option(/^Palworld/)).toBeInTheDocument();
+        expect(option(/Mayo guild/)).toBeInTheDocument();
+        press('Escape');
+        expect(input()).toHaveAttribute('placeholder', 'What do you want to do? Server names also work');
+        type('broad');
+        press('Enter');
+        expect(input()).toHaveAttribute('placeholder', 'Message');
+        press('Escape');
+        expect(input()).toHaveAttribute('placeholder', 'What do you want to do? Server names also work');
+        expect(input()).toHaveValue('');
+        press('Escape');
+        expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    it('확인 단계의 ⌫는 마지막 칸으로 돌아가 다시 받는다', async () => {
+        render(<CommandPalette />);
+        await open();
+        await flush();
+        type('broad');
+        press('Enter');
+        type('hello');
+        press('Enter');
+        expect(screen.getByText('Send this command to Survival')).toBeInTheDocument();
+        press('Backspace');
+        expect(screen.queryByText('Send this command to Survival')).toBeNull();
+        expect(input()).toHaveAttribute('placeholder', 'Message');
+        type('bye');
+        press('Enter');
+        press('Enter');
+        await flush();
+        expect(window.api.executeCommand).toHaveBeenCalledWith('mc-1', { command: 'say', args: { message: 'bye' } });
+    });
+
     it('바로 가기는 실행하지 않고 그 화면을 연다 (디스코드 서버 탭은 실제 메뉴 이름)', async () => {
         useUIStore.setState({ activeTab: 'discord', activeServerId: null, openDiscordNodeId: 'g1' });
         render(<CommandPalette />);

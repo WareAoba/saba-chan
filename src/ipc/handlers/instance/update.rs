@@ -13,14 +13,7 @@ pub async fn check_server_update(
 ) -> impl IntoResponse {
     match server_update::apply::server_update_status(&state, &id).await {
         Some(status) => (StatusCode::OK, Json(status)).into_response(),
-        None => (
-            StatusCode::NOT_FOUND,
-            Json(json!({
-                "error": format!("Instance not found: {}", id),
-                "error_code": "instance_not_found",
-            })),
-        )
-            .into_response(),
+        None => super::super::error(StatusCode::NOT_FOUND, "instance_not_found", format!("Instance not found: {}", id)),
     }
 }
 

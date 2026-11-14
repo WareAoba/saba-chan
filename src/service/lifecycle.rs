@@ -14,7 +14,7 @@ use crate::ipc::IPCServer;
 /// 답은 고른 경로의 답 그대로에 `managed`를 더한 것이다 (실패도 같다)
 pub(crate) async fn start(state: &IPCServer, id: &str) -> Outcome {
     let result = start_unrecorded(state, id).await;
-    audited_result(state, "start", id, result).await
+    audited_result(state, "start", id, None, None, result).await
 }
 
 async fn start_unrecorded(state: &IPCServer, id: &str) -> Outcome {
@@ -124,7 +124,7 @@ async fn instance_key_of(state: &IPCServer, key: &str) -> Option<(String, String
 }
 
 pub(crate) fn instance_not_found(id: &str) -> Failure {
-    Failure::new(StatusCode::NOT_FOUND, json!({ "error": format!("Instance not found: {}", id), "error_code": "not_found" }))
+    Failure::coded(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id))
 }
 
 /// 정지 뒤 시작. 꺼져 있으면 시작만 한다. 작업 기록에는 `restart` 한 줄로 남는다.
@@ -132,13 +132,13 @@ pub(crate) fn instance_not_found(id: &str) -> Failure {
 pub(crate) async fn restart(state: &IPCServer, id: &str, force: bool) -> Outcome {
     // 안에서 부르는 정지·시작은 따로 남기지 않는다
     let result = crate::audit::quietly(restart_unrecorded(state, id, StopMode::of(force, false))).await;
-    audited_result(state, "restart", id, result).await
+    audited_result(state, "restart", id, None, None, result).await
 }
 
 /// 사람이 부른 재시작 (`user_stop`과 같이 저장하지 못하는 서버도 끄고 다시 켠다)
 pub(crate) async fn user_restart(state: &IPCServer, id: &str, force: bool) -> Outcome {
     let result = crate::audit::quietly(restart_unrecorded(state, id, StopMode::of(force, true))).await;
-    audited_result(state, "restart", id, result).await
+    audited_result(state, "restart", id, None, None, result).await
 }
 
 /// 정지 방식. 저장 후 종료를 요청할 길이 없는 서버(MK10)를 사람이 부른 정지는 강제 정지로 잇고(`SaveIfPossible`),
@@ -230,7 +230,7 @@ async fn restart_unrecorded(state: &IPCServer, id: &str, mode: StopMode) -> Outc
             let error = json!({ "success": false, "error": "The server was started or removed while waiting", "error_code": "restart_cancelled", "stopped": running });
             return Err(Failure::new(StatusCode::CONFLICT, error));
         }
-        Err(e) => return Err(Failure::new(StatusCode::INTERNAL_SERVER_ERROR, json!({ "success": false, "error": e.to_string() }))),
+        Err(e) => return Err(Failure::coded(StatusCode::INTERNAL_SERVER_ERROR, "internal_server_error", e.to_string())),
     };
     let body = match &mut result {
         Ok(body) => body,
@@ -315,14 +315,36 @@ pub(crate) async fn launch(state: &IPCServer, id: &str, module: &str, managed: b
     // 락은 감독자의 시작이 단계마다 짧게 잡는다 (C12)
     if managed {
         match crate::supervisor::Supervisor::start_managed_server(&state.supervisor, id, module, json!({})).await {
-            Ok(result) => settled(result),
+            Ok(result) => start_settled(result),
             Err(e) => Err(start_failure(state, &e).await),
         }
     } else {
         match crate::supervisor::Supervisor::start_server(&state.supervisor, id, module, json!({})).await {
-            Ok(result) => settled(result),
+            Ok(result) => start_settled(result),
             Err(e) => Err(lifecycle_failure(&e, "start", "start_failed")),
         }
+    }
+}
+
+/// 감독자의 시작 답: 감독자가 거절한 것(`refused_status`)은 그 상태로, 모듈 답은 `settled`대로
+fn start_settled(body: Value) -> Outcome {
+    let declined = body.get("success").and_then(Value::as_bool) == Some(false);
+    match body.get("error_code").and_then(Value::as_str).and_then(refused_status).filter(|_| declined) {
+        Some(status) => Err(Failure::new(status, body)),
+        None => settled(body),
+    }
+}
+
+/// 감독자가 띄우기 전(또는 띄우는 중)에 시작을 거절한 코드와 그 상태 (01 §2.1). 모듈이 `success:false`로 답한 것은 여기 없다
+pub(crate) fn refused_status(code: &str) -> Option<StatusCode> {
+    match code {
+        // 다른 서버·프로그램이나 다른 시작·정지와 겹쳤다
+        "port_conflict" | "start_in_progress" | "start_cancelled" => Some(StatusCode::CONFLICT),
+        // 이 PC에서 그 모듈로는 켤 수 없다 (익스텐션·의존성·데몬 판·OS·CPU)
+        "extension_required" | "module_dependency_unsatisfied" | "module_schema_unsupported" | "module_platform_unsupported" | "module_arch_unsupported" => {
+            Some(StatusCode::UNPROCESSABLE_ENTITY)
+        }
+        _ => None,
     }
 }
 
@@ -337,7 +359,7 @@ fn lifecycle_failure(e: &anyhow::Error, action: &str, failed_code: &str) -> Fail
     } else {
         (StatusCode::INTERNAL_SERVER_ERROR, failed_code)
     };
-    Failure::new(code, json!({ "error": format!("Failed to {} server: {}", action, e), "error_code": error_code }))
+    Failure::coded(code, error_code, format!("Failed to {} server: {}", action, e))
 }
 
 /// 받아 둔 업데이트 확인 결과에서 이 모듈의 새 버전 `{module, current, latest}`
@@ -485,7 +507,7 @@ async fn stop_recorded(state: &IPCServer, key: &str, mode: StopMode) -> Outcome 
         }
         result => result,
     };
-    audited_result(state, "stop", key, result).await
+    audited_result(state, "stop", key, None, None, result).await
 }
 
 async fn stop_unrecorded(state: &IPCServer, key: &str, force: bool) -> Outcome {
@@ -537,11 +559,7 @@ async fn stop_unrecorded(state: &IPCServer, key: &str, force: bool) -> Outcome {
             Err(e) => Err(lifecycle_failure(&e, "stop", "stop_failed")),
         }
     } else {
-        let error = json!({
-            "error": format!("Server '{}' not found", name),
-            "error_code": "instance_not_found",
-        });
-        Err(Failure::new(StatusCode::NOT_FOUND, error))
+        Err(Failure::coded(StatusCode::NOT_FOUND, "instance_not_found", format!("Server '{}' not found", name)))
     }
 }
 
@@ -820,9 +838,12 @@ mod tests {
         let checked = state.supervisor.read().await.run_generation_of("stop-after-check");
         let stopped = crate::supervisor::Supervisor::stop_server(&state.supervisor, "stop-after-check", "game", false).await.unwrap();
         assert_ne!(stopped["success"], false, "{stopped}");
-        let started = start_when_free(&state, "stop-after-check", checked, || async { true }).await.unwrap().unwrap_err().body;
+        let refused = start_when_free(&state, "stop-after-check", checked, || async { true }).await.unwrap().unwrap_err();
+        assert_eq!(refused.status, StatusCode::CONFLICT, "{}", refused.body);
+        let started = refused.body;
 
         assert_eq!(started["error_code"], "start_cancelled", "{started}");
+        assert_eq!(started["error"], "Server 'srv' was stopped while it was starting", "{started}");
         let s = state.supervisor.read().await;
         assert!(s.tracker.get_pid("stop-after-check").is_err(), "nothing is tracked");
         assert!(s.managed_store.get("stop-after-check").await.is_none(), "no server was left running");
@@ -1055,12 +1076,13 @@ mod tests {
         let toml = format!("{NO_BACKUP}\n[install]\nrequires_extensions = [\"needed-for-test\"]\n");
         let (state, id, _tmp) = server_with(&toml, None).await;
         assert!(state.supervisor.read().await.uses_managed_start(state.supervisor.read().await.instance_store.get(&id).unwrap()));
-        let refused = start(&state, &id).await;
-        let body = match refused {
-            Ok(body) => body,
-            Err(failure) => failure.body,
-        };
+        // 감독자가 띄우기 전에 거절한 것은 모듈 답이 아니므로 2xx가 아니고, `error`는 사람이 읽는 문구다 (01 §2.1)
+        let refused = start(&state, &id).await.unwrap_err();
+        assert_eq!(refused.status, StatusCode::UNPROCESSABLE_ENTITY, "{}", refused.body);
+        let body = refused.body;
         assert_eq!(body["error_code"], "extension_required", "{body}");
+        assert_eq!(body["error"], body["message"], "{body}");
+        assert!(body["error"].as_str().is_some_and(|e| e.contains("needed-for-test")), "{body}");
         assert_eq!(body["missing_extensions"], json!(["needed-for-test"]), "{body}");
         assert_eq!(body["managed"], true, "{body}");
     }

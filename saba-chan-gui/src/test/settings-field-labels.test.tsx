@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { SettingsField } from '../components/ServerSettingsModal';
+import { SettingsField } from '../components/ServerSettingsParts';
 
 // 서버 설정 칸의 이름표가 입력 칸과 이어져야 화면 낭독기가 읽고, 이름표를 눌러도 칸으로 간다 (L18 i)
 describe('서버 설정 칸의 이름표', () => {

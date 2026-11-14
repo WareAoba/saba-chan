@@ -22,7 +22,7 @@ pub mod words;
 
 use crate::config_store::BotConfig;
 use crate::ipc::internal::InternalResponse;
-use crate::supervisor::module_loader::CommandField;
+use crate::module_loader::CommandField;
 use aliases::ModuleAliases;
 use api::{DaemonApi, ModuleView, ServerView};
 use i18n::Catalog;
@@ -728,7 +728,9 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
     }
 
     fn start_text(&self, server: &ServerView, resp: InternalResponse) -> Text {
-        if !resp.is_success() {
+        // 감독자가 시작 전에 거절한 것(포트 충돌 등)은 2xx가 아니어도 그 문구 한 줄이다 (아래 `success:false`와 같다)
+        let refused = resp.str_field("error_code").and_then(crate::service::lifecycle::refused_status).is_some();
+        if !resp.is_success() && !refused {
             let detail = resp.str_field("error").unwrap_or_default();
             tracing::warn!("[Chat] 시작 실패 {}: {}", server.name, detail);
             // 켜기 전 점검(preflight_failed)의 문제 문구에는 경로가 들어 있을 수 있어 PC 밖으로 내지 않는다.

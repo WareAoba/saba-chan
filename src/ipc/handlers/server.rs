@@ -67,7 +67,7 @@ pub struct ListServersQuery {
 /// GET /api/servers - 모든 서버 목록 (인스턴스 기반). 포트 충돌 강제 정지 알림은 `notices_after` 뒤의 것을 싣고,
 /// 매개변수가 없거나 `notices=keep`이면 남은 것 모두를 싣는다. 읽어도 지우지 않는다
 pub async fn list_servers(State(state): State<IPCServer>, Query(q): Query<ListServersQuery>) -> axum::response::Response {
-    crate::service::servers::list(&state, q.notices_after.unwrap_or(0)).await
+    super::answer(crate::service::servers::list(&state, q.notices_after.unwrap_or(0)).await)
 }
 
 /// GET /api/modules - 모든 모듈 목록
@@ -77,7 +77,7 @@ pub async fn list_servers(State(state): State<IPCServer>, Query(q): Query<ListSe
 pub async fn component_versions(state: &IPCServer) -> std::collections::BTreeMap<String, String> {
     let mut versions: std::collections::BTreeMap<String, String> =
         saba_chan_updater_lib::UpdateManager::load_installed_manifest().into_iter().collect();
-    versions.insert(crate::supervisor::module_loader::CORE_COMPONENT.to_string(), crate::supervisor::module_loader::DAEMON_VERSION.to_string());
+    versions.insert(crate::module_loader::CORE_COMPONENT.to_string(), crate::module_loader::DAEMON_VERSION.to_string());
     if let Ok(modules) = state.supervisor.read().await.list_modules() {
         for m in modules {
             versions.insert(format!("module-{}", m.metadata.name), m.metadata.version);
@@ -92,34 +92,13 @@ pub async fn component_versions(state: &IPCServer) -> std::collections::BTreeMap
 /// GET /api/version — 코어·모듈·익스텐션·인터페이스 버전을 한 번에
 pub async fn version_handler(State(state): State<IPCServer>) -> impl IntoResponse {
     Json(json!({
-        "version": crate::supervisor::module_loader::DAEMON_VERSION,
+        "version": crate::module_loader::DAEMON_VERSION,
         "components": component_versions(&state).await,
     }))
 }
 
-/// 모듈 폴더의 신뢰 표시 (설치 기록의 키는 폴더 이름)
-pub(crate) fn module_trust(path: &str) -> saba_chan_updater_lib::integrity::Trust {
-    let folder = std::path::Path::new(path).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-    saba_chan_updater_lib::integrity::trust_of(
-        &format!("{}{}", saba_chan_updater_lib::relay::MODULE_PREFIX, folder),
-        std::path::Path::new(path),
-    )
-}
-
-/// 서명된 카탈로그에서 받지 않았거나 받은 뒤 바뀐 구성요소를 쓸 때 응답에 싣는 알림 (실행은 막지 않는다)
-pub(crate) fn trust_warnings(kind: &str, id: &str, trust: saba_chan_updater_lib::integrity::Trust) -> Vec<serde_json::Value> {
-    use saba_chan_updater_lib::integrity::Trust;
-    let code = match trust {
-        Trust::Verified => return Vec::new(),
-        Trust::Modified => format!("{}_modified", kind),
-        Trust::Unverified => format!("{}_unverified", kind),
-    };
-    // isolated: 이 플랫폼에서 격리된 환경(허용된 폴더만)에서 돈다
-    vec![json!({ "code": code, kind: id, "isolated": crate::sandbox::enforced() })]
-}
-
 /// 모듈 목록 한 줄. 별명은 module.toml(언어 없는 낱말)에 `lang`(앱 언어)의 모듈 locales 별명을 더한다 (`chat::api::locale_aliases`)
-fn module_info(m: crate::supervisor::module_loader::LoadedModule, versions: &std::collections::BTreeMap<String, String>, lang: &str) -> ExtensionInfo {
+fn module_info(m: crate::module_loader::LoadedModule, versions: &std::collections::BTreeMap<String, String>, lang: &str) -> ExtensionInfo {
     let installed: std::collections::HashMap<String, String> = versions.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
     let unmet_dependencies = m
         .metadata
@@ -134,7 +113,7 @@ fn module_info(m: crate::supervisor::module_loader::LoadedModule, versions: &std
             format!("data:image/png;base64,{}", general_purpose::STANDARD.encode(&data))
         })
     });
-    let trust = module_trust(&m.path);
+    let trust = crate::module_audit::module_trust(&m.path);
     let addon = addon_choice(&format!("{}{}", saba_chan_updater_lib::relay::MODULE_PREFIX, m.metadata.name), &m.metadata.version);
     let localized = crate::chat::api::locale_aliases(std::path::Path::new(&m.path), lang).unwrap_or_default();
     let unsupported_reason = m.metadata.unsupported_on(std::env::consts::OS, std::env::consts::ARCH).map(str::to_string);
@@ -189,8 +168,8 @@ pub(crate) fn addon_choice(key: &str, installed: &str) -> saba_chan_updater_lib:
 }
 
 async fn module_list_response(
-    modules: anyhow::Result<Vec<crate::supervisor::module_loader::LoadedModule>>,
-    failed: Vec<crate::supervisor::module_loader::ModuleLoadError>,
+    modules: anyhow::Result<Vec<crate::module_loader::LoadedModule>>,
+    failed: Vec<crate::module_loader::ModuleLoadError>,
     versions: &std::collections::BTreeMap<String, String>,
     lang: &str,
 ) -> axum::response::Response {
@@ -205,8 +184,7 @@ async fn module_list_response(
             (StatusCode::OK, Json(ExtensionListResponse { modules, failed })).into_response()
         }
         Err(e) => {
-            let error = json!({ "error": format!("Failed to list modules: {}", e) });
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response()
+            super::error(StatusCode::INTERNAL_SERVER_ERROR, "internal_server_error", format!("Failed to list modules: {}", e))
         }
     }
 }
@@ -240,7 +218,7 @@ pub async fn refresh_modules(State(state): State<IPCServer>) -> impl IntoRespons
 
 /// GET /api/modules/schema - module.toml 스키마 v1 (JSON Schema)
 pub async fn module_schema() -> impl IntoResponse {
-    Json(crate::supervisor::module_loader::module_json_schema())
+    Json(crate::module_loader::module_json_schema())
 }
 
 /// POST /api/modules/detect `{path}` - 이 폴더가 어느 모듈의 게임 서버 폴더인지
@@ -250,11 +228,11 @@ pub async fn detect_module_dir(
     Json(body): Json<serde_json::Value>,
 ) -> impl IntoResponse {
     let Some(path) = body.get("path").and_then(|v| v.as_str()) else {
-        return (StatusCode::BAD_REQUEST, Json(json!({ "error": "path is required" }))).into_response();
+        return super::error(StatusCode::BAD_REQUEST, "invalid_request", "path is required");
     };
     let dir = std::path::Path::new(path);
     if !dir.is_dir() {
-        return (StatusCode::NOT_FOUND, Json(json!({ "error": format!("not a folder: {}", path) }))).into_response();
+        return super::error(StatusCode::NOT_FOUND, "not_found", format!("not a folder: {}", path));
     }
     let matches: Vec<_> = {
         let supervisor = state.supervisor.read().await;
@@ -278,7 +256,7 @@ pub async fn detect_module_dir(
 pub async fn audit_module(Path(name): Path<String>, State(state): State<IPCServer>) -> impl IntoResponse {
     let module = state.supervisor.read().await.module_loader.get_module(&name).ok();
     let Some(module) = module else {
-        return (StatusCode::NOT_FOUND, Json(json!({ "error": format!("Module '{}' not found", name), "error_code": "not_found" }))).into_response();
+        return super::error(StatusCode::NOT_FOUND, "not_found", format!("Module '{}' not found", name));
     };
     let found = match crate::python_env::get_python_path().await {
         Ok(python) => crate::module_audit::scan(&python, std::path::Path::new(&module.path)).await,
@@ -289,7 +267,7 @@ pub async fn audit_module(Path(name): Path<String>, State(state): State<IPCServe
             let undeclared = crate::module_audit::undeclared(&module.metadata.permissions, &findings);
             Json(json!({ "success": true, "declared": module.metadata.permissions, "findings": findings, "undeclared": undeclared })).into_response()
         }
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": format!("{:#}", e), "error_code": "audit_failed" }))).into_response(),
+        Err(e) => super::error(StatusCode::INTERNAL_SERVER_ERROR, "audit_failed", format!("{:#}", e)),
     }
 }
 
@@ -311,23 +289,15 @@ pub async fn get_module_metadata(
                 })),
             )
                 .into_response(),
-            None => (
-                StatusCode::NOT_FOUND,
-                Json(json!({ "error": format!("Module '{}' not found", name) })),
-            )
-                .into_response(),
+            None => super::error(StatusCode::NOT_FOUND, "not_found", format!("Module '{}' not found", name)),
         },
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": format!("Failed to list modules: {}", e) })),
-        )
-            .into_response(),
+        Err(e) => super::error(StatusCode::INTERNAL_SERVER_ERROR, "internal_server_error", format!("Failed to list modules: {}", e)),
     }
 }
 
 /// GET /api/modules/manifest - 설치할 수 있는 모듈 목록 (최신 릴리즈의 서명된 manifest, U9e)
 ///
-/// `{ok, manifest: {modules: {<이름>: {version, display_name, description, ...}}}}`
+/// `{success, manifest: {modules: {<이름>: {version, display_name, description, ...}}}}`
 /// 데몬이 받아 둔 목록으로 바로 답한다(`store_cache`). `?refresh=true`면 새로 받는다
 pub async fn fetch_module_manifest(Query(query): Query<crate::ipc::store_cache::RefreshQuery>) -> impl IntoResponse {
     let channel = crate::ipc::updates::load_updater_config().channel;
@@ -339,9 +309,9 @@ pub async fn fetch_module_manifest(Query(query): Query<crate::ipc::store_cache::
                     modules.insert(name.to_string(), catalog_module_info(comp, std::env::consts::OS, std::env::consts::ARCH));
                 }
             }
-            (StatusCode::OK, Json(json!({ "ok": true, "manifest": { "modules": modules } }))).into_response()
+            (StatusCode::OK, Json(json!({ "success": true, "manifest": { "modules": modules } }))).into_response()
         }
-        Err(e) => (StatusCode::OK, Json(json!({ "ok": false, "error": e }))).into_response(),
+        Err(e) => super::error(StatusCode::BAD_GATEWAY, "manifest_fetch_failed", e),
     }
 }
 
@@ -349,7 +319,7 @@ pub async fn fetch_module_manifest(Query(query): Query<crate::ipc::store_cache::
 /// 아니면 `unsupported_reason` `os`·`arch`)를 더한다. 설치된 모듈 목록과 같은 이름이다
 fn catalog_module_info(comp: &saba_chan_updater_lib::relay::ManifestComponent, os: &str, arch: &str) -> Value {
     let mut info = crate::ipc::store_cache::public_meta(comp.meta.as_ref());
-    let reason = crate::supervisor::module_loader::catalog_unsupported_on(&Value::Object(info.clone()), os, arch);
+    let reason = crate::module_loader::catalog_unsupported_on(&Value::Object(info.clone()), os, arch);
     info.insert("version".into(), json!(comp.version));
     info.insert("sha256".into(), json!(comp.sha256));
     info.insert("size_bytes".into(), json!(comp.size_bytes));
@@ -365,9 +335,8 @@ pub async fn install_module_from_manifest(
     Path(module_id): Path<String>,
     State(state): State<IPCServer>,
 ) -> impl IntoResponse {
-    let fail = |error: String| (StatusCode::OK, Json(json!({ "ok": false, "error": error }))).into_response();
     if !crate::utils::is_single_path_component(&module_id) {
-        return fail("Invalid module ID".into());
+        return super::error(StatusCode::BAD_REQUEST, "invalid_request", "Invalid module ID");
     }
     let Some(installing) = module_install_guard(&module_id) else {
         return module_busy(&module_id);
@@ -378,7 +347,7 @@ pub async fn install_module_from_manifest(
         install_module_locked(state, module_id).await
     })
     .await
-    .unwrap_or_else(|e| fail(e.to_string()))
+    .unwrap_or_else(|e| super::error(StatusCode::INTERNAL_SERVER_ERROR, "module_install_failed", e.to_string()))
 }
 
 /// 카탈로그 모듈의 `requires`를 못 맞춘 거절. 로드 실패·시작 응답과 같은 코드와 목록 꼴(`"saba-core >=0.1.10 (installed 0.1.9)"`)
@@ -388,7 +357,7 @@ fn unmet_requires_body(module_id: &str, unmet: &[saba_chan_updater_lib::Dependen
         .find(|i| i.required_component == "saba-core")
         .map(|i| i.required_version.trim().trim_start_matches(">=").trim().to_string());
     let mut body = json!({
-        "ok": false,
+        "success": false,
         "error": unmet.iter().map(|i| i.message.as_str()).collect::<Vec<_>>().join("; "),
         "error_code": "module_dependency_unsatisfied",
         "module": module_id,
@@ -405,25 +374,24 @@ fn unmet_requires_body(module_id: &str, unmet: &[saba_chan_updater_lib::Dependen
 }
 
 async fn install_module_locked(state: IPCServer, module_id: String) -> axum::response::Response {
-    let fail = |error: String| (StatusCode::OK, Json(json!({ "ok": false, "error": error }))).into_response();
     let catalog = match saba_chan_updater_lib::relay::latest_catalog(None, &crate::ipc::updates::load_updater_config().channel).await {
         Ok(Some(m)) => m,
-        Ok(None) => return fail("No release is published".into()),
-        Err(e) => return fail(e.to_string()),
+        Ok(None) => return super::error(StatusCode::NOT_FOUND, "not_in_manifest", "No release is published"),
+        Err(e) => return super::error(StatusCode::BAD_GATEWAY, "manifest_fetch_failed", e.to_string()),
     };
     let Some(comp) = catalog
         .components
         .get(&format!("{}{}", saba_chan_updater_lib::relay::MODULE_PREFIX, module_id))
         .cloned()
     else {
-        return fail(format!("Module '{}' is not in the latest release", module_id));
+        return super::error(StatusCode::NOT_FOUND, "not_in_manifest", format!("Module '{}' is not in the latest release", module_id));
     };
     // 설치된 것보다 낮은 버전은 받지 않는다
     let previous = state.supervisor.read().await.module_loader.get_module(&module_id).ok();
-    let previously_required = previous.as_ref().map(crate::supervisor::module_loader::LoadedModule::required_extensions).unwrap_or_default();
+    let previously_required = previous.as_ref().map(crate::module_loader::LoadedModule::required_extensions).unwrap_or_default();
     let installed = previous.map(|m| m.metadata.version.clone());
     if let Some(installed) = installed.filter(|v| saba_chan_updater_lib::version::is_downgrade(v, &comp.version)) {
-        return fail(format!("Module '{}' {} is older than the installed {}", module_id, comp.version, installed));
+        return super::error(StatusCode::CONFLICT, "older_than_installed", format!("Module '{}' {} is older than the installed {}", module_id, comp.version, installed));
     }
     // 새 코어를 요구하는 판은 받지 않는다 (업데이터 적용과 같은 검사)
     if let Some(requires) = &comp.requires {
@@ -431,7 +399,7 @@ async fn install_module_locked(state: IPCServer, module_id: String) -> axum::res
         let key = format!("{}{}", saba_chan_updater_lib::relay::MODULE_PREFIX, module_id);
         let unmet = saba_chan_updater_lib::unmet_requires(&key, requires, &installed);
         if !unmet.is_empty() {
-            return (StatusCode::OK, Json(unmet_requires_body(&module_id, &unmet))).into_response();
+            return (StatusCode::UNPROCESSABLE_ENTITY, Json(unmet_requires_body(&module_id, &unmet))).into_response();
         }
     }
 
@@ -465,17 +433,17 @@ async fn install_module_locked(state: IPCServer, module_id: String) -> axum::res
     let _ = std::fs::remove_file(&zip_path);
     let _ = std::fs::remove_dir_all(&staging);
     if let Err(e) = result {
-        return fail(format!("{:#}", e));
+        return super::error(StatusCode::INTERNAL_SERVER_ERROR, "module_install_failed", format!("{:#}", e));
     }
     let required = {
         let mut supervisor = state.supervisor.write().await;
         let _ = supervisor.refresh_modules();
         supervisor.migrate_settings();
-        supervisor.module_loader.get_module(&module_id).ok().as_ref().map(crate::supervisor::module_loader::LoadedModule::required_extensions).unwrap_or_default()
+        supervisor.module_loader.get_module(&module_id).ok().as_ref().map(crate::module_loader::LoadedModule::required_extensions).unwrap_or_default()
     };
     // 이 모듈이 쓰는 익스텐션을 받고 켠다 (새로 필요해진 것만 켠다: 예전 판부터 쓰던 것은 사용자가 껐을 수 있다)
     let extensions = crate::service::extensions::prepare_for_module(&state, &required, &previously_required).await;
-    (StatusCode::OK, Json(json!({ "ok": true, "module_id": module_id, "version": comp.version, "extensions": extensions })))
+    (StatusCode::OK, Json(json!({ "success": true, "module_id": module_id, "version": comp.version, "extensions": extensions })))
         .into_response()
 }
 
@@ -487,7 +455,7 @@ pub(crate) fn module_install_guard(module_id: &str) -> Option<crate::instance::l
 
 pub(crate) fn module_busy(module_id: &str) -> axum::response::Response {
     let error = format!("Module '{}' is already being installed or removed", module_id);
-    (StatusCode::OK, Json(json!({ "ok": false, "error": error, "error_code": "module_busy" }))).into_response()
+    super::error(StatusCode::CONFLICT, "module_busy", error)
 }
 
 /// 설치 요청마다 따로 쓰는 받은 zip과 압축 해제 폴더 (`.tmp-`·`.staging-`로 시작해 남으면 다음 기동이 지운다)
@@ -502,7 +470,7 @@ fn module_install_paths(modules_dir: &std::path::Path, module_id: &str) -> (std:
 /// 풀어 둔 모듈 패키지를 데몬과 같은 규칙으로 읽어 본 뒤 설치 폴더와 바꾼다.
 /// 기존 폴더는 새 폴더가 자리를 잡을 때까지 옆에 두고, 바꾸다 실패하면 되돌린다
 fn install_staged_module(staging: &std::path::Path, target_dir: &std::path::Path) -> anyhow::Result<()> {
-    crate::supervisor::module_loader::load_module_dir(staging).map_err(|e| e.context("package is not a loadable module"))?;
+    crate::module_loader::load_module_dir(staging).map_err(|e| e.context("package is not a loadable module"))?;
     crate::utils::swap_dir(staging, target_dir)
 }
 
@@ -513,7 +481,7 @@ pub async fn remove_module(
 ) -> impl IntoResponse {
     // 경로 탐색 방지
     if !crate::utils::is_single_path_component(&module_id) {
-        return (StatusCode::OK, Json(json!({ "ok": false, "error": "Invalid module ID" }))).into_response();
+        return super::error(StatusCode::BAD_REQUEST, "invalid_request", "Invalid module ID");
     }
     let Some(_removing) = module_install_guard(&module_id) else {
         return module_busy(&module_id);
@@ -525,7 +493,7 @@ pub async fn remove_module(
         for instance in supervisor.instance_store.list() {
             if instance.module_name.eq_ignore_ascii_case(&module_id) && supervisor.is_running(&instance.id).await {
                 let error = format!("Module '{}' is used by a running server; stop it first", module_id);
-                return (StatusCode::OK, Json(json!({ "ok": false, "error": error, "error_code": "module_in_use" }))).into_response();
+                return super::error(StatusCode::CONFLICT, "module_in_use", error);
             }
         }
         let modules_dir = std::path::PathBuf::from(supervisor.module_loader.modules_dir());
@@ -553,17 +521,17 @@ pub async fn remove_module(
             }
         })
     } else {
-        return (StatusCode::OK, Json(json!({ "ok": false, "error": "Module not found" }))).into_response();
+        return super::error(StatusCode::NOT_FOUND, "not_found", "Module not found");
     };
     if let Err(e) = removed {
-        return (StatusCode::OK, Json(json!({ "ok": false, "error": e.to_string() }))).into_response();
+        return super::error(StatusCode::INTERNAL_SERVER_ERROR, "remove_failed", e.to_string());
     }
     let _ = saba_chan_updater_lib::integrity::set_official(&format!("{}{}", saba_chan_updater_lib::relay::MODULE_PREFIX, module_id), false);
     // 캐시 갱신 (write lock)
     let mut supervisor = state.supervisor.write().await;
     let _ = supervisor.refresh_modules();
     supervisor.migrate_settings();
-    (StatusCode::OK, Json(json!({ "ok": true, "id": module_id }))).into_response()
+    (StatusCode::OK, Json(json!({ "success": true, "id": module_id }))).into_response()
 }
 
 /// GET /api/instance/:id/status — id로 상태 조회 (없으면 이름으로 찾는다). 못 찾았으면 404 `instance_not_found`
@@ -582,16 +550,11 @@ pub async fn get_instance_status(
         match crate::supervisor::Supervisor::get_server_status(&state.supervisor, &id, &module_name).await {
             Ok(result) => (StatusCode::OK, Json(result)).into_response(),
             Err(e) => {
-                let error = json!({ "error": format!("Failed to get status: {}", e) });
-                (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response()
+                super::error(StatusCode::INTERNAL_SERVER_ERROR, "internal_server_error", format!("Failed to get status: {}", e))
             }
         }
     } else {
-        let error = json!({
-            "error": format!("Server '{}' not found", id),
-            "error_code": "instance_not_found",
-        });
-        (StatusCode::NOT_FOUND, Json(error)).into_response()
+        super::error(StatusCode::NOT_FOUND, "instance_not_found", format!("Server '{}' not found", id))
     }
 }
 
@@ -779,7 +742,7 @@ mod tests {
         assert_eq!(started["success"], true, "{started}");
 
         let both = || async {
-            let list = crate::ipc::internal::into_internal(crate::service::servers::list(&state, 0).await).await.body;
+            let list = crate::ipc::internal::InternalResponse::from(crate::service::servers::list(&state, 0).await).body;
             let one = crate::supervisor::Supervisor::get_server_status(&state.supervisor, "just-exited", "game").await.unwrap();
             (list["servers"][0]["status"].clone(), one["status"].clone())
         };
@@ -795,9 +758,9 @@ mod tests {
     #[test]
     fn only_unofficial_or_changed_components_get_a_notice() {
         use saba_chan_updater_lib::integrity::Trust;
-        assert!(trust_warnings("module", "m", Trust::Verified).is_empty());
-        assert_eq!(trust_warnings("module", "m", Trust::Unverified), [json!({"code": "module_unverified", "module": "m", "isolated": cfg!(windows)})]);
-        assert_eq!(trust_warnings("extension", "e", Trust::Modified), [json!({"code": "extension_modified", "extension": "e", "isolated": cfg!(windows)})]);
+        assert!(crate::module_audit::trust_warnings("module", "m", Trust::Verified).is_empty());
+        assert_eq!(crate::module_audit::trust_warnings("module", "m", Trust::Unverified), [json!({"code": "module_unverified", "module": "m", "isolated": cfg!(windows)})]);
+        assert_eq!(crate::module_audit::trust_warnings("extension", "e", Trust::Modified), [json!({"code": "extension_modified", "extension": "e", "isolated": cfg!(windows)})]);
     }
 
     #[tokio::test]
@@ -1052,7 +1015,7 @@ mod tests {
         let installed = std::collections::HashMap::from([("saba-core".to_string(), "0.1.9".to_string())]);
         let unmet = saba_chan_updater_lib::unmet_requires("module-future", &requires, &installed);
         let body = unmet_requires_body("future", &unmet);
-        assert_eq!((body["ok"].clone(), body["module"].clone()), (json!(false), json!("future")));
+        assert_eq!((body["success"].clone(), body["module"].clone()), (json!(false), json!("future")));
         assert_eq!(body["error_code"], "module_dependency_unsatisfied", "{body}");
         assert_eq!(body["missing_dependencies"], json!(["saba-core >=99.0.0 (installed 0.1.9)"]), "{body}");
         assert_eq!(body["required_core"], "99.0.0", "{body}");
@@ -1086,7 +1049,7 @@ mod tests {
 
         state.supervisor.read().await.tracker.untrack(&id).unwrap();
         let removed = crate::ipc::internal::into_internal(remove_module(Path("plain".into()), State(state)).await.into_response()).await.body;
-        assert_eq!(removed["ok"], true, "{removed}");
+        assert_eq!(removed["success"], true, "{removed}");
     }
 
     /// modules 폴더에 놓은 ZIP 모듈도 제거 API로 지운다 (찾은 모듈의 실제 원본을 지운다)
@@ -1109,7 +1072,7 @@ mod tests {
         let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
 
         let removed = crate::ipc::internal::into_internal(remove_module(Path("zip-mod".into()), State(state.clone())).await.into_response()).await.body;
-        assert_eq!(removed["ok"], true, "{removed}");
+        assert_eq!(removed["success"], true, "{removed}");
         assert!(!zip_path.exists());
         assert!(!modules.join(".extracted/zip-mod").exists());
         assert!(state.supervisor.read().await.module_loader.get_module("zip-mod").is_err());

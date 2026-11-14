@@ -12,7 +12,7 @@ use crate::service::Failure;
 fn check_update_context(
     instance: &crate::instance::ServerInstance,
     instance_dir: &std::path::Path,
-    install: Option<&crate::supervisor::module_loader::ModuleInstallConfig>,
+    install: Option<&crate::module_loader::ModuleInstallConfig>,
 ) -> Value {
     let branch = install.and_then(|cfg| instance.install_branch(&cfg.method).or(cfg.beta.as_deref()));
     json!({
@@ -132,17 +132,11 @@ pub(crate) async fn emit_update_failed(state: &IPCServer, id: &str, error: &str)
 pub(crate) fn updatable(
     supervisor: &crate::supervisor::Supervisor,
     id: &str,
-) -> Result<(crate::instance::ServerInstance, crate::supervisor::module_loader::ModuleInstallConfig), Failure> {
+) -> Result<(crate::instance::ServerInstance, crate::module_loader::ModuleInstallConfig), Failure> {
     let instance = match supervisor.instance_store.get(id) {
         Some(inst) => inst.clone(),
         None => {
-            return Err(Failure::new(
-                StatusCode::NOT_FOUND,
-                json!({
-                    "error": format!("Instance not found: {}", id),
-                    "error_code": "instance_not_found",
-                }),
-            ));
+            return Err(Failure::coded(StatusCode::NOT_FOUND, "instance_not_found", format!("Instance not found: {}", id)));
         }
     };
 
@@ -156,26 +150,14 @@ pub(crate) fn updatable(
     let (install_config, _module_path) = match module_info {
         Some((Some(cfg), path)) => (cfg, path),
         _ => {
-            return Err(Failure::new(
-                StatusCode::BAD_REQUEST,
-                json!({
-                    "error": "Module install configuration not found.",
-                    "error_code": "no_install_config",
-                }),
-            ));
+            return Err(Failure::coded(StatusCode::BAD_REQUEST, "no_install_config", "Module install configuration not found."));
         }
     };
 
     // 익스텐션이 설치한 인스턴스만 이 경로로 업데이트한다 (설치 방식 슬롯)
     let method = install_config.method.clone();
     if !installed_by_extension(&instance, &method) {
-        return Err(Failure::new(
-            StatusCode::BAD_REQUEST,
-            json!({
-                "error": "Only instances installed by an install-method extension can be updated this way.",
-                "error_code": "update_unsupported",
-            }),
-        ));
+        return Err(Failure::coded(StatusCode::BAD_REQUEST, "update_unsupported", "Only instances installed by an install-method extension can be updated this way."));
     }
 
     Ok((instance, install_config))
@@ -221,6 +203,7 @@ pub(crate) async fn begin_server_update_holding(
     // 실행 중이면 업데이트 불가
     if supervisor.is_running(id).await {
         return Err(Failure::running(json!({
+            "success": false,
             "error": "Cannot update while server is running. Stop the server first.",
             "error_code": "server_running",
         })));
@@ -234,203 +217,147 @@ pub(crate) async fn begin_server_update_holding(
     let others = crate::service::shared_folder::hold_other_instances_using(state, &install_dir_str, Some(id)).await?;
     let supervisor = state.supervisor.read().await;
 
-    let tracker = state.provision_tracker.clone();
-    let supervisor_arc = state.supervisor.clone();
     let text = crate::chat::i18n::Catalog::for_language(&state.config_store.ui_language().await);
-    let instance_name = instance.name.clone();
-    let module_name_owned = instance.module_name.clone();
-    let branch = instance.install_branch(&method).map(str::to_string);
-    let accepted_agreements: Vec<String> = instance.accepted_agreements.keys().cloned().collect();
     let module = supervisor.module_loader.get_module(&instance.module_name).ok();
     // 처음 설치와 같은 인스턴스 설정·데이터 폴더·HOST 문맥 (D5)
     let target = crate::supervisor::InstanceInstall::of(&instance, &instance_dir, module.as_ref().map(|m| &m.metadata), state.host_context(id));
+    let job = UpdateJob {
+        state: state.clone(),
+        id: id.to_string(),
+        name: instance.name.clone(),
+        module_name: instance.module_name.clone(),
+        branch: instance.install_branch(&method).map(str::to_string),
+        accepted_agreements: instance.accepted_agreements.keys().cloned().collect(),
+        install_dir: install_dir_str,
+        method,
+        text,
+    };
 
     // 프로비저닝 상태 등록 (기존 인스턴스 업데이트 — 실패해도 롤백 대상이 아니다)
-    tracker.take_creating(id);
-    tracker.update(
-        id,
-        &instance_name,
-        crate::ipc::ProvisionProgress {
-            step: 0,
-            total: 1,
-            label: method.clone(),
-            message: text.t("provision.updating", &[]),
-            done: false,
-            error: None,
-            percent: Some(0),
-            steps: None, details: Default::default(),
-        },
-    );
+    state.provision_tracker.take_creating(id);
+    let started = crate::ipc::ProvisionProgress { label: job.method.clone(), done: false, percent: Some(0), ..crate::ipc::ProvisionProgress::finished(job.text.t("provision.updating", &[]), None) };
+    state.provision_tracker.update(id, &job.name, started);
 
     // supervisor lock 해제 후 백그라운드 태스크 실행
     drop(supervisor);
 
-    let tracker_done = tracker.clone();
-    let (id_done, name_done) = (id.to_string(), instance_name.clone());
-
-    let backup_state = state.clone();
-    let backup_id = id.to_string();
     // 요청의 출처·언어를 지닌 채 돈다 (모듈 진행 문구가 요청한 화면 언어로)
     Ok(crate::audit::spawn(async move {
-        let _guard = guard;
         let _others = others;
+        let updated = job.run(target, &guard).await;
+        // 5초 후 프로비저닝 tracker 자동 정리
+        let (tracker, id) = (job.state.provision_tracker.clone(), job.id.clone());
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            tracker.remove(&id);
+        });
+        updated
+    }))
+}
+
+/// 뒤에서 도는 서버 업데이트 하나
+struct UpdateJob {
+    state: IPCServer,
+    id: String,
+    name: String,
+    module_name: String,
+    method: String,
+    install_dir: String,
+    /// 고른 브랜치가 있으면 그 브랜치로 받는다
+    branch: Option<String>,
+    accepted_agreements: Vec<String>,
+    text: crate::chat::i18n::Catalog,
+}
+
+impl UpdateJob {
+    /// 업데이트 전 백업 → 모듈 호출 → 결과 기록. 성공 여부를 돌려준다
+    async fn run(&self, target: crate::supervisor::InstanceInstall, guard: &crate::instance::lock::InstanceLock) -> bool {
         // ── Phase 0: 업데이트 전 백업 (A2). 백업할 것이 없으면 그냥 진행, 실패하면 업데이트하지 않는다 ──
-        if let Err(r) = crate::service::backup::take_backup_held(&backup_state, &backup_id, crate::backup::BackupKind::PreUpdate, &_guard).await {
+        if let Err(r) = crate::service::backup::take_backup_held(&self.state, &self.id, crate::backup::BackupKind::PreUpdate, guard).await {
             let reason = r.reason().unwrap_or("backup failed").to_string();
-            let failure = r.body;
-            tracing::error!("Pre-update backup failed for '{}': {}", name_done, reason);
-            emit_update_failed(&backup_state, &backup_id, &reason).await;
-            tracker_done.update(
-                &id_done,
-                &name_done,
-                crate::ipc::ProvisionProgress {
-                    step: 0,
-                    total: 1,
-                    label: "done".to_string(),
-                    message: text.t("provision.update_failed", &[]),
-                    done: true,
-                    error: Some(text.t("provision.backup_failed", &[("reason", &reason)])),
-                    percent: Some(100),
-                    steps: None, details: Default::default(),
-                }.with_failure(failure),
-            );
+            tracing::error!("Pre-update backup failed for '{}': {}", self.name, reason);
+            emit_update_failed(&self.state, &self.id, &reason).await;
+            self.fail(self.text.t("provision.backup_failed", &[("reason", &reason)]), Some(r.body));
             return false;
         }
 
         // ── Phase 1: supervisor lock을 최소 시간만 잡고 모듈 경로 복사 ──
-        let lifecycle_path = supervisor_arc.read().await.module_loader.get_module(&module_name_owned).map(|m| m.entry_path());
-        let lifecycle_path = {
-            match lifecycle_path {
-                Ok(path) => path,
-                Err(e) => {
-                    emit_update_failed(&backup_state, &backup_id, &e.to_string()).await;
-                    tracker_done.update(
-                        &id_done,
-                        &name_done,
-                        crate::ipc::ProvisionProgress {
-                            step: 0,
-                            total: 1,
-                            label: "done".to_string(),
-                            message: text.t("provision.update_failed", &[]),
-                            done: true,
-                            error: Some(text.t("provision.module_missing", &[("error", &e.to_string())])),
-                            percent: Some(100),
-                            steps: None, details: Default::default(),
-                        },
-                    );
-                    return false;
-                }
+        let lifecycle_path = self.state.supervisor.read().await.module_loader.get_module(&self.module_name).map(|m| m.entry_path());
+        let lifecycle_path = match lifecycle_path {
+            Ok(path) => path,
+            Err(e) => {
+                emit_update_failed(&self.state, &self.id, &e.to_string()).await;
+                self.fail(self.text.t("provision.module_missing", &[("error", &e.to_string())]), None);
+                return false;
             }
         };
-        // supervisor read lock 해제됨
 
         // ── Phase 2: 플러그인 호출 (lock 없이 실행) ──
+        let call = crate::supervisor::InstallCall::new(&self.module_name, lifecycle_path, &self.install_dir, &self.accepted_agreements)
+            .version(self.branch.as_deref())
+            .instance(target);
+        let progress = crate::supervisor::progress_to_tracker(self.state.provision_tracker.clone(), self.id.clone(), self.name.clone(), self.method.clone());
+        // 업데이트가 끝날 때까지 모듈·익스텐션 자동 교체를 막는다
+        let gate = self.state.supervisor.read().await.addon_gate();
         let result = {
-            // 고른 브랜치가 있으면 그 브랜치로 받는다
-            let call = crate::supervisor::InstallCall::new(&module_name_owned, lifecycle_path, &install_dir_str, &accepted_agreements)
-                .version(branch.as_deref())
-                .instance(target);
-            let progress = crate::supervisor::progress_to_tracker(tracker_done.clone(), id_done.clone(), name_done.clone(), method.clone());
-
-            // 업데이트가 끝날 때까지 모듈·익스텐션 자동 교체를 막는다
-            let gate = supervisor_arc.read().await.addon_gate();
             let _addons = gate.hold_addons().await;
             call.run(Some(progress)).await
         };
 
-        let updated = match result {
-            Ok(val) => {
-                let success = val
-                    .get("success")
-                    .and_then(|s| s.as_bool())
-                    .unwrap_or(false);
-                if success {
-                    tracing::info!("Server update completed for '{}'", name_done);
-                    // 받은 새 빌드를 적어 둔다 (확인은 오래 걸릴 수 있어 뒤에서)
-                    let (state, id) = (backup_state.clone(), backup_id.clone());
-                    tokio::spawn(async move { server_update_status(&state, &id).await });
-                    // 켜짐·꺼짐 알림을 켠 길드의 알림 채널에 "업데이트 끝남" (릴레이)
-                    crate::events::emit("instance.updated", json!({ "instanceId": backup_id, "instance": name_done }));
-                    // 받은 빌드가 최신이다: 지난 확인의 "새 빌드 있음"을 지운다 (다음 주기 확인이 다시 채운다)
-                    super::forget_check(&backup_id);
-                    tracker_done.update(
-                        &id_done,
-                        &name_done,
-                        crate::ipc::ProvisionProgress {
-                            step: 0,
-                            total: 1,
-                            label: "done".to_string(),
-                            message: text.t("provision.updated", &[]),
-                            done: true,
-                            error: None,
-                            percent: Some(100),
-                            steps: None, details: Default::default(),
-                        },
-                    );
-                } else {
-                    let err_msg = val
-                        .get("message")
-                        .or_else(|| val.get("error"))
-                        .and_then(|v| v.as_str())
-                        .map(str::to_string)
-                        .unwrap_or_else(|| text.t("provision.update_failed", &[]));
-                    tracing::error!("Server update failed for '{}': {}", name_done, err_msg);
-                    emit_update_failed(&backup_state, &backup_id, &err_msg).await;
-                    tracker_done.update(
-                        &id_done,
-                        &name_done,
-                        crate::ipc::ProvisionProgress {
-                            step: 0,
-                            total: 1,
-                            label: "done".to_string(),
-                            message: text.t("provision.update_failed", &[]),
-                            done: true,
-                            error: Some(err_msg),
-                            percent: Some(100),
-                            steps: None, details: Default::default(),
-                        }.with_failure(val.clone()),
-                    );
-                }
-                success
+        match result {
+            Ok(val) if val.get("success").and_then(Value::as_bool).unwrap_or(false) => {
+                self.succeeded().await;
+                true
             }
-            Err(e) => {
-                tracing::error!("Server update error for '{}': {}", name_done, e);
-                emit_update_failed(&backup_state, &backup_id, &text.t("provision.script_failed", &[])).await;
-                tracker_done.update(
-                    &id_done,
-                    &name_done,
-                    crate::ipc::ProvisionProgress {
-                        step: 0,
-                        total: 1,
-                        label: "done".to_string(),
-                        message: text.t("provision.update_failed", &[]),
-                        done: true,
-                        error: Some(text.t("provision.script_failed", &[])),
-                        percent: Some(100),
-                        steps: None, details: Default::default(),
-                    }.with_failure(crate::plugin::error_response(&e)),
-                );
+            Ok(val) => {
+                let err_msg = val
+                    .get("message")
+                    .or_else(|| val.get("error"))
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string)
+                    .unwrap_or_else(|| self.text.t("provision.update_failed", &[]));
+                tracing::error!("Server update failed for '{}': {}", self.name, err_msg);
+                emit_update_failed(&self.state, &self.id, &err_msg).await;
+                self.fail(err_msg, Some(val));
                 false
             }
+            Err(e) => {
+                tracing::error!("Server update error for '{}': {}", self.name, e);
+                emit_update_failed(&self.state, &self.id, &self.text.t("provision.script_failed", &[])).await;
+                self.fail(self.text.t("provision.script_failed", &[]), Some(crate::plugin::error_response(&e)));
+                false
+            }
+        }
+    }
+
+    async fn succeeded(&self) {
+        tracing::info!("Server update completed for '{}'", self.name);
+        // 받은 새 빌드를 적어 둔다 (확인은 오래 걸릴 수 있어 뒤에서)
+        let (state, id) = (self.state.clone(), self.id.clone());
+        tokio::spawn(async move { server_update_status(&state, &id).await });
+        // 켜짐·꺼짐 알림을 켠 길드의 알림 채널에 "업데이트 끝남" (릴레이)
+        crate::events::emit("instance.updated", json!({ "instanceId": self.id, "instance": self.name }));
+        // 받은 빌드가 최신이다: 지난 확인의 "새 빌드 있음"을 지운다 (다음 주기 확인이 다시 채운다)
+        super::forget_check(&self.id);
+        self.state.provision_tracker.update(&self.id, &self.name, crate::ipc::ProvisionProgress::finished(self.text.t("provision.updated", &[]), None));
+    }
+
+    /// 실패를 진행 표시에 적는다 (`failure`: 모듈·백업이 돌려준 본문)
+    fn fail(&self, error: String, failure: Option<Value>) {
+        let progress = crate::ipc::ProvisionProgress::finished(self.text.t("provision.update_failed", &[]), Some(error));
+        let progress = match failure {
+            Some(body) => progress.with_failure(body),
+            None => progress,
         };
-
-        // 5초 후 프로비저닝 tracker 자동 정리
-        let tracker_cleanup = tracker_done.clone();
-        let id_cleanup = id_done.clone();
-        tokio::spawn(async move {
-            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-            tracker_cleanup.remove(&id_cleanup);
-        });
-        updated
-    }))
-
+        self.state.provision_tracker.update(&self.id, &self.name, progress);
+    }
 }
 
 /// 업데이트가 덮어쓸 폴더: 서버가 실제로 도는 working_dir, 없으면 instance_dir / install_subdir (기본 "server")
 fn install_dir_of(
     instance: &crate::instance::ServerInstance,
     instance_dir: &std::path::Path,
-    install_config: Option<&crate::supervisor::module_loader::ModuleInstallConfig>,
+    install_config: Option<&crate::module_loader::ModuleInstallConfig>,
 ) -> std::path::PathBuf {
     if let Some(dir) = instance.working_dir.as_deref().filter(|d| !d.trim().is_empty()) {
         return std::path::PathBuf::from(dir);
@@ -538,12 +465,16 @@ mod tests {
         let error = state.provision_tracker.get(&id).and_then(|p| p.error).expect("the failure reason");
         let data_dirs: serde_json::Value = serde_json::from_str(&error).unwrap_or_else(|_| panic!("{error}"));
         assert_eq!(data_dirs, json!([cache.to_string_lossy()]), "{error}");
+        // 실패 진행 표시의 나머지 칸 (D9 고정: 본체를 나눠도 같다)
+        let mut shown = serde_json::to_value(state.provision_tracker.get(&id).unwrap()).unwrap();
+        shown.as_object_mut().unwrap().remove("error");
+        assert_eq!(shown, json!({ "step": 0, "total": 1, "label": "done", "message": "Update failed", "done": true, "percent": 100, "success": false, "function": "install_server", "module": "game" }));
     }
 
     /// A-09: 업데이트 확인은 모듈 `[install]`을 그대로 받는다. 인스턴스에 남은 옛 사본(`steamcmd_app_id`)을 쓰지 않는다
     #[test]
     fn an_update_check_gets_the_install_values_from_the_module_not_from_instance_copies() {
-        let install: crate::supervisor::module_loader::ModuleInstallConfig =
+        let install: crate::module_loader::ModuleInstallConfig =
             serde_json::from_value(json!({ "method": "steamcmd", "app_id": 2394010, "beta": "preview", "install_subdir": "server", "download_size": 5700000000u64 })).unwrap();
         let mut inst = crate::instance::ServerInstance::new("pal", "pal");
         inst.extension_data.insert("steamcmd_app_id".into(), json!(111));
@@ -608,7 +539,7 @@ mod tests {
         state.supervisor.write().await.instance_store.add(inst).unwrap();
         let listed = || {
             let state = state.clone();
-            async move { crate::ipc::internal::into_internal(crate::service::servers::list(&state, 0).await).await.body["servers"][0].clone() }
+            async move { crate::ipc::internal::InternalResponse::from(crate::service::servers::list(&state, 0).await).body["servers"][0].clone() }
         };
         assert_eq!(listed().await.get("server_build"), None, "nothing is known before the first check");
 
@@ -649,7 +580,7 @@ mod tests {
         state.supervisor.try_write().unwrap().instance_store.add(terra).unwrap();
 
         let listed = |state: crate::ipc::IPCServer| async move {
-            crate::ipc::internal::into_internal(crate::service::servers::list(&state, 0).await).await.body
+            crate::ipc::internal::InternalResponse::from(crate::service::servers::list(&state, 0).await).body
         };
         let check_of = |body: &serde_json::Value, id: &str| body["servers"].as_array().unwrap().iter().find(|s| s["id"] == json!(id)).unwrap()["update_check"].clone();
         let before = listed(state.clone()).await;

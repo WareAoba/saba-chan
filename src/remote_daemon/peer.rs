@@ -75,8 +75,38 @@ impl ConnectError {
     }
 }
 
+/// 원격 데몬 중계·원격 포트의 실패 응답 `{success: false, error, error_code}`. 화면은 `error_code`로 문구를 고른다
 pub fn error(status: StatusCode, code: &str) -> Response {
-    (status, Json(json!({ "error": code, "error_code": code }))).into_response()
+    crate::ipc::handlers::error(status, code, describe(code))
+}
+
+/// 코드마다의 영어 한 줄 (`error`). 표에 없는 코드는 코드 그대로
+fn describe(code: &str) -> &str {
+    match code {
+        "remote_unknown" => "That PC is not in the saved list",
+        "remote_not_found" => "That PC is not one of this account's PCs",
+        "remote_no_endpoint" => "That PC has not opened its remote port",
+        "remote_unreachable" => "Could not reach that PC",
+        "remote_rejected" => "That PC refused the connection",
+        "remote_timeout" => "That PC did not answer in time",
+        "remote_too_old" => "That PC's saba-chan is too old",
+        "remote_ambiguous" => "More than one PC matches that name",
+        "remote_bad_path" => "This request cannot be sent to another PC",
+        "remote_unauthorized" => "This PC is not paired with that PC",
+        "remote_local_only" => "This can only be done on that PC itself",
+        "bad_target" => "The target PC is not valid",
+        "relay_not_paired" => "This PC is not linked to the relay",
+        "relay_unreachable" => "Could not reach the relay",
+        "ticket_invalid" => "The connection ticket was not accepted",
+        "too_many_attempts" => "Too many attempts; try again later",
+        "shutting_down" => "The daemon is shutting down",
+        "body_too_large" => "The request body is too large",
+        "bad_request" => "The request could not be read",
+        "request_timeout" => "The request took too long to arrive",
+        "method_not_allowed" => "That method is not allowed here",
+        "save_failed" => "Could not save the settings",
+        other => other,
+    }
 }
 
 /// 원격 데몬이 답에 실은 판이 최소 판(`MIN_REMOTE_DAEMON`) 이상인가. 판이 없으면 그 머리를 싣기 전의 데몬이다
@@ -654,7 +684,7 @@ impl Pool {
         let res = self.send_saved(file, relay, &daemon, path, req).await;
         let Some(line) = line.as_mut() else { return res };
         line.status = res.status().as_u16();
-        // 시작 실패처럼 200에 `success:false`(또는 `ok:false`)로 답하는 라우트가 있다: 길이를 아는 작은 본문만 열어 보고 그대로 넘긴다
+        // 모듈이 거절한 시작처럼 200에 `success:false`로 답하는 라우트가 있다: 길이를 아는 작은 본문만 열어 보고 그대로 넘긴다
         let small = axum::body::HttpBody::size_hint(res.body()).exact().is_some_and(|n| n <= DECLINE_PEEK_LIMIT as u64);
         if !res.status().is_success() || !small {
             return res;
@@ -665,7 +695,7 @@ impl Pool {
             return error(StatusCode::BAD_GATEWAY, "remote_unreachable");
         };
         if let Ok(v) = serde_json::from_slice::<Value>(&bytes) {
-            line.declined = ["success", "ok"].iter().any(|k| v.get(*k).and_then(Value::as_bool) == Some(false));
+            line.declined = v.get("success").and_then(Value::as_bool) == Some(false);
         }
         Response::from_parts(head, Body::from(bytes))
     }
@@ -815,7 +845,7 @@ impl Pool {
         let version = res.headers().get(saba_chan_updater_lib::constants::VERSION_HEADER).and_then(|v| v.to_str().ok());
         if !remote_version_ok(version) {
             let min = saba_chan_updater_lib::constants::MIN_REMOTE_DAEMON;
-            return (StatusCode::UPGRADE_REQUIRED, Json(json!({ "error": "remote_too_old", "error_code": "remote_too_old", "min_version": min }))).into_response();
+            return (StatusCode::UPGRADE_REQUIRED, Json(json!({ "success": false, "error": describe("remote_too_old"), "error_code": "remote_too_old", "min_version": min }))).into_response();
         }
         let (mut head, body) = res.into_parts();
         for hop in [header::CONNECTION, header::TRANSFER_ENCODING, HeaderName::from_static("keep-alive")] {
@@ -993,7 +1023,7 @@ mod tests {
                 })
                 .post(|body: String| async move { body }),
             )
-            .route("/api/declined", axum::routing::post(|| async { Json(json!({ "ok": false, "error_code": "not_found" })) }))
+            .route("/api/declined", axum::routing::post(|| async { Json(json!({ "success": false, "error_code": "not_found" })) }))
             .route(
                 "/api/slow",
                 get(|| async {
@@ -1303,7 +1333,7 @@ mod tests {
         assert_eq!((mine[0]["ok"].as_bool(), mine[0]["status"].as_u64()), (Some(false), Some(404)));
         assert!(!mine.iter().any(|e| e.to_string().contains("secret")), "{mine:?}");
 
-        // 200이어도 본문이 실패(`success`·`ok`가 false)라고 하면 실패로 남기고, 본문은 그대로 넘긴다
+        // 200이어도 본문이 실패(`success`가 false)라고 하면 실패로 남기고, 본문은 그대로 넘긴다
         let declined = peers.forward(&file, Some(relay_b.clone()), "host-b", "/api/declined", Request::post("/ignored").body(Body::empty()).unwrap(), CancellationToken::new());
         let declined_origin = Origin { user_name: Some(format!("{marker}-declined")), ..Origin::new("gui") };
         let (status, body) = json_of(with_origin(declined_origin, declined).await).await;

@@ -64,7 +64,7 @@ pub fn is_comma(c: char) -> bool {
 }
 
 /// 명령이 어느 언어에서 보이는 이름: module.toml `label`과 언어마다 모듈 locales `commands.<이름>.label`
-fn shown_labels<'a>(module: &'a ModuleView, field: &'a crate::supervisor::module_loader::CommandField) -> impl Iterator<Item = String> + 'a {
+fn shown_labels<'a>(module: &'a ModuleView, field: &'a crate::module_loader::CommandField) -> impl Iterator<Item = String> + 'a {
     std::iter::once(field.label.clone())
         .chain(super::i18n::languages().into_iter().filter_map(move |l| module.text(l, &format!("/commands/{}/label", field.name))))
         .filter(|l| !l.trim().is_empty())
@@ -342,7 +342,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(tmp.path().join("locales")).unwrap();
         std::fs::write(tmp.path().join("locales/ko.json"), r#"{"commands": {"kick": {"label": "플레이어 추방"}}}"#).unwrap();
-        let field = |name: &str| crate::supervisor::module_loader::CommandField { name: name.into(), label: name.into(), description: None, method: None, http_method: None, endpoint_template: None, console_template: None, risk: None, inputs: vec![], remote: true, reply_pattern: None };
+        let field = |name: &str| crate::module_loader::CommandField { name: name.into(), label: name.into(), description: None, method: None, http_method: None, endpoint_template: None, console_template: None, risk: None, inputs: vec![], remote: true, reply_pattern: None };
         let servers = vec![server("a", "survival", "minecraft")];
         let mc = ModuleView { name: "minecraft".into(), commands: vec![field("kick"), field("save-all")], locale_dir: Some(tmp.path().to_path_buf()), ..Default::default() };
         let want = InstanceWords { commands: BTreeMap::from([("save-all".to_string(), vec!["플레이어 추방".to_string()])]), ..Default::default() };

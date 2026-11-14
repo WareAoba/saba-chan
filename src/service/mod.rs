@@ -7,6 +7,7 @@ pub(crate) mod chatbot;
 pub(crate) mod command;
 pub(crate) mod discord;
 pub mod extensions;
+pub(crate) mod instance;
 pub mod lifecycle;
 pub(crate) mod onboarding;
 pub mod server_update;
@@ -92,13 +93,20 @@ pub(crate) fn settled(body: serde_json::Value) -> Outcome {
 }
 
 /// `audited`와 같되 서비스 함수의 결과를 남기고 그대로 돌려준다 (성공은 200)
-pub(crate) async fn audited_result(state: &crate::ipc::IPCServer, action: &str, key: &str, result: Outcome) -> Outcome {
+pub(crate) async fn audited_result(
+    state: &crate::ipc::IPCServer,
+    action: &str,
+    key: &str,
+    command: Option<&str>,
+    args: Option<&serde_json::Value>,
+    result: Outcome,
+) -> Outcome {
     if !crate::audit::is_quiet() {
         let (status, body) = match &result {
             Ok(body) => (axum::http::StatusCode::OK, body),
             Err(failure) => (failure.status, &failure.body),
         };
-        record(state, action, key, None, None, status, Some(body)).await;
+        record(state, action, key, command, args, status, Some(body)).await;
     }
     result
 }

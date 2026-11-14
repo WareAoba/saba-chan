@@ -7,7 +7,7 @@
 //! - `shift_ports_clear_of`: 새 인스턴스의 포트를 다른 인스턴스와 겹치지 않게 옮깁니다.
 
 use crate::instance::ServerInstance;
-use crate::supervisor::module_loader::SettingField;
+use crate::module_loader::SettingField;
 use serde_json::Value;
 
 /// 개별 설정 필드 검증 에러
@@ -540,7 +540,7 @@ pub fn check_port_conflicts(
 pub fn instance_ports(instance: &ServerInstance, port_fields: &[&str]) -> Vec<(String, u16)> {
     let mut ports: Vec<(String, u16)> = instance.port.map(|p| ("port".to_string(), p)).into_iter().collect();
     for name in port_fields {
-        if crate::supervisor::module_loader::CORE_PORT_FIELDS.contains(name) {
+        if crate::module_loader::CORE_PORT_FIELDS.contains(name) {
             continue;
         }
         if let Some(port) = setting_port(instance, name) {
@@ -579,7 +579,7 @@ pub fn shift_ports_clear_of(instance: &mut ServerInstance, port_fields: &[&str],
             instance.port = Some(moved);
         }
         // 인스턴스 필드는 같은 이름의 모듈 설정이 있을 때만 그것도 맞춘다
-        let core = crate::supervisor::module_loader::CORE_PORT_FIELDS.contains(&name.as_str());
+        let core = crate::module_loader::CORE_PORT_FIELDS.contains(&name.as_str());
         if !core || instance.module_settings.contains_key(&name) {
             instance.module_settings.insert(name, serde_json::json!(moved));
         }
@@ -599,7 +599,7 @@ pub fn start_check_ports(
         .map(|(port, name)| (name.to_string(), port))
         .collect();
     for (name, port) in instance_ports(instance, port_fields) {
-        if !crate::supervisor::module_loader::CORE_PORT_FIELDS.contains(&name.as_str()) && !ports.iter().any(|(_, p)| *p == port) {
+        if !crate::module_loader::CORE_PORT_FIELDS.contains(&name.as_str()) && !ports.iter().any(|(_, p)| *p == port) {
             ports.push((name, port));
         }
     }
@@ -916,9 +916,9 @@ mod tests {
         pvp.default = Some(toml::Value::Boolean(false));
         let port = make_field("port", "number");
         let mut damage = make_field("damage", "text");
-        damage.visible_when = Some(crate::supervisor::module_loader::VisibleWhen { field: "pvp".into(), equals: Some(json!(true)), any_of: None });
+        damage.visible_when = Some(crate::module_loader::VisibleWhen { field: "pvp".into(), equals: Some(json!(true)), any_of: None });
         let mut bind = make_field("bind", "text");
-        bind.visible_when = Some(crate::supervisor::module_loader::VisibleWhen { field: "port".into(), equals: None, any_of: Some(vec![json!(25565)]) });
+        bind.visible_when = Some(crate::module_loader::VisibleWhen { field: "port".into(), equals: None, any_of: Some(vec![json!(25565)]) });
         let fields = vec![pvp, port, damage, bind];
         let hidden = |values: Value| hidden_fields(&fields, |k| values.get(k).cloned());
         assert_eq!(hidden(json!({})), vec!["damage", "bind"], "pvp falls back to its default; port has none");

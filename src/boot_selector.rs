@@ -440,7 +440,7 @@ pub fn clear_for_daemon_only(port: u16) {
     eprintln!();
 }
 
-/// 인터페이스 바이너리 탐색 (데몬 exe와 같은 디렉토리)
+/// 인터페이스 바이너리 탐색 (데몬 exe와 같은 디렉토리). `name`은 확장자 없는 이름(`saba_chan_updater_lib::*_STEM`)
 pub fn find_interface_binary(name: &str) -> Option<PathBuf> {
     let exe_dir = std::env::current_exe()
         .ok()
@@ -462,7 +462,7 @@ pub fn find_interface_binary(name: &str) -> Option<PathBuf> {
 
 /// GUI 프로세스를 분리(detach)하여 스폰
 pub fn spawn_gui() -> std::io::Result<()> {
-    let gui_path = find_interface_binary("saba-chan-gui").ok_or_else(|| {
+    let gui_path = find_interface_binary(saba_chan_updater_lib::GUI_STEM).ok_or_else(|| {
         std::io::Error::new(
             std::io::ErrorKind::NotFound,
             "saba-chan-gui binary not found next to daemon executable",
@@ -492,7 +492,7 @@ pub fn spawn_gui_with(gui: &std::path::Path, args: &[String], env: &[(&str, Stri
 
 /// CLI 프로세스를 현재 콘솔에 마운트 (stdio 상속)
 pub fn spawn_cli() -> std::io::Result<std::process::Child> {
-    let cli_path = find_interface_binary("saba-chan-cli").ok_or_else(|| {
+    let cli_path = find_interface_binary(saba_chan_updater_lib::CLI_STEM).ok_or_else(|| {
         std::io::Error::new(
             std::io::ErrorKind::NotFound,
             "saba-chan-cli binary not found next to daemon executable",

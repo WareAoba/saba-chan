@@ -26,9 +26,9 @@
 |---|---|---|
 | 모듈 루트 | `SABA_MODULES_PATH` 환경변수 → `config.json` `paths.modules` → `resolve_data_dir()/modules`(Windows `%APPDATA%/saba-chan/modules`, Linux/macOS `$HOME/.config/saba-chan/modules`). 사용자가 GUI 설정·`saba-chan-cli config move modules`·설치기로 옮길 수 있다(01 §1.5) | `D:updater/src/component_dirs.rs` `resolve` |
 | GUI가 데몬을 띄울 때 | 모듈 폴더를 주입하지 않는다. 데몬이 위 순서로 정한다 | `D:saba-chan-gui/src-tauri/src/lifecycle.rs` |
-| 레거시 경로 | `Supervisor::run()`은 지워졌다. `"./modules"`는 테스트에만 남았다 | `D:src/supervisor/mod.rs:2633-` |
+| 레거시 경로 | `Supervisor::run()`은 지워졌다. `"./modules"`는 테스트에만 남았다 | `D:src/supervisor/tests.rs` |
 
-`ModuleLoader::discover_modules()` (`D:src/supervisor/module_loader/loader.rs:79-146`)의 동작은 다음과 같다.
+`ModuleLoader::discover_modules()` (`D:src/module_loader/loader.rs:79-146`)의 동작은 다음과 같다.
 
 - 모듈 루트의 **1단계 엔트리만** 순회하고 재귀하지 않는다.
 - **폴더 모듈**: `<dir>/module.toml`이 있는 디렉터리만 로드한다 (`:1521-1541`). 폴더 이름은 아무 것이나 되며, 식별자는 `[module].name`이다.
@@ -40,7 +40,7 @@
 - 로드에 실패한 모듈은 `warn` 로그를 남기고 `load_errors`에 기록한다. `GET /api/modules`가 `failed[]`로 돌려준다 (`:1511-1539`, `D:src/ipc/handlers/server.rs:391-392`).
 - `.py` 파일(`daemon_rcon.py`, `i18n.py`)이 같은 루트에 있어도 무시된다. 이 둘은 PYTHONPATH용 공용 라이브러리다 (§2.1).
 
-**진입점 파일**: `[module].entry`가 데몬이 실행하는 Python 파일이다(보통 `lifecycle.py`). `LoadedModule::entry_path()`가 `<모듈 폴더>/<entry>`를 만들고(`D:src/supervisor/module_loader/schema.rs:710-712`), 데몬의 모든 lifecycle 호출이 이 경로를 쓴다(예: `D:src/supervisor/mod.rs:791, 947, 1166, 1519`). 로드할 때 `check_loadable()`이 이 파일이 실제로 있는지 확인하고, 없으면 모듈을 로드하지 않는다(`module_loader/schema.rs:715-730`). 검증 단계는 `entry`가 비었거나 절대 경로이거나 모듈 폴더 밖을 가리키면(`..`·`.` 포함) 거부한다(`module_loader/raw.rs:1283-1289`, 익스텐션 `python_modules`와 같은 `utils::is_inner_relative_path`). (qcza9f 기준)
+**진입점 파일**: `[module].entry`가 데몬이 실행하는 Python 파일이다(보통 `lifecycle.py`). `LoadedModule::entry_path()`가 `<모듈 폴더>/<entry>`를 만들고(`D:src/module_loader/schema.rs:710-712`), 데몬의 모든 lifecycle 호출이 이 경로를 쓴다(예: `D:src/supervisor/status.rs`·`console.rs`·`queries.rs`·`stop.rs`). 로드할 때 `check_loadable()`이 이 파일이 실제로 있는지 확인하고, 없으면 모듈을 로드하지 않는다(`module_loader/schema.rs:715-730`). 검증 단계는 `entry`가 비었거나 절대 경로이거나 모듈 폴더 밖을 가리키면(`..`·`.` 포함) 거부한다(`module_loader/raw.rs:1283-1289`, 익스텐션 `python_modules`와 같은 `utils::is_inner_relative_path`). (qcza9f 기준)
 
 ### 1.2 module.toml 스키마 (Rust 역직렬화 기준, 전체)
 
@@ -467,7 +467,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 - 익스텐션 누락: `error_code: "extension_required"`, `missing_extensions[]`. 공용 도우미 `extension_required(i18n, *익스텐션 id)`가 이 답을 만든다(문구는 공용 `errors.extension_required`, 0.1.14-beta.2).
 - 데몬은 그 실행에서 확인되지 않아 import를 막은 익스텐션(`SABA_UNVERIFIED_EXTENSIONS`)만으로 `missing_extensions`가 채워진 `extension_required`를 `error_code: "extension_not_verified"`, `unverified_extensions[]`, 영문 `message`로 바꿔 돌려준다(`plugin/mod.rs` `explain_unverified_extensions`). 모듈이 import 실패를 삼켜도 설치·활성화 안내 대신 "파일이 바뀌어 확인되지 않음"이 보이게 하려는 것이다.
 - `status`: `status` 문자열과 `pid`를 데몬이 읽는다. 나머지 키는 버린다 (`mod.rs:1182-1197`). 선택 함수다(0.1.14-beta.2): 모듈에 없으면 데몬이 추적하는 PID가 살아 있는지로 `{server, status: "running"|"stopped", pid, start_time}`을 답한다(`Supervisor::get_server_status`). PID가 살아 있는지만 보던 모듈 `status()`는 지웠다.
-- `install_server`: `success`, `executable_path`, `install_path`를 프로비저닝 경로가 읽는다 (`instance/provision.rs` `install_new_server`) `install_path`는 인스턴스의 `working_dir`가 되는데, 확인되지 않은 모듈(Windows)이 돌려준 값은 실제 경로가 인스턴스 폴더 안의 폴더일 때만 받는다(파일은 받지 않는다)(`sandbox::accepts_module_dir`. 그 폴더는 다음 격리 실행에 쓰기를 받는다).
+- `install_server`: `success`, `executable_path`, `install_path`를 프로비저닝 경로가 읽는다 (`service/instance/provision.rs` `install_new_server`) `install_path`는 인스턴스의 `working_dir`가 되는데, 확인되지 않은 모듈(Windows)이 돌려준 값은 실제 경로가 인스턴스 폴더 안의 폴더일 때만 받는다(파일은 받지 않는다)(`sandbox::accepts_module_dir`. 그 폴더는 다음 격리 실행에 쓰기를 받는다).
 - `get_installed_version`: `version`.
 - `get_credentials`: `success`, `rest_password`, 선택 `rest_username`. 데몬은 REST 자격증명만 쓴다 (`command.rs`). 사용자 이름은 `rest_username`이 있으면 그것, 없으면 `[protocols.rest] username`이고, 둘 다 없거나 비밀번호가 없으면 인증 없이 보낸다. 지금은 palworld만 구현한다. minecraft·zomboid는 RCON 값만 돌려주던 이 함수를 지웠다.
 - `import_settings`: `success`, `settings{}`. `port`는 인스턴스 필드로도 맞춘다(`ServerInstance::apply_imported_settings`). REST 접속값은 모듈 설정이라 `settings{}`의 그 설정 이름으로만 돌아온다. 마이그레이션에서는 `executable_path`(작업 폴더 기준 상대 경로, 모듈이 찾은 서버 실행 파일)와 `detected`(판정 결과, 데몬은 내용을 보지 않고 생성 응답에 넘긴다)도 읽는다.
@@ -487,7 +487,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 | `command` | `POST /api/instance/:id/command`에서 명령의 `method`가 `module`일 때 → `mod.rs:1220-1279` | `command`, `args`, `protocol_mode`, `working_dir`, `rest_host`, `rest_port`(데몬이 REST로 붙을 주소: `[protocols.rest]` 설정 값이나 그 기본값, REST가 없는 모듈이면 null), `pid`, `instance_id` |
 | `get_credentials` | `/rest` 요청 시. 결과를 캐시하므로 캐시가 있으면 Python을 띄우지 않는다 (`command.rs:660-687`) | `working_dir` |
 | `validate` | `POST /api/instance/:id/validate`, 그리고 `POST /api/instance/:id/start`의 시작 전 점검(`server.rs:712-764`) → `mod.rs:1818-1859` | `server_executable`(=executable_path), `working_dir`, `port`, `extension_data`, 인스턴스 값(위와 같음), `running` |
-| `configure` | `PUT /properties`, 인스턴스 설정 PATCH 후 동기화 (`instance/settings.rs` `update_instance_settings`) → `manage_properties` `mod.rs:1865-1916` | `working_dir`, `extension_data`, 인스턴스 값, `port`, `settings{}`. PATCH 동기화의 `settings`에는 데몬 필드(`protocol_mode`·`executable_path`·`working_dir`·`server_version`·`extension_data`·`managed_start`·`rcon_*`·`enable_rcon`)와 모듈이 `group = "saba-chan"`으로 선언한 사바쨩 설정이 빠진다(MK6) |
+| `configure` | `PUT /properties`, 인스턴스 설정 PATCH 후 동기화 (`service/instance/settings.rs` `update`) → `manage_properties` `mod.rs:1865-1916` | `working_dir`, `extension_data`, 인스턴스 값, `port`, `settings{}`. PATCH 동기화의 `settings`에는 데몬 필드(`protocol_mode`·`executable_path`·`working_dir`·`server_version`·`extension_data`·`managed_start`·`rcon_*`·`enable_rcon`)와 모듈이 `group = "saba-chan"`으로 선언한 사바쨩 설정이 빠진다(MK6) |
 | `read_properties` | `GET /properties` | `working_dir`, `extension_data`, 인스턴스 값, `port` |
 | `reset_properties` | `POST /properties/reset` | 위와 같음 |
 | `reset_server` | `POST /server/reset` | 위와 같음 + `scope`(요청이 고른 범위 id, `reset_preview`가 밝힌 것. 없으면 모듈의 기본 범위) |
@@ -511,7 +511,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 **예전 개발 가이드의 "호출 순서"와 다른 점** (가이드는 a8b6c29에서 현재 데몬 기준으로 다시 쓰였다. 아래는 `__example__lifecycle.py:36-46` 주석과의 차이다):
 - "시작 시 `validate → configure → get_launch_command`"라고 되어 있다. 실제로는 `POST /api/instance/:id/start`가 `validate`를 시작 전 점검으로 부르고(critical 문제만 막고, 점검이 실패하면 막지 않는다) 이어서 `get_launch_command`를 부른다. `configure`는 시작 때 부르지 않는다. `/managed/start`와 `/server/:name/start`를 직접 부르면 점검도 없다.
 - "status 주기적 호출"이라고 되어 있지만, 실제로는 non-managed 인스턴스의 status API 요청 때만 호출된다. 모니터 루프는 PID 스냅샷만 본다.
-- config에 `settings{}`가 항상 오지는 않는다. `instance_id`는 인스턴스 필드를 넣는 호출(`insert_instance_fields`, `D:src/supervisor/mod.rs:481-498`)에 들어가고, REST 접속값은 인스턴스에 따로 둔 값이 없어 다른 모듈 설정처럼 그 설정 이름으로 들어간다(0.1.14-beta.2). `settings{}`는 `configure`에만 들어가고, 그 외 함수에서는 `module_settings`가 **최상위로 펼쳐져** 들어간다(템플릿 주석 `:58-63`은 아직 `settings`가 항상 온다고 적는다).
+- config에 `settings{}`가 항상 오지는 않는다. `instance_id`는 인스턴스 필드를 넣는 호출(`insert_instance_fields`, `D:src/supervisor/instance_config.rs`)에 들어가고, REST 접속값은 인스턴스에 따로 둔 값이 없어 다른 모듈 설정처럼 그 설정 이름으로 들어간다(0.1.14-beta.2). `settings{}`는 `configure`에만 들어가고, 그 외 함수에서는 `module_settings`가 **최상위로 펼쳐져** 들어간다(템플릿 주석 `:58-63`은 아직 `settings`가 항상 온다고 적는다).
 
 ### 2.4 함수 구현 매트릭스 (FUNCTIONS 딕셔너리 기준)
 
@@ -617,7 +617,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 
 ### 3.1 두 가지 실행 경로
 
-시작 경로는 데몬이 고른다. `POST /api/instance/:id/start`가 `Supervisor::uses_managed_start`(인스턴스 설정 `managed_start`, 없으면 managed)로 경로를 정하고, 시작 전 점검(§2.3 `validate`)을 거쳐 아래 둘 중 하나를 부른다 (`D:src/ipc/handlers/server.rs:649-710`, `D:src/supervisor/mod.rs:1690-1700`). GUI는 이 경로만 부른다 (`D:saba-chan-gui/src/api/createApi.ts:212-219`).
+시작 경로는 데몬이 고른다. `POST /api/instance/:id/start`가 `Supervisor::uses_managed_start`(인스턴스 설정 `managed_start`, 없으면 managed)로 경로를 정하고, 시작 전 점검(§2.3 `validate`)을 거쳐 아래 둘 중 하나를 부른다 (`D:src/ipc/handlers/server.rs:649-710`, `D:src/supervisor/mod.rs` `uses_managed_start`). GUI는 이 경로만 부른다 (`D:saba-chan-gui/src/api/createApi.ts:212-219`).
 
 | | managed | non-managed |
 |---|---|---|
@@ -800,10 +800,10 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
   - 설치된 모듈 버전이 manifest 버전보다 높으면 받지 않는다(`version::is_downgrade`). 릴레이가 예전 서명 manifest를 다시 보내 옛 버전을 깔게 하는 것을 막는다.
   3. R2 URL에서 `<modules>/.tmp-module-<id>.zip`로 받으며 SHA-256을 확인한다(`download_verified`).
   4. `.staging-<id>`에 풀고 데몬과 같은 규칙(`load_module_dir`: `module.toml` 파싱, 진입 파일, `saba-core` 요구 버전)으로 읽힐 때만 기존 `<modules>/<id>`와 바꾼다(`install_staged_module`). 기존 폴더는 `.old-<id>`로 옮겨 두었다가 새 폴더가 자리를 잡으면 지우고, 옮기다 실패하면 되돌린다. 모듈 탐색은 점으로 시작하는 항목을 건너뛰고, 데몬은 기동할 때 모듈·익스텐션 폴더의 `.staging-*`·`.old-*`·`.tmp-*`를 지운다(`utils::remove_install_leftovers`, 설치 도중 끝났을 때 남은 것). 단일 실행 잠금을 못 잡고 계속 가는 경우에는 정리하지 않는다. 또 `.old-<id>`가 있는데 `<id>`가 없으면(옛 폴더를 옮긴 뒤 새 폴더를 두기 전에 끝났다) 지우지 않고 `<id>`로 되돌린다. 그래서 업데이트해도 지워진 파일이 남지 않는다. 묻지 않는 자동 교체(05 §확인, `swap_dir_untouched`)가 남긴 것도 같이 본다: `.<id>.saba-new`는 지우고, `.<id>.saba-old`는 `<id>`가 없으면 되돌리며(지문은 새 판을 넣은 뒤에 적으므로, 지문이 있으면 교체를 마친 뒤 사용자가 지운 것이라 되돌리지 않는다) 있으면 남기고 옮기지 못한 맨 위 점 항목(.env·.git)만 `<id>`로 옮긴다(지문이 없으면 그때 내용으로 적는다)(다음 교체가 지문으로 정리).
-  - manifest의 `requires`(예: `{"saba-core": ">=0.1.10"}`)를 못 맞추면 받지 않고 `{ok:false, error, error_code:"module_dependency_unsatisfied", module, missing_dependencies:["saba-core >=0.1.10 (installed 0.1.9)"], required_core?:"0.1.10"}`로 답한다(로드 실패·시작 응답과 같은 꼴, `unmet_requires_body`).
-  5. 새 모듈이 `[install] requires_extensions`로 요구하는 익스텐션을 맞춘다(`handlers/extension.rs` `prepare_for_module`). 디스크에 없으면 카탈로그에서 의존 익스텐션과 함께 받고(`POST /api/extensions/:id/install`과 같은 경로), 의존 익스텐션부터 켠다(`ExtensionManager::enable_for_module`). 설치 전 판도 요구하던 익스텐션은 사용자가 일부러 껐을 수 있으므로 다시 켜지 않는다(이번에 새로 받은 것은 켠다). 처음 설치면 요구하는 것을 모두 켜고, 업데이트면 새로 필요해진 것만 켠다. 켠 것마다 그 익스텐션의 `daemon.startup`을 돌린다. 결과는 응답의 `extensions:{installed:[id], enabled:[id], failed:[{id, error, error_code, related, required_core?}]}`다(`required_core`는 사바쨩이 모자라 켜지 못했을 때 요구 버전). 모듈 설치는 이미 끝났으므로 익스텐션 실패는 `ok:true`인 채 `failed`로만 알린다. GUI는 켠 것을 알림으로, 실패를 경고로 보이고 익스텐션 목록을 새로 받는다. CLI `module install`도 같은 문구를 낸다.
+  - manifest의 `requires`(예: `{"saba-core": ">=0.1.10"}`)를 못 맞추면 받지 않고 422 `{success:false, error, error_code:"module_dependency_unsatisfied", module, missing_dependencies:["saba-core >=0.1.10 (installed 0.1.9)"], required_core?:"0.1.10"}`로 답한다(로드 실패·시작 응답과 같은 꼴, `unmet_requires_body`).
+  5. 새 모듈이 `[install] requires_extensions`로 요구하는 익스텐션을 맞춘다(`handlers/extension.rs` `prepare_for_module`). 디스크에 없으면 카탈로그에서 의존 익스텐션과 함께 받고(`POST /api/extensions/:id/install`과 같은 경로), 의존 익스텐션부터 켠다(`ExtensionManager::enable_for_module`). 설치 전 판도 요구하던 익스텐션은 사용자가 일부러 껐을 수 있으므로 다시 켜지 않는다(이번에 새로 받은 것은 켠다). 처음 설치면 요구하는 것을 모두 켜고, 업데이트면 새로 필요해진 것만 켠다. 켠 것마다 그 익스텐션의 `daemon.startup`을 돌린다. 결과는 응답의 `extensions:{installed:[id], enabled:[id], failed:[{id, error, error_code, related, required_core?}]}`다(`required_core`는 사바쨩이 모자라 켜지 못했을 때 요구 버전). 모듈 설치는 이미 끝났으므로 익스텐션 실패는 `success:true`인 채 `failed`로만 알린다. GUI는 켠 것을 알림으로, 실패를 경고로 보이고 익스텐션 목록을 새로 받는다. CLI `module install`도 같은 문구를 낸다.
   - 실패도 HTTP 200 `{ok:false, error}`로 돌려준다.
-- **신뢰 표시 알림**: 서명된 카탈로그에서 받지 않았거나(`unverified`) 받은 뒤 바뀐(`modified`) 모듈로 인스턴스를 만들면 `POST /api/instances` 응답에 `module_trust`와 `warnings[{code, module}]`가 실린다. 알림일 뿐 만들기·실행은 막지 않는다(`server.rs` `trust_warnings`). CLI는 경고 줄로 보인다.
+- **신뢰 표시 알림**: 서명된 카탈로그에서 받지 않았거나(`unverified`) 받은 뒤 바뀐(`modified`) 모듈로 인스턴스를 만들면 `POST /api/instances` 응답에 `module_trust`와 `warnings[{code, module}]`가 실린다. 알림일 뿐 만들기·실행은 막지 않는다(`module_audit.rs` `trust_warnings`). CLI는 경고 줄로 보인다.
 - **`DELETE /api/modules/:id`**: `..`·`/`·`\`가 든 `id`는 거부한다. `<modules>/<id>` 폴더가 있으면 `remove_dir_all`로 지운다(`id`는 **디렉터리명**). 폴더가 없으면 찾은 모듈 중 `[module].name`이 `id`(대소문자 무시)인 것의 원본(`LoadedModule.source`)이 modules 폴더에 바로 놓인 ZIP이면 그 ZIP과 풀어 둔 `.extracted/<name>`을 지운다 (`server.rs` `remove_module`).
 
 ### 5.3 업데이터

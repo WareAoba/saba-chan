@@ -29,9 +29,9 @@ beforeEach(() => {
     listeners = new Set();
     window.api = new Proxy<Record<string | symbol, unknown>>(
         {
-            updaterStatus: vi.fn().mockResolvedValue({ ok: true, components }),
+            updaterStatus: vi.fn().mockResolvedValue({ success: true, components }),
             updaterDownload: vi.fn(() => new Promise((resolve) => (finish.all = resolve))),
-            updaterApply: vi.fn().mockResolvedValue({ ok: true, applied: ['cli', 'discord_bot'], needs_updater: [], requires_updater: false }),
+            updaterApply: vi.fn().mockResolvedValue({ success: true, applied: ['cli', 'discord_bot'], needs_updater: [], requires_updater: false }),
             onUpdateEvent: (cb: (ev: unknown) => void) => {
                 listeners.add(cb);
                 return () => listeners.delete(cb);
@@ -71,7 +71,7 @@ describe('구성요소를 받는 진행', () => {
         await waitFor(() => expect(document.querySelector('.ss-progress.indeterminate')).not.toBeNull());
 
         progress('discord_bot', null, false);
-        await act(async () => finish.all({ ok: true }));
+        await act(async () => finish.all({ success: true }));
         await waitFor(() => expect(window.api.updaterApply).toHaveBeenCalledWith([]));
         await waitFor(() => expect(document.querySelector('.ss-progress')).toBeNull());
     });
@@ -84,7 +84,7 @@ describe('구성요소를 받는 진행', () => {
             const asked = vi.mocked(window.api.updaterStatus).mock.calls.length;
             act(() => {
                 for (const l of listeners)
-                    l({ type: 'update.status', data: { ok: true, components: [{ ...components[0], update_available: false, current_version: '9.9.9' }] } });
+                    l({ type: 'update.status', data: { success: true, components: [{ ...components[0], update_available: false, current_version: '9.9.9' }] } });
             });
             await waitFor(() => expect(document.querySelector('.ss-update-btn')).toBeNull());
             expect(document.body.textContent).toContain('v9.9.9');

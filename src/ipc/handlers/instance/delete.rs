@@ -1,6 +1,7 @@
 //! 인스턴스 지우기: 삭제 전 hook, 가져온 서버 폴더 떼어 두기
 
 use super::*;
+use crate::service::instance::{other_instance_folders, pre_delete_hook};
 
 /// 가져온 서버를 지우기 전에 거둔 결과
 struct Unlinked {
@@ -52,36 +53,6 @@ async fn unlink_server_folder(state: &IPCServer, instance: &crate::instance::Ser
     Some(Unlinked { folder, restored })
 }
 
-/// `id` 말고 다른 인스턴스들의 인스턴스 폴더와 서버 폴더 (`sandbox::release`가 그들이 함께 쓰는 위 폴더를 둔다)
-pub(super) fn other_instance_folders(supervisor: &crate::supervisor::Supervisor, id: &str) -> Vec<std::path::PathBuf> {
-    supervisor.instance_store.list().iter()
-        .filter(|i| i.id != id)
-        .flat_map(|i| [Some(supervisor.instance_store.instance_dir(&i.id)), i.working_dir.as_deref().map(std::path::PathBuf::from)])
-        .flatten()
-        .collect()
-}
-
-/// 인스턴스를 지우기 전 익스텐션 hook `server.pre_delete`. 익스텐션이 정리했으면 파일 잠금이 풀리기를 잠깐 기다린다
-pub(super) async fn pre_delete_hook(state: &IPCServer, instance: &crate::instance::ServerInstance) {
-    let ext_mgr = state.extension_manager.clone();
-    let ctx = {
-        let sup = state.supervisor.read().await;
-        let module = sup.module_loader.get_module(&instance.module_name).ok();
-        crate::extension::hook_context(instance, &sup.instance_store.instance_dir(&instance.id), module.as_ref().map(|m| &m.metadata))
-    };
-    let results = crate::plugin::with_instance(Some(state.host_context(&instance.id)), crate::extension::run_hook(&ext_mgr, "server.pre_delete", ctx)).await;
-    let handled = results.iter().any(|(_id, r)| {
-        r.as_ref()
-            .map(|v| v.get("handled").and_then(|h| h.as_bool()) == Some(true))
-            .unwrap_or(false)
-    });
-    if handled {
-        tracing::info!("Extension handled pre_delete cleanup for '{}'", instance.name);
-        // 익스텐션 정리 후 파일 잠금 해제 대기
-        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-    }
-}
-
 /// `DELETE /api/instance/:id`의 선택 값
 #[derive(Debug, Default, serde::Deserialize)]
 pub struct DeleteQuery {
@@ -107,8 +78,7 @@ pub async fn delete_instance(
         delete_instance_held(state, id, query.keep_settings).await
     });
     work.await.unwrap_or_else(|e| {
-        let error = json!({ "success": false, "error": format!("Failed to delete instance: {}", e) });
-        (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response()
+        super::super::error(StatusCode::INTERNAL_SERVER_ERROR, "internal_server_error", format!("Failed to delete instance: {}", e))
     })
 }
 
@@ -120,8 +90,7 @@ async fn delete_instance_held(state: IPCServer, id: String, keep_settings: bool)
     let instance = match supervisor.instance_store.get(&id) {
         Some(inst) => inst.clone(),
         None => {
-            let error = json!({ "success": false, "error": "Instance not found" });
-            return (StatusCode::NOT_FOUND, Json(error)).into_response();
+            return super::super::error(StatusCode::NOT_FOUND, "not_found", "Instance not found");
         }
     };
 
@@ -188,8 +157,7 @@ async fn delete_instance_held(state: IPCServer, id: String, keep_settings: bool)
     }
     let Some(detached) = detached else {
         let err_msg = last_err.map(|e| format!("{:#}", e)).unwrap_or_else(|| "Unknown error".to_string());
-        let error = json!({ "success": false, "error": format!("Failed to delete instance: {}", err_msg) });
-        return (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response();
+        return super::super::error(StatusCode::INTERNAL_SERVER_ERROR, "delete_failed", format!("Failed to delete instance: {}", err_msg));
     };
 
     // ── 가져온 서버: 서버 폴더는 두고, 사바쨩이 남긴 것을 거둔다 ──
@@ -261,8 +229,7 @@ async fn delete_instance_held(state: IPCServer, id: String, keep_settings: bool)
             (StatusCode::OK, Json(response)).into_response()
         }
         Err(e) => {
-            let error = json!({ "success": false, "error": format!("Failed to delete instance: {}", e) });
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response()
+            super::super::error(StatusCode::INTERNAL_SERVER_ERROR, "delete_failed", format!("Failed to delete instance: {}", e))
         }
     }
 }

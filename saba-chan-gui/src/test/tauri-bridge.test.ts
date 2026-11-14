@@ -234,6 +234,22 @@ describe('데몬 응답 가공', () => {
         expect((await api.instanceStart('z')).error).toContain('z');
     });
 
+    it('instanceStart는 데몬이 켜기 전에 거절한 422(익스텐션·의존성·지원 OS)를 200으로 오던 본문 그대로 넘긴다', async () => {
+        const refused = {
+            success: false,
+            error: "Module 'pal' runs on windows only, not linux",
+            error_code: 'module_platform_unsupported',
+            module: 'pal',
+        };
+        const { api } = await install({
+            daemon_request: daemon({
+                'POST /api/instance/old/start': { status: 200, data: refused },
+                'POST /api/instance/new/start': { status: 422, data: refused },
+            }),
+        });
+        expect(await api.instanceStart('new')).toEqual(await api.instanceStart('old'));
+    });
+
     it('executeCommand는 명령을 다듬고 빈 args는 null로 보낸다', async () => {
         const seen: Loose[] = [];
         const { api } = await install({
@@ -348,11 +364,11 @@ describe('원격 데몬 (G1)', () => {
             daemon_target_get: () => ({ target }),
             dialog_open_folder: () => 'C:/local',
             dialog_open_file: () => 'C:/local/a.jar',
-            daemon_request: daemon({ 'POST /api/migration/export': { status: 200, data: { ok: true } } }),
+            daemon_request: daemon({ 'POST /api/migration/export': { status: 200, data: { success: true } } }),
         });
         expect(await api.openFolderDialog()).toBe('/srv/game');
         expect(await api.openFileDialog({ filters: [{ name: 'Jar', extensions: ['jar'] }] })).toBe('/srv/game/server.jar');
-        expect(await api.dataExport({})).toEqual({ ok: true });
+        expect(await api.dataExport({})).toEqual({ success: true });
         expect(tauri.invoke.mock.calls.some(([cmd]) => cmd.startsWith('dialog_'))).toBe(false);
         expect(asked[0]).toEqual({ kind: 'folder', extensions: null, defaultName: null });
         expect(asked[1]).toEqual({ kind: 'file', extensions: ['jar'], defaultName: null });
@@ -374,10 +390,10 @@ describe('원격 데몬 (G1)', () => {
     it('원격 데몬 폴더 보기는 고른 데몬에 묻는다', async () => {
         const { api } = await install({
             daemon_request: daemon({
-                'GET /api/system/browse?path=%2Fsrv&files=zip': { status: 200, data: { ok: true, entries: [] } },
+                'GET /api/system/browse?path=%2Fsrv&files=zip': { status: 200, data: { success: true, entries: [] } },
             }),
         });
-        expect(await api.systemBrowse('/srv', ['zip'])).toEqual({ ok: true, entries: [] });
+        expect(await api.systemBrowse('/srv', ['zip'])).toEqual({ success: true, entries: [] });
     });
 
     it('합쳐 보기는 모든 데몬의 서버를 이 PC에 묻고, 서버 하나는 그 데몬에 바로 켜고 끈다', async () => {

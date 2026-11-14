@@ -51,7 +51,7 @@ struct Ticket {
 }
 
 fn bad_gateway(message: &str) -> axum::response::Response {
-    (StatusCode::BAD_GATEWAY, Json(json!({ "error": message }))).into_response()
+    super::error(StatusCode::BAD_GATEWAY, "relay_unreachable", message)
 }
 
 /// POST `<relay>/api/privacy/erasures` (노드 토큰 서명)
@@ -77,7 +77,7 @@ async fn issue(base: &str, locale: Option<&str>) -> Result<Ticket, axum::respons
             }
             Ok(ticket)
         }
-        (code, Some(data)) => Err((code, Json(data)).into_response()),
+        (code, Some(data)) => Err(super::relay::relayed(code, data)),
         (_, None) => Err(bad_gateway("Invalid relay response")),
     }
 }
@@ -131,7 +131,7 @@ pub struct EraseRequest {
 /// POST /api/relay/privacy/erase
 pub async fn start_erase(State(state): State<IPCServer>, body: super::LooseJson<EraseRequest>) -> axum::response::Response {
     let Some(issued_with) = load_node_token() else {
-        return (StatusCode::CONFLICT, Json(json!({ "error": "not paired", "error_code": "node_token_missing" }))).into_response();
+        return super::error(StatusCode::CONFLICT, "node_token_missing", "not paired");
     };
     let locale = body.0.and_then(|Json(b)| b.locale).filter(|l| !l.is_empty() && l.len() <= 16);
     let configured = state.config_store.get_bot_config().await.cloud.relay_url;

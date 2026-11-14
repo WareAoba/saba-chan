@@ -385,7 +385,7 @@ fn field_titles_go_first_when_the_heartbeat_is_too_big() {
     }
     std::fs::write(dir.join("module.toml"), toml).unwrap();
     std::fs::write(dir.join("lifecycle.py"), "").unwrap();
-    let modules = vec![crate::supervisor::module_loader::load_module_dir(&dir).unwrap()];
+    let modules = vec![crate::module_loader::load_module_dir(&dir).unwrap()];
     let (actions, truncated) = heartbeat_actions(&crate::chat::i18n::languages(), &modules);
     assert!(!truncated, "every action still fits without field titles");
     assert!(serde_json::to_vec(&actions).unwrap().len() <= HEARTBEAT_MAX_BYTES);
@@ -436,13 +436,13 @@ fn summaries_read_like_sentences() {
     assert!(lines[1].contains("b11") && lines[1].contains("예약") && lines[1].contains("1.5 GB"), "newest first: {text}");
     assert!(lines.len() <= 12 && lines.last().unwrap().contains("[actions.summary.more count=2]"), "the rest is counted: {text}");
 
-    let updates = json!({ "ok": true, "updates_available": 1, "components": [
+    let updates = json!({ "success": true, "updates_available": 1, "components": [
         { "display_name": "Saba-chan GUI", "current_version": "0.1.7", "latest_version": "0.1.8", "update_available": true },
         { "display_name": "Saba-chan CLI", "current_version": "0.1.7", "latest_version": "0.1.7", "update_available": false },
     ] });
     let text = summary_of("update.check", updates).unwrap();
     assert!(text.contains("Saba-chan GUI") && text.contains("current=0.1.7 latest=0.1.8") && !text.contains("CLI"), "{text}");
-    assert!(summary_of("update.check", json!({ "ok": true, "updates_available": 0, "components": [] })).unwrap().contains("updates_none"));
+    assert!(summary_of("update.check", json!({ "success": true, "updates_available": 0, "components": [] })).unwrap().contains("updates_none"));
 
     let events = json!({ "events": [{ "at": 1_700_000_000, "kind": "crash" }, { "at": 1_700_000_600, "kind": "user_stop" }] });
     let text = summary_of("instance.events", events).unwrap();
@@ -693,7 +693,7 @@ async fn module_queries_are_safe_read_actions_on_every_surface() {
     assert_eq!((resp.status.as_u16(), resp.body["error_code"].as_str()), (400, Some("invalid_argument")));
 
     // heartbeat: 고정 액션 뒤에 모듈 조회가 모듈 이름과 함께 실린다
-    let modules = vec![crate::supervisor::module_loader::load_module_dir(&tmp.path().join("modules").join("plain")).unwrap()];
+    let modules = vec![crate::module_loader::load_module_dir(&tmp.path().join("modules").join("plain")).unwrap()];
     let (actions, truncated) = heartbeat_actions(&crate::chat::i18n::languages(), &modules);
     assert!(!truncated);
     let q = actions.iter().find(|a| a["id"] == action).unwrap();
@@ -1254,8 +1254,8 @@ async fn port_check_reads_as_a_verdict_without_the_address() {
     let mut modules = state.supervisor.read().await.module_loader.discover_modules().unwrap();
     let (actions, _) = heartbeat_actions(&["ko"], &modules);
     assert_eq!(actions.iter().find(|a| a["id"] == "server.port_check").unwrap()["modules"], json!([]));
-    let settings = modules[0].metadata.settings.get_or_insert_with(|| crate::supervisor::module_loader::ModuleSettings { fields: Vec::new() });
-    settings.fields.push(crate::supervisor::module_loader::SettingField { name: "port".into(), port: true, public: Some("udp".into()), ..Default::default() });
+    let settings = modules[0].metadata.settings.get_or_insert_with(|| crate::module_loader::ModuleSettings { fields: Vec::new() });
+    settings.fields.push(crate::module_loader::SettingField { name: "port".into(), port: true, public: Some("udp".into()), ..Default::default() });
     let (actions, _) = heartbeat_actions(&["ko"], &modules);
     let item = actions.iter().find(|a| a["id"] == "server.port_check").unwrap();
     assert_eq!((item["modules"].clone(), item["title"]["ko"].clone(), item["surfaces"].clone()), (json!(["plain"]), json!("포트포워딩 확인"), json!(["discord"])));
@@ -2007,4 +2007,34 @@ fn the_schedule_item_schema_names_the_fields_of_a_task() {
     assert_eq!(declared, fields);
     let all = crate::scheduler::TaskAction::Command;
     assert!(items["properties"]["action"]["enum"].as_array().unwrap().contains(&serde_json::to_value(all).unwrap()));
+}
+
+/// 실패한 요청은 어느 라우트든 2xx가 아닌 상태와 `{success:false, error, error_code}`로 답한다 (D7)
+#[tokio::test]
+async fn failures_share_one_shape() {
+    let (state, _, tmp) = server().await;
+    let missing_dir = tmp.path().join("no-such-folder").to_string_lossy().replace('\\', "/");
+    let browse = format!("/api/system/browse?path={}", missing_dir);
+    let cases: Vec<(&str, &str, Option<Value>, u16, &str)> = vec![
+        ("GET", "/api/instance/nope", None, 404, "instance_not_found"),
+        ("POST", "/api/instances", Some(json!({})), 400, "invalid_request"),
+        ("POST", "/api/instance/nope/command", Some(json!({ "command": "say", "args": {} })), 404, "not_found"),
+        ("POST", "/api/modules/manifest/..%2Fx/install", None, 400, "invalid_request"),
+        ("DELETE", "/api/modules/nope", None, 404, "not_found"),
+        ("PUT", "/api/system/autostart", Some(json!({ "mode": "sometimes" })), 400, "autostart_unknown_mode"),
+        ("POST", "/api/system/paths/move", Some(json!({ "kind": "nope", "target": missing_dir })), 400, "paths_unknown_kind"),
+        ("GET", &browse, None, 404, "browse_not_found"),
+        ("POST", "/api/config/nope/reset", None, 400, "invalid_request"),
+        ("POST", "/api/client/nope/heartbeat", Some(json!({})), 404, "client_not_registered"),
+        ("POST", "/api/updates/launch-updater", None, 409, "nothing_to_apply"),
+    ];
+    let mut odd = Vec::new();
+    for (method, uri, body, status, code) in cases {
+        let res = call_as(&state, method, uri, body, None).await;
+        let shaped = res.body["success"] == json!(false) && res.body["error"].as_str().is_some_and(|text| !text.is_empty()) && res.body.get("ok").is_none();
+        if !shaped || res.status.as_u16() != status || res.body["error_code"] != json!(code) {
+            odd.push(format!("{method} {uri} → {} {}", res.status.as_u16(), res.body));
+        }
+    }
+    assert!(odd.is_empty(), "{}", odd.join("\n"));
 }

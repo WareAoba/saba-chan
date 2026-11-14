@@ -409,12 +409,12 @@ const MASK: &str = "***";
 ///   명령은 첫 낱말 뒤를 모두 가린다
 /// - 인스턴스의 `password` 설정값과 REST 비밀번호는 어디에 나오든 가린다
 pub fn redact(
-    module: Option<&crate::supervisor::module_loader::ModuleMetadata>,
+    module: Option<&crate::module_loader::ModuleMetadata>,
     instance: Option<&crate::instance::ServerInstance>,
     text: Option<&str>,
     args: Option<&Value>,
 ) -> (Option<String>, Option<Value>) {
-    use crate::supervisor::module_loader::CommandInput;
+    use crate::module_loader::CommandInput;
     let secret_input = |i: &CommandInput| i.input_type.as_deref() == Some("password") || sensitive(&i.name);
     let fields = module.and_then(|m| m.commands.as_ref()).map(|c| c.fields.as_slice()).unwrap_or(&[]);
     let word = text.and_then(|t| t.split_whitespace().next()).unwrap_or("");
@@ -615,7 +615,7 @@ mod tests {
 
     #[test]
     fn secrets_are_masked_before_they_reach_the_log() {
-        let module = crate::supervisor::module_loader::parse_module_toml(
+        let module = crate::module_loader::parse_module_toml(
             r#"
 [module]
 name = "game"

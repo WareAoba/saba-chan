@@ -97,7 +97,7 @@ pub async fn stream(server: &IPCServer, req: Request, user: Option<String>, stop
     origin.user = user;
     let res = match crate::actions::call_response_as(server, &req.method, &req.path, Some(origin)).await {
         Ok(res) => res,
-        Err(e) => return Some(Response { status: 500, body: json!({ "error": e }) }),
+        Err(e) => return Some(refusal(StatusCode::INTERNAL_SERVER_ERROR, "internal_server_error", &e, None)),
     };
     let status = res.status();
     if !status.is_success() {
@@ -157,7 +157,7 @@ pub(crate) fn field_refusal(fields: Vec<String>) -> Value {
 }
 
 fn refusal(status: StatusCode, code: &str, error: &str, fields: Option<Vec<String>>) -> Response {
-    let mut body = json!({ "ok": false, "success": false, "error": error, "error_code": code });
+    let mut body = json!({ "success": false, "error": error, "error_code": code });
     if let Some(fields) = fields {
         body["fields"] = json!(fields);
     }
@@ -168,12 +168,12 @@ fn refusal(status: StatusCode, code: &str, error: &str, fields: Option<Vec<Strin
 }
 
 /// 모듈 설정 중 원격에서 읽지도 바꾸지도 않는 비밀값 칸
-fn is_secret(f: &crate::supervisor::module_loader::SettingField) -> bool {
+fn is_secret(f: &crate::module_loader::SettingField) -> bool {
     f.field_type == "password"
 }
 
 /// 모듈 설정 중 원격에서 바꾸지 않는 칸: 비밀값과 경로(실행 파일·런타임·폴더를 고르는 칸)
-fn is_pc_only(f: &crate::supervisor::module_loader::SettingField) -> bool {
+fn is_pc_only(f: &crate::module_loader::SettingField) -> bool {
     pc_only_type(&f.field_type, f.format.as_deref()) || f.runtime.is_some()
 }
 
@@ -185,7 +185,7 @@ pub(crate) fn pc_only_type(field_type: &str, format: Option<&str>) -> bool {
 fn module_fields(
     supervisor: &crate::supervisor::Supervisor,
     module: &str,
-    keep: fn(&crate::supervisor::module_loader::SettingField) -> bool,
+    keep: fn(&crate::module_loader::SettingField) -> bool,
 ) -> Vec<String> {
     let Ok(module) = supervisor.module_loader.get_module(module) else {
         return Vec::new();

@@ -1,5 +1,5 @@
 /**
- * 업데이트에서 데몬이 일부만 적용하면 {ok:false, applied:[..], errors:[..]}로 답한다.
+ * 업데이트에서 데몬이 일부만 적용하면 {success:false, applied:[..], errors:[..]}로 답한다.
  * GUI는 실패만 보이지 않고, 같은 요청에서 적용된 것도 알린다 (CLI와 같게, G-U9b).
  */
 import { act, fireEvent, render, waitFor } from '@testing-library/react';
@@ -21,10 +21,10 @@ beforeEach(() => {
     window.showToast = vi.fn();
     window.api = new Proxy<Record<string | symbol, unknown>>(
         {
-            updaterStatus: vi.fn().mockResolvedValue({ ok: true, components }),
-            updaterDownload: vi.fn().mockResolvedValue({ ok: true }),
+            updaterStatus: vi.fn().mockResolvedValue({ success: true, components }),
+            updaterDownload: vi.fn().mockResolvedValue({ success: true }),
             updaterApply: vi.fn().mockResolvedValue({
-                ok: false,
+                success: false,
                 applied: ['cli'],
                 errors: ['discord_bot: disk full'],
                 needs_updater: [],

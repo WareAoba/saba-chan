@@ -100,7 +100,7 @@ export function ModulesTab() {
         setInstallResults((prev) => ({ ...prev, [moduleId]: null }));
         try {
             const res = await window.api?.moduleInstallFromManifest?.(moduleId);
-            if (res?.ok) {
+            if (res?.success) {
                 setInstallResults((prev) => ({ ...prev, [moduleId]: 'ok' }));
                 // 데몬이 이 모듈이 쓰는 익스텐션을 받고 켰다: 알리고 익스텐션 목록도 새로
                 const ext = res.extensions;
@@ -134,7 +134,7 @@ export function ModulesTab() {
         setRemovingIds((prev) => new Set(prev).add(id));
         try {
             const res = await window.api?.moduleRemove?.(id);
-            if (res?.ok) await loadInstalledModules();
+            if (res?.success) await loadInstalledModules();
             else if (res?.error_code === 'module_busy') safeShowToast(t('saba_storage.module_busy'), 'warning', 4000);
             else if (res?.error_code === 'module_in_use') safeShowToast(t('saba_storage.module_in_use'), 'warning', 5000);
             else safeShowToast(t('saba_storage.remove_failed', { error: createTranslateError(t)(res?.error) }), 'error', 5000);

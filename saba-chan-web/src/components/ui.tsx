@@ -19,6 +19,13 @@ export function errorText(t: TFn, res: ApiBody | null | undefined) {
     return res?.error || res?.message || t('errors.generic');
 }
 
+/** 켜기·다시 켜기 거절: 코드에 번역 문구가 있으면 그것을(GUI와 같은 `errors.*`), 없으면 `errorText` */
+export function refusalText(t: TFn, res: ApiBody | null | undefined) {
+    const code = res?.error_code;
+    const fallback = errorText(t, res);
+    return typeof code === 'string' ? t(`errors.${code}`, { ns: ['web', 'gui'], defaultValue: fallback }) : fallback;
+}
+
 /** 답을 기다리다 끊겼다 (릴레이는 2분에 504를 낸다): PC는 그 작업을 계속하고 있을 수 있다 */
 export const timedOut = (res: ApiBody | null | undefined) =>
     res?.error_code === 'remote_timeout' || res?.error_code === 'ETIMEDOUT';

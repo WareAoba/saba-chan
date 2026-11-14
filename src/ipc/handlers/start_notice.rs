@@ -58,7 +58,7 @@ async fn put_list(State(state): State<IPCServer>, Path((id, guild)): Path<(Strin
         return invalid("enabled", "invalid");
     };
     if state.supervisor.read().await.instance_store.get(&id).is_none() {
-        return (StatusCode::NOT_FOUND, Json(json!({ "success": false, "error": format!("Instance not found: {}", id), "error_code": "not_found" }))).into_response();
+        return super::error(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id));
     }
     // 길드가 쓸 서버를 고르는 것과 알림을 켜는 것을 한 잠금 안에서 본다
     let saved = state

@@ -11,7 +11,7 @@
 //! 시험 리스너를 여는 동안 같은 인스턴스의 시작은 기다리고, 시작하는 중인 인스턴스의 포트는 잡지 않는다 (`begin_start`). 결과는 인스턴스마다 마지막 한 번을 메모리에 둔다.
 
 use crate::instance::ServerInstance;
-use crate::supervisor::module_loader::ModuleSettings;
+use crate::module_loader::ModuleSettings;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};

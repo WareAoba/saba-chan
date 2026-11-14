@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { TFunction } from 'i18next';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { changedForCli } from '../utils/cliValues';
-import { SettingsField } from '../components/ServerSettingsModal';
+import { SettingsField } from '../components/ServerSettingsParts';
 import { settleLaunchArgs } from '../stores/useServerSettingsStore';
 import type { Server } from '../stores/useServerStore';
 import type { ModuleInfo, SettingField } from '../types/daemon';

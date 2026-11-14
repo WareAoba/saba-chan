@@ -34,7 +34,7 @@ export const useUpdateStore = create<UpdateStore>()((set) => ({
         } catch {
             return null;
         }
-        if (!res || res.ok === false) return null;
+        if (!res || res.success === false) return null;
         set({ status: res });
         return res;
     },

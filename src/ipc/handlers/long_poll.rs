@@ -175,7 +175,7 @@ where
                     Ok(v) => v,
                     Err(e) => {
                         st.done = true;
-                        let body = serde_json::json!({"error": e.to_string(), "error_code": "not_found"});
+                        let body = serde_json::json!({ "success": false, "error": e.to_string(), "error_code": "not_found" });
                         return Some((Err(body), st));
                     }
                 };

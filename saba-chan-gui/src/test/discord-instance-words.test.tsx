@@ -85,7 +85,7 @@ describe('InstanceDiscordTab', () => {
 
     it('검증 오류는 그 칸 아래에 겹치는 대상과 함께 보인다', async () => {
         window.api.instanceWordsSave = vi.fn().mockResolvedValue({
-            ok: false,
+            success: false,
             error_code: 'validation_failed',
             details: [{ field: 'words', reason: 'conflict', word: '팰', conflictWith: 'palworld' }],
         }) as never;
@@ -104,7 +104,7 @@ describe('InstanceDiscordTab', () => {
     });
 
     it('못 받으면 이유와 다시 시도를 보인다', async () => {
-        window.api.instanceWords = vi.fn().mockResolvedValue({ ok: false, error: 'daemon down' }) as never;
+        window.api.instanceWords = vi.fn().mockResolvedValue({ success: false, error: 'daemon down' }) as never;
         await act(async () => render(<InstanceDiscordTab server={server} />));
         expect(await screen.findByText(/daemon down/)).toBeTruthy();
     });

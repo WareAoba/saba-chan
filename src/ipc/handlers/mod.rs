@@ -67,11 +67,17 @@ pub(crate) fn answer(result: Outcome) -> axum::response::Response {
     }
 }
 
+impl From<Failure> for crate::ipc::internal::InternalResponse {
+    fn from(failure: Failure) -> Self {
+        Self { status: failure.status, body: failure.body }
+    }
+}
+
 impl From<Outcome> for crate::ipc::internal::InternalResponse {
     fn from(result: Outcome) -> Self {
         match result {
             Ok(body) => Self { status: axum::http::StatusCode::OK, body },
-            Err(failure) => Self { status: failure.status, body: failure.body },
+            Err(failure) => failure.into(),
         }
     }
 }

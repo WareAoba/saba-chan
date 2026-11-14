@@ -41,12 +41,12 @@ pub async fn get_metrics(State(state): State<IPCServer>, Query(q): Query<Metrics
     // sysinfo는 동기 시스템 콜이다
     match tokio::task::spawn_blocking(move || monitor.sample(&roots, &[data_dir], q.sizes, q.gpu)).await {
         Ok(snapshot) => (StatusCode::OK, Json(json!(snapshot))).into_response(),
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.to_string() }))).into_response(),
+        Err(e) => super::error(StatusCode::INTERNAL_SERVER_ERROR, "metrics_failed", e.to_string()),
     }
 }
 
 fn net_trace_status(enabled: bool) -> serde_json::Value {
-    json!({ "ok": true, "access": crate::system_monitor::net_trace::access().as_str(), "enabled": enabled })
+    json!({ "success": true, "access": crate::system_monitor::net_trace::access().as_str(), "enabled": enabled })
 }
 
 /// GET /api/system/net-trace
@@ -54,7 +54,7 @@ pub async fn get_net_trace(State(state): State<IPCServer>) -> impl IntoResponse 
     let enabled = state.config_store.get_gui_settings().await.system_monitor_net_trace;
     match tokio::task::spawn_blocking(move || net_trace_status(enabled)).await {
         Ok(v) => Json(v).into_response(),
-        Err(e) => Json(json!({ "ok": false, "error_code": "net_trace_failed", "error": e.to_string() })).into_response(),
+        Err(e) => super::error(StatusCode::INTERNAL_SERVER_ERROR, "net_trace_failed", e.to_string()),
     }
 }
 
@@ -82,7 +82,7 @@ async fn change_net_trace_access(state: IPCServer, grant: bool) -> axum::respons
     }
     match done {
         Ok(Ok(v)) => Json(v).into_response(),
-        Ok(Err(e)) => Json(json!({ "ok": false, "error_code": "net_trace_elevation_failed", "error": e })).into_response(),
-        Err(e) => Json(json!({ "ok": false, "error_code": "net_trace_failed", "error": e.to_string() })).into_response(),
+        Ok(Err(e)) => super::error(StatusCode::CONFLICT, "net_trace_elevation_failed", e),
+        Err(e) => super::error(StatusCode::INTERNAL_SERVER_ERROR, "net_trace_failed", e.to_string()),
     }
 }

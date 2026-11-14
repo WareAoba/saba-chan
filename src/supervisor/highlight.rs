@@ -6,7 +6,7 @@
 //! 겹치면 priority가 큰 규칙이 이기고, 같으면 먼저 선언된 규칙이 이긴다(이미 칠한 칸은 덮지 않는다).
 //! 모듈 규칙이 먼저, 공통 규칙은 그 뒤에 남은 칸만 칠한다.
 
-use super::module_loader::{HighlightRule, SyntaxHighlight};
+use crate::module_loader::{HighlightRule, SyntaxHighlight};
 use regex::Regex;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};

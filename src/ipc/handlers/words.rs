@@ -51,14 +51,14 @@ fn entry(server: &ServerView, default_words: Vec<String>, module: Option<&Module
 }
 
 fn not_found(id: &str) -> Response {
-    (StatusCode::NOT_FOUND, Json(json!({ "success": false, "error": format!("Instance not found: {}", id), "error_code": "not_found" }))).into_response()
+    super::error(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id))
 }
 
 /// `GET /api/instance/:id/words`
 pub async fn get(State(state): State<IPCServer>, Path(id): Path<String>) -> Response {
     let servers = match state.servers().await {
         Ok(s) => s,
-        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "error": e }))).into_response(),
+        Err(e) => return super::error(StatusCode::INTERNAL_SERVER_ERROR, "internal_server_error", e),
     };
     let Some(server) = servers.iter().find(|s| s.id == id) else { return not_found(&id) };
     // 기본값은 앱 언어로 보인다 (디스코드 길드 언어를 따로 정하지 않았으면 봇도 이 언어다)
@@ -83,7 +83,7 @@ pub async fn put(State(state): State<IPCServer>, Path(id): Path<String>, Json(bo
 
     let servers = match state.servers().await {
         Ok(s) => s,
-        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "error": e }))).into_response(),
+        Err(e) => return super::error(StatusCode::INTERNAL_SERVER_ERROR, "internal_server_error", e),
     };
     let Some(instance) = servers.iter().find(|s| s.id == id).cloned() else { return not_found(&id) };
     // 낱말은 어느 길드 언어에서나 쓰이므로 모든 언어의 별명과 겹치지 않아야 한다
@@ -191,7 +191,7 @@ pub async fn migrate_on_start(state: &IPCServer) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::supervisor::module_loader::CommandField;
+    use crate::module_loader::CommandField;
 
     #[test]
     fn a_module_command_named_like_a_builtin_is_one_row() {

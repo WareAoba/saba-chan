@@ -14,7 +14,8 @@
 use crate::chat::permissions::{NodePermissions, Requester};
 use crate::ipc::internal::{into_internal, InternalResponse};
 use crate::ipc::IPCServer;
-use crate::supervisor::module_loader::{LoadedModule, ModuleQuery};
+use crate::module_loader::{LoadedModule, ModuleQuery};
+use saba_chan_updater_lib::CLI_STEM;
 use serde_json::{json, Map, Value};
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -376,7 +377,7 @@ struct FieldRules {
     launch: Vec<String>,
 }
 
-fn field_rules(module: &crate::supervisor::module_loader::LoadedModule) -> FieldRules {
+fn field_rules(module: &crate::module_loader::LoadedModule) -> FieldRules {
     let mut rules = FieldRules::default();
     for f in module.metadata.settings.iter().flat_map(|s| s.fields.iter()) {
         if f.field_type == "password" {
@@ -562,17 +563,14 @@ fn remote_schema(def: &Def) -> Value {
     input
 }
 
-/// 같은 일을 하는 CLI 한 줄 (I4-c "CLI로 보기"). `<server>`·`<필드>` 자리는 화면이 채운다
-/// 배포되는 CLI 실행 파일 이름
-const CLI_BIN: &str = "saba-chan-cli";
-
 /// 필수 입력마다 ` 이름=<이름>`
 fn cli_args(required: &[&str]) -> String {
     required.iter().map(|n| format!(" {}=<{}>", n, n)).collect()
 }
 
+/// 같은 일을 하는 CLI 한 줄 (I4-c "CLI로 보기"). `<server>`·`<필드>` 자리는 화면이 채운다
 fn cli_line(def: &Def) -> String {
-    let mut line = format!("{} do {}", CLI_BIN, def.id);
+    let mut line = format!("{} do {}", CLI_STEM, def.id);
     if def.instance {
         line.push_str(" --server <server>");
     }
@@ -633,7 +631,7 @@ fn command_view(cmd: &Value, locale: &Value) -> Option<Value> {
         "description": text("description").map(Value::from).or_else(|| cmd.get("description").cloned()),
         "source": cmd.get("source"),
         "route": "POST /api/instance/:id/command",
-        "cli": format!("{} do {}{} --server <server>{}", CLI_BIN, COMMAND_PREFIX, name, cli_args(&required)),
+        "cli": format!("{} do {}{} --server <server>{}", CLI_STEM, COMMAND_PREFIX, name, cli_args(&required)),
     }))
 }
 
@@ -676,7 +674,7 @@ fn query_view(query: &ModuleQuery, locale: &Value) -> Value {
         "title": query_text(locale, query, "label").unwrap_or_else(|| query.name.clone()),
         "description": query_text(locale, query, "description"),
         "route": "POST /api/instance/:id/query/:name",
-        "cli": format!("{} do {}{} --server <server>{}", CLI_BIN, QUERY_PREFIX, query.name, cli_args(&query.inputs.iter().filter(|i| i.required == Some(true)).map(|i| i.name.as_str()).collect::<Vec<_>>())),
+        "cli": format!("{} do {}{} --server <server>{}", CLI_STEM, QUERY_PREFIX, query.name, cli_args(&query.inputs.iter().filter(|i| i.required == Some(true)).map(|i| i.name.as_str()).collect::<Vec<_>>())),
     })
 }
 
@@ -1470,7 +1468,7 @@ async fn scheduled_commands(server: &IPCServer, instance: &str, body: Option<&Va
 }
 
 /// 예약 작업이 돌릴 모듈 게임 명령의 이름 (명령·공지·저장). 그 밖의 작업이나 모듈이 선언하지 않았으면 None
-pub(crate) fn scheduled_command_name(meta: &crate::supervisor::module_loader::ModuleMetadata, task: &crate::scheduler::ScheduledTask) -> Option<String> {
+pub(crate) fn scheduled_command_name(meta: &crate::module_loader::ModuleMetadata, task: &crate::scheduler::ScheduledTask) -> Option<String> {
     use crate::scheduler::TaskAction;
     match task.action {
         TaskAction::Command => task.command.clone(),
@@ -2229,7 +2227,7 @@ async fn call(server: &IPCServer, method: &str, uri: &str, body: Option<Value>) 
 pub(crate) async fn call_as(server: &IPCServer, method: &str, uri: &str, body: Option<Value>, origin: Option<crate::audit::Origin>) -> InternalResponse {
     match route_once(server, method, uri, body, origin).await {
         Ok(resp) => into_internal(resp).await,
-        Err(e) => InternalResponse { status: axum::http::StatusCode::INTERNAL_SERVER_ERROR, body: json!({ "error": e }) },
+        Err(e) => crate::service::Failure::coded(axum::http::StatusCode::INTERNAL_SERVER_ERROR, "internal_server_error", e).into(),
     }
 }
 
@@ -2240,12 +2238,12 @@ const RAW_BODY_LIMIT: usize = 4 * 1024 * 1024;
 pub(crate) async fn call_raw_as(server: &IPCServer, method: &str, uri: &str, origin: Option<crate::audit::Origin>) -> (axum::http::StatusCode, axum::body::Bytes) {
     let resp = match route_once(server, method, uri, None, origin).await {
         Ok(resp) => resp,
-        Err(e) => return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, json!({ "error": e }).to_string().into()),
+        Err(e) => return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, json!({ "success": false, "error": e, "error_code": "internal_server_error" }).to_string().into()),
     };
     let status = resp.status();
     match axum::body::to_bytes(resp.into_body(), RAW_BODY_LIMIT).await {
         Ok(bytes) => (status, bytes),
-        Err(e) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, json!({ "error": e.to_string() }).to_string().into()),
+        Err(e) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, json!({ "success": false, "error": e.to_string(), "error_code": "internal_server_error" }).to_string().into()),
     }
 }
 

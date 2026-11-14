@@ -23,9 +23,9 @@ beforeEach(() => {
     window.showToast = vi.fn();
     window.api = new Proxy<Record<string | symbol, unknown>>(
         {
-            updaterStatus: vi.fn().mockResolvedValue({ ok: true, components }),
-            updaterDownload: vi.fn().mockResolvedValue({ ok: true }),
-            updaterApply: vi.fn().mockResolvedValue({ ok: true, applied: ['saba-core', 'cli', 'module-minecraft'], needs_updater: [], requires_updater: false }),
+            updaterStatus: vi.fn().mockResolvedValue({ success: true, components }),
+            updaterDownload: vi.fn().mockResolvedValue({ success: true }),
+            updaterApply: vi.fn().mockResolvedValue({ success: true, applied: ['saba-core', 'cli', 'module-minecraft'], needs_updater: [], requires_updater: false }),
         },
         {
             get(target, prop) {
@@ -67,7 +67,7 @@ describe('업데이트 단추 하나', () => {
 
     it('모두 최신이면 업데이트 단추 없이 최신 버전을 보인다', async () => {
         vi.mocked(window.api.updaterStatus).mockResolvedValue({
-            ok: true,
+            success: true,
             components: components.map((c) => ({ ...c, update_available: false, current_version: '0.1.14' })),
         });
         render(<SabaStorage />);

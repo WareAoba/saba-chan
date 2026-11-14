@@ -15,12 +15,9 @@ mod provision;
 mod settings;
 mod update;
 
-pub(crate) use create::extension_required;
 pub use create::{check_new_instance, create_instance};
 pub use delete::{delete_instance, DeleteQuery};
 pub use provision::{dismiss_provision_progress, get_provision_progress};
-use settings::extra_args_from;
-pub(crate) use settings::settings_rejection;
 pub use settings::update_instance_settings;
 pub use update::{apply_server_update, cancel_server_update, check_server_update};
 
@@ -44,8 +41,7 @@ pub async fn reorder_instances(
             .filter_map(|v| v.as_str().map(|s| s.to_string()))
             .collect(),
         None => {
-            let error = json!({ "error": "Missing 'order' array" });
-            return (StatusCode::BAD_REQUEST, Json(error)).into_response();
+            return super::error(StatusCode::BAD_REQUEST, "invalid_request", "Missing 'order' array");
         }
     };
 
@@ -55,8 +51,7 @@ pub async fn reorder_instances(
             (StatusCode::OK, Json(response)).into_response()
         }
         Err(e) => {
-            let error = json!({ "error": format!("Failed to reorder: {}", e) });
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response()
+            super::error(StatusCode::INTERNAL_SERVER_ERROR, "save_failed", format!("Failed to reorder: {}", e))
         }
     }
 }
@@ -93,33 +88,9 @@ pub async fn get_instance(
             (StatusCode::OK, Json(body)).into_response()
         }
         None => {
-            let error = json!({
-                "error": format!("Instance not found: {}", id),
-                "error_code": "instance_not_found",
-            });
-            (StatusCode::NOT_FOUND, Json(error)).into_response()
+            super::error(StatusCode::NOT_FOUND, "instance_not_found", format!("Instance not found: {}", id))
         }
     }
-}
-
-/// 사용자가 런타임 경로 설정(`runtime`)에 정한 값을 그 모듈의 격리 실행에 연다 (폴더 권한 고치기는 오래 걸릴 수 있어 따로)
-fn open_user_runtime(module: &crate::supervisor::module_loader::LoadedModule, instance: &crate::instance::ServerInstance) {
-    for path in module.metadata.user_runtime_paths(instance) {
-        let (entry, path) = (module.entry_path(), path.to_string());
-        tokio::task::spawn_blocking(move || crate::sandbox::open_user_runtime(std::path::Path::new(&entry), &path));
-    }
-}
-
-/// 요청 값 하나가 잘못됐다는 400 응답: `error`에 이유
-pub(crate) fn invalid_field(field: &str, error: impl Into<String>) -> axum::response::Response {
-    let error = json!({ "error": error.into(), "error_code": "invalid_format", "fields": [{"field": field}] });
-    (StatusCode::BAD_REQUEST, Json(error)).into_response()
-}
-
-/// 쉼표가 든 서버 이름 (만들기·이름 바꾸기 공통 400 `invalid_name`)
-fn invalid_name() -> (StatusCode, Json<Value>) {
-    let error = json!({ "success": false, "error": "A server name cannot contain a comma", "error_code": "invalid_name", "fields": [{ "field": "name" }] });
-    (StatusCode::BAD_REQUEST, Json(error))
 }
 
 /// POST /api/instance/:id/rename — 이름 바꾸기 (`{name}`). 실행 중이면 409 `server_running`,
@@ -130,13 +101,13 @@ pub async fn rename_instance(
     Json(body): Json<serde_json::Value>,
 ) -> impl IntoResponse {
     let fail = |status: StatusCode, error: String, code: &str| {
-        (status, Json(json!({ "success": false, "error": error, "error_code": code }))).into_response()
+        super::error(status, code, error)
     };
     let Some(new_name) = body.get("name").and_then(|v| v.as_str()).map(str::trim).filter(|n| !n.is_empty()) else {
         return fail(StatusCode::BAD_REQUEST, "Missing 'name'".into(), "invalid_request");
     };
     if new_name.contains(crate::chat::words::is_comma) {
-        return invalid_name().into_response();
+        return crate::service::instance::invalid_name().into_response();
     }
     // 설치·업데이트·복원 중에는 바꾸지 않는다: 진행 알림(`provision.progress`)이 시작 때의 이름을 싣는다
     let Some(_guard) = crate::instance::lock::InstanceLock::take_for_writes(&id).await else {
@@ -175,14 +146,14 @@ pub async fn launch_preview(
     let draft = match body.get("settings") {
         None | Some(Value::Null) => serde_json::Map::new(),
         Some(Value::Object(m)) => m.clone(),
-        Some(_) => return (StatusCode::BAD_REQUEST, Json(json!({ "error": "invalid_body", "message": "settings must be an object" }))).into_response(),
+        Some(_) => return (StatusCode::BAD_REQUEST, Json(json!({ "success": false, "error": "settings must be an object", "error_code": "invalid_body", "message": "settings must be an object" }))).into_response(),
     };
     // 보내지 않으면 저장된 추가 인자로 본다
-    let extra = match body.get("extra_args").map(extra_args_from) {
+    let extra = match body.get("extra_args").map(crate::service::instance::settings::extra_args_from) {
         None => None,
         Some(Some(args)) => Some(args),
         Some(None) => {
-            return (StatusCode::BAD_REQUEST, Json(json!({ "error": "invalid_format", "error_code": "invalid_format", "message": "extra_args must be a string or an array of strings" }))).into_response()
+            return (StatusCode::BAD_REQUEST, Json(json!({ "success": false, "error": "extra_args must be a string or an array of strings", "error_code": "invalid_format", "message": "extra_args must be a string or an array of strings" }))).into_response()
         }
     };
     match crate::supervisor::Supervisor::launch_preview(&state.supervisor, &id, &draft, extra.as_deref()).await {

@@ -57,7 +57,7 @@ describe('약관 동의: 서버 만들기', () => {
 describe('약관 동의: 기존 서버 가져오기', () => {
     it('감지한 모듈에 약관이 있으면 모두 체크해야 가져오고, accept_agreements를 싣는다', async () => {
         window.api.openFolderDialog = vi.fn().mockResolvedValue('/srv/old') as never;
-        window.api.migrationScanDir = vi.fn().mockResolvedValue({ ok: true, matches: [{ name: 'game' }] }) as never;
+        window.api.migrationScanDir = vi.fn().mockResolvedValue({ success: true, matches: [{ name: 'game' }] }) as never;
         const onAddServer = vi.fn().mockResolvedValue(undefined);
         render(
             <AddInstanceMigration

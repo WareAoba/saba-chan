@@ -14,7 +14,7 @@ pub async fn daemon_shutdown(
 ) -> impl IntoResponse {
     tracing::info!("[Shutdown] Daemon shutdown requested via API");
     state.request_shutdown();
-    (StatusCode::OK, Json(json!({"ok": true, "message": "Shutdown initiated"}))).into_response()
+    (StatusCode::OK, Json(json!({"success": true, "message": "Shutdown initiated"}))).into_response()
 }
 
 /// POST /api/client/register — 클라이언트(GUI/CLI) 등록
@@ -81,13 +81,9 @@ pub async fn client_heartbeat(
     let body = body.map(|Json(v)| v).unwrap_or_default();
     if state.client_registry.heartbeat(&client_id).await {
         state.client_registry.set_resident(&client_id, resident_flag(&body)).await;
-        (StatusCode::OK, Json(json!({"ok": true}))).into_response()
+        (StatusCode::OK, Json(json!({"success": true}))).into_response()
     } else {
-        (
-            StatusCode::NOT_FOUND,
-            Json(json!({"error": "Client not registered"})),
-        )
-            .into_response()
+        super::error(StatusCode::NOT_FOUND, "client_not_registered", "Client not registered")
     }
 }
 
@@ -114,13 +110,9 @@ pub async fn client_unregister(
             state.request_shutdown();
         }
 
-        (StatusCode::OK, Json(json!({"ok": true}))).into_response()
+        (StatusCode::OK, Json(json!({"success": true}))).into_response()
     } else {
-        (
-            StatusCode::NOT_FOUND,
-            Json(json!({"error": "Client not registered"})),
-        )
-            .into_response()
+        super::error(StatusCode::NOT_FOUND, "client_not_registered", "Client not registered")
     }
 }
 
@@ -210,8 +202,8 @@ enum Interface {
 impl Interface {
     fn binary(self) -> &'static str {
         match self {
-            Interface::Cli => "saba-chan-cli",
-            Interface::Gui => "saba-chan-gui",
+            Interface::Cli => saba_chan_updater_lib::CLI_STEM,
+            Interface::Gui => saba_chan_updater_lib::GUI_STEM,
         }
     }
 }
@@ -285,12 +277,12 @@ pub async fn client_launch(State(state): State<IPCServer>, Json(body): Json<serd
     let remote = body.get("daemon").and_then(|v| v.as_str());
     if let Some(wanted) = remote {
         if let Err(code) = crate::remote_daemon::target::resolve(&saba_chan_updater_lib::config_file::ConfigFile::default_location(), wanted) {
-            return (StatusCode::NOT_FOUND, Json(json!({ "success": false, "error": format!("Remote daemon not found: {wanted}"), "error_code": code }))).into_response();
+            return super::error(StatusCode::NOT_FOUND, code, format!("Remote daemon not found: {wanted}"));
         }
     }
     if let Some(id) = instance.as_ref().filter(|_| remote.is_none()) {
         if state.supervisor.read().await.instance_store.get(id).is_none() {
-            return (StatusCode::NOT_FOUND, Json(json!({ "success": false, "error": format!("Instance not found: {}", id), "error_code": "not_found" }))).into_response();
+            return super::error(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id));
         }
     }
     // 띄울 화면이 없으면(CLI는 화면이나 터미널 프로그램 없음, GUI는 데스크톱 화면 없음) 띄운 척하지 않는다: 부른 쪽이 닫히지 않게
@@ -306,7 +298,7 @@ pub async fn client_launch(State(state): State<IPCServer>, Json(body): Json<serd
             Interface::Cli => "cli_not_found",
             Interface::Gui => "gui_not_found",
         };
-        return (StatusCode::NOT_FOUND, Json(json!({ "success": false, "error": format!("{} was not found next to the daemon", kind.binary()), "error_code": code }))).into_response();
+        return super::error(StatusCode::NOT_FOUND, code, format!("{} was not found next to the daemon", kind.binary()));
     };
     let spawned = match kind {
         Interface::Cli => spawn_in_new_console(&binary, &args, &state.client_registry).await,
@@ -320,7 +312,7 @@ pub async fn client_launch(State(state): State<IPCServer>, Json(body): Json<serd
             tracing::info!("[Launch] Opened {} {:?} (pid {})", kind.binary(), args, pid);
             (StatusCode::OK, Json(json!({ "success": true, "pid": pid }))).into_response()
         }
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "error": format!("Could not start {}: {}", kind.binary(), e), "error_code": "launch_failed" }))).into_response(),
+        Err(e) => super::error(StatusCode::INTERNAL_SERVER_ERROR, "launch_failed", format!("Could not start {}: {}", kind.binary(), e)),
     }
 }
 
@@ -367,7 +359,7 @@ async fn wait_for_tagged_cli(tag: &str, name: &str, timeout: std::time::Duration
 async fn spawn_in_new_console(cli: &std::path::Path, args: &[String], registry: &crate::ipc::ClientRegistry) -> std::io::Result<u32> {
     let tag = uuid::Uuid::new_v4().to_string();
     crate::boot_selector::spawn_cli_in_new_console(cli, args, &tag)?;
-    let name = cli.file_name().and_then(|n| n.to_str()).unwrap_or("saba-chan-cli");
+    let name = cli.file_name().and_then(|n| n.to_str()).unwrap_or(saba_chan_updater_lib::CLI_EXE);
     match wait_for_tagged_cli(&tag, name, CLI_APPEAR_TIMEOUT).await {
         Some(pid) => {
             registry.note_launched_cli(pid);

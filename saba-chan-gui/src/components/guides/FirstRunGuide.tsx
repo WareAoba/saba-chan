@@ -134,7 +134,7 @@ function ModuleGuide() {
         setError(null);
         try {
             const res = await window.api?.moduleInstallFromManifest?.(id);
-            if (!res?.ok) {
+            if (!res?.success) {
                 setError(t('guides.module_failed'));
                 return;
             }
