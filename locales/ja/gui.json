@@ -339,7 +339,6 @@
     "title": "設定",
     "general_tab": "一般設定",
     "protocol_title": "サーバー操作方式",
-    "protocol_single_only": "このゲームは <strong>{{protocol}}</strong> 方式でのみ操作します。",
     "no_settings": "このモジュールに追加設定項目なし",
     "module_aliases_title": "モジュール別名（Discord でこのサーバーを呼ぶ名前）",
     "module_aliases_hint": "複数のエイリアスはスペースで区切って入力します。例: {{module}} pw palworld",

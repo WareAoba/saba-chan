@@ -5,29 +5,36 @@ import './Modals.css';
 import { Icon } from '../Icon';
 
 import { useSabaBubble } from '../../stores/useSabaBubble';
-import { daemonStateOf } from '../servers/DaemonDown';
 import { DEFAULT_IPC_PORT } from '../../stores/useSettingsStore';
 import { useUIStore } from '../../stores/useUIStore';
 import type { ApiBody } from '../../types/daemon';
 import { openWithNotice, safeShowToast } from '../../utils/helpers';
 
 interface BackgroundModalProps {
-    isOpen: boolean;
     onClose: () => void;
     isClosing?: boolean;
     ipcPort?: number;
 }
 
-function BackgroundModal({ isOpen, onClose, isClosing, ipcPort }: BackgroundModalProps) {
+function BackgroundModal({ onClose, isClosing, ipcPort }: BackgroundModalProps) {
     const { t } = useTranslation('gui');
-    const [daemonStatus, setDaemonStatus] = useState('checking');
-    const [uptime, setUptime] = useState(t('background_modal.uptime_checking'));
+    // 데몬 상태는 메인 창이 5초마다 묻는 값 (App `backgroundDaemonStatus`)
+    const daemonStatus = useUIStore((s) => s.backgroundDaemonStatus);
+    const uptime = t(
+        daemonStatus === 'running'
+            ? 'background_modal.uptime_connected'
+            : daemonStatus === 'error'
+              ? 'background_modal.uptime_failed'
+              : daemonStatus === 'checking' || daemonStatus === 'unknown'
+                ? 'background_modal.uptime_checking'
+                : 'background_modal.uptime_disconnected',
+    );
     const [restarting, setRestarting] = useState(false);
     // 원격 데몬을 고른 동안 이 PC의 서비스가 중계하는 데몬 ("이름 · 주소"), 이 PC면 null
     const [remote, setRemote] = useState<string | null>(null);
 
     useEffect(() => {
-        if (!isOpen || typeof window.api?.daemonTarget !== 'function') return;
+        if (typeof window.api?.daemonTarget !== 'function') return;
         let alive = true;
         Promise.all([window.api.daemonTarget(), window.api.remoteDaemons?.()])
             .then(([current, list]) => {
@@ -41,49 +48,14 @@ function BackgroundModal({ isOpen, onClose, isClosing, ipcPort }: BackgroundModa
         return () => {
             alive = false;
         };
-    }, [isOpen, t]);
-
-    useEffect(() => {
-        if (!isOpen) return;
-
-        // 데몬 상태 확인 함수
-        const checkDaemonStatus = async () => {
-            try {
-                if (window.api && window.api.daemonStatus) {
-                    const status = await window.api.daemonStatus();
-                    setDaemonStatus(daemonStateOf(status));
-                    if (status.running) {
-                        setUptime(t('background_modal.uptime_connected'));
-                    } else {
-                        setUptime(t('background_modal.uptime_disconnected'));
-                    }
-                } else {
-                    setDaemonStatus('unknown');
-                    setUptime(t('background_modal.uptime_checking'));
-                }
-            } catch (error) {
-                console.error('Failed to check daemon status:', error);
-                setDaemonStatus('error');
-                setUptime(t('background_modal.uptime_failed'));
-            }
-        };
-
-        // 초기 상태 확인
-        checkDaemonStatus();
-
-        // 모달이 열려 있는 동안 2초마다 상태 확인
-        const interval = setInterval(checkDaemonStatus, 2000);
-
-        return () => clearInterval(interval);
-    }, [isOpen, t]);
-
-    if (!isOpen) {
-        return null;
-    }
+    }, [t]);
 
     const handleRestartDaemon = async () => {
         setRestarting(true);
         // 재시작은 5초 폴링 사이에 끝날 수 있다. 상태를 한번 내려 둬야 데몬을 따라가는 것들(실행 환경 준비 표시 등)이 다시 본다
+        const before = useUIStore.getState().backgroundDaemonStatus;
+        // 실패하면 다시 시작 버튼이 남게 앞 상태로 되돌린다
+        const restore = () => useUIStore.getState().setBackgroundDaemonStatus(before);
         useUIStore.getState().setBackgroundDaemonStatus('checking');
         useSabaBubble.getState().markWoken();
         try {
@@ -92,12 +64,14 @@ function BackgroundModal({ isOpen, onClose, isClosing, ipcPort }: BackgroundModa
                 console.log('Daemon restarted successfully');
             } else {
                 useSabaBubble.getState().markWoken(false);
+                restore();
                 console.error('Failed to restart daemon:', result?.error);
                 // 실패는 화면에도 알린다 (DaemonDown과 같은 문구, G-U7)
                 safeShowToast(t('shell.daemon_restart_failed', { error: result?.error || '' }), 'error', 6000);
             }
         } catch (error) {
             useSabaBubble.getState().markWoken(false);
+            restore();
             console.error('Failed to restart daemon:', error);
             safeShowToast(t('shell.daemon_restart_failed', { error: (error as Error).message }), 'error', 6000);
         } finally {

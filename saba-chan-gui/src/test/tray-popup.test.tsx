@@ -46,6 +46,7 @@ describe('트레이 팝업', () => {
             'trayPopupFit',
             'daemonTarget',
             'remoteDaemons',
+            'onDaemonEvent',
         ])
             delete (window.api as unknown as Record<string, unknown>)[k];
     });
@@ -58,6 +59,22 @@ describe('트레이 팝업', () => {
         expect(screen.getByText('3/20')).toBeTruthy();
         expect(screen.getByText('팰월드')).toBeTruthy();
         expect(window.api.trayPopupFit).toHaveBeenCalled();
+    });
+
+    // F1·F4: 다른 곳(디스코드·CLI)에서 켜도 서버가 바뀌었다는 이벤트로 다시 읽고, 데몬의 transition으로 "켜는 중"을 보인다
+    it('서버가 바뀌었다는 이벤트에 다시 읽고 켜는 중을 보인다', async () => {
+        let emit: (ev: unknown) => void = () => {};
+        window.api.onDaemonEvent = vi.fn((cb) => {
+            emit = cb;
+            return () => {};
+        }) as never;
+        render(<TrayPopup />);
+        await flush();
+        window.api.serverList = vi.fn().mockResolvedValue({
+            servers: [{ id: 'b', name: '팰월드', status: 'stopped', transition: 'starting' }],
+        });
+        await act(async () => emit({ type: 'servers.changed', data: {} }));
+        expect(screen.getByText('Starting')).toBeTruthy();
     });
 
     it('서버 시작·정지는 데몬 API로 보낸다', async () => {

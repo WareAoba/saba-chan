@@ -20,7 +20,7 @@ function mockApi(overrides = {}) {
             settingsGetPath: vi.fn().mockResolvedValue('/mock/settings.json'),
             botConfigLoad: vi.fn().mockResolvedValue({}),
             botConfigSave: vi.fn().mockResolvedValue({ success: true }),
-            discordBotStatus: vi.fn().mockResolvedValue('stopped'),
+            discordBotStatus: vi.fn().mockResolvedValue({ status: 'stopped', running: false, link: { connected: false, error: '', heard: true } }),
             discordBotStart: vi.fn().mockResolvedValue({ success: true }),
             discordBotStop: vi.fn().mockResolvedValue({ success: true }),
             daemonStatus: vi.fn().mockResolvedValue({ running: true }),
@@ -57,7 +57,7 @@ beforeEach(() => {
 describe('useSettingsStore', () => {
     it('GUI 설정 초기화 뒤에는 예전 브라우저 테마 대신 auto', async () => {
         localStorage.setItem('saba-chan-theme', 'light');
-        window.api.configReset = vi.fn().mockResolvedValue({ ok: true, config: {} });
+        window.api.configReset = vi.fn().mockResolvedValue({ success: true, config: {} });
         window.api.settingsLoad = vi.fn().mockResolvedValue({ autoRefresh: true });
         window.api.settingsGetPath = vi.fn().mockResolvedValue('x');
         expect(await useSettingsStore.getState().resetToDefaults()).toBe(true);

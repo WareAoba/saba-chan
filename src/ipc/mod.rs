@@ -306,6 +306,10 @@ pub struct ServerInfo {
     /// 시작·정지 요청이 진행 중이면 `starting`·`stopping` (0.1.14~). 화면은 이것으로 "하는 중"을 보인다 (`instance::transition`)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transition: Option<String>,
+    /// 모듈 설정 칸마다 저장된 값 (0.1.14-beta.2~): 공통 칸(`constants::INSTANCE_FIELDS`)은 인스턴스 칸, 나머지는 `module_settings`.
+    /// 값이 없는 칸은 빠진다. 화면은 어느 쪽이 진짜인지 고르지 않고 이것을 읽는다 (`instance::stored_settings`)
+    #[serde(default)]
+    pub stored: serde_json::Map<String, serde_json::Value>,
 }
 
 /// 포트 충돌 요약 (서버 목록 API에서 반환)
@@ -379,33 +383,33 @@ pub struct ExtensionInfo {
     pub icon: Option<String>,
     pub interaction_mode: Option<String>,
     pub protocols: Option<ProtocolsInfo>,
-    pub settings: Option<crate::supervisor::module_loader::ModuleSettings>,
-    pub commands: Option<crate::supervisor::module_loader::ModuleCommands>,
-    pub syntax_highlight: Option<crate::supervisor::module_loader::SyntaxHighlight>,
+    pub settings: Option<crate::module_loader::ModuleSettings>,
+    pub commands: Option<crate::module_loader::ModuleCommands>,
+    pub syntax_highlight: Option<crate::module_loader::SyntaxHighlight>,
     /// 디렉토리 시그니처 — 마이그레이션 시 기존 서버 폴더 자동 감지용
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub dir_signatures: Vec<String>,
     /// 설치 방식 정보 (download, steamcmd 등)
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub install: Option<crate::supervisor::module_loader::ModuleInstallConfig>,
+    pub install: Option<crate::module_loader::ModuleInstallConfig>,
     /// 모듈 별명 (Discord/CLI 다국어 지원)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub module_aliases: Vec<String>,
     /// 명령어 별명
     #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
-    pub command_aliases: std::collections::HashMap<String, crate::supervisor::module_loader::CommandAliasInfo>,
+    pub command_aliases: std::collections::HashMap<String, crate::module_loader::CommandAliasInfo>,
     /// `[[presets]]` 서버를 만들 때 고르는 추천 설정 묶음
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub presets: Vec<crate::supervisor::module_loader::ModulePreset>,
+    pub presets: Vec<crate::module_loader::ModulePreset>,
     /// `[[queries]]` 읽기 전용 조회 (액션 `server.query:<name>`)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub queries: Vec<crate::supervisor::module_loader::ModuleQuery>,
+    pub queries: Vec<crate::module_loader::ModuleQuery>,
     /// `[[agreements]]` 켜기 전에 동의할 약관 (이름은 모듈 locales `agreements.<id>`)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub agreements: Vec<crate::supervisor::module_loader::ModuleAgreement>,
+    pub agreements: Vec<crate::module_loader::ModuleAgreement>,
     /// `[[lists]]` 플레이어 목록 선언 (있으면 클라이언트가 목록 화면을 보인다. 이름과 지금 명단은 `GET /api/instance/:id/lists`)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub lists: Vec<crate::supervisor::module_loader::ModuleList>,
+    pub lists: Vec<crate::module_loader::ModuleList>,
     /// 모듈이 `functions`로 밝힌 lifecycle 함수 (MK1). null이면 모름: 클라이언트는 아무 기능도 숨기지 않는다
     #[serde(default)]
     pub functions: Option<Vec<String>>,
@@ -419,7 +423,7 @@ pub struct ExtensionListResponse {
     pub modules: Vec<ExtensionInfo>,
     /// 로드하지 못한 모듈과 이유
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub failed: Vec<crate::supervisor::module_loader::ModuleLoadError>,
+    pub failed: Vec<crate::module_loader::ModuleLoadError>,
 }
 
 // ── API Action Tracker ──────────────────────────────────────
@@ -505,6 +509,11 @@ pub struct ProvisionProgress {
 }
 
 impl ProvisionProgress {
+    /// 끝난 진행 표시 한 단계짜리 (`error`가 있으면 실패)
+    pub fn finished(message: String, error: Option<String>) -> Self {
+        Self { step: 0, total: 1, label: "done".to_string(), message, done: true, error, percent: Some(100), steps: None, details: Default::default() }
+    }
+
     pub fn with_failure(mut self, failure: Value) -> Self {
         if let Value::Object(mut fields) = failure {
             self.error = fields.remove("error").and_then(|v| v.as_str().map(str::to_string))
@@ -739,17 +748,6 @@ impl IPCServer {
         listen_addr: &str,
         daemon_log_buffer: crate::daemon_log::DaemonLogBuffer,
     ) -> Self {
-        // ExtensionManager 초기화
-        let extensions_dir = crate::plugin::resolve_extensions_dir();
-        let mut ext_mgr = crate::extension::ExtensionManager::new(
-            extensions_dir.to_str().unwrap_or("./extensions"),
-        );
-        if let Err(e) = ext_mgr.discover() {
-            tracing::warn!("Failed to discover extensions: {}", e);
-        }
-
-        let extension_manager = Arc::new(RwLock::new(ext_mgr));
-
         // ConfigStore 초기화 (기존 JSON 파일에서 로드)
         #[cfg(not(test))]
         let data_dir = saba_chan_updater_lib::constants::resolve_data_dir();
@@ -761,23 +759,38 @@ impl IPCServer {
         let stop_requested = tokio_util::sync::CancellationToken::new();
         let client_registry = ClientRegistry::new();
         let credentials = CredentialsCache::default();
-        // 모듈의 HOST 통로. 시작 때 다른 작업(data_roots 보충)이 잠금을 쥐고 있으면 풀린 뒤 붙인다:
-        // 건너뛰면 감독자가 부르는 모듈(정지·접속자)이 데몬이 꺼질 때까지 `no_instance`로 실패한다
+        // 익스텐션 매니저와 프로비저닝 추적은 감독자가 만든 것을 나눠 쓴다 (감독자의 시작 검사·hook과 API가 같은 상태를 본다).
+        // 모듈의 HOST 통로도 여기서 붙인다: 건너뛰면 감독자가 부르는 모듈(정지·접속자)이 `no_instance`로 실패한다.
+        // 시작 때 다른 작업(data_roots 보충)이 잠금을 쥐고 있으면 새로 만들어 쓰고, 잠금이 풀린 뒤 감독자에 붙인다
         let runtime = crate::plugin::host::Runtime::new(&supervisor, credentials.clone());
-        match supervisor.try_read() {
+        let (extension_manager, provision_tracker) = match supervisor.try_read() {
             Ok(sup) => {
                 let _ = sup.host_runtime.set(runtime);
+                (sup.extension_manager.clone(), sup.provision_tracker.clone())
             }
-            Err(_) => match tokio::runtime::Handle::try_current() {
-                Ok(handle) => {
-                    let supervisor = supervisor.clone();
-                    handle.spawn(async move {
-                        let _ = supervisor.read().await.host_runtime.set(runtime);
-                    });
+            Err(_) => {
+                let extension_manager = crate::supervisor::Supervisor::new_extension_manager();
+                if let Ok(mut mgr) = extension_manager.try_write() {
+                    if let Err(e) = mgr.discover() {
+                        tracing::warn!("Failed to discover extensions: {}", e);
+                    }
                 }
-                Err(_) => tracing::warn!("[Host] no async runtime to attach the module host channel"),
-            },
-        }
+                let provision_tracker = ProvisionTracker::new();
+                match tokio::runtime::Handle::try_current() {
+                    Ok(handle) => {
+                        let (supervisor, extension_manager, provision_tracker) = (supervisor.clone(), extension_manager.clone(), provision_tracker.clone());
+                        handle.spawn(async move {
+                            let mut sup = supervisor.write().await;
+                            let _ = sup.host_runtime.set(runtime);
+                            sup.extension_manager = extension_manager;
+                            sup.provision_tracker = provision_tracker;
+                        });
+                    }
+                    Err(_) => tracing::warn!("[Host] no async runtime to attach the module host channel"),
+                }
+                (extension_manager, provision_tracker)
+            }
+        };
         let relay_agent = crate::relay_agent::RelayAgent::new();
         Self {
             supervisor: supervisor.clone(),
@@ -789,7 +802,7 @@ impl IPCServer {
                 .with_clients(client_registry)
                 .with_relay(relay_agent.clone()),
             api_actions: ApiActionTracker::new(),
-            provision_tracker: ProvisionTracker::new(),
+            provision_tracker,
             extension_manager,
             extension_status_cache: ExtensionStatusCache::new(30), // 30초 TTL
             extension_init_tracker: ExtensionInitTracker::new(),
@@ -866,7 +879,7 @@ impl IPCServer {
             .route("/api/provision-progress/{name}", get(handlers::instance::get_provision_progress).delete(handlers::instance::dismiss_provision_progress))
             // ── Server update ──
             .route("/api/instance/{id}/check-update", get(handlers::instance::check_server_update))
-            .route("/api/instance/{id}/apply-update", post(handlers::instance::apply_server_update).delete(handlers::server_update::cancel_server_update))
+            .route("/api/instance/{id}/apply-update", post(handlers::instance::apply_server_update).delete(handlers::instance::cancel_server_update))
             // ── Command execution ──
             .route("/api/instance/{id}/command", post(handlers::command::execute_command))
             .route("/api/instance/{id}/commands", get(handlers::command::list_instance_commands))
@@ -1148,7 +1161,7 @@ impl IPCServer {
                     // 자동 포트포워딩 확인 (설정이 켜져 있을 때만, 자동 시작한 서버가 포트를 연 뒤)
                     tokio::spawn(crate::port_check::auto_on_start(self.clone()));
                     // 온보딩 "서버 시작해 보기": 처음 켜진 서버를 남긴다
-                    tokio::spawn(crate::ipc::handlers::diagnostics::watch_first_start(self.clone()));
+                    tokio::spawn(crate::service::onboarding::watch_first_start(self.clone()));
 
                     let shutdown_signal = self.shutdown_token.clone();
                     axum::serve(listener, router)
@@ -1173,6 +1186,10 @@ impl IPCServer {
         ))
     }
 }
+
+/// 데몬이 시작한 시각 (Unix ms). `main`이 맨 먼저 잰다. 업데이터가 서비스 관리자·GUI가 다시 띄운 데몬을
+/// PID 대신 판과 이 시각으로 새 데몬인지 가린다 (`live_apply::HealthRule::StartedAfter`)
+pub static STARTED_AT_MS: std::sync::LazyLock<u64> = std::sync::LazyLock::new(saba_chan_updater_lib::live_apply::now_ms);
 
 // ── Tests ──────────────────────────────────────────────────
 
@@ -1360,9 +1377,9 @@ mod tests {
             lists: Vec::new(),
             functions: None,
             addon: Default::default(),
-            commands: Some(crate::supervisor::module_loader::ModuleCommands {
+            commands: Some(crate::module_loader::ModuleCommands {
                 fields: vec![
-                    crate::supervisor::module_loader::CommandField {
+                    crate::module_loader::CommandField {
                         name: "players".to_string(),
                         label: "플레이어 목록".to_string(),
                         description: Some("현재 접속 중인 플레이어 조회".to_string()),
@@ -1473,9 +1490,9 @@ mod tests {
                     lists: Vec::new(),
                     functions: None,
                     addon: Default::default(),
-                    commands: Some(crate::supervisor::module_loader::ModuleCommands {
+                    commands: Some(crate::module_loader::ModuleCommands {
                         fields: vec![
-                            crate::supervisor::module_loader::CommandField {
+                            crate::module_loader::CommandField {
                                 name: "info".to_string(),
                                 label: "서버 정보".to_string(),
                                 description: None,
@@ -1488,7 +1505,7 @@ mod tests {
                                 remote: true,
                                 reply_pattern: None,
                             },
-                            crate::supervisor::module_loader::CommandField {
+                            crate::module_loader::CommandField {
                                 name: "announce".to_string(),
                                 label: "공지 전송".to_string(),
                                 description: None,
@@ -1498,7 +1515,7 @@ mod tests {
                                 console_template: None,
                                 risk: None,
                                 inputs: vec![
-                                    crate::supervisor::module_loader::CommandInput {
+                                    crate::module_loader::CommandInput {
                                         name: "message".to_string(),
                                         label: Some("메시지".to_string()),
                                         input_type: Some("string".to_string()),
@@ -1540,7 +1557,7 @@ mod tests {
 
     #[test]
     fn test_command_input_serialization() {
-        let input = crate::supervisor::module_loader::CommandInput {
+        let input = crate::module_loader::CommandInput {
             name: "user_id".to_string(),
             label: Some("유저 ID".to_string()),
             input_type: Some("string".to_string()),

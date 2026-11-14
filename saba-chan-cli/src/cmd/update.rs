@@ -145,18 +145,7 @@ async fn repair(ctx: &Ctx) -> Result<()> {
             }
         }
     };
-    let req = ctx.api.update_repair();
-    tokio::pin!(req);
-    let r = loop {
-        tokio::select! {
-            r = &mut req => break r,
-            _ = tokio::time::sleep(Duration::from_millis(400)) => {
-                if let Ok(p) = ctx.api.update_progress().await {
-                    show(s(&p, "component"), &mut shown);
-                }
-            }
-        }
-    };
+    let r = follow_progress(&ctx.api, ctx.api.update_repair(), |p| show(s(p, "component"), &mut shown)).await;
     let r = crate::client::partial(r)?;
     for key in r.get("repaired").and_then(Value::as_array).into_iter().flatten().chain(r.get("needs_updater").and_then(Value::as_array).into_iter().flatten()) {
         show(key.as_str().unwrap_or_default(), &mut shown);
@@ -505,7 +494,7 @@ fn download_errors(r: &Value) -> Vec<String> {
             }
         })
         .collect();
-    if errors.is_empty() && r.get("ok").and_then(Value::as_bool) == Some(false) {
+    if errors.is_empty() && r.get("success").and_then(Value::as_bool) == Some(false) {
         errors.push(match s(r, "error") {
             "" => t!("update.download_failed"),
             e => e.to_string(),
@@ -514,29 +503,66 @@ fn download_errors(r: &Value) -> Vec<String> {
     errors
 }
 
+/// 하나도 받지 못한 답(502 `{success: false, error}`)도 일부만 받은 답처럼 읽는다 (`download_errors`가 그 문구를 보인다)
+fn whole_failure(r: Result<Value>) -> Result<Value> {
+    match r {
+        Err(e) => match e.downcast::<crate::error::CliError>() {
+            Ok(crate::error::CliError::Api { status: 502, body, .. }) if body.is_object() => Ok(body),
+            Ok(other) => Err(other.into()),
+            Err(e) => Err(e),
+        },
+        ok => ok,
+    }
+}
+
+/// `req`(받기·고치기)가 끝날 때까지 이 PC 데몬이 내는 받기 진행(`update.progress`)을 `on`에 넘긴다.
+/// 이벤트 스트림에 붙지 못했거나 끊기면 진행 없이 끝을 기다린다
+async fn follow_progress<T>(api: &crate::client::Api, req: impl std::future::Future<Output = T>, mut on: impl FnMut(&Value)) -> T {
+    let mut events = api.local_events().await.ok();
+    tokio::pin!(req);
+    loop {
+        let next = async {
+            match events.as_mut() {
+                Some(stream) => stream.next().await,
+                None => std::future::pending().await,
+            }
+        };
+        let ended = tokio::select! {
+            r = &mut req => return r,
+            event = next => match event {
+                Ok(Some(e)) => {
+                    if e.kind == "update.progress" {
+                        on(&e.data);
+                    }
+                    false
+                }
+                _ => true,
+            },
+        };
+        if ended {
+            events = None;
+        }
+    }
+}
+
 async fn download(ctx: &Ctx, components: &[String]) -> Result<()> {
     let bar = crate::progress::bytes_bar(&t!("update.downloading"));
-    let req = ctx.api.update_download(components);
-    tokio::pin!(req);
-    let r = loop {
-        tokio::select! {
-            r = &mut req => break r,
-            _ = tokio::time::sleep(Duration::from_millis(400)) => {
-                if let Ok(p) = ctx.api.update_progress().await {
-                    if let Some(total) = p.get("total_bytes").and_then(Value::as_u64).filter(|t| *t > 0) {
-                        bar.set_length(total);
-                    }
-                    bar.set_position(p.get("bytes_received").and_then(Value::as_u64).unwrap_or(0));
-                    let c = s(&p, "component");
-                    if !c.is_empty() {
-                        bar.set_message(c.to_string());
-                    }
-                }
-            }
+    let r = follow_progress(&ctx.api, ctx.api.update_download(components), |p| {
+        if !p.get("active").and_then(Value::as_bool).unwrap_or(false) {
+            return;
         }
-    };
+        if let Some(total) = p.get("totalBytes").and_then(Value::as_u64).filter(|t| *t > 0) {
+            bar.set_length(total);
+        }
+        bar.set_position(p.get("bytesReceived").and_then(Value::as_u64).unwrap_or(0));
+        let c = s(p, "component");
+        if !c.is_empty() {
+            bar.set_message(c.to_string());
+        }
+    })
+    .await;
     bar.finish_and_clear();
-    let r = crate::client::partial(r)?;
+    let r = crate::client::partial(whole_failure(r))?;
     let errors = download_errors(&r);
     for e in &errors {
         ctx.out.warn(e);
@@ -802,14 +828,61 @@ fn last_rows(r: &Value) -> Vec<(String, String)> {
 mod tests {
     use super::*;
 
+    /// 이벤트 스트림에 받기 진행 두 건을 흘리고, 받기 요청에는 잠깐 뒤에 답하는 가짜 데몬
+    async fn daemon_that_reports_progress() -> u16 {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            while let Ok((mut sock, _)) = listener.accept().await {
+                tokio::spawn(async move {
+                    let mut buf = [0; 4096];
+                    let n = sock.read(&mut buf).await.unwrap_or(0);
+                    let head = String::from_utf8_lossy(&buf[..n]).to_string();
+                    let json = |body: Value| format!("HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}", body.to_string().len(), body);
+                    if head.starts_with("GET /health") {
+                        use hmac::{Hmac, KeyInit, Mac};
+                        let challenge = head.lines().find_map(|l| l.to_ascii_lowercase().strip_prefix("x-saba-challenge:").map(|v| v.trim().to_string()));
+                        let token = std::fs::read_to_string(saba_chan_updater_lib::constants::token_file_path()).unwrap_or_default();
+                        let mut mac = Hmac::<sha2::Sha256>::new_from_slice(token.trim().as_bytes()).unwrap();
+                        mac.update(challenge.unwrap_or_default().as_bytes());
+                        let _ = sock.write_all(json(json!({ "ok": true, "proof": hex::encode(mac.finalize().into_bytes()) })).as_bytes()).await;
+                    } else if head.starts_with("GET /api/events") {
+                        let _ = sock.write_all(b"HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\n\r\n").await;
+                        for (got, active) in [(512, true), (0, false)] {
+                            tokio::time::sleep(Duration::from_millis(50)).await;
+                            let data = json!({ "component": "gui", "active": active, "bytesReceived": got, "totalBytes": 1024, "percent": 50 });
+                            let _ = sock.write_all(format!("event: update.progress\ndata: {data}\n\n").as_bytes()).await;
+                        }
+                        tokio::time::sleep(Duration::from_secs(5)).await;
+                    } else if head.starts_with("POST /api/updates/download") {
+                        tokio::time::sleep(Duration::from_millis(400)).await;
+                        let _ = sock.write_all(json(json!({ "success": true, "downloaded": ["gui"], "count": 1 })).as_bytes()).await;
+                    }
+                });
+            }
+        });
+        port
+    }
+
+    /// 받는 동안의 진행은 묻지 않고 데몬의 `update.progress` 이벤트로 받는다
+    #[tokio::test]
+    async fn a_download_follows_the_progress_events_of_the_daemon() {
+        let api = crate::client::Api::new(daemon_that_reports_progress().await, None);
+        let mut heard = Vec::new();
+        let answer = follow_progress(&api, api.update_download(&["gui".to_string()]), |p| heard.push(p.clone())).await.unwrap();
+        assert_eq!(answer["count"], 1);
+        assert_eq!(heard.iter().map(|p| (p["bytesReceived"].clone(), p["active"].clone())).collect::<Vec<_>>(), [(json!(512), json!(true)), (json!(0), json!(false))]);
+    }
+
     /// 고르지 않은 받기가 실패하면 `errors` 없이 `{ok:false, error}`만 온다: 0개 받음으로 끝내지 않는다 (cloud-review-426 P2)
     #[test]
     fn a_failed_full_download_is_a_failure() {
-        assert_eq!(download_errors(&json!({ "ok": false, "error": "net down" })), vec!["net down".to_string()]);
-        assert_eq!(download_errors(&json!({ "ok": false })).len(), 1);
-        assert!(download_errors(&json!({ "ok": true, "downloaded": [], "count": 0 })).is_empty());
+        assert_eq!(download_errors(&json!({ "success": false, "error": "net down" })), vec!["net down".to_string()]);
+        assert_eq!(download_errors(&json!({ "success": false })).len(), 1);
+        assert!(download_errors(&json!({ "success": true, "downloaded": [], "count": 0 })).is_empty());
         assert_eq!(
-            download_errors(&json!({ "ok": false, "errors": [{ "component": "gui", "error": "x" }] })),
+            download_errors(&json!({ "success": false, "errors": [{ "component": "gui", "error": "x" }] })),
             vec!["gui: x".to_string()]
         );
     }
@@ -915,7 +988,7 @@ mod tests {
     #[test]
     fn a_failed_or_timed_out_apply_ends_as_an_error_document() {
         let apply = json!({ "applied": ["saba-core"], "errors": [] });
-        let launch = json!({ "ok": true });
+        let launch = json!({ "success": true });
         let good = json!({ "result": { "timestamp": "t", "success": true } });
         let bad = json!({ "result": { "timestamp": "t", "success": false } });
 
@@ -948,7 +1021,7 @@ mod tests {
     /// update last는 원시 객체 대신 버전·결과·구성요소·실패를 줄로 보인다 (C16)
     #[test]
     fn the_last_result_reads_as_rows() {
-        let r = json!({ "ok": true, "version": "0.1.7", "notes": "고친 것", "result": {
+        let r = json!({ "success": true, "version": "0.1.7", "notes": "고친 것", "result": {
             "timestamp": "2026-10-19T13:05:00Z", "success": false, "updated_components": ["saba-core", "cli"],
             "failed": ["gui: 파일이 쓰기 중"], "message": null
         } });
@@ -957,7 +1030,7 @@ mod tests {
         assert_eq!(rows[1].1, t!("update.result_failed"));
         assert!(rows.contains(&(t!("update.updated"), "saba-core, cli".to_string())));
         assert!(rows.contains(&(t!("update.failed_one"), "gui: 파일이 쓰기 중".to_string())));
-        assert!(last_rows(&json!({ "ok": true, "result": null })).is_empty());
+        assert!(last_rows(&json!({ "success": true, "result": null })).is_empty());
     }
 
     /// 새 CLI가 이 라우트가 없는 옛 데몬을 부르면(업데이트 도중 CLI만 먼저 바뀐 때) `HTTP 404` 대신 데몬을 먼저 업데이트하라고 알린다
@@ -991,7 +1064,7 @@ mod tests {
     /// 사용자 되돌리기 결과는 돌아간 판과 그 전 판을 사용자 언어로 보인다 (마커의 영어 원문이 아니라)
     #[test]
     fn a_rollback_result_reads_in_the_user_language() {
-        let r = json!({ "ok": true, "version": null, "result": {
+        let r = json!({ "success": true, "version": null, "result": {
             "timestamp": "2026-11-12T03:09:00Z", "success": true, "updated_components": [], "result": "reverted",
             "version": "0.1.13", "replaced_by": "0.1.14", "message": "Rolled back from 0.1.14 to 0.1.13"
         } });

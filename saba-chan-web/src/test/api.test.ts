@@ -27,6 +27,15 @@ describe('웹 브리지', () => {
         await expect(api.permissionsGet('g')).resolves.toMatchObject({ error_code: 'remote_not_allowed' });
     });
 
+    it('0.1.14까지의 데몬이 `ok`로 알린 판정을 `success`로 읽는다', async () => {
+        const old = createWebApi(fakeSession({ status: 200, data: { ok: true, manifest: { modules: {} } } }));
+        await expect(old.api.moduleManifest()).resolves.toMatchObject({ success: true, manifest: { modules: {} } });
+        const refused = createWebApi(fakeSession({ status: 200, data: { ok: false, error_code: 'module_busy' } }));
+        await expect(refused.api.moduleRemove('m')).resolves.toMatchObject({ success: false, error_code: 'module_busy' });
+        const current = createWebApi(fakeSession({ status: 409, data: { success: false, error: 'busy', error_code: 'module_busy' } }));
+        await expect(current.api.moduleRemove('m')).resolves.toEqual({ success: false, error: 'busy', error_code: 'module_busy' });
+    });
+
     it('PC 의 창·파일을 여는 명령은 하지 않는다', async () => {
         const { api } = createWebApi(fakeSession({ status: 200, data: {} }));
         await expect(api.openFolderDialog()).rejects.toThrow('not_supported');

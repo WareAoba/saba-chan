@@ -12,7 +12,7 @@ vi.mock('../contexts/ExtensionContext', () => ({
 
 import SabaStorage from '../components/Modals/SabaStorage';
 
-const BUSY = { ok: false, error: 'Module minecraft is being installed or removed', error_code: 'module_busy' };
+const BUSY = { success: false, error: 'Module minecraft is being installed or removed', error_code: 'module_busy' };
 
 beforeEach(() => {
     window.showToast = vi.fn();
@@ -21,7 +21,7 @@ beforeEach(() => {
             moduleList: vi.fn().mockResolvedValue({ modules: [{ name: 'Minecraft', path: '/m/minecraft' }] }),
             moduleManifest: vi
                 .fn()
-                .mockResolvedValue({ ok: true, manifest: { modules: { palworld: { display_name: 'Palworld' } } } }),
+                .mockResolvedValue({ success: true, manifest: { modules: { palworld: { display_name: 'Palworld' } } } }),
             moduleInstallFromManifest: vi.fn().mockResolvedValue(BUSY),
             moduleRemove: vi.fn().mockResolvedValue(BUSY),
         },
@@ -66,7 +66,7 @@ describe('모듈 설치·제거가 겹쳐 거절될 때', () => {
     });
 
     it('다른 이유로 제거하지 못하면 데몬 원문 대신 번역한 이유를 알린다', async () => {
-        vi.mocked(window.api.moduleRemove).mockResolvedValue({ ok: false, error: 'Permission denied (os error 13)' });
+        vi.mocked(window.api.moduleRemove).mockResolvedValue({ success: false, error: 'Permission denied (os error 13)' });
         await openModules();
         await act(async () => fireEvent.click(document.querySelector('.ss-icon-btn.danger')!));
         await act(async () => fireEvent.click(document.querySelector('.saba-dialog .btn-primary')!));

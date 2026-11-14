@@ -4,10 +4,8 @@ import {
     installChoices,
     installFields,
     installSettings,
-    nameHasComma,
-    nameTaken,
+    nameVerdict,
     releaseVersions,
-    suggestName,
     versionSettings,
 } from '@gui/utils/installFields';
 import { gameNameOf, playersText, primaryAction, viewStatus } from '@gui/utils/serverView';
@@ -30,6 +28,7 @@ import type { Module, Server, WebApi } from '../types';
 
 /** 만들기 전 겹침 확인 (POST /api/instance/check) */
 interface InstanceCheck {
+    name?: { value: string; taken?: boolean; suggested?: string | null; invalid?: string };
     ports?: { field?: string; port: number; in_use_by?: string[] }[];
 }
 
@@ -40,11 +39,11 @@ export function AddServerSheet({ api, onClose }: { api: WebApi; onClose: () => v
     const { t } = useTranslation();
     const { t: tg } = useTranslation('gui');
     const modules = useData((s) => s.modules);
-    const servers = useData((s) => s.servers);
     const toast = useApp((s) => s.toast);
     const firstPlayable = modules.find((m) => m.platform_supported !== false)?.name || '';
     const [module, setModule] = useState(firstPlayable);
-    const [name, setName] = useState(() => (firstPlayable ? suggestName(firstPlayable, servers) : ''));
+    const [name, setName] = useState(firstPlayable);
+    const [autoName, setAutoName] = useState(true); // 이름 칸을 아직 고치지 않았다 (겹치면 데몬이 고른 이름으로)
     const [installValues, setInstallValues] = useState<Record<string, unknown>>({});
     const [preset, setPreset] = useState('');
     const [agreed, setAgreed] = useState<Record<string, boolean>>({});
@@ -57,14 +56,11 @@ export function AddServerSheet({ api, onClose }: { api: WebApi; onClose: () => v
     const chosen = modules.find((m) => m.name === module);
     const modNs = `mod_${module}`;
     const agreements: Agreement[] = chosen?.agreements || [];
-    const duplicate = nameTaken(servers, name);
-    // 디스코드에서 부르는 말을 쉼표로 나누므로 이름에 쉼표를 받지 않는다 (데몬 400 invalid_name, 앱과 같다)
-    const comma = nameHasComma(name);
-    const ready = name.trim() && module && !duplicate && !comma && agreements.every((a) => agreed[a.id]);
 
     const pickModule = (next: string) => {
         setModule(next);
-        setName(suggestName(next, servers));
+        setName(next);
+        setAutoName(true);
         setInstallValues({});
         setPreset('');
         setAgreed({});
@@ -118,15 +114,16 @@ export function AddServerSheet({ api, onClose }: { api: WebApi; onClose: () => v
     };
     const checkKey = name.trim() && module ? JSON.stringify(requestBody()) : '';
 
-    // 입력이 멈추면 다른 서버와 겹치는지 묻는다. 확인하지 못해도 만들기가 다시 본다
+    // 입력이 멈추면 다른 서버와 겹치는지 묻는다. 확인하지 못해도 만들기가 다시 본다 (답이 오기 전에는 만들지 않는다)
+    const checks = !!checkKey && !!api.instanceCheck;
     useEffect(() => {
         setCheck(null);
         if (!checkKey || !api.instanceCheck) return;
         let alive = true;
         const timer = setTimeout(() => {
             Promise.resolve(api.instanceCheck(JSON.parse(checkKey)))
-                .then((res) => alive && !failed(res) && setCheck(res as InstanceCheck))
-                .catch(() => {});
+                .then((res) => alive && setCheck(failed(res) ? {} : (res as InstanceCheck)))
+                .catch(() => alive && setCheck({}));
         }, 250);
         return () => {
             alive = false;
@@ -134,6 +131,16 @@ export function AddServerSheet({ api, onClose }: { api: WebApi; onClose: () => v
         };
     }, [api, checkKey]);
     const portNotes = (check?.ports || []).filter((p) => p.in_use_by?.length);
+    // 이름 규칙(겹침·쉼표·기본 이름)은 데몬 확인 답을 따른다 (앱과 같다)
+    const verdict = nameVerdict(check, name);
+    const duplicate = !!verdict?.taken;
+    const comma = verdict?.invalid === 'comma';
+    const ready =
+        name.trim() && module && !(checks && !check) && !duplicate && !comma && agreements.every((a) => agreed[a.id]);
+    const suggestedName = autoName && verdict?.taken ? verdict.suggested : null;
+    useEffect(() => {
+        if (suggestedName) setName(suggestedName);
+    }, [suggestedName]);
 
     const create = async () => {
         if (!ready) return;
@@ -185,7 +192,10 @@ export function AddServerSheet({ api, onClose }: { api: WebApi; onClose: () => v
                         <span>{t('servers.name')}</span>
                         <input
                             value={name}
-                            onChange={(e) => setName(e.target.value)}
+                            onChange={(e) => {
+                                setName(e.target.value);
+                                setAutoName(false);
+                            }}
                             maxLength={64}
                             required
                             aria-invalid={duplicate || comma || undefined}

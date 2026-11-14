@@ -1,6 +1,7 @@
 import type { TFunction } from 'i18next';
 import { describe, expect, it } from 'vitest';
 import { installFailureText } from '../utils/helpers';
+import { installFailure } from '../utils/serverControl';
 
 // 데몬 #533: 설치 전 실행 파일 백업을 못 하면 backup_failed + file, 되돌리지 못한 파일은 restore_failed와 같은 순서의 kept_backups.
 // 모듈이 오류로 끝나 500이면 error가 `could not put back X (kept as Y): <모듈 오류>`다 (01 install 행)
@@ -27,7 +28,7 @@ describe('설치 실패 문구', () => {
         expect(installFailureText(t, res, translate)).toBe(
             'tr(download failed) server_settings.install_kept_backups{"files":"PalServer → PalServer.1.bak, java → java.bak"}',
         );
-        // 옛 데몬은 kept_backups 없이 restore_failed만 준다
+        // kept_backups가 없으면 덧붙이지 않는다
         expect(installFailureText(t, { restore_failed: ['PalServer'], message: 'm' }, translate)).toBe('tr(m)');
     });
 
@@ -43,5 +44,33 @@ describe('설치 실패 문구', () => {
             'tr(Plugin timed out after 1800s) server_settings.install_kept_backups{"files":"Pal(1) → Pal(1).bak, java → java.bak"}',
         );
         expect(installFailureText(t, { error: 'Plugin timed out' }, translate)).toBe('tr(Plugin timed out)');
+    });
+});
+
+// F7: 서버 목록의 "새로 설치"와 설정 화면의 버전 설치가 같은 답을 같은 문구로 보인다
+describe('설치 답 해석 (installFailure)', () => {
+    it('성공이면 문구가 없다', () => {
+        expect(installFailure(t, { success: true, version: '1.0' }, translate)).toBeNull();
+    });
+
+    it('익스텐션이 없으면 그 익스텐션을, 버전을 정하지 못했으면 그 이유를 알린다', () => {
+        expect(installFailure(t, { success: false, error_code: 'extension_required', missing_extensions: ['steamcmd'] }, translate)).toBe(
+            'server_settings.extension_required_for_install{"extensions":"steamcmd"}',
+        );
+        expect(installFailure(t, { success: false, error_code: 'version_unknown', error: 'offline' }, translate)).toBe(
+            'servers.version_unknown{"error":"offline"}',
+        );
+    });
+
+    it('확인되지 않은 구성요소로 막혔으면 그 안내를 보인다', () => {
+        expect(installFailure(t, { success: false, error_code: 'isolation_unsupported' }, translate)).toBe(
+            'common:sandbox.isolation_unsupported.message',
+        );
+    });
+
+    it('서버가 켜져 있으면 설치하지 않았다고 알린다', () => {
+        expect(installFailure(t, { success: false, error_code: 'server_running' }, translate)).toBe(
+            'server_settings.install_server_running',
+        );
     });
 });

@@ -12,6 +12,9 @@
 //! 5. 바탕화면/시작메뉴 바로가기
 //! 6. 자기 자신 (cleanup 스크립트를 통해 프로세스 종료 후 삭제)
 use saba_chan_updater_lib::constants;
+use saba_chan_updater_lib::{
+    CLI_STEM, CORE_STEM, GUI_STEM, INSTALLER_STEM, LEGACY_GUI_STEM, LEGACY_UPDATER_STEM, RUNNER_STEM,
+};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 
@@ -267,7 +270,7 @@ pub async fn do_uninstall(keep: Keep, on_progress: impl Fn(&UninstallProgress)) 
 /// 그 설치의 `saba-core sandbox reset`을 돌린다 (Windows). 거두지 못한 것을 `경로: 이유` 줄로 돌려준다.
 /// 큰 서버 폴더는 표시를 덮는 데 시간이 걸려 오래 기다린다
 fn reset_sandbox(install_dir: &Path) -> Vec<PathBuf> {
-    let core = install_dir.join(saba_chan_updater_lib::uninstall_entry::CORE_EXE);
+    let core = install_dir.join(saba_chan_updater_lib::CORE_EXE);
     if !cfg!(windows) || !core.is_file() {
         return Vec::new();
     }
@@ -286,7 +289,7 @@ fn reset_sandbox(install_dir: &Path) -> Vec<PathBuf> {
 /// 그 설치의 `saba-core net-trace reset`을 돌린다 (Windows). 사바쨩이 준 표시가 남은 계정의 네트워크 이벤트 권한을 거둔다.
 /// 관리자 확인 창을 기다리므로(코어가 60초까지) 그보다 넉넉히 기다린다. 거두지 못한 것은 남은 항목 줄로
 fn reset_net_trace(install_dir: &Path) -> Vec<PathBuf> {
-    let core = install_dir.join(saba_chan_updater_lib::uninstall_entry::CORE_EXE);
+    let core = install_dir.join(saba_chan_updater_lib::CORE_EXE);
     if !cfg!(windows) || !core.is_file() {
         return Vec::new();
     }
@@ -377,12 +380,12 @@ struct Target {
 }
 
 const TARGETS: [Target; 6] = [
-    Target { name: "saba-core", tree: true, before_install: false, gui: false },
-    Target { name: "saba-runner", tree: true, before_install: false, gui: false },
-    Target { name: "saba-chan-cli", tree: false, before_install: true, gui: false },
-    Target { name: "saba-chan-gui", tree: false, before_install: true, gui: true },
-    Target { name: "Saba-chan", tree: false, before_install: true, gui: true }, // 0.1.1 Electron GUI (옛 설치본)
-    Target { name: "saba-chan-updater", tree: false, before_install: false, gui: false },
+    Target { name: CORE_STEM, tree: true, before_install: false, gui: false },
+    Target { name: RUNNER_STEM, tree: true, before_install: false, gui: false },
+    Target { name: CLI_STEM, tree: false, before_install: true, gui: false },
+    Target { name: GUI_STEM, tree: false, before_install: true, gui: true },
+    Target { name: LEGACY_GUI_STEM, tree: false, before_install: true, gui: true }, // 0.1.1 Electron GUI (옛 설치본)
+    Target { name: LEGACY_UPDATER_STEM, tree: false, before_install: false, gui: false },
 ];
 
 /// GUI 실행 파일 이름 (확장자 없이)
@@ -1219,13 +1222,13 @@ pub const INSTALL_MARKER: &str = ".saba-chan-install";
 
 /// 표시가 없는 설치(0.1.4 이전, 또는 사용자 파일이 있던 폴더)에서 지울 바로 안의 항목 (확장자·`.old` 제외한 이름)
 const INSTALLED_ENTRIES: &[&str] = &[
-    "saba-core",
-    "saba-runner",
-    "saba-chan-cli",
-    "saba-chan-gui",
-    "Saba-chan", // 0.1.1 Electron GUI
-    "saba-chan-updater",
-    "saba-chan-installer",
+    CORE_STEM,
+    RUNNER_STEM,
+    CLI_STEM,
+    GUI_STEM,
+    LEGACY_GUI_STEM, // 0.1.1 Electron GUI
+    LEGACY_UPDATER_STEM,
+    INSTALLER_STEM,
     "locales",
     "i18n.py",
     "daemon_rcon.py",
@@ -1901,10 +1904,11 @@ mod tests {
     async fn a_real_child_is_found_stopped_and_waited_for() {
         let mut sh = std::process::Command::new("sh").args(["-c", "sleep 30; true"]).spawn().unwrap();
         let root = sh.id();
+        // 셸이 fork한 직후의 자식은 아직 exec 전이라 이름이 `sh`다. `sleep`이 보일 때까지 기다린다
         let mut kids = Vec::new();
-        for _ in 0..50 {
+        for _ in 0..250 {
             kids = tree_of(&list_all().unwrap(), &[root], std::process::id());
-            if !kids.is_empty() {
+            if kids.iter().any(|(_, name, _)| name == "sleep") {
                 break;
             }
             std::thread::sleep(Duration::from_millis(20));

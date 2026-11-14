@@ -141,7 +141,7 @@ describe('MaintenanceTab', () => {
         });
     });
 
-    // 데몬 #533: zip으로 열리지 않는 백업은 표시하고 지우기를 권한다. 복원은 막는다 (옛 데몬은 readable이 없다)
+    // 데몬 #533: zip으로 열리지 않는 백업은 표시하고 지우기를 권한다. 복원은 막는다
     it('열 수 없는 백업은 표시하고 복원을 막는다', async () => {
         window.api.instanceScheduleGet = vi
             .fn()

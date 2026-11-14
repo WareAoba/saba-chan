@@ -20,7 +20,7 @@ describe('처음 시작하기 가이드', () => {
     beforeEach(() => {
         window.api = {
             onboarding: vi.fn().mockResolvedValue({ steps: [{ id: 'discord', done: false }], next: 'discord' }),
-            moduleManifest: vi.fn().mockResolvedValue({ ok: true, manifest: { modules: { minecraft: { display_name: 'Minecraft' } } } }),
+            moduleManifest: vi.fn().mockResolvedValue({ success: true, manifest: { modules: { minecraft: { display_name: 'Minecraft' } } } }),
         } as unknown as typeof window.api;
         useUIStore.getState()._resetForTest();
         useSettingsStore.setState({ settingsReady: true, closedGuides: [] });
@@ -73,7 +73,7 @@ describe('처음 시작하기 가이드', () => {
 
     it('모듈을 받으면 체크리스트의 다음 할 일도 다시 묻는다', async () => {
         const api = window.api as unknown as Record<string, ReturnType<typeof vi.fn>>;
-        api.moduleInstallFromManifest = vi.fn().mockResolvedValue({ ok: true });
+        api.moduleInstallFromManifest = vi.fn().mockResolvedValue({ success: true });
         useServerStore.setState({ fetchModules: vi.fn().mockResolvedValue(undefined) });
         useGuideStore.setState({ step: 'modules', after: null });
         render(page());

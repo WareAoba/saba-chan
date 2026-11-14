@@ -39,7 +39,7 @@ export function ModuleMakerCard({ defaultOpen = false }: { defaultOpen?: boolean
         if (!open || info) return;
         let alive = true;
         Promise.resolve(window.api.makerInfo()).then((r) => {
-            if (alive) setInfo(r?.ok ? r : { error: r?.error || t('saba_storage.maker_unavailable') });
+            if (alive) setInfo(r?.success ? r : { error: r?.error || t('saba_storage.maker_unavailable') });
         });
         return () => {
             alive = false;

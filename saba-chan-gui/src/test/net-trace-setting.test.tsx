@@ -6,7 +6,7 @@ import { useSettingsStore } from '../stores/useSettingsStore';
 describe('설정 > 게임 서버: 포트·서버별 네트워크 (/api/system/net-trace)', () => {
     beforeEach(() => {
         window.api = {
-            systemNetTrace: vi.fn().mockResolvedValue({ ok: true, access: 'needs_grant', enabled: false }),
+            systemNetTrace: vi.fn().mockResolvedValue({ success: true, access: 'needs_grant', enabled: false }),
             systemNetTraceGrant: vi.fn(),
             systemNetTraceRevoke: vi.fn(),
         } as unknown as typeof window.api;
@@ -24,7 +24,7 @@ describe('설정 > 게임 서버: 포트·서버별 네트워크 (/api/system/ne
     it('권한 받기는 데몬이 관리자 확인을 띄우고, 돌려준 상태를 보인다', async () => {
         useSettingsStore.setState({ systemMonitorNetTrace: true });
         vi.mocked(window.api.systemNetTraceGrant).mockResolvedValue({
-            ok: true,
+            success: true,
             access: 'needs_relogin',
             enabled: true,
         });
@@ -38,7 +38,7 @@ describe('설정 > 게임 서버: 포트·서버별 네트워크 (/api/system/ne
     it('관리자 확인을 받지 못하면 이유를 보이고 상태는 그대로 둔다', async () => {
         useSettingsStore.setState({ systemMonitorNetTrace: true });
         vi.mocked(window.api.systemNetTraceGrant).mockResolvedValue({
-            ok: false,
+            success: false,
             error_code: 'net_trace_elevation_failed',
             error: 'cancelled',
         });
@@ -49,7 +49,7 @@ describe('설정 > 게임 서버: 포트·서버별 네트워크 (/api/system/ne
     });
 
     it('Windows가 아니면 보이지 않는다', async () => {
-        vi.mocked(window.api.systemNetTrace).mockResolvedValue({ ok: true, access: 'unsupported', enabled: false });
+        vi.mocked(window.api.systemNetTrace).mockResolvedValue({ success: true, access: 'unsupported', enabled: false });
         const { container } = await act(async () => render(<NetTraceSetting />));
         expect(container).toBeEmptyDOMElement();
     });

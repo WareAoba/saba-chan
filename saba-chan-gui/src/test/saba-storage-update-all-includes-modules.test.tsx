@@ -12,19 +12,19 @@ vi.mock('../contexts/ExtensionContext', () => ({
 import SabaStorage from '../components/Modals/SabaStorage';
 
 const components = [
-    { component: 'cli', display_name: 'CLI', update_available: true, downloaded: false },
-    { component: 'module-minecraft', display_name: 'Minecraft', update_available: true, downloaded: false },
-    { component: 'ext-steamcmd', display_name: 'SteamCMD', update_available: true, downloaded: false },
-    { component: 'module-palworld', display_name: 'Palworld', update_available: false, downloaded: false },
+    { component: 'cli', kind: 'app', display_name: 'CLI', update_available: true, downloaded: false },
+    { component: 'module-minecraft', kind: 'module', display_name: 'Minecraft', update_available: true, downloaded: false },
+    { component: 'ext-steamcmd', kind: 'extension', display_name: 'SteamCMD', update_available: true, downloaded: false },
+    { component: 'module-palworld', kind: 'module', display_name: 'Palworld', update_available: false, downloaded: false },
 ];
 
 beforeEach(() => {
     window.showToast = vi.fn();
     window.api = new Proxy<Record<string | symbol, unknown>>(
         {
-            updaterStatus: vi.fn().mockResolvedValue({ ok: true, components }),
-            updaterDownload: vi.fn().mockResolvedValue({ ok: true }),
-            updaterApply: vi.fn().mockResolvedValue({ ok: true, applied: [], needs_updater: [], requires_updater: false }),
+            updaterStatus: vi.fn().mockResolvedValue({ success: true, components }),
+            updaterDownload: vi.fn().mockResolvedValue({ success: true }),
+            updaterApply: vi.fn().mockResolvedValue({ success: true, applied: [], needs_updater: [], requires_updater: false }),
         },
         {
             get(target, prop) {

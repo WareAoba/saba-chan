@@ -402,24 +402,10 @@ const impl: Record<string, MockFn> = {
     moduleList: () => ok({ modules: mockModulesInstalled ? modules : [], failed: mockFailed }),
     moduleInstallFromManifest: () => {
         mockModulesInstalled = true;
-        return new Promise((r) => setTimeout(() => r({ ok: true }), 600));
+        return new Promise((r) => setTimeout(() => r({ success: true }), 600));
     },
     moduleManifest: () =>
-        ok({ ok: true, manifest: { modules: Object.fromEntries(Object.entries(catalog).map(([id, info]) => [id, judged(info)])) } }),
-    instanceEvents: () =>
-        ok({
-            events: [
-                { at: now() - 7200, kind: 'user_stop', exit_code: 0 },
-                {
-                    at: now() - 3600,
-                    kind: 'crash',
-                    exit_code: -1073741819,
-                    evidence: 'hs_err_pid4120.log',
-                    restart_in_secs: 10,
-                },
-                { at: now() - 600, kind: 'crash', exit_code: 1, note: 'auto_restart is off' },
-            ],
-        }),
+        ok({ success: true, manifest: { modules: Object.fromEntries(Object.entries(catalog).map(([id, info]) => [id, judged(info)])) } }),
     instanceScheduleGet: () =>
         ok({
             success: true,
@@ -506,7 +492,7 @@ const impl: Record<string, MockFn> = {
     instancePortCheckLast: (id) => ok({ instanceId: id, verdict: 'not_checked' }),
     daemonDiagnostics: () =>
         ok({
-            ok: true,
+            success: true,
             version: '0.1.5',
             pid: 4242,
             uptime_secs: 3725,
@@ -527,7 +513,7 @@ const impl: Record<string, MockFn> = {
         }),
     migrationScanDir: () =>
         ok({
-            ok: true,
+            success: true,
             matches: [{ name: 'minecraft', display_name: 'Minecraft: Java Edition' }],
             notices: mockRunningFolder ? ['server_running'] : [],
         }),
@@ -682,7 +668,7 @@ const impl: Record<string, MockFn> = {
             ],
         });
     },
-    configReset: () => ok({ ok: true, config: {} }),
+    configReset: () => ok({ success: true, config: {} }),
     relayListHostNodes: () =>
         ok([
             { guildId: 'guild-1', guildName: '사바 마을' },
@@ -981,7 +967,7 @@ const impl: Record<string, MockFn> = {
     daemonStatus: () => ok({ running: mockDaemonUp }),
     updaterLastResult: ({ clear } = {}) =>
         ok({
-            ok: true,
+            success: true,
             version: '0.1.3',
             notes: '- 디스코드 서버별 챗봇·음악 채널 배정\n- 업데이트 결과 알림과 패치노트',
             result:
@@ -997,7 +983,7 @@ const impl: Record<string, MockFn> = {
         }),
     extensionList: () => ok({ extensions: [] }),
     relayMcpGrant: () => ok({ grants: [{ id: 'mock-1', clientName: 'Claude', createdAt: '2026-10-28T00:00:00Z', lastUsedAt: '2026-10-28T01:00:00Z' }], url: 'https://saba-chan.online/mcp' }),
-    relayMcpGrantRevoke: () => ok({ ok: true }),
+    relayMcpGrantRevoke: () => ok({ success: true }),
     relayPrivacyErase: () => ok({ url: 'https://saba-chan.online/legal/erase#mock.secret' }),
     relayPrivacyEraseStatus: () => ok({ status: 'pending' }),
     onboarding: () => {
@@ -1018,7 +1004,7 @@ const impl: Record<string, MockFn> = {
             if (typeof body.step === 'number') g.step = body.step;
             if (body.finished) g.done = true;
         }
-        return ok({ ok: true });
+        return ok({ success: true });
     },
     extensionInitStatus: () => ok({ initializing: false, in_progress: {} }),
     getAppVersion: () => ok('0.1.1'),

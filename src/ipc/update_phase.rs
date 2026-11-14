@@ -187,7 +187,7 @@ pub fn is_app_component(key: &str) -> bool {
 
 /// 바꾸려면 데몬이 내려가야 하는 구성요소 (`apply_updates_with`가 업데이터에 넘기는 것)
 pub fn needs_restart(key: &str) -> bool {
-    matches!(key, "saba-core" | "gui" | "updater")
+    matches!(key, crate::module_loader::CORE_COMPONENT | "gui" | "updater")
 }
 
 /// 자동 적용 판정의 입력

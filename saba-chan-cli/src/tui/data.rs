@@ -117,7 +117,7 @@ impl Snapshot {
     }
 
     pub fn running(&self) -> usize {
-        self.servers.iter().filter(|v| s(v, "status") == "running").count()
+        self.servers.iter().filter(|v| crate::output::status_of(v) == "running").count()
     }
 }
 
@@ -485,13 +485,13 @@ mod tests {
     /// 번역 판(`locales_version`)이 바뀌면 cli.json을 다시 읽으라고 알린다. 처음 읽은 판·판을 모르는 데몬·이번에 못 읽음은 아니다
     #[test]
     fn reports_a_changed_locales_version() {
-        let status = |v: Value| Fetched { health: Some(json!({})), updates: Some(json!({ "ok": true, "locales_version": v })), ..Fetched::default() };
+        let status = |v: Value| Fetched { health: Some(json!({})), updates: Some(json!({ "success": true, "locales_version": v })), ..Fetched::default() };
         let mut snap = Snapshot::default();
         assert!(!snap.apply(status(json!("0.1.13"))));
         assert!(!snap.apply(status(json!("0.1.13"))));
         assert!(!snap.apply(Fetched::default()));
         assert!(snap.apply(status(json!("0.1.14"))));
         assert!(snap.apply(status(Value::Null)));
-        assert!(!snap.apply(Fetched { health: Some(json!({})), updates: Some(json!({ "ok": true })), ..Fetched::default() }));
+        assert!(!snap.apply(Fetched { health: Some(json!({})), updates: Some(json!({ "success": true })), ..Fetched::default() }));
     }
 }

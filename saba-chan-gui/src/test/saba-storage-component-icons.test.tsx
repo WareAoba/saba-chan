@@ -5,7 +5,7 @@
 import { render } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { Icon } from '../components/Icon';
-import { parseComponents } from '../components/Modals/SabaStorage';
+import { parseComponents } from '../components/Modals/SabaStorageComponents';
 
 const KEYS = ['updater', 'gui', 'saba-core', 'cli', 'installer'];
 
@@ -35,5 +35,20 @@ describe('컴포넌트 아이콘', () => {
             expect(container.querySelector('svg'), name).not.toBeNull();
             unmount();
         }
+    });
+});
+
+describe('구성요소 종류', () => {
+    it('데몬이 준 kind로 애드온을 구성요소 탭에서 숨긴다', () => {
+        const parsed = parseComponents([
+            { component: 'gui', kind: 'app' },
+            { component: 'module-palworld', kind: 'module' },
+            { component: 'mods-pack', kind: 'extension' },
+        ]);
+        expect(Object.fromEntries(parsed.map((c) => [c.key, c.hidden]))).toEqual({
+            gui: false,
+            'module-palworld': true,
+            'mods-pack': true,
+        });
     });
 });

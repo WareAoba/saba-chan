@@ -18,10 +18,11 @@ const LIST = {
         {
             hostId: 'host-b',
             name: '게임 PC',
+            label: '게임 PC',
             ok: true,
             servers: [{ id: 'b1', name: 'test-pal', module: 'palworld', status: 'running', players: { online: 5, max: 20 } }],
         },
-        { hostId: 'host-c', name: '클라우드', ok: false, error_code: 'remote_unreachable', servers: [] },
+        { hostId: 'host-c', name: '클라우드', label: '클라우드', ok: false, error_code: 'remote_unreachable', servers: [] },
     ],
 };
 

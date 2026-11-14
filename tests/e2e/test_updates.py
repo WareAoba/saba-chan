@@ -57,7 +57,8 @@ def udaemon(sandbox, updates, daemon_factory):
 
 
 def _check(d) -> dict:
-    return d.api.ok("POST", "/api/updates/check", timeout=60)
+    # 확인에 실패하면 502 `{success: false, error}`다
+    return d.api.ok("POST", "/api/updates/check", expect=(200, 502), timeout=60)
 
 
 def _component(body: dict, key: str) -> dict:
@@ -66,7 +67,7 @@ def _component(body: dict, key: str) -> dict:
 
 def test_check_finds_signed_release(udaemon, updates):
     body = _check(udaemon)
-    assert body["ok"], body
+    assert body["success"], body
     core = _component(body, "saba-core")
     assert core["update_available"] and core["latest_version"] == NEXT, body
     checks = [r for r in updates.requests if r["path"] == "/v1/updates/check"]
@@ -79,14 +80,14 @@ def test_check_finds_signed_release(udaemon, updates):
 def test_tampered_manifest_is_rejected(udaemon, updates):
     updates.tamper = True
     body = _check(udaemon)
-    assert not body["ok"], f"변조한 manifest를 받아들임: {body}"
+    assert not body["success"], f"변조한 manifest를 받아들임: {body}"
     assert "signature" in body["error"].lower(), body
 
 
 def test_wrong_platform_manifest_is_rejected(udaemon, updates):
     updates.platform = "windows-x64" if not _platform().startswith("windows") else "linux-x64"
     body = _check(udaemon)
-    assert not body["ok"] or not any(c["update_available"] for c in body["components"]), body
+    assert not body["success"] or not any(c["update_available"] for c in body["components"]), body
 
 
 def test_downgrade_is_not_offered(udaemon, updates):
@@ -100,7 +101,7 @@ def test_downgrade_is_not_offered(udaemon, updates):
 def test_download_verifies_sha256(udaemon, updates):
     _check(udaemon)
     r = udaemon.api.ok("POST", "/api/updates/download", {"components": ["cli"]}, timeout=120)
-    assert r.get("ok"), r
+    assert r.get("success"), r
     wait_until(lambda: _component(udaemon.api.ok("GET", "/api/updates/status"), "cli").get("downloaded"), 60, "cli 내려받음")
 
 
@@ -118,7 +119,7 @@ def test_release_build_does_not_trust_mock_key(sandbox, updates, daemon_factory)
     sandbox.write_config({"updates": {"relay_url": updates.url, "auto_download": False, "auto_check": False}})
     d = daemon_factory()
     body = _check(d)
-    assert not body["ok"], f"일반 빌드가 mock 키 서명을 믿음: {body}"
+    assert not body["success"], f"일반 빌드가 mock 키 서명을 믿음: {body}"
 
 
 def test_daemon_started_update_relaunches_the_open_gui_once(sandbox, updates, daemon_factory, xdisplay):

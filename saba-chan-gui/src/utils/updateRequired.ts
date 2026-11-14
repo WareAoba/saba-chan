@@ -6,41 +6,26 @@ import type { ApiBody } from '../types/daemon';
  *
  * - 릴레이: 디스코드 상태의 lastErrorCode "agent_too_old" + minVersion
  * - 모듈: module_dependency_unsatisfied 중 saba-core 요구(`"saba-core >=0.1.10 (installed 0.1.9)"`), module_schema_unsupported
- * - 익스텐션: app_version_unsatisfied(related[0] = 요구 버전), component_version_unsatisfied 중 saba-core(related[1])
+ * - 익스텐션: app_version_unsatisfied, component_version_unsatisfied 중 saba-core
+ *
+ * 요구 버전은 데몬이 `required_core`로 싣는다 (사바쨩이 모자란 거절에만 있다)
  */
-
-const CORE = 'saba-core';
-
-/** ">=0.1.10" → "0.1.10" */
-const bare = (requirement?: string | null) =>
-    String(requirement || '')
-        .replace(/^\s*>=\s*/, '')
-        .trim();
-
-/** missing_dependencies 중 saba-core 요구 버전 */
-const coreRequirement = (deps?: string[] | null) => {
-    const dep = (deps || []).find((d) => typeof d === 'string' && d.startsWith(`${CORE} `));
-    return dep ? bare(dep.slice(CORE.length + 1).split(' (')[0]) : null;
-};
 
 export const updateRequiredText = (t: TFunction, body?: ApiBody | null, name = '') => {
     if (!body) return null;
     if (body.lastErrorCode === 'agent_too_old') {
         return t('update_required.relay', { version: body.minVersion || '?' });
     }
+    const version: string | null = body.required_core || null;
     switch (body.error_code) {
-        case 'module_dependency_unsatisfied': {
-            const version = coreRequirement(body.missing_dependencies);
+        case 'module_dependency_unsatisfied':
             return version ? t('update_required.module', { name, version }) : null;
-        }
         case 'module_schema_unsupported':
             return t('update_required.module_newer', { name });
         case 'app_version_unsatisfied':
-            return t('update_required.extension', { name, version: bare(body.related?.[0]) || '?' });
+            return t('update_required.extension', { name, version: version || '?' });
         case 'component_version_unsatisfied':
-            return body.related?.[0] === CORE
-                ? t('update_required.extension', { name, version: bare(body.related[1]) || '?' })
-                : null;
+            return version ? t('update_required.extension', { name, version }) : null;
         default:
             return null;
     }

@@ -31,9 +31,9 @@ describe('릴레이가 거절한 상태 보고', () => {
     });
 
     it('브리지가 거절 이유를 넘기고, 스토어는 다시 받아 주면 지운다', async () => {
-        const invoke = vi.fn().mockResolvedValue({ status: 200, data: { running: true, heartbeatRejected: TOO_MANY } });
+        const invoke = vi.fn().mockResolvedValue({ status: 200, data: { state: 'rejected', running: true, connected: false, heartbeatRejected: TOO_MANY } });
         const { api } = createApi({ invoke, hub: { dispatch: vi.fn() } as never });
-        expect(await api.discordBotStatus()).toEqual({ status: 'rejected', running: true, reason: TOO_MANY });
+        expect(await api.discordBotStatus()).toEqual({ status: 'rejected', running: true, reason: TOO_MANY, link: { connected: false, error: '', heard: false } });
 
         window.api = {
             discordBotStatus: vi.fn().mockResolvedValue({ status: 'rejected', running: true, reason: TOO_MANY }),
@@ -44,7 +44,7 @@ describe('릴레이가 거절한 상태 보고', () => {
         expect(useDiscordStore.getState().discordHeartbeatReject).toEqual(TOO_MANY);
         expect(useDiscordStore.getState().discordAgentMinVersion).toBeNull();
 
-        vi.mocked(window.api.discordBotStatus).mockResolvedValue('running');
+        vi.mocked(window.api.discordBotStatus).mockResolvedValue({ status: 'running', running: true, link: { connected: false, error: '', heard: true } });
         await useDiscordStore.getState().checkStatus();
         expect(useDiscordStore.getState().discordHeartbeatReject).toBeNull();
     });

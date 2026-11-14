@@ -35,7 +35,7 @@ fn maker_info(paths: Paths) -> Value {
     let python = paths.python.filter(|p| p.is_file());
     let python_version = python.as_deref().and_then(venv_python_version);
     json!({
-        "ok": true,
+        "success": true,
         "saba_core": {
             "version": env!("CARGO_PKG_VERSION"),
             "path": paths.saba_core,
@@ -47,7 +47,7 @@ fn maker_info(paths: Paths) -> Value {
         },
         "shared_libs": paths.shared_libs,
         "modules_dir": paths.modules_dir,
-        "schema_versions": crate::supervisor::module_loader::supported_schema_versions(),
+        "schema_versions": crate::module_loader::supported_schema_versions(),
         "repo": MAKER_REPO,
         "guide": MAKER_GUIDE,
     })

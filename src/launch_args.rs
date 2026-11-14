@@ -5,7 +5,7 @@
 //! 필드 값으로 읽고, 형식은 `crate::validator`로 검사한다. 실제 실행 줄은 언제나 모듈의
 //! `get_launch_command`가 만든다 (이 파일은 줄을 만들지 않는다).
 
-use crate::supervisor::module_loader::SettingField;
+use crate::module_loader::SettingField;
 use serde::Serialize;
 use serde_json::{Map, Value};
 

@@ -27,7 +27,7 @@ export function InfoPanel({ api, server, moduleData }: Omit<ServerPanelProps, 'r
         server.port && [tg('shell.info_port'), String(server.port)],
         [tg('shell.info_id'), server.id],
     ].filter(Boolean) as [string, string][];
-    const moreRows = [moduleData && [tg('shell.info_protocol'), protocolLabel(server, moduleData)]].filter(
+    const moreRows = [moduleData && [tg('shell.info_protocol'), protocolLabel(server)]].filter(
         Boolean,
     ) as [string, string][];
     const list = (items: [string, string][]) => (

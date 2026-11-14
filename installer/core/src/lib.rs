@@ -899,7 +899,7 @@ fn found_installs<'a>(installs: &Path, entries: &'a [(String, String)]) -> impl 
         .into_iter()
         .chain(entries.iter().map(|(_, loc)| loc.clone()))
         .map(PathBuf::from)
-        .filter(|dir| dir.join(saba_chan_updater_lib::uninstall_entry::CORE_EXE).is_file())
+        .filter(|dir| dir.join(saba_chan_updater_lib::CORE_EXE).is_file())
 }
 
 fn installs_file() -> PathBuf {
@@ -1231,7 +1231,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let dir = tmp.path().join("install");
         std::fs::create_dir_all(dir.join("locales")).unwrap();
-        let exe = saba_chan_updater_lib::uninstall_entry::CORE_EXE;
+        let exe = saba_chan_updater_lib::CORE_EXE;
         for (name, body) in [(exe, "old core"), ("locales/ko.json", "old ko")] {
             std::fs::write(dir.join(name), body).unwrap();
         }
@@ -1600,7 +1600,7 @@ mod tests {
         for dir in [&here, &there, &gone] {
             std::fs::create_dir_all(dir).unwrap();
         }
-        std::fs::write(here.join(saba_chan_updater_lib::uninstall_entry::CORE_EXE), b"").unwrap();
+        std::fs::write(here.join(saba_chan_updater_lib::CORE_EXE), b"").unwrap();
         let installs = tmp.path().join("installs.json");
         std::fs::write(&installs, serde_json::to_vec(&[&here, &gone]).unwrap()).unwrap();
 

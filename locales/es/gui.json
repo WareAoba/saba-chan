@@ -391,7 +391,6 @@
     "title": "Configuración",
     "general_tab": "Configuración General",
     "protocol_title": "Método de Control del Servidor",
-    "protocol_single_only": "Este juego solo se controla mediante <strong>{{protocol}}</strong>.",
     "no_settings": "Sin ajustes adicionales en este módulo",
     "module_aliases_title": "Alias del Módulo (Nombres para llamar a este servidor en Discord)",
     "module_aliases_hint": "Separe varios alias con espacios. Ej: {{module}} pw palworld",

@@ -4,10 +4,8 @@ import { initReactI18next } from 'react-i18next';
 import enCommon from '../../locales/en/common.json';
 import enDaemon from '../../locales/en/daemon.json';
 import enGui from '../../locales/en/gui.json';
+import { pickLanguage, SUPPORTED_LANGUAGES } from './utils/languages';
 import { createLocaleBackend, createLocalesVersionWatcher } from './utils/localeBackend';
-
-// Single Source of Truth — Rust constants 모듈과 동일한 목록
-const SUPPORTED_LANGUAGES = ['en', 'ko', 'ja', 'zh-CN', 'zh-TW', 'es', 'pt-BR', 'ru', 'de', 'fr'];
 
 const localeFiles = import.meta.glob(
     ['../../locales/*/common.json', '../../locales/*/gui.json', '../../locales/*/daemon.json', '!../../locales/en/*'],
@@ -62,26 +60,10 @@ const getInitialLanguage = async () => {
         console.warn('Failed to get saved language:', error);
     }
 
-    // 3. 시스템 언어 또는 기본값
-    const browserLang = navigator.language;
-
-    // 정확한 매칭 시도
-    if (SUPPORTED_LANGUAGES.includes(browserLang)) {
-        console.log('Using browser language:', browserLang);
-        return browserLang;
-    }
-
-    // 언어 코드만으로 매칭 시도
-    const baseLang = browserLang.split('-')[0];
-    const matched = SUPPORTED_LANGUAGES.find((lang) => lang.startsWith(baseLang));
-    if (matched) {
-        console.log('Using matched language:', matched);
-        return matched;
-    }
-
-    const defaultLang = 'en';
-    console.log('Using default language:', defaultLang);
-    return defaultLang;
+    // 3. 시스템 언어(데몬·셸과 같은 해석), 맞는 것이 없으면 en
+    const matched = pickLanguage([navigator.language]);
+    console.log('Using browser language:', matched);
+    return matched;
 };
 
 // 캐시된 언어를 동기적으로 읽어 초기 렌더 시 올바른 언어로 표시

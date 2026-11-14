@@ -8,7 +8,7 @@ import RemotePathPicker from '../components/shell/RemotePathPicker';
 
 const listing: Record<string, Record<string, unknown>> = {
     '': {
-        ok: true,
+        success: true,
         path: null,
         parent: null,
         home: '/home/me',
@@ -16,7 +16,7 @@ const listing: Record<string, Record<string, unknown>> = {
         entries: [{ name: '/', path: '/', dir: true }],
     },
     '/home/me': {
-        ok: true,
+        success: true,
         path: '/home/me',
         parent: '/home',
         home: '/home/me',
@@ -27,19 +27,19 @@ const listing: Record<string, Record<string, unknown>> = {
         ],
     },
     '/home/me/worlds': {
-        ok: true,
+        success: true,
         path: '/home/me/worlds',
         parent: '/home/me',
         home: '/home/me',
         sep: '/',
         entries: [],
     },
-    '/home': { ok: false, error_code: 'browse_denied' },
+    '/home': { success: false, error_code: 'browse_denied' },
     // 파일 경로를 보면 데몬은 폴더가 아니라고 답한다 (그 이름이 이미 있다)
-    '/home/me/backup.zip': { ok: false, error_code: 'browse_not_a_folder' },
-    '/home/me/.old.zip': { ok: false, error_code: 'browse_not_a_folder' },
+    '/home/me/backup.zip': { success: false, error_code: 'browse_not_a_folder' },
+    '/home/me/.old.zip': { success: false, error_code: 'browse_not_a_folder' },
 };
-const browse = (path?: string | null) => listing[path || ''] ?? { ok: false, error_code: 'browse_not_found' };
+const browse = (path?: string | null) => listing[path || ''] ?? { success: false, error_code: 'browse_not_found' };
 
 describe('원격 경로 고르기 창', () => {
     beforeEach(() => {
@@ -176,7 +176,7 @@ describe('원격 경로 고르기 창', () => {
                 await new Promise((r) => {
                     release = r;
                 });
-                return { ok: true, path: '/slow', parent: '/', home: '/home/me', sep: '/', entries: [] };
+                return { success: true, path: '/slow', parent: '/', home: '/home/me', sep: '/', entries: [] };
             }
             return browse(path);
         });
@@ -205,7 +205,7 @@ describe('원격 경로 고르기 창', () => {
                 await new Promise((r) => {
                     release = r;
                 });
-                return { ok: true, path: '/slow', parent: '/', home: '/home/me', sep: '/', entries: [] };
+                return { success: true, path: '/slow', parent: '/', home: '/home/me', sep: '/', entries: [] };
             }
             return browse(path);
         });

@@ -51,18 +51,4 @@ describe('포트 충돌 강제 정지 알림', () => {
         expect(b.port_conflict_stops).toHaveLength(0);
         expect(invoke.mock.calls.filter(([cmd]) => cmd === 'notify')).toHaveLength(1);
     });
-
-    it('id가 없는 옛 데몬의 알림도 그대로 알리고 커서는 움직이지 않는다', async () => {
-        const invoke = vi.fn(async (cmd: string, _args?: Record<string, unknown>) =>
-            cmd === 'daemon_request'
-                ? { status: 200, data: { servers: [], port_conflict_stops: [{ ...stop(0, 1), id: undefined }] } }
-                : undefined,
-        );
-        const { api } = createApi({ invoke, hub: { dispatch: vi.fn() } as never });
-        await api.serverList();
-        await api.serverList();
-        const paths = invoke.mock.calls.filter(([cmd]) => cmd === 'daemon_request').map(([, a]) => a!.path);
-        expect(paths).toEqual(['/api/servers?notices_after=0', '/api/servers?notices_after=0']);
-        expect(invoke.mock.calls.filter(([cmd]) => cmd === 'notify')).toHaveLength(2);
-    });
 });

@@ -679,6 +679,7 @@
   "run": {
     "confirm_danger": "{{label}} on {{name}} can't be undone. Run it?",
     "missing_arg": "{{label}} missing. Usage: {{usage}}",
+    "must_be_boolean": "{{label}} must be true or false (on/off, yes/no).",
     "must_be_number": "{{label}} must be a number.",
     "must_be_one_of": "{{label}} must be one of: {{options}}",
     "no_commands": "This game defines no commands. Send directly to the console: saba-chan-cli server send NAME \"line\"",

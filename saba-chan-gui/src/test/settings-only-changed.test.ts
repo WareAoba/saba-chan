@@ -22,6 +22,7 @@ const srv = {
     module: 'pal',
     status: 'stopped',
     module_settings: { description: '옛 설명', max_players: 8, pvp: false, auto_restart: true },
+    stored: { description: '옛 설명', max_players: 8, pvp: false, auto_restart: true },
     extension_data: { cpu_limit: 2, note: 'x' },
 };
 

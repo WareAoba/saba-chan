@@ -114,9 +114,48 @@ color = 'info'
     fs::write(test_mod.join("lifecycle.py"), "# minimal\n")
         .expect("write test lifecycle.py");
 
+    // REST 접속값이 든 설정을 `[protocols.rest]`로 밝히는 모듈
+    let rest_mod = tmp.join("rest-module");
+    fs::create_dir_all(&rest_mod).expect("create rest-module dir");
+    fs::write(
+        rest_mod.join("module.toml"),
+        r#"[module]
+name = "rest-module"
+version = "0.0.1"
+description = "REST settings fixture"
+author = "ci"
+game_name = "RestGame"
+display_name = "Rest Module"
+entry = "lifecycle.py"
+
+[protocols]
+supported = ["rest"]
+primary = "rest"
+
+[protocols.rest]
+port_setting = "api_port"
+password_setting = "admin_pw"
+username = "operator"
+
+[[settings.fields]]
+name = "api_port"
+label = "API Port"
+type = "number"
+port = true
+default = 8300
+
+[[settings.fields]]
+name = "admin_pw"
+label = "Admin Password"
+type = "password"
+"#,
+    )
+    .expect("write rest module.toml");
+    fs::write(rest_mod.join("lifecycle.py"), "# minimal\n").expect("write rest lifecycle.py");
+
     // edition 2024: 환경 변수 쓰기는 unsafe다. 테스트 준비에서만 쓴다
     unsafe { std::env::set_var("SABA_MODULES_PATH", tmp.to_str().unwrap()) };
-    for name in ["e2e-mock", "test-module"] {
+    for name in ["e2e-mock", "test-module", "rest-module"] {
         saba_core::sandbox::set_consent(saba_core::sandbox::Consent::Unisolated, &format!("module-{name}"), true)
             .expect("consent to the copied test module");
     }
@@ -1201,6 +1240,39 @@ async fn e2e_version_backfill_on_startup() {
 // 게임 명령 단일 경로 (C7)
 // ═══════════════════════════════════════════════════════
 
+/// D3: REST 접속값은 모듈이 `[protocols.rest]`로 가리킨 설정(`module_settings`)에만 있다. 데몬은 그 선언으로 서버 목록의
+/// 접속값을 만들고, 인스턴스 최상위에는 `rest_*` 칸을 두지 않는다
+#[tokio::test]
+async fn rest_connection_values_come_from_the_settings_the_module_declares() {
+    let (base_url, _sup, task, m_dir, i_dir, d_dir) = boot_e2e_ipc().await;
+    let client = saba_chan_updater_lib::tls::http_client_builder().build().unwrap();
+    let name = format!("rest-e2e-{}", pick_free_port());
+    let created: Value = client.post(format!("{}/api/instances", base_url))
+        .json(&json!({ "name": name, "module_name": "rest-module" }))
+        .send().await.unwrap().json().await.unwrap();
+    let id = created["id"].as_str().expect("instance id").to_string();
+    wait_for_provision(&base_url, &client, &name).await;
+
+    let listed = || async {
+        let servers: Value = client.get(format!("{}/api/servers", base_url)).send().await.unwrap().json().await.unwrap();
+        servers["servers"].as_array().unwrap().iter().find(|s| s["id"] == id.as_str()).cloned().expect("listed")
+    };
+    let me = listed().await;
+    assert_eq!((&me["rest_port"], &me["rest_username"]), (&json!(8300), &json!("operator")), "module defaults: {me}");
+
+    let ok = client.patch(format!("{}/api/instance/{}", base_url, id))
+        .json(&json!({ "api_port": 8301, "admin_pw": "pw" })).send().await.unwrap();
+    assert!(ok.status().is_success(), "{}", ok.status());
+    let me = listed().await;
+    assert_eq!((&me["rest_port"], &me["rest_password"]), (&json!(8301), &json!("pw")), "{me}");
+    let inst: Value = client.get(format!("{}/api/instance/{}", base_url, id)).send().await.unwrap().json().await.unwrap();
+    assert!(inst.get("rest_port").is_none() && inst.get("rest_password").is_none(), "{inst}");
+    assert_eq!(inst["module_settings"]["api_port"], json!(8301));
+
+    task.abort();
+    cleanup_dirs(&m_dir, &i_dir, &d_dir);
+}
+
 /// `/api/instance/:id/command`가 module.toml 정의로 명령을 해석·검증하고,
 /// 실패하면 오류 코드와 모듈 `[errors]` 문구를 돌려준다.
 #[tokio::test]
@@ -1253,7 +1325,9 @@ async fn persistent_module_reuses_one_worker_and_falls_back_to_one_shot_when_it_
     }
     let _extension_list = EXTENSION_LIST.lock().await;
     setup_e2e_modules_dir();
-    let dir = tempfile::Builder::new().prefix("e2e-worker-").tempdir_in(saba_core::plugin::resolve_modules_dir()).unwrap();
+    // 점으로 시작하는 폴더는 모듈 탐색이 건너뛴다: 함께 도는 다른 시험의 데몬이 이 모듈을 찾아 부르면(`functions` 등)
+    // 죽은 작업자를 그 호출이 먼저 만나 아래 단발 판정이 흔들린다
+    let dir = tempfile::Builder::new().prefix(".e2e-worker-").tempdir_in(saba_core::plugin::resolve_modules_dir()).unwrap();
     let name = dir.path().file_name().unwrap().to_string_lossy().into_owned();
     fs::write(
         dir.path().join("module.toml"),

@@ -117,7 +117,7 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
             // 읽은 자리 (줄 번호·버퍼 세대·PID·디스크 기록)
             let feed = newConsoleFeed();
             let polling = false;
-            // 마지막 답이 데몬이 붙잡았다 온 것인가 (옛 데몬은 wait를 모르고 바로 답한다)
+            // 마지막 답이 데몬이 붙잡았다 온 것인가 (`waits`, 바로 답했으면 아니다)
             let daemonWaits = false;
             // 스트림을 여는 중이거나 열려 있다 (그동안은 주기 조회를 쉰다)
             let streaming = false;
@@ -182,7 +182,7 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
             const startStream = async () => {
                 streaming = true;
                 const gen = ++streamGen;
-                // 스트림이 없는 브리지(옛 셸·개발용 가짜 API)도 null로 받는다
+                // 스트림이 없는 브리지(개발용 가짜 API)도 null로 받는다
                 const open = () =>
                     window.api.managedConsoleStream(
                         instanceId,
@@ -237,7 +237,7 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
                     closeConsole(instanceId);
                     return;
                 }
-                // 화면에 보이면 스트림으로 받는다 (스트림이 없는 데몬·브리지는 아래 기다리는 조회)
+                // 화면에 보이면 스트림으로 받는다 (열지 못했으면 아래 기다리는 조회)
                 if (watched && !polling && Date.now() >= streamRetryAt) {
                     void startStream();
                     return;

@@ -18,7 +18,7 @@ export async function announceLastUpdateResult(t: TFunction) {
     if (!window.api?.updaterLastResult || !window.__sabaNotice) return null;
     try {
         const res = await window.api.updaterLastResult({ includeSeen: true });
-        if (!res?.ok || !res.result) return null;
+        if (!res?.success || !res.result) return null;
         if (res.result.result === 'reverted') {
             announceRevert(res.result, t);
             return res;

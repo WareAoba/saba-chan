@@ -1,6 +1,6 @@
 //! 원격 데몬이 릴레이에 하는 일 (05 §4.4 (j)): 주소 올리기·내리기, 받은 연결표 확인. 노드 토큰으로 서명한다
 
-use crate::ipc::handlers::relay::{relay_client, signed_request};
+use crate::relay_client::{relay_client, signed_request};
 use serde::Deserialize;
 use serde_json::{json, Value};
 

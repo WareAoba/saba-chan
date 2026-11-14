@@ -17,7 +17,7 @@ describe('업데이트 결과 안내 언어', () => {
 
     it('언어 파일이 오기 전에 알림을 남겼어도 보일 때는 지금 언어로 보인다', async () => {
         window.api.updaterLastResult = vi.fn().mockResolvedValue({
-            ok: true,
+            success: true,
             version: '0.1.7',
             result: { success: true, updated_components: ['gui'], failed: [] },
         });

@@ -14,15 +14,14 @@ import SabaStorage from '../components/Modals/SabaStorage';
 const setConfigSpy = vi.fn();
 
 beforeEach(() => {
-    setConfigSpy.mockReset().mockResolvedValue({ ok: true });
+    setConfigSpy.mockReset().mockResolvedValue({ success: true });
     window.api = new Proxy<Record<string | symbol, unknown>>(
         {
             updaterSetConfig: setConfigSpy,
             updaterGetConfig: vi.fn().mockResolvedValue({ config: { enabled: true, channel: 'rc' } }),
             // 캐시가 있으면 열 때 릴레이에 다시 묻지 않는다
-            updaterStatus: vi.fn().mockResolvedValue({ ok: true, components: [{ component: 'saba-core', current_version: '0.1.11' }] }),
-            updaterCheck: vi.fn().mockResolvedValue({ ok: true, components: [] }),
-            updaterDownloadProgress: vi.fn().mockResolvedValue({ ok: true, active: false }),
+            updaterStatus: vi.fn().mockResolvedValue({ success: true, components: [{ component: 'saba-core', current_version: '0.1.11' }] }),
+            updaterCheck: vi.fn().mockResolvedValue({ success: true, components: [] }),
         },
         {
             get(target, prop) {
@@ -65,7 +64,7 @@ describe('업데이트 채널', () => {
     });
 
     it('저장에 실패하면 이전 채널로 되돌린다', async () => {
-        setConfigSpy.mockResolvedValue({ ok: false, error: 'nope' });
+        setConfigSpy.mockResolvedValue({ success: false, error: 'nope' });
         render(<SabaStorage />);
         const box = await screen.findByRole('combobox', { name: 'Update channel' });
         await waitFor(() => expect(box.textContent).toContain('Preview'));
@@ -79,7 +78,7 @@ describe('업데이트 채널', () => {
 
     it('같은 판의 정식을 기다리는 중이면(stable_wait) 채널 아래에 한 줄로 보인다', async () => {
         window.api.updaterStatus = vi.fn().mockResolvedValue({
-            ok: true,
+            success: true,
             components: [{ component: 'saba-core', current_version: '0.1.14-beta.2' }],
             stable_wait: '0.1.14',
         }) as never;

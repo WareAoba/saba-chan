@@ -414,7 +414,7 @@ const OPTIONAL: &[(&str, &str)] = &[
     ("validate", "server validate"),
 ];
 
-/// 모듈이 이 lifecycle 함수를 구현하는지. `functions`가 null이거나 없으면(옛 데몬·옛 모듈) 안다고 본다
+/// 모듈이 이 lifecycle 함수를 구현하는지. `functions`가 null이거나 없으면(옛 모듈) 안다고 본다
 pub fn supported(module: &Value, function: &str) -> bool {
     match module.get("functions").and_then(Value::as_array) {
         Some(list) => list.iter().any(|f| f.as_str() == Some(function)),
@@ -505,7 +505,7 @@ mod tests {
         let newer = json!({ "path": "/m/ark", "error": "x", "error_code": "module_schema_unsupported", "required": 2 });
         assert_eq!(failed_lines(&newer), vec![t!("update_required.module_newer", name = "ark")]);
         let core = json!({ "path": "/m/pal", "error": "x", "error_code": "module_dependency_unsatisfied", "module": "palworld",
-            "missing_dependencies": ["saba-core >=0.1.10 (installed 0.1.9)"] });
+            "missing_dependencies": ["saba-core >=0.1.10 (installed 0.1.9)"], "required_core": "0.1.10" });
         assert_eq!(failed_lines(&core), vec![t!("update_required.module", name = "palworld", version = "0.1.10")]);
         let other = json!({ "path": "/m/zz", "error": "boom" });
         assert_eq!(
@@ -517,18 +517,17 @@ mod tests {
     /// 모듈 설치 때 데몬이 켠 익스텐션과 준비하지 못한 것을 알린다. 익스텐션이 필요 없는 모듈은 아무 말도 없다
     #[test]
     fn module_install_reports_the_extensions_the_daemon_set_up() {
-        let r = json!({ "ok": true, "extensions": {
+        let r = json!({ "success": true, "extensions": {
             "installed": ["ue4-ini"], "enabled": ["steamcmd", "ue4-ini"],
-            "failed": [{ "id": "rcon", "error": "Cannot enable 'rcon'", "error_code": "app_version_unsatisfied", "related": ["999.0.0"] }]
+            "failed": [{ "id": "rcon", "error": "Cannot enable 'rcon'", "error_code": "app_version_unsatisfied", "related": ["999.0.0"], "required_core": "999.0.0" }]
         }});
         let (enabled, failed) = extension_notes(&r);
         assert_eq!(enabled, Some(t!("module.extensions_enabled", ids = "steamcmd, ue4-ini")));
         let why = t!("update_required.extension", name = "rcon", version = "999.0.0");
         assert_eq!(failed, vec![t!("module.extension_failed", id = "rcon", error = why)]);
 
-        assert_eq!(extension_notes(&json!({ "ok": true, "extensions": { "installed": [], "enabled": [], "failed": [] } })), (None, vec![]));
-        assert_eq!(extension_notes(&json!({ "ok": true })), (None, vec![]), "older daemon");
-    }
+        assert_eq!(extension_notes(&json!({ "success": true, "extensions": { "installed": [], "enabled": [], "failed": [] } })), (None, vec![]));
+            }
 
     /// 모듈이 밝힌 함수 목록(MK1)에 없는 선택 함수의 명령만 지원하지 않음으로 보인다. 목록을 모르면(null·없음) 아무것도 숨기지 않는다
     #[test]

@@ -44,7 +44,7 @@ function createApiMock(overrides: Record<string, unknown> = {}): typeof window.a
             musicEnabled: true,
         }),
         botConfigSave: vi.fn().mockResolvedValue({ success: true }),
-        discordBotStatus: vi.fn().mockResolvedValue('stopped'),
+        discordBotStatus: vi.fn().mockResolvedValue({ status: 'stopped', running: false, link: { connected: false, error: '', heard: true } }),
         discordBotStart: vi.fn().mockResolvedValue({ success: true }),
         discordBotStop: vi.fn().mockResolvedValue({ success: true }),
         daemonStatus: vi.fn().mockResolvedValue({ running: true }),
@@ -537,7 +537,7 @@ describe('Discord 릴레이 에이전트 라이프사이클', () => {
                 moduleAliases: {},
                 commandAliases: {},
             }),
-            discordBotStatus: vi.fn().mockResolvedValue('stopped'),
+            discordBotStatus: vi.fn().mockResolvedValue({ status: 'stopped', running: false, link: { connected: false, error: '', heard: true } }),
         });
 
         await act(async () => {
@@ -561,7 +561,7 @@ describe('Discord 릴레이 에이전트 라이프사이클', () => {
                 moduleAliases: {},
                 commandAliases: {},
             }),
-            discordBotStatus: vi.fn().mockResolvedValue('running'),
+            discordBotStatus: vi.fn().mockResolvedValue({ status: 'running', running: true, link: { connected: false, error: '', heard: true } }),
             relayCheckHostStatus: vi.fn().mockResolvedValue({ online: true }),
         });
 
@@ -779,7 +779,7 @@ describe('풀 라이프사이클 시나리오', () => {
                 moduleAliases: { minecraft: 'mc' },
                 commandAliases: {},
             }),
-            discordBotStatus: vi.fn().mockResolvedValue('stopped'),
+            discordBotStatus: vi.fn().mockResolvedValue({ status: 'stopped', running: false, link: { connected: false, error: '', heard: true } }),
         });
 
         await act(async () => {
@@ -824,7 +824,7 @@ describe('업데이트 알림 이벤트', () => {
                 updateHandler = handler;
             }),
             updaterLastResult: vi.fn().mockResolvedValue({
-                ok: true,
+                success: true,
                 version: '0.3.0',
                 result: { success: true, updated_components: ['saba-core'], failed: [] },
             }),
@@ -895,14 +895,9 @@ describe('게임 서버 업데이트 배지', () => {
                             install_method_steamcmd: true,
                             steamcmd_app_id: 2394010,
                         },
+                        update_check: { update_available: true, local_buildid: '12345', remote_buildid: '12346', app_id: 2394010 },
                     },
                 ],
-            }),
-            instanceCheckUpdate: vi.fn().mockResolvedValue({
-                update_available: true,
-                local_buildid: '12345',
-                remote_buildid: '12346',
-                app_id: 2394010,
             }),
             instanceApplyUpdate: vi.fn().mockResolvedValue({ success: true }),
         });
@@ -936,9 +931,6 @@ describe('게임 서버 업데이트 배지', () => {
             },
             { timeout: 3000 },
         );
-
-        // instanceCheckUpdate가 호출되었는지 확인
-        expect(window.api.instanceCheckUpdate).toHaveBeenCalledWith('steam-1');
     }, 20000);
 
     it('업데이트 버튼 클릭 시 instanceApplyUpdate를 호출한다', async () => {
@@ -955,14 +947,9 @@ describe('게임 서버 업데이트 배지', () => {
                             install_method_steamcmd: true,
                             steamcmd_app_id: 2394010,
                         },
+                        update_check: { update_available: true, local_buildid: '100', remote_buildid: '200', app_id: 2394010 },
                     },
                 ],
-            }),
-            instanceCheckUpdate: vi.fn().mockResolvedValue({
-                update_available: true,
-                local_buildid: '100',
-                remote_buildid: '200',
-                app_id: 2394010,
             }),
             instanceApplyUpdate: applyUpdateMock,
         });
@@ -1008,11 +995,9 @@ describe('게임 서버 업데이트 배지', () => {
                             install_method_steamcmd: true,
                             steamcmd_app_id: 380870,
                         },
+                        update_check: { update_available: false },
                     },
                 ],
-            }),
-            instanceCheckUpdate: vi.fn().mockResolvedValue({
-                update_available: false,
             }),
         });
 
@@ -1031,36 +1016,6 @@ describe('게임 서버 업데이트 배지', () => {
         await new Promise((r) => setTimeout(r, 2000));
         const badge = document.querySelector('.server-row-flag');
         expect(badge).toBeNull();
-    }, 20000);
-
-    it('extension_data가 없는 인스턴스는 체크하지 않는다', async () => {
-        window.api = createApiMock({
-            serverList: vi.fn().mockResolvedValue({
-                servers: [
-                    {
-                        id: 'no-steam',
-                        name: 'MC-Vanilla',
-                        module: 'minecraft',
-                        status: 'stopped',
-                    },
-                ],
-            }),
-            instanceCheckUpdate: vi.fn(),
-        });
-
-        await act(async () => {
-            render(<App />);
-        });
-
-        await waitFor(
-            () => {
-                expect(screen.getAllByText('MC-Vanilla').length).toBeGreaterThan(0);
-            },
-            { timeout: 10000 },
-        );
-
-        await new Promise((r) => setTimeout(r, 2000));
-        expect(window.api.instanceCheckUpdate).not.toHaveBeenCalled();
     }, 20000);
 });
 

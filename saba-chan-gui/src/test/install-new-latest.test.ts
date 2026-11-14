@@ -34,7 +34,7 @@ async function installNew(install: Record<string, unknown>) {
 // 서버 파일이 없을 때 "새로 설치"는 최신 버전을 데몬이 그 인스턴스 설정(서버 종류)으로 고르게 맡긴다 (L23)
 describe('서버 파일이 없을 때 새로 설치', () => {
     it('버전을 묻지 않고 instance_id를 보내며, 데몬이 고른 버전을 그 게임 이름과 알린다', async () => {
-        const toast = await installNew({ success: true, version: '1.21.4', install_path: '/srv/a', java_warning: 'x' });
+        const toast = await installNew({ success: true, version: '1.21.4', install_path: '/srv/a', warning: 'x' });
         expect(window.api.moduleListVersions).not.toHaveBeenCalled();
         expect(window.api.moduleInstallServer).toHaveBeenCalledWith('game', {
             instance_id: 'a',

@@ -1,11 +1,11 @@
 //! 로그인할 때 자동 실행 API (`saba_chan_updater_lib::autostart`)
 //!
-//! - `GET /api/system/autostart` — `{ok, supported, mode: "off"|"daemon"|"full", service, lingering}` (OS에 등록된 항목을 읽는다).
+//! - `GET /api/system/autostart` — `{success, supported, mode: "off"|"daemon"|"full", service, lingering}` (OS에 등록된 항목을 읽는다).
 //!   `service`: 데몬을 바로 등록했다(GUI 없는 리눅스의 systemd 사용자 서비스, 맥의 LaunchAgent). `lingering`: 로그인하지 않아도 부팅할 때 돈다(리눅스가 아니면 null)
 //! - `PUT /api/system/autostart` `{mode}` — 이 설치 폴더의 실행 파일로 등록하거나 지운다.
-//!   실패는 HTTP 200 `{ok: false, error_code: "autostart_<코드>", error}`
+//!   실패는 `{success: false, error_code: "autostart_<코드>", error}` (모르는 모드 400, 그 밖은 500)
 
-use axum::{extract::State, response::IntoResponse, Json};
+use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use saba_chan_updater_lib::autostart::{self, AutostartError, Mode};
 use serde::Deserialize;
 use serde_json::json;
@@ -16,7 +16,7 @@ use super::super::IPCServer;
 fn status() -> serde_json::Value {
     let service = autostart::read().is_some_and(|e| e.is_service() && e.program.is_file());
     json!({
-        "ok": true,
+        "success": true,
         "supported": autostart::supported(),
         "mode": autostart::current_mode().as_str(),
         "service": service,
@@ -25,7 +25,8 @@ fn status() -> serde_json::Value {
 }
 
 fn refused(e: AutostartError) -> axum::response::Response {
-    Json(json!({ "ok": false, "error_code": format!("autostart_{}", e.code), "error": e.detail })).into_response()
+    let status = if e.code == "unknown_mode" { StatusCode::BAD_REQUEST } else { StatusCode::INTERNAL_SERVER_ERROR };
+    super::error(status, &format!("autostart_{}", e.code), e.detail)
 }
 
 /// GET /api/system/autostart

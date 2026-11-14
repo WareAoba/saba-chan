@@ -95,7 +95,6 @@ export function AddInstanceModal({
                 {shownMode === 'new' && (
                     <AddInstanceNewServer
                         extensions={extensions}
-                        servers={servers}
                         onAddServer={onAddServer}
                         onMigrate={() => setMode('migrate')}
                         extMethods={extMethods}

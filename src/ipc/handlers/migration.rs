@@ -25,6 +25,7 @@ use std::collections::{HashMap, HashSet};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
+use super::error;
 use super::super::IPCServer;
 use crate::instance::ServerInstance;
 
@@ -32,10 +33,6 @@ const FORMAT: &str = "saba-chan-export";
 const FORMAT_VERSION: u64 = 1;
 /// 읽을 항목 하나의 최대 크기 (설정·인스턴스 JSON만 들어 있다)
 const MAX_ENTRY_BYTES: u64 = 16 * 1024 * 1024;
-
-fn error(status: StatusCode, code: &str, message: impl Into<String>) -> Response {
-    (status, Json(json!({ "success": false, "error": message.into(), "error_code": code }))).into_response()
-}
 
 /// 상대 경로는 어디를 가리킬지 모호하다: 절대 경로만 받는다
 fn absolute_path(path: &str) -> Result<PathBuf, Response> {
@@ -46,10 +43,10 @@ fn absolute_path(path: &str) -> Result<PathBuf, Response> {
     Ok(p)
 }
 
-/// 비밀값을 뺀 인스턴스: REST 비밀번호와 모듈이 `password`로 선언한 설정.
+/// 비밀값을 뺀 인스턴스: 모듈이 `password`로 선언한 설정(REST 비밀번호 포함)과 옛 파일의 REST 비밀번호 칸.
 /// 모듈을 읽지 못해 설정 종류를 모르면(`types`가 None) 모듈 설정을 모두 뺀다
 pub(crate) fn strip_instance_secrets(instance: &mut ServerInstance, types: Option<&HashMap<String, String>>) {
-    instance.rest_password = None;
+    instance.legacy_rest.rest_password = None;
     match types {
         Some(types) => instance.module_settings.retain(|k, _| types.get(k).map(String::as_str) != Some("password")),
         None => instance.module_settings.clear(),
@@ -139,7 +136,7 @@ pub(crate) fn keep_local_pairing(sections: &mut Map<String, Value>) {
 
 /// zip의 노드 토큰을 이 PC에 쓸 것인가: 이 PC가 아직 페어링되지 않았을 때만
 fn takes_node_token(bundle: &Bundle) -> bool {
-    bundle.node_token.is_some() && super::relay::load_node_token().is_none()
+    bundle.node_token.is_some() && crate::relay_client::load_node_token().is_none()
 }
 
 /// 가져올 인스턴스마다 넣을지 건너뛸지
@@ -216,7 +213,7 @@ pub async fn export(State(state): State<IPCServer>, Json(req): Json<ExportReques
     };
     let config = state.config_store.portable_sections(req.secrets);
     let node_token = if req.secrets {
-        super::relay::load_node_token()
+        crate::relay_client::load_node_token()
     } else {
         None
     };
@@ -306,7 +303,7 @@ pub async fn import(State(state): State<IPCServer>, Json(req): Json<ImportReques
             // 설치·백업·복원이 쥔 인스턴스는 바꾸지 않는다. 잠금은 저장하는 동안만 쥔다
             let guard = match verdict {
                 Verdict::Skip(_) => None,
-                _ => super::backup::InstanceLock::try_take_for_writes(&inst.id),
+                _ => crate::instance::lock::InstanceLock::try_take_for_writes(&inst.id),
             };
             if guard.is_none() && !matches!(verdict, Verdict::Skip(_)) {
                 verdict = Verdict::Skip("busy");
@@ -332,6 +329,10 @@ pub async fn import(State(state): State<IPCServer>, Json(req): Json<ImportReques
             }
             if verdict == Verdict::Add { added.push(entry) } else { replaced.push(entry) }
         }
+        // 옛 버전에서 내보낸 묶음의 인스턴스 칸(REST 접속값 등)을 지금 모양으로
+        if !req.dry_run {
+            sup.migrate_settings();
+        }
     }
 
     // 이 PC가 이미 페어링돼 있으면 그 토큰을 둔다
@@ -340,7 +341,7 @@ pub async fn import(State(state): State<IPCServer>, Json(req): Json<ImportReques
         None => Value::Null,
         Some(_) if !takes => json!("kept"),
         Some(_) if req.dry_run => json!("imported"),
-        Some(token) => match super::relay::write_node_token(Some(&token)) {
+        Some(token) => match crate::relay_client::write_node_token(Some(&token)) {
             Ok(changed) => {
                 adopted = Some((token, changed));
                 json!("imported")
@@ -362,7 +363,7 @@ pub async fn import(State(state): State<IPCServer>, Json(req): Json<ImportReques
         keys
     } else {
         // 챗봇 절은 챗봇 저장과 같은 차례를 지킨다
-        let _turn = if sections.contains_key("chatbot") { Some(super::chatbot::SAVE_LOCK.lock().await) } else { None };
+        let _turn = if sections.contains_key("chatbot") { Some(crate::service::chatbot::SAVE_LOCK.lock().await) } else { None };
         match state.config_store.import_sections(sections).await {
             Ok(keys) => {
                 // 일반 설정 저장과 같이 실행 중인 포트 검사도 맞춘다
@@ -375,7 +376,7 @@ pub async fn import(State(state): State<IPCServer>, Json(req): Json<ImportReques
             Err(e) => {
                 // 토큰은 이미 저장했다: 다음 기동까지 미루지 않고 지금 그 토큰으로 잇는다
                 if let Some((token, _)) = &adopted {
-                    super::relay::adopt_node_token(&state, token, true).await;
+                    crate::relay_client::adopt_node_token(&state, token, true).await;
                 }
                 return error(StatusCode::BAD_REQUEST, "INVALID_CONFIG", e.to_string());
             }
@@ -383,7 +384,7 @@ pub async fn import(State(state): State<IPCServer>, Json(req): Json<ImportReques
     };
     // 토큰 저장 API와 같이: 가져온 토큰(과 릴레이 주소)으로 데몬 재시작 없이 연결한다. 토큰이 같아도 주소가 바뀌었을 수 있다
     if let Some((token, _)) = adopted {
-        super::relay::adopt_node_token(&state, &token, true).await;
+        crate::relay_client::adopt_node_token(&state, &token, true).await;
     }
 
     Json(json!({
@@ -413,12 +414,12 @@ mod tests {
     #[test]
     fn export_without_secrets_drops_passwords_but_keeps_other_settings() {
         let mut i = inst("a", None);
-        i.rest_password = Some("pw".into());
+        i.legacy_rest.rest_password = Some("pw".into());
         i.module_settings.insert("AdminPassword".into(), json!("secret"));
         i.module_settings.insert("port".into(), json!(25565));
         let types = HashMap::from([("AdminPassword".to_string(), "password".to_string()), ("port".to_string(), "number".to_string())]);
         strip_instance_secrets(&mut i, Some(&types));
-        assert_eq!(i.rest_password, None);
+        assert_eq!(i.legacy_rest.rest_password, None);
         assert!(!i.module_settings.contains_key("AdminPassword"));
         assert_eq!(i.module_settings.get("port"), Some(&json!(25565)));
     }
@@ -522,7 +523,7 @@ mod tests {
         new.name = "new".into();
         let bundle = Bundle { meta: meta(), config: Map::new(), instances: vec![new], node_token: None };
         let (state, path) = import_state(dir.path(), bundle, Some(old)).await;
-        let _task = super::super::backup::InstanceLock::take("held-by-import-test").unwrap();
+        let _task = crate::instance::lock::InstanceLock::take("held-by-import-test").unwrap();
         for dry in [true, false] {
             let req: ImportRequest = serde_json::from_value(json!({ "path": path, "overwrite": true, "dryRun": dry })).unwrap();
             let res = crate::ipc::internal::into_internal(import(State(state.clone()), Json(req)).await).await;
@@ -540,7 +541,7 @@ mod tests {
         config.insert("chatbot".into(), json!({}));
         let bundle = Bundle { meta: meta(), config, instances: vec![], node_token: None };
         let (state, path) = import_state(dir.path(), bundle, None).await;
-        let turn = super::super::chatbot::SAVE_LOCK.lock().await;
+        let turn = crate::service::chatbot::SAVE_LOCK.lock().await;
         let req: ImportRequest = serde_json::from_value(json!({ "path": path })).unwrap();
         let run = tokio::spawn(import(State(state), Json(req)));
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;

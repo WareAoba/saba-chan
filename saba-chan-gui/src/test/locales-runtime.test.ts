@@ -5,6 +5,7 @@
 import i18next from 'i18next';
 import { describe, expect, it, vi } from 'vitest';
 import { createApi } from '../api/createApi';
+import { createEventHub } from '../api/events';
 import { createLocaleBackend, createLocalesVersionWatcher } from '../utils/localeBackend';
 
 const embeddedKo = { title: '내장 제목', nested: { a: '내장 A', b: '내장 B' } };
@@ -103,5 +104,17 @@ describe('번역 브리지', () => {
         const { api, dispatch } = setup({ status: 200, data: { ok: true, locales_version: '0.1.14' } });
         await api.updaterStatus();
         expect(dispatch).toHaveBeenCalledWith('locales:version', '0.1.14');
+    });
+
+    // 알약이 상태를 주기로 묻지 않으므로, 데몬이 알린 상태(`update.status`)에 실린 번역 판도 알린다
+    it('데몬이 알린 업데이트 상태도 번역 판을 알린다', () => {
+        const hub = createEventHub();
+        const dispatch = vi.spyOn(hub, 'dispatch');
+        const { api } = createApi({ invoke: vi.fn(), hub });
+        const seen = vi.fn();
+        api.onUpdateEvent(seen);
+        hub.dispatch('updates:event', { type: 'update.status', data: { ok: true, locales_version: '0.1.15' } });
+        expect(dispatch).toHaveBeenCalledWith('locales:version', '0.1.15');
+        expect(seen).toHaveBeenCalledWith({ type: 'update.status', data: { ok: true, locales_version: '0.1.15' } });
     });
 });

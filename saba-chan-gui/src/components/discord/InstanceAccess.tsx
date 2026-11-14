@@ -8,6 +8,7 @@ import { Icon } from '../Icon';
 import { Popover } from '../ui/Popover';
 import { SabaToggle } from '../ui/SabaUI';
 import { Segmented } from '../ui/StatusChip';
+import { failed } from '../../utils/apiResult';
 
 /**
  * 디스코드 › 서버 › 인스턴스 메뉴의 사용 모드 (데몬 인스턴스 access·kick_players·controllers_only, 사용자 지정 2026-11-08).
@@ -23,7 +24,7 @@ export const accessOf = (server: Server): Access => (server.access === 'members'
 /** 인스턴스 설정 일부를 저장하고 화면의 서버 목록에도 넣는다. 실패하면 알리고 false */
 async function patch(server: Server, values: Partial<Server>, failKey: string, t: TFunction) {
     const res = await window.api.instanceUpdateSettings(server.id, values);
-    if (!res || res.success === false || res.error) {
+    if (failed(res)) {
         safeShowToast(t(failKey, { error: res?.error || '-' }), 'error', 5000);
         return false;
     }

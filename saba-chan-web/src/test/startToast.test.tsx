@@ -51,4 +51,9 @@ describe('웹 서버 켜기 알림', () => {
             tone: 'error',
         });
     });
+
+    it('포트 충돌로 켜지 못했으면 데몬의 영어 문장이 아니라 있는 번역 문구를 보인다', async () => {
+        const res = { success: false, error_code: 'port_conflict', error: "Cannot start 'A': port conflict detected" };
+        expect(await start(res)).toMatchObject({ message: 'Port Conflict', tone: 'error' });
+    });
 });

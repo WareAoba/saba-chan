@@ -107,7 +107,7 @@ export const useGuideStore = create<GuideState>()((set, get) => ({
             const res = (await window.api.guides(i18n.language)) as ApiBody;
             if (Array.isArray(res?.guides)) set({ guides: res.guides as GuideItem[] });
         } catch {
-            // 옛 데몬이거나 잠깐 끊김: 지난 목록을 그대로 둔다
+            // 잠깐 끊김: 지난 목록을 그대로 둔다
         }
     },
 }));

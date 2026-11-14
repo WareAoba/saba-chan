@@ -3,7 +3,7 @@ use std::path::{Component, Path, PathBuf};
 use serde_json::Value;
 
 use crate::instance::ServerInstance;
-use crate::supervisor::module_loader::ModuleMetadata;
+use crate::module_loader::ModuleMetadata;
 
 /// 없는 대상은 가장 가까운 기존 조상까지 검사한다. 허용 루트 안을 가리키는 링크도 거부한다
 pub(crate) fn checked_path(path: &Path) -> Option<PathBuf> {
@@ -302,7 +302,7 @@ mod tests {
         let outside = tmp.path().join("chosen");
         std::fs::create_dir_all(&instance_dir).unwrap();
         std::fs::create_dir_all(&outside).unwrap();
-        let meta = crate::supervisor::module_loader::parse_module_toml("[module]\nschema_version = 1\nname = 'g'\nversion = '1'\nentry = 'lifecycle.py'\n\n[[settings.fields]]\nname = 'data'\ntype = 'file'\n\n[install]\nmethod = 'manual'\n\n[extensions.saba-core]\ndata_roots = ['{data}', '{home}/Worlds']\n").unwrap();
+        let meta = crate::module_loader::parse_module_toml("[module]\nschema_version = 1\nname = 'g'\nversion = '1'\nentry = 'lifecycle.py'\n\n[[settings.fields]]\nname = 'data'\ntype = 'file'\n\n[install]\nmethod = 'manual'\n\n[extensions.saba-core]\ndata_roots = ['{data}', '{home}/Worlds']\n").unwrap();
         let mut instance = ServerInstance::new("g", "g");
         instance.module_settings.insert("data".into(), json!(&outside));
         let target = outside.join("deleted/world");

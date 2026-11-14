@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import { markDaemonSwitch } from '../../utils/opening';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
+import { failed } from '../../utils/apiResult';
 
 const LOCAL = '';
 
@@ -118,7 +119,7 @@ export function DaemonSwitcher({ onSwitched = reloadWindow }: { onSwitched?: () 
         setBusy(true);
         try {
             const res = await window.api.daemonTargetSet(value || null);
-            if (res?.success === false) return;
+            if (failed(res)) return;
             setTarget(value);
             onSwitched();
         } finally {
