@@ -74,6 +74,9 @@ jobs:
       sha: ${{ steps.src.outputs.sha }}
       version: ${{ steps.src.outputs.version }}
       channel: ${{ steps.src.outputs.channel }}
+      # 묶을 모듈·익스텐션 저장소 커밋: 소스의 .github/release-addons.env(MODULES_REF·EXTENSIONS_REF), 없으면 main
+      modules_ref: ${{ steps.src.outputs.modules_ref }}
+      extensions_ref: ${{ steps.src.outputs.extensions_ref }}
       binaries: ${{ steps.plan.outputs.binaries }}
       build: ${{ steps.plan.outputs.build }}
       # 공개 주소라 비밀이 아니다: 환경 밖의 관문 작업이 쓴다
@@ -115,6 +118,11 @@ jobs:
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
+          # 지난 발행 소스를 다시 낼 때는 그때의 모듈·익스텐션을 묶는다 (main의 애드온은 옛 데몬이 읽지 못할 수 있다)
+          MODULES_REF=main; EXTENSIONS_REF=main
+          if [ -f .github/release-addons.env ]; then . ./.github/release-addons.env; fi
+          echo "modules_ref=$MODULES_REF" >> "$GITHUB_OUTPUT"
+          echo "extensions_ref=$EXTENSIONS_REF" >> "$GITHUB_OUTPUT"
           echo "### $VERSION ($CHANNEL) from \`$(git rev-parse HEAD)\`" >> "$GITHUB_STEP_SUMMARY"
 
       # 40분 빌드 전에 확인한다. 확인하지 못하면 "없다"로 치지 않고 멈춘다
@@ -446,14 +454,14 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: WareAoba/saba-chan-modules
-          ref: main
+          ref: ${{ needs.prepare.outputs.modules_ref }}
           path: addons/modules
 
       - name: Checkout extensions
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: WareAoba/saba-chan-extensions
-          ref: main
+          ref: ${{ needs.prepare.outputs.extensions_ref }}
           path: addons/extensions
 
       - name: Setup Python
