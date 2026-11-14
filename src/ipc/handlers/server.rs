@@ -348,7 +348,7 @@ pub async fn install_module_from_manifest(
         install_module_locked(state, module_id).await
     })
     .await
-    .unwrap_or_else(|e| super::error(StatusCode::INTERNAL_SERVER_ERROR, "install_failed", e.to_string()))
+    .unwrap_or_else(|e| super::error(StatusCode::INTERNAL_SERVER_ERROR, "module_install_failed", e.to_string()))
 }
 
 /// 카탈로그 모듈의 `requires`를 못 맞춘 거절. 로드 실패·시작 응답과 같은 코드와 목록 꼴(`"saba-core >=0.1.10 (installed 0.1.9)"`)
@@ -434,7 +434,7 @@ async fn install_module_locked(state: IPCServer, module_id: String) -> axum::res
     let _ = std::fs::remove_file(&zip_path);
     let _ = std::fs::remove_dir_all(&staging);
     if let Err(e) = result {
-        return super::error(StatusCode::INTERNAL_SERVER_ERROR, "install_failed", format!("{:#}", e));
+        return super::error(StatusCode::INTERNAL_SERVER_ERROR, "module_install_failed", format!("{:#}", e));
     }
     let required = {
         let mut supervisor = state.supervisor.write().await;

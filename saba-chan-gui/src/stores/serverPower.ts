@@ -579,7 +579,9 @@ export function serverPowerActions(get: () => ServerState, fetchServers: () => P
                     safeShowToast(t('errors.still_stopping'), 'error', 4000);
                 } else if (result?.error || result?.success === false) {
                     revertOptimistic(id);
-                    const msg = translateError(result.error || result.message || '');
+                    // 코드에 번역 문구가 있으면 그것을, 없으면 데몬 문장을 보인다 (시작 거절의 port_conflict 등)
+                    const raw = translateError(result.error || result.message || '');
+                    const msg = result.error_code ? t(`errors.${result.error_code}`, { defaultValue: raw }) : raw;
                     safeShowToast(t('servers.restart_failed_toast', { error: msg }), 'error', 4000);
                 } else {
                     // 데몬이 다시 켰다: 폴링이 짧은 정지 구간을 놓쳐도 '끄는 중'으로 남기지 않는다

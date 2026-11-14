@@ -53,4 +53,14 @@ describe('그만둔 재시작', () => {
         expect(message).toBe(i18n.t('errors.still_stopping'));
         expect(type).toBe('error');
     });
+
+    it('포트 충돌로 다시 켜지 못했으면 데몬의 영어 문장이 아니라 있는 번역 문구를 알린다', async () => {
+        const [message, type] = await restartWith({
+            success: false,
+            error: "Cannot start 'A': port conflict detected",
+            error_code: 'port_conflict',
+        });
+        expect(message).toBe(i18n.t('servers.restart_failed_toast', { error: i18n.t('errors.port_conflict') }));
+        expect(type).toBe('error');
+    });
 });
