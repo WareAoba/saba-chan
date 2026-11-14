@@ -20,7 +20,8 @@ def fake_exe(version=None):
     """파일 버전 리소스(VS_FIXEDFILEINFO)만 흉내 낸 exe 바이트. version이 없으면 리소스가 없는 exe"""
     body = b"MZ" + b"\0" * 64
     if version:
-        major, minor, patch = (int(p) for p in version.split("."))
+        # 파일 버전 리소스는 숫자 넷뿐이다: 프리릴리스 꼬리표(-beta.N)는 싣지 않는다
+        major, minor, patch = (int(p) for p in version.split("-")[0].split("."))
         body += "VS_VERSION_INFO".encode("utf-16-le") + b"\0\0"
         body += struct.pack("<IIIIII", 0xFEEF04BD, 0x00010000, major << 16 | minor, patch << 16, major << 16 | minor, patch << 16)
     return body + b"\0" * 32

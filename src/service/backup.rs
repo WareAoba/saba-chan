@@ -105,7 +105,7 @@ async fn save_for_backup(state: &IPCServer, id: &str, spec: &crate::module_loade
         }
         // 답에는 보낸 뒤 잠깐 찍힌 줄이 다 섞인다(다른 명령의 답 포함). 서버가 바로 찍는 첫 줄로만 거절을 가린다
         let first = reply.lines().find(|l| !l.trim().is_empty()).unwrap_or_default();
-        if let Some(reason) = rejected(first, &failures) {
+        if let Some(reason) = rejected(first, failures) {
             return Err(SaveNotDone::Rejected { command: cmd.to_string(), reason });
         }
         let Some(done) = done_here else { continue };
