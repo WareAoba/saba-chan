@@ -1133,6 +1133,8 @@ fn test_check_updates_against() {
         has_i18n: false,
         tags: vec![],
         homepage: None,
+        descriptions: HashMap::new(),
+        has_icon: false,
     }];
 
     let updates = mgr.check_updates_against(&remote);
@@ -1171,6 +1173,8 @@ fn test_check_updates_already_latest() {
         has_i18n: false,
         tags: vec![],
         homepage: None,
+        descriptions: HashMap::new(),
+        has_icon: false,
     }];
 
     let updates = mgr.check_updates_against(&remote);
@@ -1491,7 +1495,8 @@ fn release_manifest_ext_components_become_the_catalog() {
             "ext-ue4-ini": {
                 "version": "0.1.2", "asset": "ext-ue4-ini.zip", "sha256": "c", "url": "https://r2/e.zip",
                 "install_dir": "extensions/ue4_ini",
-                "meta": {"name": "UE4 INI", "dependencies": ["steamcmd"], "min_app_version": "0.1.0"}
+                "meta": {"name": "UE4 INI", "dependencies": ["steamcmd"], "min_app_version": "0.1.0",
+                         "descriptions": {"ko": "UE4 INI 파서"}, "icon": "https://raw.example/ue4_ini/icon.png"}
             }
         }
     })).unwrap();
@@ -1503,6 +1508,10 @@ fn release_manifest_ext_components_become_the_catalog() {
     assert_eq!(ext.sha256.as_deref(), Some("c"));
     assert_eq!(ext.install_dir.as_deref(), Some("extensions/ue4_ini"));
     assert!(ext.dependencies.contains_key("steamcmd"));
+    // 받기 전 목록도 언어별 설명과 아이콘이 있다 (아이콘 주소는 데몬만 안다)
+    assert_eq!(ext.descriptions.get("ko").map(String::as_str), Some("UE4 INI 파서"));
+    assert!(ext.has_icon);
+    assert!(serde_json::to_value(ext).unwrap().get("icon").is_none());
 }
 
 #[test]

@@ -802,7 +802,15 @@
     box-shadow: var(--neu-in);
 }
 
-/* 공통 펼치기 (Disclosure): 화살표가 돌고 머리는 흐린 글자 */
+/* 공통 펼치기 (Disclosure): 화살표가 돌고 머리는 흐린 글자. 머리 줄(bar)은 단추가 없으면 자리를 차지하지 않는다 */
+.saba-disclosure-bar {
+    display: contents;
+}
+.saba-disclosure-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-2);
+}
 .saba-disclosure-head {
     display: inline-flex;
     align-items: center;
@@ -840,7 +848,7 @@
     flex-shrink: 0;
     transition: transform var(--dur) var(--ease);
 }
-.saba-disclosure.open > .saba-disclosure-head .saba-disclosure-chevron {
+.saba-disclosure.open > .saba-disclosure-bar > .saba-disclosure-head .saba-disclosure-chevron {
     transform: rotate(90deg);
 }
 .saba-disclosure-body {

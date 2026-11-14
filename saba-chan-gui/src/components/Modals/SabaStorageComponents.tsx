@@ -18,14 +18,12 @@ function throwIfRejected(res: ApiBody | null | undefined) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// 컴포넌트 탭 (기존 UpdatePanel 로직 그대로)
+// 컴포넌트 탭: 새 버전이 있으면 "업데이트" 하나로 모든 구성요소(모듈·익스텐션 포함)를 올린다.
+// 평소에는 데몬의 자동 업데이트가 하고, 이 버튼은 직접 올릴 때만 쓴다. 받기·적용 순서는 데몬이 정한다
 // ─────────────────────────────────────────────────────────────
 
-// 컴포넌트 데이터 파싱 — 순수 함수이므로 컴포넌트 밖에 정의
-// 모듈/익스텐션은 별도 탭이라 카드로 보이지 않지만(hidden), 모두 업데이트가 함께 받고 적용한다 (UP1).
 // locales는 백그라운드 자동 업데이트 — 다루지 않는다
 const COMPONENT_ICONS: Record<string, string> = {
-    updater: 'componentUpdater',
     gui: 'componentGui',
     'saba-core': 'componentCore',
     cli: 'componentCli',
@@ -33,7 +31,7 @@ const COMPONENT_ICONS: Record<string, string> = {
 };
 
 // 목록 순서 (열 때마다 같게). 여기 없는 것은 뒤에 이름순
-const COMPONENT_ORDER = ['saba-core', 'gui', 'cli', 'updater', 'installer'];
+const COMPONENT_ORDER = ['saba-core', 'gui', 'cli', 'installer'];
 const componentRank = (key: string) => {
     const i = COMPONENT_ORDER.indexOf(key);
     return i === -1 ? COMPONENT_ORDER.length : i;
@@ -47,27 +45,22 @@ export const parseComponents = (comps?: ApiBody[] | null) =>
         })
         .map((c) => {
             const key = typeof c.component === 'string' ? c.component : String(c.component);
-            // 종류는 데몬이 준다 (`kind`)
+            // 종류는 데몬이 준다 (`kind`). 모듈·익스텐션은 자기 탭에 있어 여기서는 세기만 한다
             const kind = c.kind;
             return {
                 key,
                 hidden: kind !== 'app',
                 display: c.display_name || key,
-                icon: kind === 'module' ? 'gamepad' : COMPONENT_ICONS[key] || 'server',
+                icon: COMPONENT_ICONS[key] || 'server',
                 current_version: c.current_version || '—',
                 latest_version: c.latest_version || null,
                 update_available: !!c.update_available,
-                downloaded: !!c.downloaded,
-                installed: !!c.installed,
-                needsUpdater: key === 'gui' || key === 'saba-core',
+                // 적용하면 사바쨩이 다시 시작한다
+                restarts: key === 'gui' || key === 'saba-core',
             };
         })
         .sort((a, b) => componentRank(a.key) - componentRank(b.key) || byName(a.key, b.key));
 
-// ─────────────────────────────────────────────────────────────
-// 다운로드 진행률 링 (SVG)
-// percent: 0–100 → 프로그레스 링,  -1 → indeterminate(스피너)
-// ─────────────────────────────────────────────────────────────
 const MOCK_RELAY_URL = 'http://127.0.0.1:9876';
 
 // 업데이트 방식 → 데몬 업데이트 설정 값
@@ -77,44 +70,15 @@ const UPDATE_MODES: Record<string, { auto_download: boolean; auto_apply: boolean
     apply: { auto_download: true, auto_apply: true },
 };
 
-function DownloadRing({ percent }: { percent: number }) {
-    const r = 13;
-    const circumference = 2 * Math.PI * r;
-    const indeterminate = percent < 0;
-    const offset = indeterminate ? circumference * 0.75 : circumference * (1 - percent / 100);
-    return (
-        <div className="download-ring-wrapper" data-tooltip={indeterminate ? '...' : `${percent}%`}>
-            <svg className="download-ring-svg" viewBox="0 0 32 32" width="28" height="28">
-                <circle className="download-ring-bg" cx="16" cy="16" r={r}
-                    fill="none" strokeWidth="3" />
-                <circle
-                    className={clsx('download-ring-fill', { indeterminate })}
-                    cx="16" cy="16" r={r}
-                    fill="none" strokeWidth="3"
-                    strokeLinecap="round"
-                    strokeDasharray={circumference}
-                    strokeDashoffset={offset}
-                    transform="rotate(-90 16 16)"
-                />
-            </svg>
-            {!indeterminate && (
-                <span className="download-ring-label">{percent}<small>%</small></span>
-            )}
-        </div>
-    );
-}
-
 export function ComponentsTab({ devMode }: { devMode?: boolean }) {
     const { t } = useTranslation('gui');
 
     const [components, setComponents] = useState<ReturnType<typeof parseComponents>>([]);
     const [checking, setChecking] = useState(false);
-    const [busyKeys, setBusyKeys] = useState<Set<string>>(new Set());
-    const [busyAll, setBusyAll] = useState(false);
+    const [updating, setUpdating] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [message, setMessage] = useState<string | null>(null);
     const [confirmRestart, setConfirmRestart] = useState(false);
-    const [pendingRestartAction, setPendingRestartAction] = useState<(() => void | Promise<void>) | null>(null);
     const [mockMode, setMockMode] = useState<boolean | null>(null);
     // 데몬이 모의 릴레이 서명을 믿는 개발 빌드(--features mock-relay)인가. 아니면 MOCK으로 바꿔도 검증에서 막힌다
     const [mockRelayBuild, setMockRelayBuild] = useState(false);
@@ -131,17 +95,6 @@ export function ComponentsTab({ devMode }: { devMode?: boolean }) {
     const appVersion = useAppVersion(
         (key) => components.find((c) => c.key === key)?.display || key,
         components.find((c) => c.key === 'saba-core')?.current_version,
-    );
-
-    const markBusy = useCallback((key: string) => setBusyKeys((prev) => new Set(prev).add(key)), []);
-    const clearBusy = useCallback(
-        (key: string) =>
-            setBusyKeys((prev) => {
-                const n = new Set(prev);
-                n.delete(key);
-                return n;
-            }),
-        [],
     );
 
     const handleToggleMock = useCallback(async (toMock: boolean) => {
@@ -171,9 +124,6 @@ export function ComponentsTab({ devMode }: { devMode?: boolean }) {
         setComponents(parseComponents(status.components));
         setStableWait(status.stable_wait || null);
     }, [status]);
-    const refreshStatus = useCallback(async () => {
-        await useUpdateStore.getState().refresh();
-    }, []);
 
     // 수동 새로고침 — 데몬이 릴레이(/v1/updates/check)에 묻는다 (사용자 명시적 요청 시에만)
     const handleCheck = useCallback(async () => {
@@ -193,164 +143,46 @@ export function ComponentsTab({ devMode }: { devMode?: boolean }) {
         setChecking(false);
     }, []);
 
-    const handleDownloadOne = useCallback(
-        async (key: string) => {
-            markBusy(key);
-            setError(null);
-            try {
-                const res = await window.api?.updaterDownload?.([key]);
-                if (!res?.success) setError(`${key}: ${res?.error || 'Download failed'}`);
-                await refreshStatus();
-            } catch (e) {
-                setError(`${key}: ${(e as Error).message}`);
-            }
-            clearBusy(key);
-        },
-        [refreshStatus, markBusy, clearBusy],
-    );
-
-    const handleApplyOne = useCallback(
-        async (key: string) => {
-            if (key === 'gui' || key === 'saba-core') {
-                setPendingRestartAction(() => async () => {
-                    markBusy(key);
-                    setError(null);
-                    setMessage(null);
-                    try {
-                        const res = await window.api?.updaterApply?.([key]);
-                        if (res?.requires_updater && res?.needs_updater?.length > 0) {
-                            const launchRes = await window.api?.updaterLaunchApply?.(res.needs_updater);
-                            if (launchRes?.ok === false)
-                                setError(`${key}: ${launchRes?.error || t('saba_storage.updater_launch_failed')}`);
-                        } else if (failed(res)) {
-                            setError(
-                                `${key}: ${res?.errors?.length > 0 ? res.errors.join('; ') : res?.error || t('saba_storage.apply_failed')}`,
-                            );
-                        }
-                    } catch (e) {
-                        setError(`${key}: ${(e as Error).message}`);
-                    }
-                    clearBusy(key);
-                });
-                setConfirmRestart(true);
-                return;
-            }
-            markBusy(key);
-            setError(null);
-            setMessage(null);
-            try {
-                const res = await window.api?.updaterApply?.([key]);
-                clearModuleAuditCache();
-                if (failed(res)) {
-                    setError(`${key}: ${res?.errors?.length > 0 ? res.errors.join('; ') : res?.error || t('saba_storage.apply_failed')}`);
-                } else {
-                    if (res?.requires_updater && res?.needs_updater?.length > 0) {
-                        const launchRes = await window.api?.updaterLaunchApply?.(res.needs_updater);
-                        if (launchRes?.ok === false) setError(`${key}: ${launchRes?.error || t('saba_storage.updater_launch_failed')}`);
-                        else setMessage(t('saba_storage.updater_background', { key }));
-                    } else if (res?.applied?.length > 0) {
-                        setMessage(t('saba_storage.apply_completed', { names: res.applied.join(', ') }));
-                    } else {
-                        setMessage(t('saba_storage.apply_request_done', { key }));
-                    }
-                }
-                await refreshStatus();
-            } catch (e) {
-                setError(`${key}: ${(e as Error).message}`);
-            }
-            clearBusy(key);
-        },
-        [refreshStatus, markBusy, clearBusy, t],
-    );
-
-    const executeUpdateAll = useCallback(async () => {
-        const updatable = components.filter((c) => c.update_available);
-        if (updatable.length === 0) return;
-        let hadError = false;
-        setBusyAll(true);
+    // 업데이트: 받을 것을 모두 받고 모두 적용한다(빈 목록 = 전부). 데몬·GUI가 바뀌면 데몬이 설치기를 띄운다
+    const runUpdate = useCallback(async () => {
+        const errors: string[] = [];
+        const addError = (text: string) => {
+            errors.push(text);
+            setError(errors.join('\n'));
+        };
+        setUpdating(true);
         setError(null);
         setMessage(null);
-        const allKeys = updatable.map((c) => c.key);
-        for (const key of allKeys) markBusy(key);
-        for (const key of allKeys) {
-            try {
-                const res = await window.api?.updaterDownload?.([key]);
-                if (!res?.success) {
-                    hadError = true;
-                    setError((prev) => (prev ? prev + '\n' : '') + `${key}: ${res?.error}`);
-                }
-            } catch (e) {
-                hadError = true;
-                setError((prev) => (prev ? prev + '\n' : '') + `${key}: ${(e as Error).message}`);
-            }
-            clearBusy(key);
-        }
-        await refreshStatus();
-
-        // 데몬에 모든 컴포넌트를 보내고, 데몬이 라우팅을 결정하도록 한다.
-        // 업데이터가 대상이면 데몬이 전부 needs_updater로 보내고,
-        // 아니면 데몬이 직접 적용하고 GUI/Updater만 needs_updater로 보낸다.
-        let daemonApplied: string[] = [];
-        for (const key of allKeys) markBusy(key);
         try {
-            const res = await window.api?.updaterApply?.(allKeys);
+            const downloaded = await window.api?.updaterDownload?.([]);
+            if (failed(downloaded)) addError(downloaded?.error || t('saba_storage.download_failed'));
+            const res = await window.api?.updaterApply?.([]);
             clearModuleAuditCache();
-            // 일부만 적용돼도(ok:false) 적용된 것은 알린다 (G-U9b)
-            daemonApplied = res?.applied || [];
-            if (failed(res)) {
-                hadError = true;
-                setError(
-                    (prev) =>
-                        (prev ? prev + '\n' : '') +
-                        (res?.errors?.length > 0 ? res.errors.join('; ') : res?.error || t('saba_storage.apply_failed')),
-                );
-            }
-            // 데몬이 needs_updater로 보낸 컴포넌트가 있으면 업데이터 exe 스폰
+            // 일부만 적용돼도(success:false) 적용된 것은 알린다 (G-U9b)
+            const applied: string[] = res?.applied || [];
+            if (failed(res)) addError(res?.errors?.length > 0 ? res.errors.join('; ') : res?.error || t('saba_storage.apply_failed'));
             if (res?.requires_updater && res?.needs_updater?.length > 0) {
                 const launchRes = await window.api?.updaterLaunchApply?.(res.needs_updater);
-                if (launchRes?.ok === false) {
-                    hadError = true;
-                    setError((prev) => (prev ? prev + '\n' : '') + (launchRes?.error || t('saba_storage.updater_launch_failed')));
-                } else {
-                    // 업데이터 실행 → 데몬이 내려가므로 더 이상 진행하지 않음 (이후 API 호출 불가).
-                    // GUI가 바뀌면 GUI도 곧 종료되고, 아니면 GUI는 남아 다시 뜬 데몬에 붙는다
-                    for (const key of allKeys) clearBusy(key);
-                    setBusyAll(false);
-                    if (launchRes?.gui_restart === false)
-                        setMessage(t('saba_storage.updater_background', { key: res.needs_updater.join(', ') }));
-                    return;
-                }
+                if (launchRes?.ok === false) addError(launchRes?.error || t('saba_storage.updater_launch_failed'));
+                // 설치기가 돌면 데몬이 내려간다. GUI가 남으면 다시 뜬 데몬에 붙는다
+                else if (launchRes?.gui_restart === false)
+                    setMessage(t('saba_storage.updater_background', { key: res.needs_updater.join(', ') }));
+                return;
             }
+            await useUpdateStore.getState().refresh();
+            if (applied.length > 0) setMessage(t('saba_storage.apply_completed', { names: applied.join(', ') }));
+            else if (errors.length === 0) setMessage(t('saba_storage.update_done'));
         } catch (e) {
-            hadError = true;
-            setError((prev) => (prev ? prev + '\n' : '') + (e as Error).message);
+            addError((e as Error).message);
+        } finally {
+            if (mountedRef.current) setUpdating(false);
         }
-        for (const key of allKeys) clearBusy(key);
-        await refreshStatus();
-        if (daemonApplied.length > 0) setMessage(t('saba_storage.apply_completed', { names: daemonApplied.join(', ') }));
-        else if (!hadError) setMessage(t('saba_storage.update_done'));
-        setBusyAll(false);
-    }, [components, refreshStatus, markBusy, clearBusy, t]);
+    }, [t]);
 
-    const handleUpdateAll = useCallback(() => {
-        const updatable = components.filter((c) => c.update_available);
-        if (updatable.length === 0) return;
-        const hasNeedsUpdater = updatable.some((c) => c.key === 'gui' || c.key === 'saba-core');
-        if (hasNeedsUpdater) {
-            setPendingRestartAction(() => () => executeUpdateAll());
-            setConfirmRestart(true);
-        } else {
-            executeUpdateAll();
-        }
-    }, [components, executeUpdateAll]);
-
-    const handleConfirmRestart = useCallback(() => {
-        setConfirmRestart(false);
-        if (pendingRestartAction) {
-            pendingRestartAction();
-            setPendingRestartAction(null);
-        }
-    }, [pendingRestartAction]);
+    const handleUpdate = useCallback(() => {
+        if (components.some((c) => c.update_available && c.restarts)) setConfirmRestart(true);
+        else runUpdate();
+    }, [components, runUpdate]);
 
     const handleAutoCheckToggle = useCallback(async (enabled: boolean) => {
         setAutoCheckEnabled(enabled);
@@ -445,9 +277,22 @@ export function ComponentsTab({ devMode }: { devMode?: boolean }) {
         // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only initialization — async tasks use refs for mount guard
     }, []);
 
+    const apps = components.filter((c) => !c.hidden);
     const updatable = components.filter((c) => c.update_available);
-    const allUpToDate = components.length > 0 && updatable.length === 0;
-    const anyBusy = checking || busyAll || busyKeys.size > 0;
+    const appUpdates = updatable.filter((c) => !c.hidden).length;
+    const addonUpdates = updatable.length - appUpdates;
+    const core = components.find((c) => c.key === 'saba-core');
+    // 머리에 보일 새 버전: 코어의 새 버전, 코어가 그대로면 바뀌는 앱 구성요소의 것
+    const newVersion = (core?.update_available && core.latest_version) || updatable.find((c) => !c.hidden)?.latest_version;
+    const summary = [
+        appUpdates > 0 && t('saba_storage.summary_apps', { count: appUpdates }),
+        addonUpdates > 0 && t('saba_storage.summary_addons', { count: addonUpdates }),
+    ].filter(Boolean);
+    const progressName = downloadProgress.active
+        ? components.find((c) => c.key === downloadProgress.component)?.display || downloadProgress.component
+        : null;
+    const pct = downloadProgress.percent ?? -1; // -1 = 전체 크기를 몰라 흐르는 막대
+    const busy = checking || updating;
 
     return (
         <>
@@ -466,17 +311,12 @@ export function ComponentsTab({ devMode }: { devMode?: boolean }) {
                                 size="sm"
                                 checked={!!mockMode}
                                 onChange={(checked) => handleToggleMock(checked)}
-                                disabled={mockMode === null || anyBusy}
+                                disabled={mockMode === null || busy}
                             />
                         </label>
                     </div>
                 )}
 
-                {checking && (
-                    <div className="update-modal-status-bar">
-                        <Icon name="loader" size="sm" /> {t('saba_storage.checking')}
-                    </div>
-                )}
                 {error && (
                     <div className="update-modal-status-bar error">
                         <Icon name="xCircle" size="sm" /> {error}
@@ -489,108 +329,97 @@ export function ComponentsTab({ devMode }: { devMode?: boolean }) {
                 )}
                 {appVersion.banner}
 
-                <div className="ss-store-header">
-                    <div className="ss-section-label" style={{ margin: 0 }}>
-                        {t('saba_storage.tab_components', '컴포넌트')}
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        {updatable.length > 0 && (
-                            <button
-                                className="ss-icon-btn accent"
-                                disabled={anyBusy}
-                                onClick={handleUpdateAll}
-                                data-tooltip={t('saba_storage.update_all', '모두 업데이트')}
-                                aria-label={t('saba_storage.update_all', '모두 업데이트')}
-                            >
-                                <Icon name="download" size="sm" />
-                            </button>
-                        )}
-                        <button
-                            className="ss-icon-btn"
-                            disabled={anyBusy}
-                            onClick={handleCheck}
-                            data-tooltip={t('saba_storage.refresh', '새로고침')}
-                            aria-label={t('saba_storage.refresh', '새로고침')}
-                        >
-                            <Icon name={checking ? 'loader' : 'refresh'} size="sm" />
-                        </button>
-                    </div>
-                </div>
-
-                <div className="ss-cards">
-                    {components.filter((c) => !c.hidden).map((c) => {
-                        const isBusy = busyKeys.has(c.key) || busyAll;
-                        const isDownloading = isBusy && downloadProgress.active && downloadProgress.component === c.key;
-                        const pct = downloadProgress.percent ?? -1; // -1 = 전체 크기를 몰라 도는 링
-                        return (
-                            <div key={c.key} className="ss-card">
-                                <div className="ss-card-icon">
-                                    <Icon name={c.icon} size="md" />
+                {components.length > 0 || checking ? (
+                    <div className="ss-hero">
+                        {updatable.length > 0 ? (
+                            <>
+                                <div className="ss-hero-top">
+                                    <div className="ss-hero-text">
+                                        <span className="ss-hero-title">
+                                            {t('saba_storage.new_version')}
+                                            {newVersion && <span className="ss-update-badge">v{newVersion}</span>}
+                                        </span>
+                                        <span className="ss-hero-sub">{t('saba_storage.update_summary', { items: summary.join(', ') })}</span>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        className="btn btn-primary ss-update-btn"
+                                        disabled={busy}
+                                        onClick={handleUpdate}
+                                    >
+                                        {updating ? <SabaSpinner size="xs" /> : <Icon name="arrowUp" size="sm" />}
+                                        {t(updating ? 'saba_storage.updating' : 'saba_storage.update')}
+                                    </button>
                                 </div>
-                                <div className="ss-card-body">
-                                    <span className="ss-card-name">
-                                        {c.display}
-                                        {c.update_available && c.latest_version && (
-                                            <span className="ss-update-badge">v{c.latest_version}</span>
+                                {updating && progressName && (
+                                    <div>
+                                        <div className={clsx('ss-progress', { indeterminate: pct < 0 })}>
+                                            <i style={pct < 0 ? undefined : { width: `${pct}%` }} />
+                                        </div>
+                                        <div className="ss-progress-row">
+                                            <span>{t('saba_storage.downloading', { name: progressName })}</span>
+                                            {pct >= 0 && <span>{pct}%</span>}
+                                        </div>
+                                    </div>
+                                )}
+                                {autoCheckEnabled && updateMode === 'apply' && (
+                                    <span className="ss-hero-note">{t('saba_storage.auto_apply_note')}</span>
+                                )}
+                            </>
+                        ) : (
+                            <div className="ss-hero-top">
+                                <div className="ss-hero-text">
+                                    <span className="ss-hero-title">
+                                        {checking ? t('saba_storage.checking') : t('saba_storage.latest_version')}
+                                        {!checking && core && core.current_version !== '—' && (
+                                            <span className="ss-ok-chip">
+                                                <Icon name="check" size="xs" />v{core.current_version}
+                                            </span>
                                         )}
                                     </span>
-                                    <span className="ss-card-version">
-                                        {appVersion.was(c.current_version)}v{c.current_version}
-                                    </span>
                                 </div>
-                                <div className="ss-card-actions">
-                                    {c.update_available && !c.downloaded && (
+                                <button
+                                    type="button"
+                                    className="ss-icon-btn"
+                                    disabled={busy}
+                                    onClick={handleCheck}
+                                    data-tooltip={t('saba_storage.refresh')}
+                                    aria-label={t('saba_storage.refresh')}
+                                >
+                                    <Icon name={checking ? 'loader' : 'refresh'} size="sm" />
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                ) : null}
+
+                <div className="ss-cards">
+                    {apps.map((c) => (
+                        <div key={c.key} className="ss-card">
+                            <div className="ss-card-icon">
+                                <Icon name={c.icon} size="md" />
+                            </div>
+                            <div className="ss-card-body">
+                                <span className="ss-card-name">{c.display}</span>
+                                <span className="ss-card-version">
+                                    {appVersion.was(c.current_version)}v{c.current_version}
+                                    {c.update_available && c.latest_version && (
                                         <>
-                                            {isDownloading ? (
-                                                <DownloadRing percent={pct} />
-                                            ) : (
-                                                <button
-                                                    className="ss-icon-btn accent"
-                                                    disabled={isBusy}
-                                                    onClick={() => handleDownloadOne(c.key)}
-                                                    data-tooltip={t('saba_storage.download')}
-                                                    aria-label={t('saba_storage.download')}
-                                                >
-                                                    {isBusy ? <SabaSpinner size="xs" /> : <Icon name="download" size="sm" />}
-                                                </button>
-                                            )}
+                                            {' '}
+                                            <span className="ss-version-arrow">→</span> v{c.latest_version}
                                         </>
                                     )}
-                                    {c.update_available && c.downloaded && (
-                                        <button
-                                            className={clsx('ss-icon-btn', c.needsUpdater ? 'warning' : 'accent')}
-                                            disabled={isBusy}
-                                            onClick={() => handleApplyOne(c.key)}
-                                            data-tooltip={t(c.needsUpdater ? 'saba_storage.apply_needs_restart' : 'saba_storage.apply')}
-                                            aria-label={t(c.needsUpdater ? 'saba_storage.apply_needs_restart' : 'saba_storage.apply')}
-                                        >
-                                            {isBusy ? (
-                                                <SabaSpinner size="xs" />
-                                            ) : (
-                                                <Icon
-                                                    name={c.needsUpdater ? 'externalLink' : 'checkCircle'}
-                                                    size="sm"
-                                                />
-                                            )}
-                                        </button>
-                                    )}
-                                    {!c.update_available && (
-                                        <span className="ss-status-ok">
-                                            <Icon name="checkCircle" size="sm" />
-                                        </span>
-                                    )}
-                                </div>
+                                </span>
                             </div>
-                        );
-                    })}
+                            {!c.update_available && (
+                                <span className="ss-ok-chip">
+                                    <Icon name="check" size="xs" />
+                                    {t('saba_storage.up_to_date')}
+                                </span>
+                            )}
+                        </div>
+                    ))}
                 </div>
-
-                {allUpToDate && !message && (
-                    <div className="update-modal-status success">
-                        <Icon name="checkCircle" size="sm" />{' '}
-                        {t('updates.no_updates', '모든 컴포넌트가 최신 버전입니다.')}
-                    </div>
-                )}
             </div>
 
             <div className="update-panel-settings">
@@ -639,18 +468,16 @@ export function ComponentsTab({ devMode }: { devMode?: boolean }) {
                 {appVersion.row}
             </div>
 
-            <div className="update-panel-actions" />
-
             {appVersion.dialogs}
             {confirmRestart && (
                 <QuestionModal
                     title={t('saba_storage.restart_required_title')}
                     message={t('saba_storage.restart_required_message')}
-                    onConfirm={handleConfirmRestart}
-                    onCancel={() => {
+                    onConfirm={() => {
                         setConfirmRestart(false);
-                        setPendingRestartAction(null);
+                        runUpdate();
                     }}
+                    onCancel={() => setConfirmRestart(false)}
                 />
             )}
         </>

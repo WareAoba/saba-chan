@@ -494,6 +494,7 @@ jobs:
             --base-url "${{ needs.prepare.outputs.r2_base }}" --platform windows-x64 --also-platform linux-x64 --also-platform linux-arm64 --also-platform macos-arm64 \
             --modules-repo addons/modules --extensions-repo addons/extensions \
             --addons-ref "$(git -C addons/modules rev-parse HEAD)" \
+            --extensions-ref "$(git -C addons/extensions rev-parse HEAD)" \
             --previous previous-manifest.json \
             --out release-manifest.unsigned.json
           cp output/module-*.zip output/ext-*.zip gate-output/ 2>/dev/null || true

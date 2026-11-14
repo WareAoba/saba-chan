@@ -6,8 +6,9 @@ import { localizedDescription } from '../../utils/localizedText';
 import { ExtensionConfigForm } from '../ExtensionConfigForm';
 import { Icon } from '../Icon';
 import { ExtensionAuditNotice } from '../servers/ModuleAuditNotice';
+import { AddonIcon } from '../ui/AddonIcon';
 import { useContextMenu } from '../ui/ContextMenu';
-import { SabaEmpty } from '../ui/SabaArt';
+import { Disclosure } from '../ui/Disclosure';
 import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { TrustBadge } from '../ui/TrustBadge';
 import { type AddonCard, useAddonVersions } from './AddonVersions';
@@ -40,31 +41,7 @@ export function ExtensionsTab() {
     const [togglingIds, setTogglingIds] = useState<Set<string>>(new Set());
     const [removingIds, setRemovingIds] = useState<Set<string>>(new Set());
     const [rescanning, setRescanning] = useState(false);
-    const [iconUrls, setIconUrls] = useState<Record<string, string>>({}); // { extId: dataUrl }
-    const [showStore, setShowStore] = useState(false);
     const versions = useAddonVersions(refreshExtensions);
-
-    // 아이콘 로드: has_icon이 true인 익스텐션의 icon.png를 data URL로 가져옴
-    useEffect(() => {
-        const toLoad = extensions.filter((e) => e.has_icon && !iconUrls[e.id]);
-        if (toLoad.length === 0) return;
-        let cancelled = false;
-        (async () => {
-            const results: Record<string, string> = {};
-            await Promise.all(
-                toLoad.map(async (ext) => {
-                    try {
-                        const url = await window.api?.extensionIcon?.(ext.id);
-                        if (url) results[ext.id] = url;
-                    } catch (_) {}
-                })
-            );
-            if (!cancelled && Object.keys(results).length > 0) {
-                setIconUrls((prev) => ({ ...prev, ...results }));
-            }
-        })();
-        return () => { cancelled = true; };
-    }, [extensions]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // 설치된 익스텐션 설명은 데몬이 GUI 언어로 골라 준다 → 언어가 바뀌면 다시 받는다
     const firstLanguage = useRef(i18n.language);
@@ -84,15 +61,11 @@ export function ExtensionsTab() {
         setRescanning(false);
     }, [refreshExtensions]);
 
-    // 스토어 열기 (모듈 탭 "더보기" 패턴과 동일)
-    const handleShowStore = useCallback(async () => {
-        if (manifestExtensions.length > 0) {
-            setShowStore(true);
-            return;
-        }
-        setShowStore(true);
-        await fetchManifest();
-    }, [manifestExtensions, fetchManifest]);
+    // 받을 수 있는 목록은 늘 보인다: 데몬이 받아 둔 목록을 탭을 열 때 받는다 (새로고침 단추만 데몬도 새로 받는다)
+    // biome-ignore lint/correctness/useExhaustiveDependencies: 탭을 처음 열 때 한 번
+    useEffect(() => {
+        fetchManifest?.();
+    }, []);
 
     const handleConfirmRemove = useCallback(async () => {
         const id = confirmRemoveId;
@@ -126,24 +99,32 @@ export function ExtensionsTab() {
     return (
         <div className="saba-storage-tab-content">
             {versions.banner}
-            {/* 설치됨 */}
-            <div data-spot="extensions.installed" className="ss-store-header">
-                <div className="ss-section-label" style={{ margin: 0 }}>
-                    {t('extensions.installed_section', '설치됨')}
-                </div>
-                <button
-                    className="ss-icon-btn"
-                    disabled={rescanning}
-                    onClick={handleRescan}
-                    data-tooltip={t('extensions.rescan', '익스텐션 재스캔')}
-                    aria-label={t('extensions.rescan', '익스텐션 재스캔')}
-                >
-                    <Icon name={rescanning ? 'loader' : 'refresh'} size="sm" />
-                </button>
-            </div>
+            <Disclosure
+                className="ss-section"
+                spot="extensions.installed"
+                defaultOpen
+                summary={
+                    <>
+                        {t('saba_storage.section_installed')}
+                        <span className="ss-section-count">{extensions.length}</span>
+                    </>
+                }
+                actions={
+                    <button
+                        type="button"
+                        className="ss-icon-btn"
+                        disabled={rescanning}
+                        onClick={handleRescan}
+                        data-tooltip={t('extensions.rescan')}
+                        aria-label={t('extensions.rescan')}
+                    >
+                        <Icon name={rescanning ? 'loader' : 'refresh'} size="sm" />
+                    </button>
+                }
+            >
             {extensions.length === 0 ? (
                 // 목록을 받는 중에는 "없음"을 띄우지 않는다
-                !loading && <SabaEmpty compact body={t('settings_modal.no_extensions', '설치된 익스텐션이 없습니다.')} />
+                !loading && <p className="ss-empty">{t('settings_modal.no_extensions')}</p>
             ) : (
                 <div className="ss-cards">
                     {[...extensions].sort((a, b) => byName(a.name || a.id, b.name || b.id)).map((ext) => {
@@ -165,17 +146,6 @@ export function ExtensionsTab() {
                                 key={ext.id}
                                 onContextMenu={(e) =>
                                     openMenu(e, [
-                                        updateInfo && {
-                                            id: 'update',
-                                            label: t('extensions.update_to', {
-                                                version: updateInfo.latest_version,
-                                                defaultValue: `v${updateInfo.latest_version}으로 업데이트`,
-                                            }),
-                                            icon: 'download',
-                                            disabled: isBusy,
-                                            onSelect: () =>
-                                                installExtension(ext.id, { download_url: updateInfo.download_url }),
-                                        },
                                         {
                                             id: 'toggle',
                                             label: ext.enabled ? t('context_menu.disable') : t('context_menu.enable'),
@@ -197,11 +167,7 @@ export function ExtensionsTab() {
                                 }
                             >
                                 <div className="ss-card-icon">
-                                    {iconUrls[ext.id] ? (
-                                        <img src={iconUrls[ext.id]} alt="" />
-                                    ) : (
-                                        <Icon name="extension" size="md" />
-                                    )}
+                                    <AddonIcon extId={ext.id} hasIcon={ext.has_icon} version={ext.version} fallback="extension" />
                                 </div>
                                 <div className="ss-card-body">
                                     <span className="ss-card-name">
@@ -222,25 +188,6 @@ export function ExtensionsTab() {
                                     {ext.enabled && <ExtensionConfigForm ext={ext} />}
                                 </div>
                                 <div className="ss-card-actions">
-                                    {updateInfo && (
-                                        <button
-                                            className="ss-icon-btn accent"
-                                            disabled={isBusy}
-                                            onClick={() =>
-                                                installExtension(ext.id, { download_url: updateInfo.download_url })
-                                            }
-                                            data-tooltip={t('extensions.update_to', {
-                                                version: updateInfo.latest_version,
-                                                defaultValue: `v${updateInfo.latest_version}으로 업데이트`,
-                                            })}
-                                        >
-                                            {installingIds.has(ext.id) ? (
-                                                <SabaSpinner size="xs" />
-                                            ) : (
-                                                <Icon name="download" size="sm" />
-                                            )}
-                                        </button>
-                                    )}
                                     <SabaToggle
                                         size="sm"
                                         checked={!!ext.enabled}
@@ -264,81 +211,69 @@ export function ExtensionsTab() {
                 </div>
             )}
 
-            {/* 스토어 */}
-            <div data-spot="extensions.store" className="ss-store-header">
-                <div className="ss-section-label" style={{ margin: 0 }}>
-                    {t('extensions.store_section', '스토어')}
-                </div>
-                {showStore ? (
+            </Disclosure>
+
+            <Disclosure
+                className="ss-section"
+                spot="extensions.store"
+                defaultOpen
+                summary={
+                    <>
+                        {t('saba_storage.section_available')}
+                        <span className="ss-section-count">{uninstalled.length}</span>
+                    </>
+                }
+                actions={
                     <button
+                        type="button"
                         className="ss-icon-btn"
                         disabled={manifestLoading}
-                        onClick={fetchManifest}
-                        data-tooltip={t('extensions.refresh_manifest', '매니페스트 새로고침')}
-                        aria-label={t('extensions.refresh_manifest', '매니페스트 새로고침')}
+                        onClick={() => fetchManifest(true)}
+                        data-tooltip={t('saba_storage.refresh_manifest')}
+                        aria-label={t('saba_storage.refresh_manifest')}
                     >
                         <Icon name={manifestLoading ? 'loader' : 'refresh'} size="sm" />
                     </button>
-                ) : (
-                    <button
-                        className="ss-icon-btn"
-                        onClick={handleShowStore}
-                        data-tooltip={t('saba_storage.show_more_extensions')}
-                        aria-label={t('saba_storage.show_more_extensions')}
-                    >
-                        <Icon name="chevronDown" size="sm" />
-                    </button>
-                )}
-            </div>
-
-            {showStore && (
-                <>
-                    {manifestLoading ? (
-                        <p className="ss-empty">{t('extensions.manifest_loading', '매니페스트를 가져오는 중...')}</p>
-                    ) : uninstalled.length === 0 ? (
-                        <p className="ss-empty">
-                            {manifestExtensions.length === 0
-                                ? t('extensions.store_empty', '새로고침 버튼으로 사용 가능한 익스텐션을 불러오세요.')
-                                : t('extensions.all_installed', '모든 익스텐션이 설치되어 있습니다.')}
-                        </p>
+                }
+            >
+                {uninstalled.length === 0 ? (
+                    manifestLoading ? (
+                        <p className="ss-empty">{t('saba_storage.loading_manifest')}</p>
                     ) : (
-                <div className="ss-cards">
-                    {uninstalled.map((ext) => (
-                        <div className="ss-card" key={ext.id}>
-                            <div className="ss-card-icon">
-                                <Icon name="extension" size="md" />
+                        manifestExtensions.length > 0 && <p className="ss-empty">{t('extensions.all_installed')}</p>
+                    )
+                ) : (
+                    <div className="ss-catalog">
+                        {uninstalled.map((ext) => (
+                            <div className="ss-catalog-card" key={ext.id}>
+                                <div className="ss-catalog-top">
+                                    <div className="ss-card-icon">
+                                        <AddonIcon storeKey={`ext-${ext.id}`} hasIcon={ext.has_icon} version={ext.version} fallback="extension" />
+                                    </div>
+                                    <div className="ss-catalog-title">
+                                        <span className="ss-card-name">{ext.name || ext.id}</span>
+                                        <span className="ss-card-version">
+                                            {[ext.version && `v${ext.version}`, ext.author].filter(Boolean).join(' · ')}
+                                        </span>
+                                    </div>
+                                </div>
+                                <p className="ss-catalog-desc">{localizedDescription(ext as Described, i18n.language)}</p>
+                                <div className="ss-catalog-foot">
+                                    <button
+                                        className="btn btn-primary btn-sm ss-install-btn"
+                                        type="button"
+                                        disabled={installingIds.has(ext.id)}
+                                        onClick={() => installExtension(ext.id, { download_url: ext.download_url })}
+                                    >
+                                        {installingIds.has(ext.id) ? <SabaSpinner size="xs" /> : null}
+                                        {t('saba_storage.install_btn')}
+                                    </button>
+                                </div>
                             </div>
-                            <div className="ss-card-body">
-                                <span className="ss-card-name">
-                                    {ext.name}
-                                    {ext.version && <span className="ss-card-version">v{ext.version}</span>}
-                                    {ext.author && <span className="ss-card-version">· {ext.author}</span>}
-                                </span>
-                                {(localizedDescription(ext as Described, i18n.language) || ext.id) && (
-                                    <span className="ss-card-desc">{localizedDescription(ext as Described, i18n.language) || ext.id}</span>
-                                )}
-                            </div>
-                            <div className="ss-card-actions">
-                                <button
-                                    className="ss-icon-btn accent"
-                                    disabled={installingIds.has(ext.id)}
-                                    onClick={() => installExtension(ext.id, { download_url: ext.download_url })}
-                                    data-tooltip={t('extensions.install_btn', '설치')}
-                                    aria-label={t('extensions.install_btn', '설치')}
-                                >
-                                    {installingIds.has(ext.id) ? (
-                                        <SabaSpinner size="xs" />
-                                    ) : (
-                                        <Icon name="download" size="sm" />
-                                    )}
-                                </button>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            )}
-                </>
-            )}
+                        ))}
+                    </div>
+                )}
+            </Disclosure>
 
             {versions.dialogs}
 

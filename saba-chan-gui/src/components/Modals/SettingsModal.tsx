@@ -106,7 +106,8 @@ function SettingsModal({
     const active = usePageActive();
     useEffect(() => {
         if (!active) return;
-        if (initialView === 'update' || initialView === 'extensions' || initialView === 'modules') {
+        // 화면 주소 settings/sabaStorage/components 는 'components'로, openSettings('update')는 'update'로 온다
+        if (initialView === 'update' || initialView === 'components' || initialView === 'extensions' || initialView === 'modules') {
             setStorageTab(initialView === 'update' ? 'components' : initialView);
             setActiveTab('sabaStorage');
         } else if ((TABS as readonly string[]).includes(initialView ?? '') || initialView?.startsWith('ext:')) {

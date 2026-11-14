@@ -92,10 +92,12 @@
 
 ```
 릴리즈 manifest 컴포넌트 "ext-<id>": { version, url, sha256, asset, install_dir?,
-  meta: { name, description, author, min_app_version?, dependencies(배열|맵), has_gui, has_i18n } }
-→ RemoteExtensionInfo { id, name, version, description, author, download_url(=url), sha256, asset,
+  meta: { name, description, descriptions?, icon?, author, min_app_version?, dependencies(배열|맵), has_gui, has_i18n } }
+→ RemoteExtensionInfo { id, name, version, description, descriptions{언어:설명}, has_icon, author, download_url(=url), sha256, asset,
                         install_dir?, min_app_version?, incompatible?, dependencies, has_gui, has_i18n, tags[], homepage? }
 ```
+
+`descriptions`는 익스텐션 manifest의 `descriptions` 그대로, `icon`은 폴더에 `icon.png`가 있을 때 익스텐션 저장소 커밋의 GitHub raw 주소다(`versions.py --extensions-ref`). 데몬은 `icon` 주소를 응답에서 빼고 `has_icon`만 싣는다. 그림은 데몬이 받아 두고 `GET /api/store/icons/ext-<id>`로 준다(01 §사바 스토리지 목록 캐시).
 
 `from_release`(`ext/remote.rs`)가 `meta`를 바탕으로 `version`·`download_url`·`sha256`·`asset`·`install_dir`을 덮어쓰고, id는 컴포넌트 키에서 `ext-`를 뗀 값이다. `meta`는 코어 릴리즈 워크플로의 `versions.py`가 익스텐션 manifest에서 만든다(`D:scripts/versions.py:246-267`). `tags`/`homepage`는 넣지 않는다. `install_dir`은 폴더 이름을 쓰므로 `extensions/ue4_ini`다. `install_dir`과 `asset`은 daemon이 읽지 않는다(설치 폴더는 `ext_dir_on_disk`가 정한다, `ext/discovery.rs`).
 

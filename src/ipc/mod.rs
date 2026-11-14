@@ -12,6 +12,7 @@ use tokio::sync::RwLock;
 
 pub mod handlers;
 pub mod updates;
+pub mod store_cache;
 pub mod update_phase;
 pub mod auth;
 pub mod internal;
@@ -864,6 +865,7 @@ impl IPCServer {
             .route("/api/maker", get(handlers::maker::get_maker))
             .route("/api/modules/detect", post(handlers::server::detect_module_dir))
             .route("/api/modules/manifest", get(handlers::server::fetch_module_manifest))
+            .route("/api/store/icons/{key}", get(store_cache::serve_icon))
             .route("/api/modules/manifest/{id}/install", post(handlers::server::install_module_from_manifest))
             .route("/api/modules/{id}", delete(handlers::server::remove_module))
             .route("/api/module/{name}", get(handlers::server::get_module_metadata))

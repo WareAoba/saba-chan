@@ -298,8 +298,10 @@ pub async fn get_module_metadata(
 /// GET /api/modules/manifest - 설치할 수 있는 모듈 목록 (최신 릴리즈의 서명된 manifest, U9e)
 ///
 /// `{success, manifest: {modules: {<이름>: {version, display_name, description, ...}}}}`
-pub async fn fetch_module_manifest() -> impl IntoResponse {
-    match saba_chan_updater_lib::relay::latest_catalog(None, &crate::ipc::updates::load_updater_config().channel).await {
+/// 데몬이 받아 둔 목록으로 바로 답한다(`store_cache`). `?refresh=true`면 새로 받는다
+pub async fn fetch_module_manifest(Query(query): Query<crate::ipc::store_cache::RefreshQuery>) -> impl IntoResponse {
+    let channel = crate::ipc::updates::load_updater_config().channel;
+    match crate::ipc::store_cache::store().catalog(&channel, query.refresh).await {
         Ok(catalog) => {
             let mut modules = serde_json::Map::new();
             if let Some(manifest) = &catalog {
@@ -309,17 +311,14 @@ pub async fn fetch_module_manifest() -> impl IntoResponse {
             }
             (StatusCode::OK, Json(json!({ "success": true, "manifest": { "modules": modules } }))).into_response()
         }
-        Err(e) => super::error(StatusCode::BAD_GATEWAY, "manifest_fetch_failed", e.to_string()),
+        Err(e) => super::error(StatusCode::BAD_GATEWAY, "manifest_fetch_failed", e),
     }
 }
 
 /// 카탈로그 모듈 하나의 목록 정보: meta에 버전·해시·크기와, 이 OS·CPU에서 도는지(`platform_supported`,
 /// 아니면 `unsupported_reason` `os`·`arch`)를 더한다. 설치된 모듈 목록과 같은 이름이다
 fn catalog_module_info(comp: &saba_chan_updater_lib::relay::ManifestComponent, os: &str, arch: &str) -> Value {
-    let mut info = match &comp.meta {
-        Some(Value::Object(meta)) => meta.clone(),
-        _ => serde_json::Map::new(),
-    };
+    let mut info = crate::ipc::store_cache::public_meta(comp.meta.as_ref());
     let reason = crate::module_loader::catalog_unsupported_on(&Value::Object(info.clone()), os, arch);
     info.insert("version".into(), json!(comp.version));
     info.insert("sha256".into(), json!(comp.sha256));

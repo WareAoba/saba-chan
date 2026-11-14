@@ -1,5 +1,5 @@
 /**
- * 모두 업데이트에서 데몬이 일부만 적용하면 {ok:false, applied:[..], errors:[..]}로 답한다.
+ * 업데이트에서 데몬이 일부만 적용하면 {success:false, applied:[..], errors:[..]}로 답한다.
  * GUI는 실패만 보이지 않고, 같은 요청에서 적용된 것도 알린다 (CLI와 같게, G-U9b).
  */
 import { act, fireEvent, render, waitFor } from '@testing-library/react';
@@ -45,11 +45,11 @@ afterEach(() => {
     delete (window as { api?: unknown }).api;
 });
 
-describe('모두 업데이트가 일부만 적용됐을 때', () => {
+describe('업데이트가 일부만 적용됐을 때', () => {
     it('실패와 함께 적용된 것도 알린다', async () => {
         render(<SabaStorage />);
-        await waitFor(() => expect(document.querySelector('.ss-icon-btn.accent')).not.toBeNull());
-        await act(async () => fireEvent.click(document.querySelector('.ss-icon-btn.accent')!));
+        await waitFor(() => expect(document.querySelector('.ss-update-btn')).not.toBeNull());
+        await act(async () => fireEvent.click(document.querySelector('.ss-update-btn')!));
         await waitFor(() => expect(document.querySelector('.update-modal-status-bar.error')).not.toBeNull());
         expect(document.querySelector('.update-modal-status-bar.error')!.textContent).toContain(
             'discord_bot: disk full',

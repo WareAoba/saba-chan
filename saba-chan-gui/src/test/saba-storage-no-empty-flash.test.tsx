@@ -40,7 +40,10 @@ afterEach(() => {
     delete (window as { api?: unknown }).api;
 });
 
-const empty = () => document.querySelector('.saba-art, .saba-empty, .ss-installed-empty');
+// 설치됨 묶음의 "없음" 줄 (받을 수 있는 목록의 받는 중 줄은 세지 않는다)
+const empty = () =>
+    document.querySelector('.saba-art, .saba-empty') ??
+    document.querySelector('[data-spot$=".installed"] .ss-empty');
 
 describe('받기 전에는 없음 그림을 띄우지 않는다', () => {
     it('모듈 탭', async () => {
@@ -61,9 +64,9 @@ describe('받기 전에는 없음 그림을 띄우지 않는다', () => {
 describe('순서가 바뀌지 않는다', () => {
     it('컴포넌트는 정한 순서', () => {
         const keys = parseComponents(
-            ['installer', 'cli', 'updater', 'saba-core', 'gui'].map((component) => ({ component })),
+            ['installer', 'cli', 'saba-core', 'gui'].map((component) => ({ component })),
         ).map((c) => c.key);
-        expect(keys).toEqual(['saba-core', 'gui', 'cli', 'updater', 'installer']);
+        expect(keys).toEqual(['saba-core', 'gui', 'cli', 'installer']);
     });
 
     it('모듈과 익스텐션은 이름순', async () => {

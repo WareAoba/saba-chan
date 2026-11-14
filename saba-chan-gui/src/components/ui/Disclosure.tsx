@@ -10,29 +10,34 @@ interface DisclosureProps {
     className?: string;
     /** 가이드가 짚는 자리 이름 (`data-spot`, guides/Spotlight) */
     spot?: string;
+    /** 머리 오른쪽 단추들 (눌러도 펼침이 바뀌지 않는다) */
+    actions?: ReactNode;
 }
 
 /**
  * 공통 펼치기. 브라우저 기본 <details>의 ▶ 대신 앱 아이콘 화살표가 돌고, 머리는 단추라 키보드로 연다.
  * 접혀 있어도 내용을 그려 둔다 (Ctrl+F가 안을 센다).
  */
-export function Disclosure({ summary, children, defaultOpen = false, className, spot }: DisclosureProps) {
+export function Disclosure({ summary, children, defaultOpen = false, className, spot, actions }: DisclosureProps) {
     const [open, setOpen] = useState(defaultOpen);
     const id = useId();
     return (
         <div data-spot={spot} className={clsx('saba-disclosure', className, { open })}>
-            <button
-                type="button"
-                className="saba-disclosure-head"
-                aria-expanded={open}
-                aria-controls={id}
-                onClick={() => setOpen((o) => !o)}
-            >
-                <span className="saba-disclosure-chevron" aria-hidden="true">
-                    <Icon name="chevronRight" size="sm" />
-                </span>
-                <span className="saba-disclosure-summary">{summary}</span>
-            </button>
+            <div className="saba-disclosure-bar">
+                <button
+                    type="button"
+                    className="saba-disclosure-head"
+                    aria-expanded={open}
+                    aria-controls={id}
+                    onClick={() => setOpen((o) => !o)}
+                >
+                    <span className="saba-disclosure-chevron" aria-hidden="true">
+                        <Icon name="chevronRight" size="sm" />
+                    </span>
+                    <span className="saba-disclosure-summary">{summary}</span>
+                </button>
+                {actions && <span className="saba-disclosure-actions">{actions}</span>}
+            </div>
             <div id={id} className="saba-disclosure-body" hidden={!open}>
                 {children}
             </div>
