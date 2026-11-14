@@ -1354,7 +1354,6 @@
     "dm_group_pc": "Este PC",
     "dm_group_guild": "Servidores de Discord vinculados a este PC",
     "dm_enabled_title": "Recibir avisos por MD",
-    "dm_enabled_desc": "Si está desactivado, no se envía ninguno de los avisos de abajo.",
     "dm_crash_title": "Cierres inesperados",
     "dm_crash_desc": "Aviso de caída del servidor. Sin reinicio automático, incluye un botón [Reiniciar].",
     "dm_crash_off_warn": "Desactivado, los fallos no se avisan por Discord. Siguen apareciendo en las notificaciones de la app.",

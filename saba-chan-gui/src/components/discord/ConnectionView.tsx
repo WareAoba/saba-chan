@@ -723,7 +723,6 @@ function PcNoticeCard() {
                 <div className="cb-toggle-row">
                     <span className="dc-list-text">
                         <span className="dc-list-name">{t('discord.dm_enabled_title')}</span>
-                        <span className="cb-hint">{t('discord.dm_enabled_desc')}</span>
                     </span>
                     <SabaToggle
                         checked={dmNotice.enabled}
