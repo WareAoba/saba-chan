@@ -96,13 +96,13 @@
     background: transparent;
 }
 
-/* 위에 붙는 머리(디스코드 서버 카드·탭 바)는 칠하면 창 바탕이 두 겹이 되어 띠가 진다.
+/* 위에 붙는 머리(디스코드 서버·인스턴스의 서버 카드·탭 바)는 칠하면 창 바탕이 두 겹이 되어 띠가 진다.
    칠하지 않고, 밑으로 지나가는 블록을 머리가 덮는 높이(--sticky-clip, useStickyClip)만큼 잘라 낸다.
    옆·아래는 그림자가 잘리지 않게 넉넉히 둔다 */
-:root[data-backdrop="on"] .dc-view-top {
+:root[data-backdrop="on"] .sticky-head {
     background: transparent;
 }
-:root[data-backdrop="on"] .dc-view-top ~ * {
+:root[data-backdrop="on"] .sticky-head ~ * {
     clip-path: polygon(
         -100vw var(--sticky-clip, -100vh),
         calc(100% + 100vw) var(--sticky-clip, -100vh),

@@ -107,3 +107,29 @@ describe('콘솔 줄 찾기 (Ctrl+F)', () => {
         expect(target.scrollIntoView).toHaveBeenCalled();
     });
 });
+
+// 사용자 11-14: PIP 띄우기는 탭 바가 아니라 콘솔 상단바(수준 칩 줄) 안에 둔다
+describe('콘솔 상단바의 PIP 단추', () => {
+    it('띄울 수 있으면 수준 칩 줄 오른쪽에 PIP 단추를 두고, 누르면 띄운다', () => {
+        const onPopout = vi.fn();
+        render(
+            <ServerConsole
+                server={{ id: 'a', name: 'A', status: 'running' } as Server}
+                state={{ lines: LINES, input: '' } as ConsoleEntry}
+                openConsole={() => {}}
+                setConsoleInput={() => {}}
+                sendConsoleCommand={() => {}}
+                onPopout={onPopout}
+            />,
+        );
+        const pip = document.querySelector('.term-bar [data-spot="console.popout"]') as HTMLButtonElement;
+        expect(pip).toBeTruthy();
+        fireEvent.click(pip);
+        expect(onPopout).toHaveBeenCalledTimes(1);
+    });
+
+    it('띄울 수 없으면(PIP 창 안 등) 단추가 없다', () => {
+        render(<Console />);
+        expect(document.querySelector('[data-spot="console.popout"]')).toBeNull();
+    });
+});

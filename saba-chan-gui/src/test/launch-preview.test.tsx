@@ -1,7 +1,7 @@
 import { act, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEBOUNCE_MS, joinArgs, LaunchPreview } from '../components/servers/LaunchPreview';
-import { launchDraft } from '../utils/launchDraft';
+import { forgetLaunchPreviews, launchDraft } from '../utils/launchDraft';
 import { settleLaunchArgs } from '../stores/useServerSettingsStore';
 import type { SettingField } from '../types/daemon';
 
@@ -22,6 +22,7 @@ describe('LaunchPreview', () => {
     });
     afterEach(() => {
         vi.useRealTimers();
+        forgetLaunchPreviews();
         delete (window.api as Partial<typeof window.api>).instanceLaunchPreview;
         delete window.showToast;
     });
@@ -121,6 +122,29 @@ describe('LaunchPreview', () => {
         await settle();
         expect(window.showToast).toHaveBeenCalledTimes(1);
         expect(screen.queryByText(/memory_size/)).toBeNull(); // 칸마다 형식 설명을 보이지 않는다
+    });
+
+    it('탭에 처음 들어오면 기다리지 않고 바로 묻고, 같은 설정으로 다시 들어오면 다시 계산하지 않고 바로 보인다', async () => {
+        window.api.instanceLaunchPreview = vi.fn().mockResolvedValue({
+            success: true,
+            has_launch_args: true,
+            command_line: 'java -jar server.jar',
+            extra_args: [],
+            errors: [],
+        });
+        const props = { serverId: 's1', modNs: undefined as never, fields, values: { port: '1' }, extraArgs: '' };
+        const first = render(<LaunchPreview {...props} />);
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(0);
+        });
+        expect(window.api.instanceLaunchPreview).toHaveBeenCalledTimes(1);
+        expect(screen.getByText('java -jar server.jar')).toBeTruthy();
+        first.unmount();
+
+        render(<LaunchPreview {...props} />);
+        expect(screen.getByText('java -jar server.jar')).toBeTruthy();
+        await settle();
+        expect(window.api.instanceLaunchPreview).toHaveBeenCalledTimes(1);
     });
 
     it('저장 직전에 추가 인자를 다시 나눠, 방금 고친 인자도 빠지지 않는다', async () => {

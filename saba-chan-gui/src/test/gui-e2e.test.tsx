@@ -523,6 +523,20 @@ describe('로딩 스크린 상태 머신', () => {
             delete (window as { __claimGuide?: typeof probe }).__claimGuide;
         }
     }, 20000);
+
+    it('콘솔 PIP 창은 로딩 화면·오프닝 없이 바로 콘솔을 연다', async () => {
+        const before = window.location.href;
+        window.history.replaceState(null, '', '/?console-popout=srv-1&name=PW-Main');
+        try {
+            // 데몬 상태 답이 늦어도(처음 그릴 때) 로딩 화면을 거치지 않는다
+            window.api = createApiMock({ daemonStatus: vi.fn(() => new Promise(() => {})) });
+            const { container } = render(<App />);
+            expect(container.querySelector('.loading-screen')).not.toBeInTheDocument();
+            expect(container.querySelector('.console-popout-app')).toBeInTheDocument();
+        } finally {
+            window.history.replaceState(null, '', before);
+        }
+    });
 });
 
 // ════════════════════════════════════════════════════════════

@@ -205,7 +205,7 @@ export function ServerConsole({
                 id: 'copy',
                 label: t('context_menu.copy'),
                 icon: 'copy',
-                
+
                 disabled: !inside,
                 onSelect: () => navigator.clipboard?.writeText(text),
             },
@@ -230,7 +230,9 @@ export function ServerConsole({
                 onSelect: () =>
                     useConsoleStore
                         .getState()
-                        .setConsoles((all) => (all[server.id] ? { ...all, [server.id]: { ...all[server.id], lines: [] } } : all)),
+                        .setConsoles((all) =>
+                            all[server.id] ? { ...all, [server.id]: { ...all[server.id], lines: [] } } : all,
+                        ),
             },
         ]);
     };
@@ -296,26 +298,38 @@ export function ServerConsole({
                     {t('shell.console_offline_history')}
                 </div>
             )}
-            <div className="term-levels" role="group" aria-label={t('console.level_filter')}>
-                <button
-                    type="button"
-                    className={clsx('term-chip', { on: !levels.length })}
-                    aria-pressed={!levels.length}
-                    onClick={() => pickLevels([])}
-                >
-                    {t('console.level_all')}
-                </button>
-                {(['warn', 'error'] as const).map((level) => (
+            <div className="term-bar">
+                <div className="term-levels" role="group" aria-label={t('console.level_filter')}>
                     <button
-                        key={level}
                         type="button"
-                        className={clsx('term-chip', `level-${level}`, { on: levels.includes(level) })}
-                        aria-pressed={levels.includes(level)}
-                        onClick={() => pickLevels(levels.includes(level) ? levels.filter((l) => l !== level) : [...levels, level])}
+                        className={clsx('term-chip', { on: !levels.length })}
+                        aria-pressed={!levels.length}
+                        onClick={() => pickLevels([])}
                     >
-                        {t(`console.level_${level}`)} {levelCounts[level]}
+                        {t('console.level_all')}
                     </button>
-                ))}
+                    {(['warn', 'error'] as const).map((level) => (
+                        <button
+                            key={level}
+                            type="button"
+                            className={clsx('term-chip', `level-${level}`, { on: levels.includes(level) })}
+                            aria-pressed={levels.includes(level)}
+                            onClick={() =>
+                                pickLevels(
+                                    levels.includes(level) ? levels.filter((l) => l !== level) : [...levels, level],
+                                )
+                            }
+                        >
+                            {t(`console.level_${level}`)} {levelCounts[level]}
+                        </button>
+                    ))}
+                </div>
+                {onPopout && (
+                    <button type="button" data-spot="console.popout" className="term-chip term-pip" onClick={onPopout}>
+                        <Icon name="pictureInPicture" size={13} />
+                        {t('console.popout')}
+                    </button>
+                )}
             </div>
             <div className="term-view">
                 <div
@@ -332,9 +346,16 @@ export function ServerConsole({
                             {server.status === 'running' ? t('console.waiting') : t('shell.console_offline')}
                         </div>
                     )}
-                    <ConsoleLines lines={shown} syntaxEnabled={syntaxEnabled} compiledRules={compiledRules} stamp={stamp} />
+                    <ConsoleLines
+                        lines={shown}
+                        syntaxEnabled={syntaxEnabled}
+                        compiledRules={compiledRules}
+                        stamp={stamp}
+                    />
                     {shown.length < lines.length && (
-                        <div className="term-hidden">{t('console.lines_hidden', { count: lines.length - shown.length })}</div>
+                        <div className="term-hidden">
+                            {t('console.lines_hidden', { count: lines.length - shown.length })}
+                        </div>
                     )}
                 </div>
                 {away && (
