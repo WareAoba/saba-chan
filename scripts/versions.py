@@ -985,6 +985,8 @@ def main() -> int:
     m.add_argument("--out")
     m.add_argument("--modules-repo", help="saba-chan-modules 체크아웃 (모듈을 같이 싣는다)")
     m.add_argument("--extensions-repo", help="saba-chan-extensions 체크아웃")
+    # main의 publish.yml이 넘긴다 (아이콘 주소용). 이 옛 소스의 manifest는 아이콘 주소를 싣지 않아 받기만 한다
+    m.add_argument("--extensions-ref", help=argparse.SUPPRESS)
     m.add_argument("--addons-ref", help="아이콘 URL에 쓸 모듈 저장소 커밋")
     m.add_argument("--previous", help="지난 릴리즈의 (서명된) manifest. 버전이 같은 앱 컴포넌트는 그 항목을 그대로 싣고, "
                    "바뀐 모듈·익스텐션의 버전이 오르지 않았으면 멈춘다")
