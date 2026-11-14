@@ -729,6 +729,21 @@
     border-radius: var(--r-md);
 }
 
+/* 콘솔 탭: 상세를 칸 높이에 맞춰 콘솔이 남은 자리를 채운다 (칸이 스크롤하지 않게, 사용자 11-14) */
+.server-detail-host:has(> .server-detail--fit) {
+    flex: 1 1 0;
+    min-height: 0;
+}
+.server-detail-host > .server-detail--fit {
+    flex: 1 1 0;
+    min-height: 0;
+}
+.server-detail--fit > .detail-body > .term {
+    flex: 1;
+    height: auto;
+    min-height: 240px;
+}
+
 /* ── 콘솔 (N2: 눌린 화면) ── */
 .term {
     display: flex;
@@ -3305,12 +3320,12 @@ button.dc-ladder-chip.is-fixed {
     border: none;
 }
 .dc-view > .segmented,
-.dc-view-top > .segmented {
+.sticky-head > .segmented {
     align-self: flex-start;
 }
-/* 디스코드 서버 화면: 서버 정보 카드와 탭 바는 칸 위에 붙고 그 아래만 스크롤한다 (사용자 11-07).
+/* 디스코드 서버·인스턴스 화면: 서버 정보 카드와 탭 바는 칸 위에 붙고 그 아래만 스크롤한다 (사용자 11-07, 11-14).
    붙었을 때 위쪽 숨 쉴 틈만큼 바탕을 칠해 밑에서 올라오는 내용을 가린다 */
-.dc-view-top {
+.sticky-head {
     position: sticky;
     top: 0;
     z-index: 5;
@@ -3323,13 +3338,15 @@ button.dc-ladder-chip.is-fixed {
 }
 /* 위에 뒤로 가기 단추가 없으면 칸 위 여백(.server-detail padding)까지 덮어, 처음 자리와 붙은 자리가 같게 한다.
    그래야 스크롤을 시작해도 카드가 조금도 움직이지 않는다 */
-.server-detail > .dc-view:first-child > .dc-view-top {
+.server-detail > .dc-view:first-child > .sticky-head,
+.server-detail > .sticky-head:first-child {
     margin-top: calc(-1 * var(--sp-6));
     padding-top: var(--sp-6);
 }
 /* 세로 flex 안에서 줄어들어 겹치지 않게 */
 .dc-nav-row,
 .dc-view > *,
+.server-detail > .sticky-head,
 .dc-tab > *,
 .dc-list > li {
     flex-shrink: 0;

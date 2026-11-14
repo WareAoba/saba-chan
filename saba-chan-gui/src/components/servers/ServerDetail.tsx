@@ -1,3 +1,4 @@
+import clsx from 'clsx';
 import { type ComponentProps, type ReactNode, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -8,6 +9,7 @@ import {
 } from '../../hooks/useInstanceMaintenance';
 import type { useMultiConsole } from '../../hooks/useMultiConsole';
 import { useExtensions } from '../../contexts/ExtensionContext';
+import { useStickyClip } from '../../hooks/useStickyClip';
 import { extensionInstallMethod } from '../../utils/installMethod';
 import { useConsoleStore } from '../../stores/useConsoleStore';
 import { useServerSettingsStore } from '../../stores/useServerSettingsStore';
@@ -75,14 +77,7 @@ export type ServerConsoleProps = Pick<
  * 오른쪽 서버 상세. 머리(이름·상태·켜기/끄기) + 탭(콘솔 · 명령 · 설정 · 백업·예약 · 정보).
  * 예전에는 콘솔·명령·설정이 각각 떠다니는 창/모달이었다.
  */
-export function ServerDetail({
-    server,
-    moduleData,
-    modules,
-    servers,
-    onBack,
-    consoleProps,
-}: ServerDetailProps) {
+export function ServerDetail({ server, moduleData, modules, servers, onBack, consoleProps }: ServerDetailProps) {
     const { t, i18n } = useTranslation('gui');
     const setServers = useServerStore((s) => s.setServers);
     const onStart = useServerStore((s) => s.startServer);
@@ -179,6 +174,9 @@ export function ServerDetail({
     };
     const bodyRef = useRef<HTMLDivElement>(null);
     const tabRowRef = useRef<HTMLDivElement>(null);
+    const topRef = useRef<HTMLDivElement>(null);
+    useStickyClip(topRef);
+    const showTabs = status !== 'missing' && !server.provisioning;
 
     const conflicts = portConflictCheck ? server.port_conflicts || [] : [];
     const uptime = status === 'running' && server.start_time ? <Uptime startTime={server.start_time} /> : null;
@@ -223,7 +221,8 @@ export function ServerDetail({
             </>
         ) : (
             <span className="start-anchor">
-                <button data-spot="server.start"
+                <button
+                    data-spot="server.start"
                     type="button"
                     className="btn btn-primary btn-lg"
                     onClick={() => onStart(server.id)}
@@ -237,184 +236,199 @@ export function ServerDetail({
 
     return (
         <section
-            className="server-detail"
+            className={clsx('server-detail', { 'server-detail--fit': showTabs && activeTab === 'console' })}
             aria-label={server.name}
         >
-            <header className="detail-head">
-                {onBack && (
-                    <button
-                        type="button"
-                        className="icon-btn detail-back"
-                        onClick={onBack}
-                        aria-label={t('shell.back')}
-                    >
-                        <Icon name="chevronLeft" size="sm" />
-                    </button>
-                )}
-                <div className="detail-icon">
-                    {moduleData?.icon ? <img src={moduleData.icon} alt="" /> : <span>{initials(gameName)}</span>}
-                </div>
-                <div className="detail-title">
-                    <ServerName server={server} canRename={status === 'stopped'} onRename={onRename} />
-                    <div className="detail-sub">
-                        <span>{gameName}</span>
-                        {versionTag && <span className="tag">{versionTag}</span>}
-                        {updateInfo && <span className="tag tag-accent">{t('shell.update_tag')}</span>}
-                        {branchParent && <span className="tag">{t('branch.tag', { name: branchParent.name })}</span>}
-                        {server.port && (
-                            <span className="muted">
-                                {t('shell.info_port')} {server.port}
-                            </span>
-                        )}
-                        {players && (
-                            <span className="muted">
-                                {t('shell.players')} {players}
-                            </span>
-                        )}
-                    </div>
-                </div>
-                <ExtensionSlot slotId="ServerCard.headerGauge" server={server} />
-                <div className="detail-actions">
-                    <StatusChip
-                        tone={STATUS_TONE[status]}
-                        label={t(`shell.status_${status}`)}
-                        detail={uptime}
-                        pulse={isTransitional(status)}
-                    />
-                    {primaryButton}
-                </div>
-            </header>
-
-            {status === 'missing' && (
-                <div className="notice tone-warn">
-                    <Icon name="alertTriangle" size="sm" />
-                    <span>
-                        {t('server_status.module_missing_detail', {
-                            module: server.module,
-                            defaultValue: `Module '${server.module}' could not be found.`,
-                        })}
-                        {moduleFailure && (
-                            <span className="notice-detail">
-                                {t('shell.module_load_error', { error: failedModuleReason(moduleFailure, t) })}
-                            </span>
-                        )}
-                    </span>
-                </div>
-            )}
-
-            {status !== 'missing' && <ModuleAuditNotice moduleName={server.module} />}
-
-            {server.unresponsive && status === 'running' && (
-                <div className="notice tone-warn idle-stopped-notice" role="status">
-                    <Icon name="alertTriangle" size="sm" />
-                    <span>
-                        {server.unresponsive_minutes != null && (
-                            <>
-                                <strong>
-                                    {t('server_status.unresponsive_for', { minutes: server.unresponsive_minutes })}
-                                </strong>{' '}
-                                {t('server_status.unresponsive_detail')}{' '}
-                            </>
-                        )}
-                        <span className="notice-detail">
-                            {t('server_status.unresponsive', { reason: server.unresponsive })}
-                        </span>
-                    </span>
-                    {typeof window.api?.instanceRestart === 'function' && (
-                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => onRestart(server.id)}>
-                            <Icon name="refresh" size="sm" /> {t('shell.restart')}
+            {/* 서버 카드부터 탭 바까지는 위에 고정하고 그 아래만 스크롤한다 (디스코드 서버 화면과 같다, 사용자 11-14) */}
+            <div className="sticky-head" ref={topRef}>
+                <header className="detail-head">
+                    {onBack && (
+                        <button
+                            type="button"
+                            className="icon-btn detail-back"
+                            onClick={onBack}
+                            aria-label={t('shell.back')}
+                        >
+                            <Icon name="chevronLeft" size="sm" />
                         </button>
                     )}
-                </div>
-            )}
-
-            {/* 새 빌드가 있다: 무엇에서 무엇으로 바뀌는지와 올라온 날을 보이고 여기서 업데이트한다 */}
-            {updateInfo && status === 'stopped' && (
-                <div className="notice tone-info idle-stopped-notice update-notice" role="status">
-                    <Icon name="info" size="sm" />
-                    <span>
-                        {t('shell.update_notice', { from: updateInfo.local_buildid, to: updateInfo.remote_buildid })}
-                        {updateFrom && ` (${updateFrom})`}
-                    </span>
-                    <button
-                        type="button"
-                        className="btn btn-primary btn-sm"
-                        disabled={updatingServer}
-                        onClick={() => applyInstanceUpdate(server, setServers)}
-                    >
-                        {updatingServer ? t('shell.updating') : t('shell.update')}
-                    </button>
-                </div>
-            )}
-
-            {/* 접속자가 없어 데몬이 자동으로 정지했다 (데몬 idle_stopped: 다시 켜면 사라진다) */}
-            {server.idle_stopped && status === 'stopped' && (
-                <div className="notice tone-info idle-stopped-notice" role="status">
-                    <Icon name="moon" size="sm" />
-                    <span>
-                        <strong>{t('server_settings.idle_stopped', { minutes: server.idle_stopped.minutes })}</strong>{' '}
-                        {new Date(server.idle_stopped.at * 1000).toLocaleString(i18n.language, {
-                            month: 'numeric',
-                            day: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                        })}
-                    </span>
-                    <button
-                        type="button"
-                        className="btn btn-primary btn-sm"
-                        onClick={() => onStart(server.id)}
-                    >
-                        <Icon name="play" size="sm" /> {t('shell.start')}
-                    </button>
-                </div>
-            )}
-
-            {status !== 'missing' && <ServerAddress server={server} />}
-
-
-            {conflicts.length > 0 && (
-                <div className="notice tone-warn">
-                    <Icon name="alertCircle" size="sm" />
-                    <span>
-                        <strong>{t('errors.port_conflict')}</strong>{' '}
-                        {conflicts
-                            .map((c) => t('errors.port_conflict_detail', { port: c.port, name: c.conflict_name }))
-                            .join(', ')}
-                    </span>
-                </div>
-            )}
-
-            {(server.provisioning || (cooked && !live)) && (
-                <div className="detail-provision">
-                    {server.provisioning && (
-                        <ExtensionSlot
-                            slotId="ServerCard.provision"
-                            server={server}
-                            provisionProgress={provisionProgress}
-                            onDismiss={() => dismissInstanceProvision(server, setServers)}
-                            t={t}
+                    <div className="detail-icon">
+                        {moduleData?.icon ? <img src={moduleData.icon} alt="" /> : <span>{initials(gameName)}</span>}
+                    </div>
+                    <div className="detail-title">
+                        <ServerName server={server} canRename={status === 'stopped'} onRename={onRename} />
+                        <div className="detail-sub">
+                            <span>{gameName}</span>
+                            {versionTag && <span className="tag">{versionTag}</span>}
+                            {updateInfo && <span className="tag tag-accent">{t('shell.update_tag')}</span>}
+                            {branchParent && (
+                                <span className="tag">{t('branch.tag', { name: branchParent.name })}</span>
+                            )}
+                            {server.port && (
+                                <span className="muted">
+                                    {t('shell.info_port')} {server.port}
+                                </span>
+                            )}
+                            {players && (
+                                <span className="muted">
+                                    {t('shell.players')} {players}
+                                </span>
+                            )}
+                        </div>
+                    </div>
+                    <ExtensionSlot slotId="ServerCard.headerGauge" server={server} />
+                    <div className="detail-actions">
+                        <StatusChip
+                            tone={STATUS_TONE[status]}
+                            label={t(`shell.status_${status}`)}
+                            detail={uptime}
+                            pulse={isTransitional(status)}
                         />
-                    )}
-                    <NativeProvision
-                        server={server}
-                        provisionProgress={provisionProgress as ComponentProps<typeof NativeProvision>['provisionProgress']}
-                        cooked={cooked && !live}
-                        icon={
-                            moduleData?.icon ? <img src={moduleData.icon} alt="" /> : <span>{initials(gameName)}</span>
-                        }
-                        onDismiss={() => dismissInstanceProvision(server, setServers)}
-                        onClose={() => closeCookedCard(server)}
-                        onStart={() => onStart(server.id)}
-                        onSettings={() => setTab('settings')}
-                    />
-                </div>
-            )}
+                        {primaryButton}
+                    </div>
+                </header>
 
-            {status !== 'missing' && !server.provisioning && (
-                <>
+                {status === 'missing' && (
+                    <div className="notice tone-warn">
+                        <Icon name="alertTriangle" size="sm" />
+                        <span>
+                            {t('server_status.module_missing_detail', {
+                                module: server.module,
+                                defaultValue: `Module '${server.module}' could not be found.`,
+                            })}
+                            {moduleFailure && (
+                                <span className="notice-detail">
+                                    {t('shell.module_load_error', { error: failedModuleReason(moduleFailure, t) })}
+                                </span>
+                            )}
+                        </span>
+                    </div>
+                )}
+
+                {status !== 'missing' && <ModuleAuditNotice moduleName={server.module} />}
+
+                {server.unresponsive && status === 'running' && (
+                    <div className="notice tone-warn idle-stopped-notice" role="status">
+                        <Icon name="alertTriangle" size="sm" />
+                        <span>
+                            {server.unresponsive_minutes != null && (
+                                <>
+                                    <strong>
+                                        {t('server_status.unresponsive_for', { minutes: server.unresponsive_minutes })}
+                                    </strong>{' '}
+                                    {t('server_status.unresponsive_detail')}{' '}
+                                </>
+                            )}
+                            <span className="notice-detail">
+                                {t('server_status.unresponsive', { reason: server.unresponsive })}
+                            </span>
+                        </span>
+                        {typeof window.api?.instanceRestart === 'function' && (
+                            <button type="button" className="btn btn-ghost btn-sm" onClick={() => onRestart(server.id)}>
+                                <Icon name="refresh" size="sm" /> {t('shell.restart')}
+                            </button>
+                        )}
+                    </div>
+                )}
+
+                {/* 새 빌드가 있다: 무엇에서 무엇으로 바뀌는지와 올라온 날을 보이고 여기서 업데이트한다 */}
+                {updateInfo && status === 'stopped' && (
+                    <div className="notice tone-info idle-stopped-notice update-notice" role="status">
+                        <Icon name="info" size="sm" />
+                        <span>
+                            {t('shell.update_notice', {
+                                from: updateInfo.local_buildid,
+                                to: updateInfo.remote_buildid,
+                            })}
+                            {updateFrom && ` (${updateFrom})`}
+                        </span>
+                        <button
+                            type="button"
+                            className="btn btn-primary btn-sm"
+                            disabled={updatingServer}
+                            onClick={() => applyInstanceUpdate(server, setServers)}
+                        >
+                            {updatingServer ? t('shell.updating') : t('shell.update')}
+                        </button>
+                    </div>
+                )}
+
+                {/* 접속자가 없어 데몬이 자동으로 정지했다 (데몬 idle_stopped: 다시 켜면 사라진다) */}
+                {server.idle_stopped && status === 'stopped' && (
+                    <div className="notice tone-info idle-stopped-notice" role="status">
+                        <Icon name="moon" size="sm" />
+                        <span>
+                            <strong>
+                                {t('server_settings.idle_stopped', { minutes: server.idle_stopped.minutes })}
+                            </strong>{' '}
+                            {new Date(server.idle_stopped.at * 1000).toLocaleString(i18n.language, {
+                                month: 'numeric',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                            })}
+                        </span>
+                        <button type="button" className="btn btn-primary btn-sm" onClick={() => onStart(server.id)}>
+                            <Icon name="play" size="sm" /> {t('shell.start')}
+                        </button>
+                    </div>
+                )}
+
+                {status !== 'missing' && <ServerAddress server={server} />}
+
+                {conflicts.length > 0 && (
+                    <div className="notice tone-warn">
+                        <Icon name="alertCircle" size="sm" />
+                        <span>
+                            <strong>{t('errors.port_conflict')}</strong>{' '}
+                            {conflicts
+                                .map((c) => t('errors.port_conflict_detail', { port: c.port, name: c.conflict_name }))
+                                .join(', ')}
+                        </span>
+                    </div>
+                )}
+
+                {(server.provisioning || (cooked && !live)) && (
+                    <div className="detail-provision">
+                        {server.provisioning && (
+                            <ExtensionSlot
+                                slotId="ServerCard.provision"
+                                server={server}
+                                provisionProgress={provisionProgress}
+                                onDismiss={() => dismissInstanceProvision(server, setServers)}
+                                t={t}
+                            />
+                        )}
+                        <NativeProvision
+                            server={server}
+                            provisionProgress={
+                                provisionProgress as ComponentProps<typeof NativeProvision>['provisionProgress']
+                            }
+                            cooked={cooked && !live}
+                            icon={
+                                moduleData?.icon ? (
+                                    <img src={moduleData.icon} alt="" />
+                                ) : (
+                                    <span>{initials(gameName)}</span>
+                                )
+                            }
+                            onDismiss={() => dismissInstanceProvision(server, setServers)}
+                            onClose={() => closeCookedCard(server)}
+                            onStart={() => onStart(server.id)}
+                            onSettings={() => setTab('settings')}
+                        />
+                    </div>
+                )}
+
+                {showTabs && (
                     <div className="detail-tabrow" ref={tabRowRef}>
-                        <Segmented items={tabs} value={activeTab} onChange={setTab} ariaLabel={server.name} spot="server.tab" />
+                        <Segmented
+                            items={tabs}
+                            value={activeTab}
+                            onChange={setTab}
+                            ariaLabel={server.name}
+                            spot="server.tab"
+                        />
                         {findable && <PageFindButton />}
                         {activeTab === 'console' && !poppedOut && typeof window.api?.consolePopout === 'function' && (
                             <button
@@ -428,6 +442,11 @@ export function ServerDetail({
                             </button>
                         )}
                     </div>
+                )}
+            </div>
+
+            {showTabs && (
+                <>
                     <PageFind
                         rootRef={bodyRef}
                         anchorRef={tabRowRef}
@@ -440,7 +459,10 @@ export function ServerDetail({
                                 server={server}
                                 readOnly={!interaction.input}
                                 highlightRules={moduleData?.syntax_highlight?.rules || null}
-                                quickCommands={consoleQuickCommands(moduleData?.commands?.fields, moduleData?.command_aliases)}
+                                quickCommands={consoleQuickCommands(
+                                    moduleData?.commands?.fields,
+                                    moduleData?.command_aliases,
+                                )}
                                 openConsole={consoleProps.openConsole}
                                 watchConsole={consoleProps.watchConsole}
                                 setConsoleInput={consoleProps.setConsoleInput}
@@ -717,7 +739,12 @@ function InfoTab({
             <ServerLogs server={server} />
             <ExtensionSlot slotId="ServerCard.expandedStats" server={server} t={t} />
             <ExtensionSlot slotId="ServerDetail.section" server={server} t={t} />
-            <Card icon="tool" title={t('shell.info_check_title')} desc={t('shell.info_check_desc')} className="info-check">
+            <Card
+                icon="tool"
+                title={t('shell.info_check_title')}
+                desc={t('shell.info_check_desc')}
+                className="info-check"
+            >
                 <ServerCheck server={server} />
                 <PortCheck server={server} />
             </Card>
