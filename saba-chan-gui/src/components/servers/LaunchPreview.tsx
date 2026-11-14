@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import type { ApiBody, JsonObject, SettingField } from '../../types/daemon';
 import { Icon } from '../Icon';
 import { safeShowToast } from '../../utils/helpers';
-import { launchDraft } from '../../utils/launchDraft';
+import { launchDraft, launchPreviews as previews } from '../../utils/launchDraft';
 import { SabaSpinner } from '../ui/SabaUI';
 
 export const DEBOUNCE_MS = 400;
@@ -55,9 +55,12 @@ export function LaunchPreview({
     const { t } = useTranslation('gui');
     const draft = useMemo(() => launchDraft(fields, values), [fields, values]);
     const key = JSON.stringify([draft, extraArgs]);
-    const [res, setRes] = useState<ApiBody | null>(null);
-    const [loading, setLoading] = useState(true);
+    const cacheKey = JSON.stringify([serverId, key]);
+    const [res, setRes] = useState<ApiBody | null>(() => previews.get(cacheKey) ?? null);
+    const [loading, setLoading] = useState(() => !previews.has(cacheKey));
     const seq = useRef(0);
+    // 탭에 처음 들어왔을 때는 기다리지 않고 묻는다. 기다림은 고치는 동안만
+    const asked = useRef(false);
     // 칸을 직접 고친 뒤에도 추가 인자가 다시 덮어쓰지 않게, 추가 인자가 바뀐 응답만 칸에 반영한다
     const appliedExtra = useRef(extraArgs);
     // 같은 오류로 토스트를 되풀이하지 않는다
@@ -66,15 +69,8 @@ export function LaunchPreview({
     // biome-ignore lint/correctness/useExhaustiveDependencies: key가 draft·추가 인자 내용을 대신한다
     useEffect(() => {
         const mine = ++seq.current;
-        setLoading(true);
-        const timer = setTimeout(async () => {
-            let next: ApiBody;
-            try {
-                next = await window.api.instanceLaunchPreview(serverId, draft, extraArgs);
-            } catch (e) {
-                next = { success: false, error: (e as Error).message };
-            }
-            if (mine !== seq.current) return;
+        const cached = previews.get(cacheKey);
+        const apply = (next: ApiBody) => {
             setRes(next);
             setLoading(false);
             if (extraArgs === undefined) {
@@ -106,7 +102,29 @@ export function LaunchPreview({
                 );
             }
             toasted.current = errorKey;
-        }, DEBOUNCE_MS);
+        };
+        if (cached) {
+            asked.current = true;
+            apply(cached);
+            return undefined;
+        }
+        setLoading(true);
+        const timer = setTimeout(
+            async () => {
+                let next: ApiBody;
+                try {
+                    next = await window.api.instanceLaunchPreview(serverId, draft, extraArgs);
+                } catch (e) {
+                    next = { success: false, error: (e as Error).message };
+                }
+                asked.current = true;
+                if (mine !== seq.current) return;
+                // 실패는 남기지 않는다: 다시 들어오면 다시 묻는다
+                if (next?.success !== false && !next?.error) previews.set(cacheKey, next);
+                apply(next);
+            },
+            asked.current ? DEBOUNCE_MS : 0,
+        );
         return () => clearTimeout(timer);
     }, [serverId, key]);
 

@@ -3,7 +3,7 @@ import type { Json, ModuleInfo, SettingField } from '../types/daemon';
 import { changedForCli } from '../utils/cliValues';
 import { busyMessage, moduleSupports, safeShowToast } from '../utils/helpers';
 import { versionBranchMethod } from '../utils/installMethod';
-import { launchDraft } from '../utils/launchDraft';
+import { forgetLaunchPreviews, launchDraft } from '../utils/launchDraft';
 import { installFailure } from '../utils/serverControl';
 import { gameNameOf } from '../utils/serverView';
 import { blockedText } from '../utils/trustNotice';
@@ -263,6 +263,8 @@ export const useServerSettingsStore = create<ServerSettingsState>()((set, get) =
         internal.revision = latestServer.revision || null;
         internal.unconfirmedFields = new Set();
         if (!reload) {
+            // 새로 열면 실행 인자도 새로 계산한다 (버전 설치 등으로 서버가 바뀌었을 수 있다)
+            forgetLaunchPreviews();
             internal.touchedFields = new Set(Object.keys(draft ?? {}));
             setSettingsSource('loading');
         }
