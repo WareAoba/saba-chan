@@ -1353,6 +1353,8 @@
     "dm_group_server": "Spielserver",
     "dm_group_pc": "Dieser PC",
     "dm_group_guild": "Mit diesem PC verbundene Discord-Server",
+    "dm_enabled_title": "DM-Benachrichtigungen erhalten",
+    "dm_enabled_desc": "Wenn aus, wird keine der folgenden Benachrichtigungen gesendet.",
     "dm_crash_title": "Abstürze",
     "dm_crash_desc": "Meldet Serverabstürze. Ohne automatischen Neustart gibt es eine Schaltfläche [Neustart].",
     "dm_crash_off_warn": "Ausgeschaltet erfährt man auf Discord nichts von Abstürzen. In den App-Benachrichtigungen bleiben sie.",

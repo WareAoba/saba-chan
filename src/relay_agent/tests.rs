@@ -1398,16 +1398,24 @@ fn dm_notice_is_sent_only_when_something_is_off() {
     dm_notice_meta(&mut meta, &bot);
     assert_eq!(meta, json!({ "backupNotice": "off", "dmOff": ["crash", "unresponsive", "chatbotUsage"] }));
 
-    bot.backup_notice = BackupNotice::Failures;
+    // 기본(실패만)은 싣지 않는다. 릴레이도 없으면 실패만 보낸다 (사용자 2026-11-15)
+    bot.backup_notice = BackupNotice::All;
     let mut meta = json!({});
     dm_notice_meta(&mut meta, &bot);
-    assert_eq!(meta["backupNotice"], "failures");
+    assert_eq!(meta["backupNotice"], "all");
 
     // 켜야 보내는 종류(PC 연결 끊김)는 켰을 때만 `dmOn`으로 싣고, 끈 종류에는 넣지 않는다
     let bot: BotConfig = serde_json::from_value(json!({ "dmNotice": { "offline": true } })).unwrap();
     let mut meta = json!({});
     dm_notice_meta(&mut meta, &bot);
     assert_eq!(meta, json!({ "dmOn": ["offline"] }));
+
+    // DM 알림 전체 스위치는 기본 꺼짐, 켜면 `dmOn`의 `all` (사용자 2026-11-15)
+    assert!(!BotConfig::default().dm_notice.enabled);
+    let bot: BotConfig = serde_json::from_value(json!({ "dmNotice": { "enabled": true, "offline": true } })).unwrap();
+    let mut meta = json!({});
+    dm_notice_meta(&mut meta, &bot);
+    assert_eq!(meta, json!({ "dmOn": ["all", "offline"] }));
 }
 
 // 켜짐 알림을 켠 서버는 길드마다 싣는다. 켠 서버가 없는 길드는 싣지 않는다 (릴레이는 없으면 알리지 않는다)

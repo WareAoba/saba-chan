@@ -82,6 +82,8 @@ pub struct LiveState {
     pub phase: Phase,
     /// 단계를 정할 때 이미 읽은 완료 마커의 `timestamp` (같은 마커로 단계를 다시 바꾸지 않는다)
     pub marker_seen: Option<String>,
+    /// 마지막으로 `update.available`로 알린 업데이트 (구성요소 키, 새 판). 데몬을 다시 켜도 같은 것을 또 알리지 않게 남긴다
+    pub announced: Vec<(String, Option<String>)>,
 }
 
 impl LiveState {
@@ -559,6 +561,7 @@ mod tests {
             seen: BTreeMap::from([("stable".to_string(), 12)]),
             phase: Phase::ready(ReadyReason::RolledBack, Some("0.1.14".into()), None),
             marker_seen: Some("t".into()),
+            ..Default::default()
         };
         state.save_to(&path);
         assert_eq!(LiveState::load_from(&path), state);

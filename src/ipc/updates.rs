@@ -156,6 +156,19 @@ impl UpdateState {
         self.live.lock().unwrap_or_else(|e| e.into_inner()).phase.visible(chrono::Utc::now())
     }
 
+    /// 이번에 본 업데이트 (구성요소 키, 새 판)를 남기고, 지난번 알린 것과 달라 새로 알릴 것이 있으면 true.
+    /// 같은 구성요소라도 더 새 판이 나오면 다시 알린다. 상태 파일에 남겨 데몬을 다시 켜도 같은 것을 또 알리지 않는다
+    fn note_updates(&self, found: Vec<(String, Option<String>)>) -> bool {
+        let mut live = self.live.lock().unwrap_or_else(|e| e.into_inner());
+        if live.announced == found {
+            return false;
+        }
+        let announce = !found.is_empty();
+        live.announced = found;
+        live.save_to(&self.live_path);
+        announce
+    }
+
     /// 단계를 바꾸고 상태 파일에 남긴다. 같으면(기다리는 것까지) 시각을 새로 찍지 않는다
     fn set_phase(&self, phase: Phase) {
         let mut live = self.live.lock().unwrap_or_else(|e| e.into_inner());
@@ -498,7 +511,7 @@ async fn check_and_follow_up(state: &UpdateState) -> anyhow::Result<saba_chan_up
 /// `check_and_follow_up`에 heartbeat가 알린 릴리즈 id를 릴레이 캐시 키로 붙인다. 확인 결과와 `/latest` 응답에 담긴 가장 큰 릴리즈 id
 async fn check_and_follow_up_hinted(state: &UpdateState, hint: Option<u64>) -> anyhow::Result<(saba_chan_updater_lib::UpdateStatus, Option<u64>)> {
     let (status, latest_id) = saba_chan_updater_lib::check_shared(&state.manager, hint).await?;
-    announce_new_updates(&status);
+    announce_new_updates(state, &status);
     state.status_may_have_changed();
 
     // 모듈·익스텐션은 묻지 않고 바꿔 끼운다 (사용자 결정 2026-11-09). 확인을 끈 설정이면 주기 확인 자체가 돌지 않는다
@@ -1199,22 +1212,16 @@ pub fn on_latest_releases(state: &UpdateState, ids: &Value, shutdown: tokio_util
 }
 
 /// 사용자에게 보이는 업데이트가 지난번 알린 것과 달라졌을 때만 `update.available` (P4)
-fn announce_new_updates(status: &saba_chan_updater_lib::UpdateStatus) {
-    // 같은 구성요소라도 더 새 버전이 나오면 다시 알린다
-    static LAST: std::sync::Mutex<Vec<(String, Option<String>)>> = std::sync::Mutex::new(Vec::new());
+fn announce_new_updates(state: &UpdateState, status: &saba_chan_updater_lib::UpdateStatus) {
     let visible: Vec<_> = status.components.iter()
         .filter(|c| c.update_available && !matches!(c.component, Component::Locales))
         .collect();
-    let found: Vec<(String, Option<String>)> = visible.iter()
-        .map(|c| (c.component.manifest_key(), c.latest_version.clone()))
-        .collect();
-    let mut last = LAST.lock().unwrap_or_else(|e| e.into_inner());
-    if !found.is_empty() && *last != found {
+    let found = visible.iter().map(|c| (c.component.manifest_key(), c.latest_version.clone())).collect();
+    if state.note_updates(found) {
         // `/api/updates/check`의 `update_names`와 같은 표시 이름
         let names: Vec<String> = visible.iter().map(|c| c.component.display_name()).collect();
         crate::events::emit("update.available", json!({ "components": names }));
     }
-    *last = found;
 }
 
 /// Locales 컴포넌트를 사용자 비표시로 다운로드+적용합니다.
@@ -3124,6 +3131,24 @@ mod tests {
         state.live = Arc::default();
         state.live_path = Arc::new(dir.join("live-update.json"));
         state
+    }
+
+    /// 알린 업데이트는 상태 파일에 남는다: 데몬을 다시 켜도 같은 업데이트를 또 알리지 않고, 더 새 판이나 다 받은 뒤의 새 업데이트는 알린다
+    #[test]
+    fn an_announced_update_is_not_announced_again_after_a_restart() {
+        let tmp = tempfile::tempdir().unwrap();
+        let core = |v: &str| vec![("core".to_string(), Some(v.to_string()))];
+        assert!(state_in(tmp.path()).note_updates(core("0.1.14")));
+        // 다시 켠 데몬: 상태 파일에서 읽는다
+        let restarted = || {
+            let state = state_in(tmp.path());
+            *state.live.lock().unwrap() = LiveState::load_from(&state.live_path);
+            state
+        };
+        assert!(!restarted().note_updates(core("0.1.14")));
+        assert!(restarted().note_updates(core("0.1.15")));
+        assert!(!restarted().note_updates(Vec::new()));
+        assert!(restarted().note_updates(core("0.1.15")));
     }
 
     /// 상태 응답에 알약 단계와 정식 기다림을 싣는다. `done`은 확인(ack)하면 `idle`이 되고 상태 파일에 남는다

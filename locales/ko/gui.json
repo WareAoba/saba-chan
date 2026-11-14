@@ -1353,6 +1353,8 @@
     "dm_group_server": "게임 서버",
     "dm_group_pc": "이 PC",
     "dm_group_guild": "이 PC가 붙은 디스코드 서버",
+    "dm_enabled_title": "DM 알림 받기",
+    "dm_enabled_desc": "끄면 아래 알림을 하나도 보내지 않습니다.",
     "dm_crash_title": "비정상 종료",
     "dm_crash_desc": "서버 크래시를 알립니다. 자동 재시작이 없으면 [재시작] 버튼이 붙습니다.",
     "dm_crash_off_warn": "끄면 크래시를 디스코드로 알 수 없습니다. 앱 알림에는 남습니다.",

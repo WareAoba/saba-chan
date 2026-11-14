@@ -1353,6 +1353,8 @@
     "dm_group_server": "Game servers",
     "dm_group_pc": "This PC",
     "dm_group_guild": "Discord servers this PC is linked to",
+    "dm_enabled_title": "Receive DM alerts",
+    "dm_enabled_desc": "When off, none of the alerts below are sent.",
     "dm_crash_title": "Crashes",
     "dm_crash_desc": "Server crash alert. If auto restart is off, a Restart button is attached.",
     "dm_crash_off_warn": "When off, crashes are not reported on Discord. They still appear in app notifications.",

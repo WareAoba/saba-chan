@@ -719,7 +719,22 @@ function PcNoticeCard() {
                 <h2>{t('discord.pc_notice_title')}</h2>
             </div>
             <p className="dc-card-desc">{t('discord.pc_notice_desc')}</p>
-            {DM_GROUPS.map((group, i) => (
+            <div className="cb-toggles">
+                <div className="cb-toggle-row">
+                    <span className="dc-list-text">
+                        <span className="dc-list-name">{t('discord.dm_enabled_title')}</span>
+                        <span className="cb-hint">{t('discord.dm_enabled_desc')}</span>
+                    </span>
+                    <SabaToggle
+                        checked={dmNotice.enabled}
+                        aria-label={t('discord.dm_enabled_title')}
+                        onChange={(on) =>
+                            useDiscordStore.getState().update({ discordDmNotice: { ...dmNotice, enabled: on } })
+                        }
+                    />
+                </div>
+            </div>
+            {dmNotice.enabled && DM_GROUPS.map((group, i) => (
                 <div className="dc-dm-group" key={group.label}>
                     <span className="dc-dm-group-label">{t(`discord.${group.label}`)}</span>
                     <div className="cb-toggles">

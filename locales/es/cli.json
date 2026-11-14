@@ -176,6 +176,7 @@
     "dm_notice_on": "activado",
     "dm_notice_off": "desactivado",
     "dm_kind": {
+      "enabled": "Todos los avisos por MD",
       "crash": "Cierres inesperados",
       "unresponsive": "No responde",
       "externalStart": "Iniciado fuera de Saba-chan",

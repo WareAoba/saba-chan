@@ -1353,6 +1353,8 @@
     "dm_group_server": "Serveurs de jeu",
     "dm_group_pc": "Ce PC",
     "dm_group_guild": "Serveurs Discord liés à ce PC",
+    "dm_enabled_title": "Recevoir les alertes en MP",
+    "dm_enabled_desc": "Désactivé, aucune des alertes ci-dessous n’est envoyée.",
     "dm_crash_title": "Plantages",
     "dm_crash_desc": "Alerte de plantage d'un serveur. Sans redémarrage automatique, un bouton Redémarrer est ajouté.",
     "dm_crash_off_warn": "Désactivé, les plantages ne sont pas signalés sur Discord. Ils restent dans les notifications de l'application.",

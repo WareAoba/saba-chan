@@ -1353,6 +1353,8 @@
     "dm_group_server": "遊戲伺服器",
     "dm_group_pc": "此電腦",
     "dm_group_guild": "此電腦連接的 Discord 伺服器",
+    "dm_enabled_title": "接收私訊通知",
+    "dm_enabled_desc": "關閉後，下面的通知都不會傳送。",
     "dm_crash_title": "異常結束",
     "dm_crash_desc": "伺服器當機通知。未開啟自動重新啟動時會附上［重新啟動］按鈕。",
     "dm_crash_off_warn": "關閉後無法在 Discord 得知當機。應用程式通知中仍會保留。",

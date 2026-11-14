@@ -355,8 +355,8 @@ pub(super) fn heartbeat_body(metadata: Value, hash: &str, unchanged: bool, acks:
 pub(super) fn dm_notice_meta(meta: &mut Value, bot: &crate::config_store::BotConfig) {
     use crate::config_store::BackupNotice;
     match bot.backup_notice {
-        BackupNotice::All => {}
-        BackupNotice::Failures => meta["backupNotice"] = json!("failures"),
+        BackupNotice::All => meta["backupNotice"] = json!("all"),
+        BackupNotice::Failures => {}
         BackupNotice::Off => meta["backupNotice"] = json!("off"),
     }
     let off = bot.dm_notice.off_kinds();

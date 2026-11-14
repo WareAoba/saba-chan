@@ -176,6 +176,7 @@
     "dm_notice_on": "activé",
     "dm_notice_off": "désactivé",
     "dm_kind": {
+      "enabled": "Toutes les alertes en MP",
       "crash": "Plantages",
       "unresponsive": "Ne répond pas",
       "externalStart": "Démarré hors de Saba-chan",

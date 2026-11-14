@@ -176,6 +176,7 @@
     "dm_notice_on": "вкл.",
     "dm_notice_off": "выкл.",
     "dm_kind": {
+      "enabled": "Все уведомления в ЛС",
       "crash": "Сбои",
       "unresponsive": "Не отвечает",
       "externalStart": "Запуск в обход Saba-chan",

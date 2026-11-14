@@ -1353,6 +1353,8 @@
     "dm_group_server": "Servidores de jogo",
     "dm_group_pc": "Este PC",
     "dm_group_guild": "Servidores do Discord ligados a este PC",
+    "dm_enabled_title": "Receber alertas por DM",
+    "dm_enabled_desc": "Desligado, nenhum dos alertas abaixo é enviado.",
     "dm_crash_title": "Travamentos",
     "dm_crash_desc": "Alerta de falha do servidor. Sem reinício automático, vem com um botão Reiniciar.",
     "dm_crash_off_warn": "Desativado, falhas não são avisadas pelo Discord. Continuam nas notificações do app.",

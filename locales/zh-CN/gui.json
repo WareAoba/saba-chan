@@ -1353,6 +1353,8 @@
     "dm_group_server": "游戏服务器",
     "dm_group_pc": "此电脑",
     "dm_group_guild": "此电脑连接的 Discord 服务器",
+    "dm_enabled_title": "接收私信通知",
+    "dm_enabled_desc": "关闭后，下面的通知都不会发送。",
     "dm_crash_title": "异常退出",
     "dm_crash_desc": "服务器崩溃通知。未开启自动重启时附带［重启］按钮。",
     "dm_crash_off_warn": "关闭后无法在 Discord 收到崩溃通知，应用通知中仍会保留。",

@@ -1353,6 +1353,8 @@
     "dm_group_server": "ゲームサーバー",
     "dm_group_pc": "この PC",
     "dm_group_guild": "この PC がつながった Discord サーバー",
+    "dm_enabled_title": "DM 通知を受け取る",
+    "dm_enabled_desc": "オフにすると、下の通知はどれも送りません。",
     "dm_crash_title": "異常終了",
     "dm_crash_desc": "サーバーのクラッシュを通知します。自動再起動がオフの場合は［再起動］ボタンが付きます。",
     "dm_crash_off_warn": "オフにすると、クラッシュを Discord で知れません。アプリの通知には残ります。",
