@@ -31,7 +31,6 @@ pub enum PhaseState {
 #[serde(rename_all = "snake_case")]
 pub enum ReadyReason {
     RolledBack,
-    GuiWindowOpen,
     WaitPidTimeout,
     FailedRelease,
     /// 자동 적용을 끈 설정(`auto_apply=false`): 사용자가 다시 시작을 누를 때 적용한다
@@ -204,7 +203,6 @@ pub struct PlanInput<'a> {
     pub user_held: bool,
     /// 이전 데몬이 끝나지 않아 미룬 릴리즈 판 (단계 `ready`/`wait_pid_timeout`의 판)
     pub deferred_release: Option<&'a str>,
-    pub gui_window_open: bool,
     pub cli_running: bool,
     /// 데몬 작업 + 켜진 서버 (`daemon_work`, `core_swap_blockers`)
     pub blockers: Vec<CoreSwapBlocker>,
@@ -240,10 +238,6 @@ pub fn decide(input: PlanInput<'_>) -> Decision {
     // 이전 데몬이 끝나지 않아 미룬 묶음도 사용자가 다시 시작하거나 더 새 판이 올 때까지 다시 띄우지 않는다
     if input.deferred_release.is_some() && input.deferred_release == input.version {
         return Decision::Ready(ReadyReason::WaitPidTimeout);
-    }
-    // GUI 창이 떠 있는 채로 GUI를 바꾸면 창이 닫힌다: 사용자가 고를 때까지 묶음 전체를 둔다
-    if input.gui_window_open && targets.iter().any(|k| k == "gui") {
-        return Decision::Ready(ReadyReason::GuiWindowOpen);
     }
     if input.cli_running {
         targets.retain(|k| k != "cli");
@@ -344,7 +338,6 @@ mod tests {
             failed_release: None,
             user_held: false,
             deferred_release: None,
-            gui_window_open: false,
             cli_running: false,
             blockers: Vec::new(),
         }
@@ -417,16 +410,14 @@ mod tests {
         assert_eq!(decide(PlanInput { deferred_release: Some("0.1.13"), ..input(&pending) }), Decision::Apply(pending.clone()));
     }
 
-    /// GUI가 바뀌는데 창이 열려 있으면 묶음 전체가 준비됨. 트레이에만 있으면 적용한다. CLI TUI는 CLI만 다음으로
+    /// 창이 열려 있어도 적용한다 (사용자 결정 2026-11-15: 창을 닫을 때까지 미루지 않는다. 바뀐 GUI는 창 그대로 다시 뜬다).
+    /// CLI TUI가 열려 있으면 CLI만 다음으로
     #[test]
-    fn an_open_gui_window_or_tui_holds_its_own_part() {
+    fn an_open_tui_holds_only_the_cli() {
         let pending = keys(&["saba-core", "gui", "cli"]);
-        assert_eq!(decide(PlanInput { gui_window_open: true, ..input(&pending) }), Decision::Ready(ReadyReason::GuiWindowOpen));
         assert_eq!(decide(input(&pending)), Decision::Apply(pending.clone()));
         assert_eq!(decide(PlanInput { cli_running: true, ..input(&pending) }), Decision::Apply(keys(&["saba-core", "gui"])));
         assert_eq!(decide(PlanInput { cli_running: true, ..input(&keys(&["cli"])) }), Decision::Nothing);
-        // GUI가 바뀌지 않으면 창이 열려 있어도 된다
-        assert_eq!(decide(PlanInput { gui_window_open: true, ..input(&keys(&["saba-core"])) }), Decision::Apply(keys(&["saba-core"])));
     }
 
     /// 새 데몬은 완료 마커로 단계를 정한다: 성공은 done, 되돌림·미룸은 ready. 같은 마커는 한 번만
@@ -514,7 +505,7 @@ mod tests {
         assert_eq!(v["waiting_for"][0], json!({ "kind": "server_update", "instance_id": "i1", "name": "월드" }));
         assert_eq!(v["waiting_for"][1]["kind"], "module_call");
         assert_eq!(v["reason"], serde_json::Value::Null);
-        assert_eq!(serde_json::to_value(Phase::ready(ReadyReason::GuiWindowOpen, None, None)).unwrap()["reason"], "gui_window_open");
+        assert_eq!(serde_json::to_value(Phase::ready(ReadyReason::WaitPidTimeout, None, None)).unwrap()["reason"], "wait_pid_timeout");
     }
 
     /// heartbeat 판 번호: 고른 채널이 받는 채널만, 정식 채널의 베타 판이면 베타까지 본다
