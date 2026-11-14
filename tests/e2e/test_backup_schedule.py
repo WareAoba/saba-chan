@@ -19,6 +19,8 @@ def _name(b: dict) -> str:
 def test_backup_restore_roundtrip(mc):
     daemon, iid, folder, _ = mc
     level = folder / "world" / "level.dat"
+    # 가져온 시점 백업은 빼고 센다
+    before = {_name(b) for b in _backups(daemon, iid)}
     daemon.start_instance(iid)
     daemon.wait_console(iid, DONE)
     daemon.mark_console(iid)
@@ -30,7 +32,7 @@ def test_backup_restore_roundtrip(mc):
         events.wait_for("backup.done", lambda d: d.get("instanceId") == iid, timeout=60)
     finally:
         events.close()
-    backups = _backups(daemon, iid)
+    backups = [b for b in _backups(daemon, iid) if _name(b) not in before]
     assert len(backups) == 1, (created, backups)
     original = level.read_text()
 
@@ -54,10 +56,11 @@ def test_backup_restore_roundtrip(mc):
 
 def test_backup_of_stopped_server(mc):
     daemon, iid, folder, _ = mc
+    base = len(_backups(daemon, iid))  # 가져온 시점 백업
     (folder / "world").mkdir(exist_ok=True)
     (folder / "world" / "level.dat").write_text("offline\n")
     daemon.api.ok("POST", f"/api/instance/{iid}/backups", timeout=120)
-    assert len(_backups(daemon, iid)) == 1
+    assert len(_backups(daemon, iid)) == base + 1
 
 
 def test_backup_keep_never_prunes_manual_backups(mc):
@@ -65,10 +68,11 @@ def test_backup_keep_never_prunes_manual_backups(mc):
     (folder / "world").mkdir(exist_ok=True)
     (folder / "world" / "level.dat").write_text("x\n")
     daemon.api.ok("PUT", f"/api/instance/{iid}/schedule", {"schedule": [], "backup_keep": 2})
+    base = len(_backups(daemon, iid))  # 가져온 시점 백업
     for _ in range(4):
         daemon.api.ok("POST", f"/api/instance/{iid}/backups", timeout=120)
     # 보관 개수는 자동 백업에만 적용된다 (src/backup prune)
-    assert len(_backups(daemon, iid)) == 4, _backups(daemon, iid)
+    assert len(_backups(daemon, iid)) == base + 4, _backups(daemon, iid)
 
 
 def test_invalid_schedule_is_rejected(mc):

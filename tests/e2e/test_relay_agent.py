@@ -242,11 +242,15 @@ def test_heartbeat_carries_cpu_and_ram_only_for_running_servers(paired, relay, f
 
 
 def test_text_command_replies_in_the_guild_language(paired, relay):
-    """디스코드 텍스트 명령 답은 데몬 GUI 언어가 아니라 릴레이가 실어 보낸 길드 언어로 쓴다."""
+    """디스코드 텍스트 명령 답: 데몬은 문장 대신 문구 키·값을 싣고, 릴레이가 그것을 길드 언어 문장으로 만든다
+    (saba-chan #991, server-chan #516). 데몬 GUI 언어 문장이 섞여 나가지 않는다."""
+    def keys(reply):
+        return [seg.get("key") for seg in reply["data"]["text"] if isinstance(seg, dict)]
+
     ko = relay.wait_result(relay.push_command({"action": "plan", "text": "", "locale": "ko"}, ownerDiscordId="1"))
-    assert "<서버> <명령어>" in ko["data"]["text"], ko
+    assert "help.usage_format" in keys(ko), ko
     en = relay.wait_result(relay.push_command({"action": "plan", "text": "", "locale": "en-US"}, ownerDiscordId="1"))
-    assert "<server> <command>" in en["data"]["text"], en
+    assert "help.usage_format" in keys(en), en
 
 
 def test_host_id_follows_the_node_token(sandbox, relay, daemon_factory):
