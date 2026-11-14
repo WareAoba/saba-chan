@@ -1519,6 +1519,7 @@
 .ss-section > .saba-disclosure-bar > .saba-disclosure-head {
     flex: 1;
     display: flex;
+    justify-content: flex-start;
     min-width: 0;
     margin: 0;
     padding: var(--sp-3) var(--sp-4);
