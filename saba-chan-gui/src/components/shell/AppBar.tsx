@@ -84,19 +84,20 @@ export function AppBar({
 
     return (
         <header className="appbar" data-tauri-drag-region>
-            <div className="appbar-brand">
-                <img src="./icon.png" alt="" className="appbar-logo" />
+            <div className="appbar-brand" data-tauri-drag-region>
+                <img src="./icon.png" alt="" className="appbar-logo" data-tauri-drag-region />
                 {/* 검은 글자 그림을 마스크로 써서 테마 글자색으로 칠한다.
                     커스텀 속성 안 상대 url()은 스타일시트(assets/) 기준으로 풀리므로 절대 주소로 넘긴다 */}
                 <span
                     className="appbar-name appbar-wordmark"
+                    data-tauri-drag-region
                     style={{ '--wordmark': `url("${new URL(wordmark.src, document.baseURI).href}")`, aspectRatio: String(wordmark.ratio) } as CSSProperties}
                 >
                     <span className="sr-only">{t('common:app_name')}</span>
                 </span>
             </div>
 
-            <nav className="appbar-tabs" aria-label={t('shell.nav_label')}>
+            <nav className="appbar-tabs" aria-label={t('shell.nav_label')} data-tauri-drag-region>
                 {APP_PAGES.filter((p) => !p.available || p.available()).map((p) => (
                     <button
                         key={p.id}
@@ -115,7 +116,7 @@ export function AppBar({
 
             <div className="appbar-spacer" data-tauri-drag-region />
 
-            <div className="appbar-status">
+            <div className="appbar-status" data-tauri-drag-region>
                 <ExtensionSlot slotId="AppBar.status" />
                 <TaskIndicator />
                 <RuntimePreflight daemonStatus={daemonStatus} />
