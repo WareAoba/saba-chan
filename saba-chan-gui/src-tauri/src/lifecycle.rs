@@ -1086,10 +1086,22 @@ fn notify_critical(app: &AppHandle, ev: &SseEvent, feed: Feed, from: Option<&str
     });
 }
 
+/// OS 알림. 로딩 화면·오프닝 동안에는 모아 두었다가 끝나면 띄운다 (`sounds::sound_hold`)
+pub fn show_notification(app: &AppHandle, title: &str, body: &str, silent: bool) {
+    let held = sounds::quiet()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .hold_toast(std::time::Instant::now(), title, body);
+    if held {
+        return tracing::info!("[Notify] Held until the opening ends");
+    }
+    toast_now(app, title, body, silent);
+}
+
 /// Windows는 토스트를 직접 띄운다: 알림 플러그인은 결과를 버려 실패해도 기록이 남지 않는다.
 /// `silent`: 앱 효과음이 같이 울리는 알림. 토스트는 기본 알림음을 내므로(0.8.1부터) 끈다
 #[cfg(windows)]
-pub fn show_notification(_app: &AppHandle, title: &str, body: &str, silent: bool) {
+fn toast_now(_app: &AppHandle, title: &str, body: &str, silent: bool) {
     use saba_chan_updater_lib::notify_app_id;
     use tauri_winrt_notification::{IconCrop, Toast};
     let (title, body) = (title.to_string(), body.to_string());
@@ -1111,14 +1123,14 @@ pub fn show_notification(_app: &AppHandle, title: &str, body: &str, silent: bool
 
 /// macOS는 UserNotifications로 낸다. 앱 묶음 밖에서 띄운 개발 실행은 알림 플러그인으로 낸다
 #[cfg(target_os = "macos")]
-pub fn show_notification(app: &AppHandle, title: &str, body: &str, silent: bool) {
+fn toast_now(app: &AppHandle, title: &str, body: &str, silent: bool) {
     if !crate::mac_notify::show(title, body, silent) {
         plugin_notification(app, title, body);
     }
 }
 
 #[cfg(all(not(windows), not(target_os = "macos")))]
-pub fn show_notification(app: &AppHandle, title: &str, body: &str, _silent: bool) {
+fn toast_now(app: &AppHandle, title: &str, body: &str, _silent: bool) {
     plugin_notification(app, title, body);
 }
 

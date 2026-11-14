@@ -1,5 +1,13 @@
-import { describe, expect, it } from 'vitest';
-import { markDaemonSwitch, openingGate, RELAY_WAIT_MS, takeDaemonSwitch } from '../utils/opening';
+import { describe, expect, it, vi } from 'vitest';
+import {
+    beginOpeningQuiet,
+    deferDuringOpening,
+    endOpeningQuiet,
+    markDaemonSwitch,
+    openingGate,
+    RELAY_WAIT_MS,
+    takeDaemonSwitch,
+} from '../utils/opening';
 
 const base = {
     daemonOk: true,
@@ -56,5 +64,30 @@ describe('PC 전환 (사용자 11-12: 전환할 때는 오프닝 없음)', () =>
         markDaemonSwitch();
         expect(takeDaemonSwitch()).toBe(true);
         expect(takeDaemonSwitch()).toBe(false);
+    });
+});
+
+// 오프닝 동안 다른 알림은 안 뜨게 (사용자 11-15): 셸의 소리·OS 알림은 붙잡고, 앱 안 알림은 끝난 뒤에 띄운다
+describe('opening quiet', () => {
+    it('asks the shell to hold alerts and shows deferred in-app notices once the opening ends', () => {
+        const soundHold = vi.fn();
+        window.api = { ...(window.api ?? {}), soundHold } as unknown as typeof window.api;
+        const shown: string[] = [];
+        expect(deferDuringOpening(() => shown.push('before'))).toBe(false);
+
+        beginOpeningQuiet();
+        expect(soundHold).toHaveBeenLastCalledWith(true);
+        expect(deferDuringOpening(() => shown.push('server started'))).toBe(true);
+        expect(shown).toEqual([]);
+
+        endOpeningQuiet();
+        expect(soundHold).toHaveBeenLastCalledWith(false);
+        expect(shown).toEqual(['server started']);
+        expect(deferDuringOpening(() => shown.push('after'))).toBe(false);
+
+        // 시작하지 않았으면 놓지도 않는다 (콘솔 PIP 창이 메인 창의 붙잡기를 풀지 않게)
+        soundHold.mockClear();
+        endOpeningQuiet();
+        expect(soundHold).not.toHaveBeenCalled();
     });
 });

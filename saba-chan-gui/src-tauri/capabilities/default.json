@@ -36,6 +36,7 @@
     "allow-app-get-version",
     "allow-notify",
     "allow-sound-play",
+    "allow-sound-hold",
     "allow-console-popout",
     "allow-console-popout-list",
     "allow-console-popin",

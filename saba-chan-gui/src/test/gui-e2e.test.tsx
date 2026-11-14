@@ -540,6 +540,16 @@ describe('로딩 스크린 상태 머신', () => {
         }
     }, 20000);
 
+    it('로딩 화면·오프닝 동안 셸에 다른 알림을 붙잡게 하고, 오프닝이 끝나면 놓는다', async () => {
+        const soundHold = vi.fn();
+        const { container } = await coldBoot({ soundHold });
+        expect(soundHold.mock.calls).toEqual([[true]]);
+        await waitFor(() => expect(container.querySelector('.loading-screen')).not.toBeInTheDocument(), {
+            timeout: 15000,
+        });
+        expect(soundHold.mock.calls).toEqual([[true], [false]]);
+    }, 20000);
+
     // 오프닝은 데몬까지 모두 준비한 기동에서만 (사용자 11-15)
     it('데몬이 이미 떠 있던 창(인터페이스만 종료 뒤 다시 연 창)은 오프닝·기동음 없이 연다', async () => {
         const playSound = vi.fn();

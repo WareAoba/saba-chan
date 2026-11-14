@@ -8,6 +8,8 @@ use crate::events::SseEvent;
 use crate::{window, AppState};
 use serde_json::{json, Value};
 use std::collections::HashSet;
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -83,12 +85,92 @@ pub fn gui_cue(name: &str) -> Option<Cue> {
     }
 }
 
-/// 화면이 고른 때 소리를 낸다 (정상 기동음·가이드 열림). 모르는 이름은 무시한다
+/// 화면이 고른 때 소리를 낸다 (정상 기동음·가이드 열림). 모르는 이름은 무시한다.
+/// 오프닝 동안 붙잡는 알림(`sound_hold`)에 막히지 않는다: 오프닝이 내는 소리다
 #[tauri::command]
 pub fn sound_play(app: AppHandle, name: String) {
     match gui_cue(&name) {
-        Some(cue) => play(&app, cue),
+        Some(cue) => play_if_enabled(&app, cue),
         None => tracing::warn!("[Sound] Unknown sound from the window: {}", name),
+    }
+}
+
+/// 로딩 화면·오프닝 동안 다른 알림을 붙잡는다 (사용자 11-15): 효과음(서버 켜짐 등)은 내지 않고,
+/// OS 알림은 모아 두었다가 놓을 때 띄운다(앱 효과음 대신 알림 소리를 낸다). 화면이 멈춰 놓지 못해도
+/// `QUIET_LIMIT`이 지나면 스스로 놓는다
+#[derive(Default)]
+pub struct Quiet {
+    until: Option<Instant>,
+    held: Vec<(String, String)>,
+    generation: u64,
+}
+
+/// 로딩(데몬 기동 최대 10초 + 릴레이 대기 4초) 뒤 오프닝까지 넉넉히
+pub const QUIET_LIMIT: Duration = Duration::from_secs(30);
+
+impl Quiet {
+    pub fn active(&self, now: Instant) -> bool {
+        self.until.is_some_and(|t| now < t)
+    }
+
+    /// 붙잡기 시작. 스스로 놓을 때 쓸 번호를 돌려준다
+    pub fn begin(&mut self, now: Instant) -> u64 {
+        self.until = Some(now + QUIET_LIMIT);
+        self.generation += 1;
+        self.generation
+    }
+
+    /// 놓는다: 모아 둔 OS 알림을 돌려준다
+    pub fn end(&mut self) -> Vec<(String, String)> {
+        self.until = None;
+        std::mem::take(&mut self.held)
+    }
+
+    /// 붙잡는 중이면 OS 알림을 모아 두고 true
+    pub fn hold_toast(&mut self, now: Instant, title: &str, body: &str) -> bool {
+        if !self.active(now) {
+            return false;
+        }
+        self.held.push((title.to_string(), body.to_string()));
+        true
+    }
+}
+
+pub fn quiet() -> &'static Mutex<Quiet> {
+    static QUIET: OnceLock<Mutex<Quiet>> = OnceLock::new();
+    QUIET.get_or_init(|| Mutex::new(Quiet::default()))
+}
+
+fn quiet_now() -> bool {
+    quiet().lock().unwrap_or_else(|e| e.into_inner()).active(Instant::now())
+}
+
+/// 화면이 로딩 화면·오프닝을 시작(true)하거나 끝냈다(false)
+#[tauri::command]
+pub fn sound_hold(app: AppHandle, hold: bool) {
+    if !hold {
+        return release_quiet(&app, None);
+    }
+    let generation = quiet().lock().unwrap_or_else(|e| e.into_inner()).begin(Instant::now());
+    tracing::info!("[Sound] Holding other alerts during the opening");
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(QUIET_LIMIT).await;
+        release_quiet(&app, Some(generation));
+    });
+}
+
+/// 붙잡기를 놓고 모아 둔 OS 알림을 띄운다. `generation`이 있으면 그 붙잡기가 아직 이어질 때만
+fn release_quiet(app: &AppHandle, generation: Option<u64>) {
+    let held = {
+        let mut q = quiet().lock().unwrap_or_else(|e| e.into_inner());
+        if q.until.is_none() || generation.is_some_and(|g| g != q.generation) {
+            return;
+        }
+        q.end()
+    };
+    tracing::info!("[Sound] Opening over; showing {} held notification(s)", held.len());
+    for (title, body) in held {
+        crate::lifecycle::show_notification(app, &title, &body, false);
     }
 }
 
@@ -157,6 +239,13 @@ pub fn toast_silent(settings: &Value, cue: Option<Cue>) -> bool {
 }
 
 pub fn play(app: &AppHandle, cue: Cue) {
+    if quiet_now() {
+        return tracing::info!("[Sound] {:?} — held during the opening", cue);
+    }
+    play_if_enabled(app, cue);
+}
+
+fn play_if_enabled(app: &AppHandle, cue: Cue) {
     if !enabled(&app.state::<AppState>().settings(), cue) {
         return tracing::info!("[Sound] {:?} — turned off in settings", cue);
     }
@@ -167,6 +256,9 @@ pub fn play(app: &AppHandle, cue: Cue) {
 /// 업데이트를 찾았다: 작업 표시줄 단추를 깜박이고(Windows, 창을 앞으로 가져올 때까지) Dock 아이콘을 튀긴다(macOS).
 /// 창 없이 트레이에만 떠 있으면 단추가 없으므로 OS 알림으로 충분하다
 pub fn request_attention(app: &AppHandle) {
+    if quiet_now() {
+        return;
+    }
     let Some(w) = app.get_webview_window(window::MAIN) else {
         return;
     };
@@ -203,7 +295,6 @@ fn play_bytes(_app: &AppHandle, cue: Cue) {
 #[cfg(not(windows))]
 fn play_bytes(_app: &AppHandle, cue: Cue) {
     use std::sync::mpsc::{channel, Sender};
-    use std::sync::{Mutex, OnceLock};
     static PLAYER: OnceLock<Mutex<Option<Sender<Cue>>>> = OnceLock::new();
     let slot = PLAYER.get_or_init(|| Mutex::new(None));
     let mut tx = slot.lock().unwrap_or_else(|e| e.into_inner());
@@ -278,6 +369,22 @@ fn decode(cue: Cue) -> Result<rodio::Decoder<std::io::Cursor<&'static [u8]>>, ro
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 오프닝 동안 OS 알림은 모아 두었다가 놓을 때 한꺼번에, 정해 둔 시간이 지나면 붙잡지 않는다
+    #[test]
+    fn quiet_holds_notifications_until_the_opening_ends() {
+        let now = Instant::now();
+        let mut q = Quiet::default();
+        assert!(!q.hold_toast(now, "t", "before"), "not holding yet: show now");
+        let g = q.begin(now);
+        assert!(q.active(now));
+        assert!(q.hold_toast(now, "t", "crash"));
+        assert!(!q.active(now + QUIET_LIMIT), "the window never said it ended: let go");
+        assert_eq!(q.end(), vec![("t".to_string(), "crash".to_string())]);
+        assert!(!q.active(now));
+        assert!(q.end().is_empty());
+        assert!(q.begin(now) > g, "a new hold gets a new number so an old timer does not end it");
+    }
 
     const ALL: [Cue; 10] = [
         Cue::InstallSuccess,

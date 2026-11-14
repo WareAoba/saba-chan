@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-sound-hold"
+description = "Enables the sound_hold command without any pre-configured scope."
+commands.allow = ["sound_hold"]
+
+[[permission]]
+identifier = "deny-sound-hold"
+description = "Denies the sound_hold command without any pre-configured scope."
+commands.deny = ["sound_hold"]

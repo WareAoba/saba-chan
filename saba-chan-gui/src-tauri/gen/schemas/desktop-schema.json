@@ -573,6 +573,12 @@
           "markdownDescription": "Enables the shell_open_path command without any pre-configured scope."
         },
         {
+          "description": "Enables the sound_hold command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-sound-hold",
+          "markdownDescription": "Enables the sound_hold command without any pre-configured scope."
+        },
+        {
           "description": "Enables the sound_play command without any pre-configured scope.",
           "type": "string",
           "const": "allow-sound-play",
@@ -871,6 +877,12 @@
           "type": "string",
           "const": "deny-shell-open-path",
           "markdownDescription": "Denies the shell_open_path command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the sound_hold command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-sound-hold",
+          "markdownDescription": "Denies the sound_hold command without any pre-configured scope."
         },
         {
           "description": "Denies the sound_play command without any pre-configured scope.",

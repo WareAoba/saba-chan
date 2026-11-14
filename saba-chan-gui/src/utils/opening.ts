@@ -104,6 +104,32 @@ export function takeOpeningSound(): OpeningSound | null {
     return sound;
 }
 
+/*
+ * 로딩 화면·오프닝 동안에는 다른 알림이 끼어들지 않게 한다 (사용자 11-15). 셸은 효과음(서버 켜짐 등)을 내지 않고
+ * OS 알림을 모아 두며(`soundHold`), 앱 안 알림(토스트)은 끝난 뒤에 띄운다. 오프닝 자신의 소리(`playSound`)는 막지 않는다.
+ */
+let quietQueue: (() => void)[] | null = null;
+/** 로딩 화면을 덮기 시작했다 */
+export function beginOpeningQuiet(): void {
+    if (quietQueue) return;
+    quietQueue = [];
+    window.api?.soundHold?.(true);
+}
+/** 오프닝이 끝났다: 셸의 붙잡기를 놓고 미뤄 둔 앱 안 알림을 띄운다. 시작하지 않았으면 아무것도 하지 않는다 */
+export function endOpeningQuiet(): void {
+    const queue = quietQueue;
+    if (!queue) return;
+    quietQueue = null;
+    window.api?.soundHold?.(false);
+    for (const show of queue) show();
+}
+/** 오프닝 중이면 알림을 끝난 뒤로 미루고 true, 아니면 false(바로 띄운다) */
+export function deferDuringOpening(show: () => void): boolean {
+    if (!quietQueue) return false;
+    quietQueue.push(show);
+    return true;
+}
+
 /** 낱말 하나가 제자리에서 가운데까지 날아오는 길이 */
 const WORD_FLIGHT_MS = 480;
 /** 메인 화면 준비(글꼴·그림)를 이보다 오래 기다리지 않는다 */

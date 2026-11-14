@@ -48,7 +48,9 @@ import { eventsAvailable, eventsLive, serverListPollMs } from './utils/daemonEve
 import { startPoll } from './utils/poll';
 import { motionAllowed } from './hooks/useSwapAnimation';
 import {
+    beginOpeningQuiet,
     beginOpeningSound,
+    endOpeningQuiet,
     OPENING_CHIME_LEAD_MS,
     OPENING_READY_WAIT_MS,
     type OpeningPlay,
@@ -582,6 +584,11 @@ function App() {
         const timer = setTimeout(() => setLoadingLeaving(false), LOADING_LEAVE_MS);
         return () => clearTimeout(timer);
     }, [showLoading]);
+    // 로딩 화면·오프닝 동안에는 다른 알림(효과음·OS 알림·토스트)을 붙잡고, 다 걷히면 놓는다 (사용자 11-15)
+    useEffect(() => {
+        if (openingPhase !== 'done' || loadingLeaving) beginOpeningQuiet();
+        else endOpeningQuiet();
+    }, [openingPhase, loadingLeaving]);
     // 오프닝이 끝나면 탭 그림·글꼴을 한가할 때 미리 받아 둔다
     useEffect(() => {
         if (openingPhase === 'done') warmTabArt();
