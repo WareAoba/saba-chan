@@ -15,7 +15,7 @@ import { Icon } from '../Icon';
 import { SINGLE_COLUMN_MAX_WIDTH } from '../servers/ServersPage';
 import { SlotView, useSlotPages } from '../ExtensionSlot';
 import { StatusChip } from '../ui/StatusChip';
-import { ChatbotView, chatbotAvailable } from './ChatbotView';
+import { ChatbotView } from './ChatbotView';
 import { ConnectionView } from './ConnectionView';
 import { Avatar, NodeView } from './NodeView';
 import * as P from './nodePermissions';
@@ -453,15 +453,14 @@ export function DiscordPage({
                             />,
                         )}
 
-                        {chatbotAvailable() &&
-                            navItem(
-                                'saba',
-                                view.kind === 'saba',
-                                () => go({ kind: 'saba' }),
-                                <Icon name="sabaFace" size="sm" />,
-                                t('discord.nav_saba'),
-                                <span>{t('discord.nav_saba_sub')}</span>,
-                            )}
+                        {navItem(
+                            'saba',
+                            view.kind === 'saba',
+                            () => go({ kind: 'saba' }),
+                            <Icon name="sabaFace" size="sm" />,
+                            t('discord.nav_saba'),
+                            <span>{t('discord.nav_saba_sub')}</span>,
+                        )}
                         {extNav.map((p) =>
                             navItem(
                                 p.id,
@@ -575,7 +574,7 @@ export function DiscordPage({
                                 request={view.seq ? { tab: view.tab, sub: view.sub, seq: view.seq } : undefined}
                             />
                         )}
-                        {view.kind === 'saba' && chatbotAvailable() && <ChatbotView nodes={cloudNodes} />}
+                        {view.kind === 'saba' && <ChatbotView nodes={cloudNodes} />}
                         {extView && <SlotView entry={extView.entry} slotId="Discord.nav" guilds={cloudNodes} t={t} />}
                     </div>
                 </main>
