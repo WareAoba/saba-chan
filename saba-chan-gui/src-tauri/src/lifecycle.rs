@@ -42,7 +42,7 @@ pub struct Lifecycle {
     quitting: AtomicBool,
     client_id: Mutex<Option<String>>,
     last_status: Mutex<Option<Value>>,
-    last_update_key: Mutex<Option<String>>,
+    update_alerts: Mutex<UpdateAlerts>,
     events_stop: Arc<AtomicBool>,
     heartbeat_task: Mutex<Option<JoinHandle<()>>>,
     events_task: Mutex<Option<JoinHandle<()>>>,
@@ -52,6 +52,34 @@ pub struct Lifecycle {
     renderer_ready: AtomicBool,
     /// 데몬 재시작은 한 번에 하나만. 겹치면 child가 이미 죽은 프로세스를 가리킬 수 있다 (G-U10)
     restart_lock: tokio::sync::Mutex<()>,
+}
+
+/// 모듈·익스텐션 업데이트 OS 알림·소리를 낼지 정한다. 같은 목록은 한 번만 알리고,
+/// 이 GUI가 뜬 뒤 처음 읽은 상태(이미 있던 업데이트)는 소리 없이 기억만 한다: 창을 다시 열 때마다·오프닝 중에
+/// 같은 알림이 울리지 않게 (사용자 11-15). 그 업데이트는 앱 안 알림(상단 바·알림함)으로 보인다
+#[derive(Default)]
+struct UpdateAlerts {
+    last_key: Option<String>,
+    primed: bool,
+}
+
+impl UpdateAlerts {
+    /// 확인에 성공한 상태 하나. `key`: 알릴 모듈·익스텐션 목록의 지문(없으면 None). 알려야 하면 true
+    fn note(&mut self, key: Option<&str>) -> bool {
+        let first = !std::mem::replace(&mut self.primed, true);
+        let Some(key) = key else { return false };
+        if self.last_key.as_deref() == Some(key) {
+            return false;
+        }
+        self.last_key = Some(key.to_string());
+        !first
+    }
+
+    /// 받을 업데이트가 없어졌다: 다시 생기면 알린다
+    fn cleared(&mut self) {
+        self.last_key = None;
+        self.primed = true;
+    }
 }
 
 fn sleep(ms: u64) -> tokio::time::Sleep {
@@ -68,9 +96,29 @@ fn replace_task(slot: &Mutex<Option<JoinHandle<()>>>, task: Option<JoinHandle<()
 
 /// 렌더러에 초기화 단계 전달. 새로고침한 렌더러에 다시 보내려고 마지막 값을 기억한다
 pub fn send_status(app: &AppHandle, step: &str, message: &str) {
-    let payload = json!({ "step": step, "message": message, "ts": chrono::Utc::now().timestamp_millis() });
+    emit_status(
+        app,
+        json!({ "step": step, "message": message, "ts": chrono::Utc::now().timestamp_millis() }),
+    );
+}
+
+fn emit_status(app: &AppHandle, payload: Value) {
     *app.state::<AppState>().life.last_status.lock().unwrap() = Some(payload.clone());
     emit_main(app, "status:update", payload);
+}
+
+/// 초기화를 마쳤다는 `ready`. `opening`: 이번 기동에서 이 GUI가 데몬을 띄웠는가 (이미 떠 있던 데몬에 붙었으면 false).
+/// 렌더러는 데몬까지 모두 준비한 기동에서만 오프닝을 재생한다 (사용자 11-15)
+fn ready_status(message: &str, attached: bool) -> Value {
+    json!({ "step": "ready", "message": message, "ts": chrono::Utc::now().timestamp_millis(), "opening": !attached })
+}
+
+/// 새로 붙은 렌더러(새로고침·트레이에서 다시 연 창)에 다시 보내는 마지막 단계: 이미 끝난 기동이라 오프닝은 없다
+fn replayed_status(mut last: Value) -> Value {
+    if last["step"] == "ready" {
+        last["opening"] = json!(false);
+    }
+    last
 }
 
 fn status_t(app: &AppHandle, step: &str, key: &str) {
@@ -107,7 +155,7 @@ pub fn app_ready(app: &AppHandle) {
     }
     if !begin_init(app) {
         if let Some(last) = life.last_status.lock().unwrap().clone() {
-            emit_main(app, "status:update", last);
+            emit_main(app, "status:update", replayed_status(last));
         }
     }
 }
@@ -152,7 +200,8 @@ async fn finish_background_init(app: &AppHandle) {
     // 바탕화면 오버레이를 쓸 익스텐션이 켜져 있으면 띄운다
     crate::overlay::sync(app).await;
 
-    status_t(app, "ready", "init.ready");
+    let attached = state.life.attached_daemon.load(Ordering::SeqCst);
+    emit_status(app, ready_status(&state.t("init.ready", &[]), attached));
 
     // 업데이터가 다시 띄웠으면 첫 ready 뒤 한 번 알린다
     if state.after_update && !state.life.ready_sent.swap(true, Ordering::SeqCst) {
@@ -950,7 +999,7 @@ fn on_update_status(app: &AppHandle, data: &Value) {
     let Some(notice) = events::update_notice(data) else {
         if events::updates_cleared(data) {
             // 받을 것이 없어졌다: 남은 업데이트 알림을 지우고, 다시 생기면 OS 알림도 다시 띄운다
-            *state.life.last_update_key.lock().unwrap() = None;
+            state.life.update_alerts.lock().unwrap().cleared();
             emit_main(
                 app,
                 "updates:available",
@@ -980,14 +1029,12 @@ fn on_update_status(app: &AppHandle, data: &Value) {
         sorted.join("\0")
     };
     // 확인과 기록을 한 잠금 안에서: 이벤트와 다시 붙을 때의 읽기가 겹쳐도 한 번만 알린다
-    let is_new = !addon_names.is_empty() && {
-        let mut last = state.life.last_update_key.lock().unwrap();
-        let is_new = last.as_deref() != Some(addon_key.as_str());
-        if is_new {
-            *last = Some(addon_key.clone());
-        }
-        is_new
-    };
+    let is_new = state
+        .life
+        .update_alerts
+        .lock()
+        .unwrap()
+        .note((!addon_names.is_empty()).then_some(addon_key.as_str()));
     if is_new {
         let count = addon_names.len().to_string();
         let names = addon_names.join(", ");
@@ -1205,6 +1252,31 @@ pub fn on_exit(app: &AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 이 GUI가 뜬 뒤 처음 읽은 업데이트(이미 있던 것)는 소리·OS 알림 없이 기억만 하고, 그 뒤 새로 생긴 목록만 알린다
+    #[test]
+    fn update_alerts_skip_what_was_already_there_when_the_gui_started() {
+        let mut a = UpdateAlerts::default();
+        assert!(!a.note(Some("Palworld")), "already pending at startup: silent");
+        assert!(!a.note(Some("Palworld")), "same list again: silent");
+        assert!(a.note(Some("Minecraft\0Palworld")), "a new update while running: alert");
+        a.cleared();
+        assert!(a.note(Some("Palworld")), "came back after being cleared: alert");
+
+        let mut none_at_start = UpdateAlerts::default();
+        assert!(!none_at_start.note(None));
+        assert!(none_at_start.note(Some("Palworld")), "found after startup: alert");
+    }
+
+    /// 오프닝은 이 GUI가 데몬을 띄운 기동의 첫 ready에서만. 새로 붙은 렌더러에 다시 보내는 ready는 오프닝 없이
+    #[test]
+    fn opening_only_for_the_startup_that_launched_the_daemon() {
+        assert_eq!(ready_status("ok", false)["opening"], json!(true));
+        assert_eq!(ready_status("ok", true)["opening"], json!(false), "attached to a daemon that was already up");
+        assert_eq!(replayed_status(ready_status("ok", false))["opening"], json!(false));
+        let daemon = json!({ "step": "daemon", "message": "m" });
+        assert_eq!(replayed_status(daemon.clone()), daemon);
+    }
 
     /// 데몬이 스스로 업데이터를 띄웠다고 알리면(`update.restarting`) 끌 GUI 목록에 든 GUI만 스스로 끝나고, 나머지는 데몬을 기다린다
     #[test]

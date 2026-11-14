@@ -18,12 +18,12 @@ export interface OpeningInput {
     relayConnected: boolean;
     /** 데몬 준비 뒤 릴레이를 기다린 시간 */
     waitedMs: number;
-    /** 다른 PC로 바꿔 다시 연 창 (`markDaemonSwitch`): 오프닝·기동음 없이 바로 연다 */
-    switched?: boolean;
+    /** 바로 여는 창 (PC를 바꿔 다시 연 창 `markDaemonSwitch`, 데몬이 이미 떠 있던 창): 오프닝·기동음 없이 연다 */
+    quick?: boolean;
 }
 
 export function openingGate(s: OpeningInput): { hold: boolean; chime: boolean } {
-    if (!s.daemonOk || s.switched) return { hold: false, chime: false };
+    if (!s.daemonOk || s.quick) return { hold: false, chime: false };
     const relayUnknown = !s.configLoaded || (s.relayConfigured && !s.relayChecked);
     if (relayUnknown && s.waitedMs < RELAY_WAIT_MS) return { hold: true, chime: false };
     if (relayUnknown) return { hold: false, chime: false };
