@@ -73,8 +73,6 @@ pub struct UpdateState {
     live_path: Arc<std::path::PathBuf>,
     /// GUI가 알린 창 상태 (`PUT /api/updates/gui-window`). 알린 적이 없으면 None
     gui_window: Arc<std::sync::Mutex<Option<bool>>>,
-    /// 적용 반복을 다시 보게 깨운다 (`begin_core_apply`). 창이 닫히기를 기다리는 반복이 듣는다
-    apply_wake: Arc<tokio::sync::Notify>,
     /// 내려가기 직전 릴레이에 "업데이트로 잠깐 끊김"을 알린다
     pub relay: Option<crate::relay_agent::RelayAgent>,
     /// 확인 중인 heartbeat 판 번호. 확인이 성공해야 본 것(`LiveState::seen`)으로 남긴다
@@ -135,7 +133,6 @@ impl UpdateState {
             live: Arc::new(std::sync::Mutex::new(live)),
             live_path: Arc::new(live_path),
             gui_window: Arc::default(),
-            apply_wake: Arc::default(),
             relay: None,
             release_check: Arc::default(),
             release_unconfirmed: Arc::default(),
@@ -200,16 +197,6 @@ impl UpdateState {
             && phase.waiting_for.iter().all(|b| b.kind.is_daemon_job())
     }
 
-    /// GUI 창이 보이는가: 등록된 GUI가 있고, GUI가 알린 창 상태(알린 적이 없으면 트레이 표시가 아님)가 열림이다.
-    /// GUI 등록이 사라지면 닫힘으로 본다
-    async fn gui_window_open(&self) -> bool {
-        let Some(clients) = &self.clients else { return false };
-        let list = clients.list().await;
-        let any_gui = list.iter().any(|(_, c)| c.kind == crate::ipc::ClientKind::Gui);
-        let told = *self.gui_window.lock().unwrap_or_else(|e| e.into_inner());
-        any_gui && told.unwrap_or_else(|| !only_resident_guis(&list))
-    }
-
     /// heartbeat로 알고 확인까지 마친 가장 큰 릴리즈 id. heartbeat가 부르지 않은 확인(기동·채널 바꿈·주기·수동)도
     /// 이 값을 릴레이 캐시 키로 붙여, 같은 주소의 오래된 캐시 응답(내린 판이 남은 것)을 덜 받게 한다
     fn known_release_id(&self) -> Option<u64> {
@@ -259,7 +246,6 @@ impl UpdateState {
         use std::sync::atomic::Ordering;
         // 먼저 남긴다: 반복이 막 끝나는 중이어도 `end_core_apply`가 이것을 본다
         self.apply_recheck.store(true, Ordering::SeqCst);
-        self.apply_wake.notify_one();
         !self.core_applying.swap(true, Ordering::SeqCst)
     }
 
@@ -867,7 +853,7 @@ async fn core_apply(state: &UpdateState) {
             Decision::Nothing => {
                 // 기다리던 것이 사라졌으면(받아 둔 것을 적용했거나 지웠다) 걷는다. 되돌림·실패한 판의 준비됨은 사용자가 고를 때까지 둔다
                 let phase = state.phase();
-                if phase.state == PhaseState::Waiting || phase.reason == Some(ReadyReason::GuiWindowOpen) {
+                if phase.state == PhaseState::Waiting {
                     state.set_phase(Phase::default());
                 }
                 return;
@@ -878,12 +864,7 @@ async fn core_apply(state: &UpdateState) {
             }
             Decision::Ready(reason) => {
                 state.set_phase(Phase::ready(reason, version, notes));
-                // 창을 숨기면(트레이) 이어서 적용한다
-                if reason != ReadyReason::GuiWindowOpen {
-                    return;
-                }
-                hold_while_gui_window_open(state, &stop).await;
-                continue;
+                return;
             }
             Decision::Wait(blockers) => {
                 tracing::info!("[Updates] Waiting for {:?} before applying {:?}", blockers.iter().map(|b| (b.kind, &b.name)).collect::<Vec<_>>(), version);
@@ -912,30 +893,6 @@ async fn core_apply(state: &UpdateState) {
         tokio::select! {
             _ = stop.cancelled() => return,
             _ = tokio::time::sleep(CORE_HOLD_RETRY) => {}
-        }
-    }
-}
-
-/// GUI 창이 열려 있어 미룬 적용: 다시 판정할 일이 생길 때까지 기다린다. 창을 며칠 열어 두어도 30초마다
-/// 전체 판정(업데이트 관리자 쓰기 잠금, 프로세스 목록 훑기)을 하지 않게, 그동안은 판정을 바꿀 것만 가볍게 본다:
-/// 창을 숨겼거나 새 판을 찾았다는 알림(`apply_wake`), GUI 등록이 사라짐, 자동 적용 끔, 받아 둔 것이 없어짐
-async fn hold_while_gui_window_open(state: &UpdateState, stop: &tokio_util::sync::CancellationToken) {
-    loop {
-        tokio::select! {
-            _ = stop.cancelled() => return,
-            _ = state.apply_wake.notified() => {}
-            _ = tokio::time::sleep(CORE_HOLD_RETRY) => {}
-        }
-        // 이 반복을 띄울 때 남은 알림은 지나친다 (다시 볼 일은 `apply_recheck`에 남는다)
-        if state.apply_recheck.load(std::sync::atomic::Ordering::SeqCst) {
-            return;
-        }
-        let unchanged = {
-            let mgr = state.manager.read().await;
-            mgr.get_config().auto_apply && !mgr.get_pending_components().is_empty()
-        };
-        if !unchanged || state.updater_launched() || !state.gui_window_open().await {
-            return;
         }
     }
 }
@@ -998,7 +955,6 @@ async fn plan_core_apply(state: &UpdateState) -> (Decision, Option<String>, Opti
     };
     let version = release.as_ref().map(|r| r.version.clone());
     let notes = release.map(|r| r.notes).filter(|n| !n.is_empty());
-    let gui_window_open = state.gui_window_open().await;
     let cli_running = tokio::task::spawn_blocking(saba_chan_updater_lib::ProcessChecker::is_cli_running).await.unwrap_or(false);
     let mut blockers = core_blockers(state, reads).await;
     // 금방 끝나는 모듈 호출(상태 조회 등)만 걸렸으면 잠깐 더 본다
@@ -1019,7 +975,6 @@ async fn plan_core_apply(state: &UpdateState) -> (Decision, Option<String>, Opti
         failed_release: failed.as_deref(),
         user_held,
         deferred_release: deferred.as_deref(),
-        gui_window_open,
         cli_running,
         blockers,
     });
@@ -2073,13 +2028,10 @@ struct GuiWindowBody {
     open: bool,
 }
 
-/// PUT /api/updates/gui-window {open} — GUI가 창을 보이거나 숨길 때(트레이) 알린다. 창이 열려 있어 미룬 적용은 창을 숨기면 이어서 한다
+/// PUT /api/updates/gui-window {open} — GUI가 창을 보이거나 숨길 때(트레이) 알린다. 업데이트 뒤 GUI를 창으로 다시 띄울지
+/// 트레이로 띄울지 정할 때 쓴다 (적용은 창이 열려 있어도 한다)
 async fn set_gui_window(State(state): State<UpdateState>, Json(body): Json<GuiWindowBody>) -> impl IntoResponse {
     *state.gui_window.lock().unwrap_or_else(|e| e.into_inner()) = Some(body.open);
-    let phase = state.phase();
-    if !body.open && phase.state == PhaseState::Ready && phase.reason == Some(ReadyReason::GuiWindowOpen) {
-        spawn_core_apply(state.clone());
-    }
     Json(json!({ "success": true, "open": body.open }))
 }
 
@@ -3171,67 +3123,6 @@ mod tests {
         assert!(state.core_update_waiting());
         state.set_phase(Phase::new(PhaseState::Applying, Some("0.1.14".into()), None));
         assert!(!state.core_update_waiting());
-    }
-
-    /// GUI 창 상태: GUI가 알린 값을 쓰고, 알린 적이 없으면 트레이 표시로 본다. GUI 등록이 없으면 닫힘
-    #[tokio::test]
-    async fn the_gui_window_state_follows_what_the_gui_reports() {
-        let tmp = tempfile::tempdir().unwrap();
-        let registry = crate::ipc::ClientRegistry::new();
-        let state = state_in(tmp.path()).with_clients(registry.clone());
-        assert!(!state.gui_window_open().await, "no GUI");
-        let gui = registry.register(crate::ipc::ClientKind::Gui, Some(1), None).await;
-        assert!(state.gui_window_open().await, "a GUI that never said otherwise has its window open");
-        registry.set_resident(&gui, true).await;
-        assert!(!state.gui_window_open().await, "a tray-only GUI");
-        let _ = set_gui_window(State(state.clone()), Json(GuiWindowBody { open: true })).await;
-        assert!(state.gui_window_open().await);
-        let _ = set_gui_window(State(state.clone()), Json(GuiWindowBody { open: false })).await;
-        assert!(!state.gui_window_open().await);
-        registry.unregister(&gui).await;
-        let _ = set_gui_window(State(state.clone()), Json(GuiWindowBody { open: true })).await;
-        assert!(!state.gui_window_open().await, "a GUI that went away has no window");
-    }
-
-    /// 창이 열려 있어 미룬 적용은 창이 열려 있는 동안 그대로 기다리고, GUI가 창을 숨겼다고 알리면 다음 판정 차례(30초)를 기다리지 않고 이어 간다
-    #[tokio::test]
-    async fn an_apply_held_for_the_gui_window_resumes_as_soon_as_the_window_is_hidden() {
-        let _staging = STAGING.lock().await;
-        let staging = saba_chan_updater_lib::constants::resolve_staging_dir();
-        std::fs::create_dir_all(&staging).unwrap();
-        let staged = staging.join("saba-chan-gui-window-test.zip");
-        std::fs::write(&staged, b"zip").unwrap();
-        let pending = json!([{
-            "component": "gui", "current_version": "0.1.0", "latest_version": "0.2.0",
-            "update_available": true, "download_url": null, "asset_name": "saba-chan-gui-window-test.zip",
-            "release_notes": null, "published_at": null, "downloaded": true,
-            "downloaded_path": staged.to_string_lossy(), "installed": true
-        }]);
-        std::fs::write(staging.join("pending.json"), pending.to_string()).unwrap();
-
-        let tmp = tempfile::tempdir().unwrap();
-        let registry = crate::ipc::ClientRegistry::new();
-        let state = state_in(tmp.path()).with_clients(registry.clone());
-        registry.register(crate::ipc::ClientKind::Gui, Some(1), None).await;
-        super::restore_pending(&mut *state.manager.write().await);
-        // 도는 적용 반복이 있다 (창을 숨겼다는 알림은 그 반복을 깨운다)
-        assert!(state.begin_core_apply());
-        state.take_apply_recheck();
-        state.set_phase(Phase::ready(ReadyReason::GuiWindowOpen, None, None));
-        let stop = tokio_util::sync::CancellationToken::new();
-
-        let held = tokio::time::timeout(std::time::Duration::from_millis(300), super::hold_while_gui_window_open(&state, &stop)).await;
-        assert!(held.is_err(), "the hold must last while the window is open");
-
-        let waiting = tokio::spawn({
-            let (state, stop) = (state.clone(), stop.clone());
-            async move { super::hold_while_gui_window_open(&state, &stop).await }
-        });
-        tokio::task::yield_now().await;
-        let _ = set_gui_window(State(state.clone()), Json(GuiWindowBody { open: false })).await;
-        tokio::time::timeout(std::time::Duration::from_secs(5), waiting).await.expect("resumes without waiting for the next 30 s round").unwrap();
-        let _ = std::fs::remove_file(staging.join("pending.json"));
-        let _ = std::fs::remove_file(staged);
     }
 
     /// 같은 heartbeat 판 번호는 다시 확인하지 않는다. 본 것으로 남기는 것은 확인이 성공한 뒤다:
