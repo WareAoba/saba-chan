@@ -540,7 +540,8 @@ function App() {
 
     // 로딩이 끝나면 로딩 화면을 그대로 덮어 둔 채 메인 화면을 아래에 다 그리고(prepare),
     // 글꼴·그림까지 준비되면 기동음과 함께 오프닝을 재생한다(play). 움직임을 줄였으면 예전처럼 잠깐 사라지게만 둔다
-    const showLoading = !daemonDone || opening.hold;
+    // 콘솔 PIP 창은 메인 창이 이미 데몬을 띄운 뒤에 열리므로 로딩 화면·오프닝 없이 바로 콘솔을 연다
+    const showLoading = !isPopoutMode && (!daemonDone || opening.hold);
     // 처음부터 로딩할 것이 없으면(HMR로 데몬이 이미 떠 있으면) 오프닝 없이 바로 연다
     // 재생(play)은 로딩 화면 안에서만 바뀐다: App이 다시 그려지면 메인 화면 전체를 다시 그려 오프닝 첫머리가 끊긴다
     const [openingPhase, setOpeningPhase] = useState<'loading' | 'prepare' | 'done'>(() =>
@@ -560,17 +561,15 @@ function App() {
             return undefined;
         }
         if (!was) return undefined;
-        if (!isPopoutMode && motionAllowed() && !switchedDaemon) {
+        if (motionAllowed() && !switchedDaemon) {
             setOpeningPhase('prepare');
             return undefined;
         }
         // 움직임을 줄였거나 PC를 바꿔 열었으면 오프닝 없이 열되, 맡은 소리가 있으면 기동음 대신 그것을 낸다 (전환이면 기동음은 없다)
         const claimed = takeOpeningSound();
         setOpeningPhase('done');
-        if (!isPopoutMode) {
-            if (claimed) playOpeningSound(claimed);
-            else playChime();
-        }
+        if (claimed) playOpeningSound(claimed);
+        else playChime();
         setLoadingLeaving(true);
         const timer = setTimeout(() => setLoadingLeaving(false), LOADING_LEAVE_MS);
         return () => clearTimeout(timer);
