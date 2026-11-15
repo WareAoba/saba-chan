@@ -550,7 +550,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 
 ### 2.5 공용 Python 유틸 (`<data_dir>/python-shared/`)
 
-- `i18n.py`: `I18n(module_dir)`가 `locales/<lang>.json`을 읽는다. 언어는 `SABA_LANG`으로 정하고 기본값은 `en`이다. 점 표기 키와 `{{var}}` 보간을 지원한다. `__example/i18n.py`는 같은 파일의 복사본이다.
+- `i18n.py`: `I18n(module_dir)`가 `locales/<lang>.json`을 읽는다. 언어는 `SABA_LANG`으로 정하고 기본값은 `en`이다. 점 표기 키와 `{{var}}` 보간을 지원한다.
 - `daemon_rcon.py`: 모듈 공용 헬퍼다. 이름은 예전 `from daemon_rcon import ...` 줄을 살리려고 남겼고 RCON 소켓은 열지 않는다. HOST 통로 요청(stdin `daemon_stdin_command`, REST `daemon_rest`, RCON `daemon_rcon_command`), 루프백 중계, PID 확인·강제 종료, 설정값 조회·형 변환, 원자적 파일 저장(`atomic_write`), `run_lifecycle` 진입점이 들어 있다 (`D:modules/daemon_rcon.py`). RCON만 받는 모듈은 `daemon_rcon_command`로 정지 명령을 보낸다(RCON 정책).
   - palworld(`PalworldRestClient`)는 `daemon_rest`를, minecraft·zomboid·__example은 공용 `daemon_stdin_command`와 PID 헬퍼 `is_process_alive`·`wait_for_exit`·`force_kill`을 쓴다 (`M:zomboid/lifecycle.py`).
   - `atomic_write(path, data)`(saba-core 0.1.10부터)는 같은 폴더의 고유 임시 파일(`.<이름>.*.tmp`)에 쓰고 fsync한 뒤 바꾼다. 원래 파일이 있으면 그 권한을 잇는다(Windows `ReplaceFileW`로 DACL, POSIX는 권한 비트). 격리된 모듈처럼 DACL을 옮길 권한이 없어 `ReplaceFileW`가 거부되면, 같은 폴더에 만든 임시 파일과 원래 파일의 소유자·DACL·무결성 표시와 EFS 암호화 여부가 똑같을 때만 `os.replace`로 바꾼다(둘 다 폴더 권한만 물려받은 경우. 무결성 표시 SACL의 자동 상속 제어 플래그 `AI`·`AR`은 비교하지 않는다: 데몬이 기존 하위 파일에 맞춘 상속 표시에는 없고 OS가 새 파일에 붙인 표시에는 있다, `_same_access`). 다르거나 폴더에 임시 파일을 만들 권한이 없으면(`PermissionError`) 원래 파일을 제자리에서 덮어쓴다(`_overwrite_in_place`: 파일의 권한·무결성 표시를 그대로 두고, 쓰다 실패하면 원래 내용으로 되돌린다). 모듈이 게임 설정 파일을 쓸 때 쓴다.

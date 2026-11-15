@@ -234,7 +234,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs`(`router()`, 인증 미들웨
 | logs | `<dataDir>/logs/*.log` | 직접 쓰기 | — |
 | renderer localStorage | WebView 저장소(Windows WebView2) | 직접 | `i18nextLng`(i18n.ts `getInitialLanguage`·`getCachedLanguage`, SettingsModal.tsx), 테마 키(themeManager.ts), 공지 목록(NoticeModal.tsx) |
 
-**쓰기 분기.** 쓰기는 "daemon이 응답하는가"로 나눈다. 데몬이 응답하면 API로만 쓰고, 오류 응답이면 로컬로 넘어가지 않고 실패로 끝낸다(`createApi.ts` `saveSettings`·`settingsSave`, `native.rs:189-199`). 남은 직접 접근은 **읽기**다. `load_settings()`는 데몬 상태와 상관없이 파일을 읽고, `language_get`, `create_main_window`, `AppState::refresh_ipc_base`, 데몬 기동 env, 창 크기 저장(`window.rs:159-188`, 파일에서 읽어 merge한 뒤 API로 저장)이 이 값을 쓴다.
+**쓰기 분기.** 쓰기는 "daemon이 응답하는가"로 나눈다. 데몬이 응답하면 API로만 쓰고, 오류 응답이면 로컬로 넘어가지 않고 실패로 끝낸다(`createApi.ts` `saveSettings`·`settingsSave`, `native.rs`). 남은 직접 접근은 **읽기**다. `load_settings()`는 데몬 상태와 상관없이 파일을 읽고, `language_get`, `create_main_window`, `AppState::refresh_ipc_base`, 데몬 기동 env, 창 크기 저장(`window.rs`, 파일에서 읽어 merge한 뒤 API로 저장)이 이 값을 쓴다.
 
 ### 1.4 화면과 모달별 기능 (`src/`)
 

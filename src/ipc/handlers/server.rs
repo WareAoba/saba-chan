@@ -200,7 +200,7 @@ pub async fn list_modules(State(state): State<IPCServer>) -> impl IntoResponse {
 
 /// POST /api/modules/refresh - 모듈 캐시를 새로고침하고 다시 발견
 pub async fn refresh_modules(State(state): State<IPCServer>) -> impl IntoResponse {
-    // 문자열로 저장된 값의 설정이 list가 되었으면 옮긴다 (06 §8.1)
+    // 문자열로 저장된 값의 설정이 list가 되었으면 옮긴다
     let modules = {
         let mut supervisor = state.supervisor.write().await;
         let modules = supervisor.refresh_modules();

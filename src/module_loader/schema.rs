@@ -628,7 +628,7 @@ pub struct SettingField {
     pub runtime: Option<String>,
 }
 
-/// `visible_when = { field, equals }` 또는 `{ field, in = [...] }` (06 §8.2)
+/// `visible_when = { field, equals }` 또는 `{ field, in = [...] }`
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[schemars(deny_unknown_fields)]
 pub struct VisibleWhen {
@@ -667,7 +667,7 @@ impl OneOrMany {
 pub const SETTING_FORMATS: &[&str] = &["memory_size", "port", "integer", "path"];
 /// 설정 필드 `type`으로 받는 값 (GUI·CLI가 그리는 것)
 pub const SETTING_TYPES: &[&str] = &["text", "password", "number", "file", "select", "boolean"];
-/// 스키마 2에서 더한 설정 `type` (06 §8.1)
+/// 스키마 2에서 더한 설정 `type`
 pub const SETTING_TYPES_V2: &[&str] = &["list", "multiline"];
 /// `visible_when`이 가리킬 수 없는 설정 타입 (값을 하나로 비교할 수 없다)
 pub(crate) const NOT_A_CONDITION: &[&str] = &["list", "multiline", "password", "file"];
@@ -834,9 +834,9 @@ pub struct UnmetCoreDependency {
 // 내보내는 JSON Schema(saba-chan-modules/schema/module.schema.json)도 같이 바뀐다.
 // 모르는 키: 로드는 하고 경고만 남긴다 (JSON Schema는 모듈을 쓰는 쪽을 위해 모르는 키를 막는다).
 
-/// 이 데몬이 아는 가장 새 module.toml 스키마 버전. 1과 2를 받는다 (2는 1에 06 §8의 설정 타입·키를 더한 것)
+/// 이 데몬이 아는 가장 새 module.toml 스키마 버전. 1과 2를 받는다 (2는 1에 설정 타입·키를 더한 것)
 pub const MODULE_SCHEMA_VERSION: u32 = 2;
-/// 스키마 표시가 없는 모듈에게 권하는 버전. 0.1.8 데몬도 읽는 1이다 (06 §7)
+/// 스키마 표시가 없는 모듈에게 권하는 버전. 0.1.8 데몬도 읽는 1이다
 pub(crate) const BASE_SCHEMA_VERSION: u32 = 1;
 
 /// 이 데몬이 받는 module.toml 스키마 버전들 (모듈 메이커 안내 `GET /api/maker`)

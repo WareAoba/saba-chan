@@ -384,7 +384,7 @@ mod tests {
         assert_eq!(list["servers"][0]["memory_limit_supported"], json!(cfg!(windows)));
     }
 
-    /// 06 §8.1·8.2 (스키마 2): 옛 문자열 값은 목록으로 읽고, 숨긴 설정은 required를 보지 않으며 `hidden`에 실린다.
+    /// 스키마 2: 옛 문자열 값은 목록으로 읽고, 숨긴 설정은 required를 보지 않으며 `hidden`에 실린다.
     /// 켜져 있을 때 바꾼 restart_required 설정은 응답 `restart_required`에 실린다
     #[tokio::test]
     async fn schema_v2_settings_migrate_hide_and_ask_for_a_restart() {

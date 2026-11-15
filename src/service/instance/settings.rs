@@ -102,7 +102,7 @@ pub(crate) fn settings_rejection(supervisor: &crate::supervisor::Supervisor, ins
         if let Ok(module) = supervisor.module_loader.get_module(&instance.module_name) {
             if let Some(ref settings_meta) = module.metadata.settings {
                 // 부분 변경이므로 보낸 필드만 검증한다
-                // 숨겨진 설정은 required를 보지 않는다 (06 §8.2). 숨김은 저장된 값에 이번 요청을 얹어 계산한다
+                // 숨겨진 설정은 required를 보지 않는다. 숨김은 저장된 값에 이번 요청을 얹어 계산한다
                 let view = serde_json::to_value(instance).unwrap_or_default();
                 let mut hidden = crate::validator::hidden_fields(&settings_meta.fields, |k| settings_obj.get(k).cloned().or_else(|| crate::instance::stored_setting(&view, instance, k)));
                 // 설치된 버전에 없는 설정도 숨긴 설정이다 (이번 요청이 버전을 바꾸면 그 버전으로)
@@ -212,7 +212,7 @@ pub(crate) async fn update(state: &IPCServer, id: &str, mut settings: Value) -> 
     // 설정값 업데이트
     let mut updated = instance.clone();
     let stop_timeout = apply_fields(&mut updated, &settings)?;
-    // 06 §8.2: 켜져 있을 때 값이 바뀐 restart_required 모듈 설정. 데몬은 스스로 재시작하지 않는다
+    // 켜져 있을 때 값이 바뀐 restart_required 모듈 설정. 데몬은 스스로 재시작하지 않는다
     let restart_required = if supervisor.is_running(id).await { changed_restart_settings(&supervisor, instance, &updated, &settings) } else { Vec::new() };
     store_module_settings(&mut updated, &settings, stop_timeout);
 

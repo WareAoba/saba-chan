@@ -201,7 +201,7 @@ async fn list(ctx: &Ctx) -> Result<()> {
     Ok(())
 }
 
-/// 읽지 못한 모듈 한 건: 첫 줄은 무엇을 왜, 나머지는 스키마에서 틀린 곳 (06 §7)
+/// 읽지 못한 모듈 한 건: 첫 줄은 무엇을 왜, 나머지는 스키마에서 틀린 곳
 fn failed_lines(f: &Value) -> Vec<String> {
     let folder = || {
         let path = s(f, "path").trim_end_matches(['/', '\\']);
@@ -488,7 +488,7 @@ mod tests {
     use super::*;
     use clap::Parser;
 
-    /// 스키마에 맞지 않거나 너무 새 스키마라 읽지 못한 모듈은 무엇이 틀렸는지·필요한 버전을 보인다 (06 §7)
+    /// 스키마에 맞지 않거나 너무 새 스키마라 읽지 못한 모듈은 무엇이 틀렸는지·필요한 버전을 보인다
     #[test]
     fn a_module_that_does_not_match_its_schema_lists_the_problems() {
         crate::i18n::init("ko");

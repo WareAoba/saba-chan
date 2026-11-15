@@ -897,7 +897,7 @@ pub(crate) fn parse_module_toml(content: &str) -> Result<ModuleMetadata> {
         }
         version => return Err(SchemaUnsupported { version }.into()),
     }
-    // 데몬이 호출마다 정해 넣는 이름: 모듈 설정 값은 넘기지 않는다 (06 §2·§6, `RESERVED_CALL_KEYS`)
+    // 데몬이 호출마다 정해 넣는 이름: 모듈 설정 값은 넘기지 않는다 (`RESERVED_CALL_KEYS`)
     for f in meta.settings.iter().flat_map(|s| &s.fields).filter(|f| RESERVED_CALL_KEYS.contains(&f.name.as_str())) {
         meta.warnings.push(format!("settings field '{}' is a name saba-chan sets on each call; its value is not passed to the module", f.name));
     }
@@ -1218,7 +1218,7 @@ fn list_default_problems(meta: &ModuleMetadata) -> Vec<String> {
         .collect()
 }
 
-/// 스키마 2 설정 키의 값 검사 (06 §8.1·8.2)
+/// 스키마 2 설정 키의 값 검사
 fn v2_field_problems(field: &SettingFieldToml, fields: &[&SettingFieldToml]) -> Vec<String> {
     let mut problems = Vec::new();
     let name = &field.name;

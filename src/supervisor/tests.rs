@@ -308,7 +308,7 @@ fn the_server_check_reports_settings_that_do_not_match_their_declared_type() {
     assert_eq!(with_setting_issues(json!({ "success": true }), issues)["issues"].as_array().unwrap().len(), 4);
 }
 
-/// 06 §2: 1분 접속자 수 갱신에 사용자 설정 `players_detail`이 따라가지 않는다
+/// 1분 접속자 수 갱신에 사용자 설정 `players_detail`이 따라가지 않는다
 #[test]
 fn a_module_setting_never_stands_in_for_a_daemon_call_key() {
     let mut inst = crate::instance::ServerInstance::new("mc", "minecraft");

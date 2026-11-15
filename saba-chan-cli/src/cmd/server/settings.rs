@@ -120,7 +120,7 @@ pub(super) fn setting_text(name: &str, val: &Value) -> String {
     }
 }
 
-/// 설정 옆 표시: 켜져 있을 때 바꾸면 다시 켜야 적용되는 설정 (06 §8.2)
+/// 설정 옆 표시: 켜져 있을 때 바꾸면 다시 켜야 적용되는 설정
 pub(super) fn setting_marks(f: &Value) -> String {
     if f.get("restart_required").and_then(Value::as_bool) == Some(true) {
         output::dim(&format!("({})", t!("set.restart_required_mark")))
@@ -237,7 +237,7 @@ pub async fn load_settings(ctx: &Ctx, query: Option<&str>) -> Result<SettingsDat
     );
     let module = module.unwrap_or(Value::Null);
     let fields = setting_fields(&module);
-    // 다른 설정 값에 따라 지금 숨긴 설정 (저장된 값 기준, 06 §8.2)
+    // 다른 설정 값에 따라 지금 숨긴 설정 (저장된 값 기준)
     let hidden: Vec<String> = ctx
         .api
         .instance(&sv.id)
@@ -370,7 +370,7 @@ pub(super) async fn set(ctx: &Ctx, query: &str, pairs: &[String]) -> Result<()> 
     if !ignored.is_empty() {
         ctx.out.warn(&t!("set.ignored", keys = ignored.join(", ")));
     }
-    // 다시 켜야 적용되는 설정은 데몬이 알려 준다 (06 §8.2)
+    // 다시 켜야 적용되는 설정은 데몬이 알려 준다
     let needs_restart = restart_required(&r);
     if !needs_restart.is_empty() {
         ctx.out

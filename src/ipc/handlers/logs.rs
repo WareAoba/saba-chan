@@ -1,4 +1,4 @@
-//! 서버 로그 읽기·내보내기 (디스코드 검수 9번, 계약 06 §3): 원천은 러너가 남기는 콘솔 기록 세션 파일과, 러너 없이 직접 실행했을 때의 `console.log`·회전 파일이다
+//! 서버 로그 읽기·내보내기: 원천은 러너가 남기는 콘솔 기록 세션 파일과, 러너 없이 직접 실행했을 때의 `console.log`·회전 파일이다
 //!
 //! - `GET /api/instance/:id/logs?source=&lines=&before=`: 한 세션의 끝에서부터 줄을 읽는다. `before`는 이전 응답이 준 커서다.
 //! - `GET /api/instance/:id/logs/export?source=&since=&until=`: 한 세션을 파일 하나로 (`{fileName, bytes, truncated, content}`).

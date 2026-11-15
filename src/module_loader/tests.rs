@@ -546,7 +546,7 @@ fn modules_without_schema_version_still_load_with_warnings() {
     assert!(meta.warnings.iter().any(|w| w.contains("schema_version")));
 }
 
-/// 06 §2·§6: players_detail·stop_call_limit은 데몬 몫이다. 같은 이름의 설정은 로드하되 경고한다
+/// players_detail·stop_call_limit은 데몬 몫이다. 같은 이름의 설정은 로드하되 경고한다
 #[test]
 fn settings_named_like_daemon_call_keys_are_warned_about() {
     let meta = parse_module_toml(&format!("{V1}\n[[settings.fields]]\nname = \"players_detail\"\ntype = \"boolean\"\n")).unwrap();
@@ -724,7 +724,7 @@ fn schema_v1_checks_setting_and_command_input_types() {
     assert!(parse_module_toml(&setting("textarea").replace("schema_version = 1\n", "")).is_ok());
 }
 
-/// 06 §8.2: visible_when은 같은 모듈의 값 하나짜리 설정을 가리키고, 값은 그 설정 타입에 맞아야 하며, 순환하면 안 된다
+/// visible_when은 같은 모듈의 값 하나짜리 설정을 가리키고, 값은 그 설정 타입에 맞아야 하며, 순환하면 안 된다
 #[test]
 fn visible_when_is_checked_when_the_module_loads() {
     let v2 = V1.replace("schema_version = 1", "schema_version = 2");

@@ -180,7 +180,7 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 
 | 파일 | `__main__` 디스패치 | daemon context와 맞는지 |
 |---|---|---|
-| `EXT/steamcmd/steamcmd.py` | `FUNCTIONS = check_update, ensure, status`. 진입점은 공용 `run_lifecycle`이다 | `check_update`는 `install.app_id`, `install_dir`, 브랜치는 `branch`(없으면 `"public"`)를 읽는다. daemon은 `install, branch, app_id, install_dir, extension_data`를 준다(위 hook 표). 원격 buildid를 읽지 못하면(SteamCMD 없음·`app_info_print` 실패·그 브랜치 buildid 없음) `reason:"check_failed", error`를 붙인다. OK |
+| `EXT/steamcmd/steamcmd.py` | `FUNCTIONS = check_update`. 진입점은 공용 `run_lifecycle`이다 | `check_update`는 `install.app_id`, `install_dir`, 브랜치는 `branch`(없으면 `"public"`)를 읽는다. daemon은 `install, branch, app_id, install_dir, extension_data`를 준다(위 hook 표). 원격 buildid를 읽지 못하면(SteamCMD 없음·`app_info_print` 실패·그 브랜치 buildid 없음) `reason:"check_failed", error`를 붙인다. OK |
 | `EXT/ue4_ini/ue4_ini.py` | **`__main__`가 없다.** 함수 시그니처도 `(ini_path, …)`라 hook 프로토콜과 맞지 않는다 | hook을 선언하지 않으므로 문제없다. module이 `from extensions.ue4_ini import …`로 쓰는 **순수 라이브러리**다 |
 
 ---

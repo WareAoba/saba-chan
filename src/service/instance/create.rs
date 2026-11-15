@@ -865,7 +865,7 @@ fn apply_module_definition(
                         toml::Value::Integer(n) => serde_json::json!(n),
                         toml::Value::Float(f) => serde_json::json!(f),
                         toml::Value::Boolean(b) => serde_json::json!(b),
-                        // list 기본값 (06 §8.1: TOML 문자열 배열)
+                        // list 기본값 (TOML 문자열 배열)
                         toml::Value::Array(_) if field.field_type == "list" => match serde_json::to_value(default_val) {
                             Ok(v) => v,
                             Err(_) => continue,
