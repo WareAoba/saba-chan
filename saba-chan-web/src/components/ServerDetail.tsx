@@ -2,7 +2,7 @@ import { HighlightedContent } from '@gui/components/ConsoleView';
 import { sourceText } from '@gui/utils/audit';
 import { commandOf, needsConfirm } from '@gui/utils/commandRisk';
 import { consoleStep, type FeedRules, feedCursor, newConsoleFeed, notePid } from '@gui/utils/consoleFeed';
-import { type ConsoleLevel, consoleStamper, levelOf, withoutOwnStamp } from '@gui/utils/consoleLine';
+import { type ConsoleLevel, consoleStamper, levelOf, rememberCommand, withoutOwnStamp } from '@gui/utils/consoleLine';
 import {
     commandText,
     consoleQuickCommands,
@@ -23,7 +23,7 @@ import { InfoPanel } from './InfoPanel';
 import { InstanceWords } from './InstanceWords';
 import { Icon } from './icons';
 import { PlayersPanel } from './PlayersPanel';
-import { startPoll } from '@gui/utils/poll';
+import { connectStream, STREAM_RETRY_MS, startPoll } from '@gui/utils/poll';
 import { SabaSettings } from './SabaSettings';
 import { SchedulePanel } from './SchedulePanel';
 import { ServerIcon } from './ServerIcon';
@@ -51,8 +51,6 @@ interface ConsoleLine {
 }
 
 const MAX_LINES = 500;
-/** 콘솔 스트림을 열지 못했거나 끊긴 뒤 다시 열어 보기까지 (ms). 그동안은 주기 조회로 읽는다 */
-const STREAM_RETRY_MS = 30_000;
 let lineSeq = 0;
 /** 웹 콘솔 읽기 규칙 (앱과 다른 곳은 FeedRules 설명) */
 const FEED_RULES: FeedRules = {
@@ -63,7 +61,6 @@ const FEED_RULES: FeedRules = {
 };
 
 // 서버별 보낸 명령 기록 (탭을 오가도 남는다. 화면을 다시 열면 비운다, 앱 콘솔과 같다)
-const HISTORY_MAX = 50;
 const histories = new Map<string, string[]>();
 
 function ConsolePanel({ api, server, moduleData }: Omit<ServerPanelProps, 'running'>) {
@@ -137,7 +134,7 @@ function ConsolePanel({ api, server, moduleData }: Omit<ServerPanelProps, 'runni
         /** 받은 데부터 스트림으로 받는다 (릴레이·PC가 스트림을 모르면 주기 조회를 이어 간다) */
         const openStream = async () => {
             opening = true;
-            const close = await Promise.resolve(
+            const close = await connectStream(() =>
                 api.managedConsoleStream?.(
                     server.id,
                     { ...feedCursor(feed), spans: true },
@@ -149,7 +146,7 @@ function ConsolePanel({ api, server, moduleData }: Omit<ServerPanelProps, 'runni
                         streamRetryAt = Date.now() + STREAM_RETRY_MS;
                     },
                 ),
-            ).then((c) => (typeof c === 'function' ? c : null), () => null);
+            );
             opening = false;
             if (stopped || document.hidden) return close?.();
             if (close) closeStream = close;
@@ -188,8 +185,7 @@ function ConsolePanel({ api, server, moduleData }: Omit<ServerPanelProps, 'runni
         setConfirmText(null);
         let history = histories.get(server.id);
         if (!history) histories.set(server.id, (history = []));
-        if (history[history.length - 1] !== command) history.push(command);
-        if (history.length > HISTORY_MAX) history.shift();
+        rememberCommand(history, command);
         cursor.current = -1;
         setSending(true);
         setInput('');

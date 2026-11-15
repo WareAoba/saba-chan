@@ -8,6 +8,7 @@ import type { ApiBody } from '../types/daemon';
 import { commandErrorText, commandReplyLines } from '../utils/commandReply';
 import { consoleStep, type FeedRules, feedCursor, newConsoleFeed, notePid } from '../utils/consoleFeed';
 import { createTranslateError, safeShowToast } from '../utils/helpers';
+import { connectStream, STREAM_RETRY_MS } from '../utils/poll';
 
 /** @constant 서버 Running이고 콘솔이 화면에 보일 때 polling 간격 (ms) */
 const POLL_ACTIVE_MS = 500;
@@ -16,8 +17,6 @@ const POLL_IDLE_MS = 5000;
 // 새 줄이 없으면 데몬이 이만큼(초) 붙잡는다. 붙잡는 데몬(답에 waits: true)에는 답을 받고 POLL_ACTIVE_MS 뒤 다시 묻는다
 // 원격 데몬 중계(remote_daemon peer)가 다시 쓴 연결의 답을 10초까지만 기다리므로 그보다 짧게 둔다
 const CONSOLE_WAIT_S = 8;
-/** 콘솔 스트림을 열지 못했거나 끊긴 뒤 다시 열어 보기까지 (ms). 그동안은 기다리는 조회로 읽는다 */
-const STREAM_RETRY_MS = 30_000;
 /** PIP로 띄울 때 메인 창 콘솔 자리에 흐리게 남기는 줄 수 */
 const GHOST_LINES = 40;
 /** 앱 콘솔 읽기 규칙 (웹과 다른 곳은 FeedRules 설명) */
@@ -201,12 +200,7 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
                             schedulePoll();
                         },
                     );
-                const close = await Promise.resolve()
-                    .then(open)
-                    .then(
-                        (c) => (typeof c === 'function' ? c : null),
-                        () => null,
-                    );
+                const close = await connectStream(open);
                 if (!isMine() || gen !== streamGen) {
                     close?.();
                     return;
@@ -350,7 +344,7 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
                 return;
             }
             if (result?.error) {
-                console.log('[Console] stdin failed, trying command API:', result.error);
+                console.warn('[Console] stdin failed, trying command API:', result.error);
                 const cmdResult = await window.api.executeCommand(instanceId, {
                     command: cmd,
                     args: {},

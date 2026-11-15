@@ -5,7 +5,7 @@ import type { Server } from '../../stores/useServerStore';
 import { type ConsoleEntry, type ConsoleLine as ConsoleLineData, useConsoleStore } from '../../stores/useConsoleStore';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import { type CommandField, needsConfirm } from '../../utils/commandRisk';
-import { type ConsoleLevel as Level, consoleStamper, levelOf, type Stamp } from '../../utils/consoleLine';
+import { type ConsoleLevel as Level, consoleStamper, levelOf, rememberCommand, type Stamp } from '../../utils/consoleLine';
 import { commandText } from '../../utils/serverView';
 import type { HighlightRule } from '../../types/daemon';
 import { sourceText } from '../../utils/audit';
@@ -15,7 +15,6 @@ import { Icon } from '../Icon';
 import { useContextMenu } from '../ui/ContextMenu';
 
 // 서버별 보낸 명령 기록 (탭을 오가도 남도록 모듈 범위). 앱을 다시 켜면 비운다.
-const HISTORY_MAX = 50;
 const histories = new Map<string, string[]>();
 const historyOf = (id: string) => {
     if (!histories.has(id)) histories.set(id, []);
@@ -401,8 +400,7 @@ export function ServerConsole({
                         type="button"
                         className="btn btn-danger btn-sm"
                         onClick={() => {
-                            const hist = historyOf(server.id);
-                            if (hist[hist.length - 1] !== confirmText) hist.push(confirmText);
+                            rememberCommand(historyOf(server.id), confirmText);
                             setConfirmText(null);
                             sendConsoleCommand(server.id);
                         }}
@@ -426,9 +424,7 @@ export function ServerConsole({
                         return;
                     }
                     setConfirmText(null);
-                    const hist = historyOf(server.id);
-                    if (hist[hist.length - 1] !== cmd) hist.push(cmd);
-                    if (hist.length > HISTORY_MAX) hist.shift();
+                    rememberCommand(historyOf(server.id), cmd);
                     cursorRef.current = -1;
                     sendConsoleCommand(server.id);
                 }}

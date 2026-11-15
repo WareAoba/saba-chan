@@ -1,3 +1,4 @@
+import { type Access, accessOf } from '@gui/utils/serverView';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useApp, useData } from '../store';
@@ -10,9 +11,6 @@ import { Button, errorText, failed, Segments, Sheet } from './ui';
  * 서버 공용: 길드 레벨 권한 + 자동 강퇴 닉네임(작은 단추 → 시트). 전용 멤버: 전용 멤버 명단 + 명단 밖 자동 강퇴 스위치.
  * 모드와 명단은 인스턴스에 붙어 이은 모든 디스코드 서버에 같이 적용된다.
  */
-export type Access = 'shared' | 'members';
-
-export const accessOf = (server: Server | undefined): Access => (server?.access === 'members' ? 'members' : 'shared');
 
 /** 인스턴스 설정 일부를 저장하고 화면의 서버 목록에도 넣는다 */
 function usePatch(api: WebApi, server: Server) {

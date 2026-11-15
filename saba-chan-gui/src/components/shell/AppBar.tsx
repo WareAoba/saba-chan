@@ -15,19 +15,9 @@ import { RuntimePreflight } from './RuntimePreflight';
 import { SwitchToCliButton } from './SwitchToCli';
 import { TaskIndicator } from './TaskIndicator';
 import { UpdatePill } from './UpdatePill';
+import { wordmarkFor } from '../../utils/wordmark';
 
-/** 공식 글자 로고: 한국어·일본어·영어는 각자, 나머지 언어는 영어. ratio = 가로/세로 */
-const WORDMARKS = {
-    ko: { src: './logo-kr.png', ratio: 996 / 300 },
-    ja: { src: './logo-jp.png', ratio: 1459 / 300 },
-    en: { src: './logo-en.png', ratio: 2236 / 300 },
-};
-export function wordmarkFor(lang?: string | null) {
-    const l = String(lang || 'en').toLowerCase();
-    if (l.startsWith('ko')) return WORDMARKS.ko;
-    if (l.startsWith('ja')) return WORDMARKS.ja;
-    return WORDMARKS.en;
-}
+const WORDMARKS = { ko: './logo-kr.png', ja: './logo-jp.png', en: './logo-en.png' };
 
 /** 상단 탭 = 큰 기능 한 개 = 한 페이지 (A7). 새 페이지는 여기에 한 줄 추가한다(익스텐션 화면은 `App.page` slot, ExtensionPageTabs). available이 있으면 그 IPC가 있을 때만 보인다 */
 export const APP_PAGES = [
@@ -78,7 +68,7 @@ export function AppBar({
     daemonProps,
 }: AppBarProps) {
     const { t, i18n } = useTranslation('gui');
-    const wordmark = wordmarkFor(i18n.language);
+    const wordmark = wordmarkFor(i18n.language, WORDMARKS);
     const railRef = useRef<HTMLDivElement>(null);
     const bellRef = useRef<HTMLDivElement>(null);
 

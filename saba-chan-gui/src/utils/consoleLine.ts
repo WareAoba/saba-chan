@@ -42,3 +42,9 @@ export function withoutOwnStamp(content: string, spans?: unknown): { content: st
         spans: (spans as unknown[]).slice(1).map((s) => (Array.isArray(s) ? [Math.max(0, s[0] - cut), s[1] - cut, s[2]] : s)),
     };
 }
+
+/** 보낸 명령 기록에 넣는다: 바로 앞과 같으면 넣지 않고, 50개를 넘으면 오래된 것부터 버린다 */
+export function rememberCommand(history: string[], command: string) {
+    if (history[history.length - 1] !== command) history.push(command);
+    if (history.length > 50) history.shift();
+}

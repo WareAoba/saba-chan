@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import type { ApiBody } from '../../types/daemon';
 import { type AuditEntry as AuditRecord, auditWhat } from '../../utils/audit';
 import { auditEntryOf, eventsAvailable, eventsLive, subscribeDaemonEvents } from '../../utils/daemonEvents';
+import { connectStream, STREAM_RETRY_MS } from '../../utils/poll';
 import { type DaemonLogEntry, DaemonLogLine } from '../DaemonLogLine';
 import { Icon } from '../Icon';
 import { Popover } from '../ui/Popover';
@@ -27,8 +28,6 @@ export const ACTIVITY_SLOW_POLL_MS = 30000;
 export const CONSOLE_POLL_MS = 1000;
 /** 이어 읽을 때 새 줄이 없으면 데몬이 붙잡는 시간(초). 원격 데몬 중계가 다시 쓴 연결의 답을 10초까지만 기다린다 */
 export const CONSOLE_WAIT_S = 8;
-/** 데몬 로그 스트림을 열지 못했거나 끊긴 뒤 다시 열어 보기까지 (ms). 그동안은 기다리는 조회로 읽는다 */
-const STREAM_RETRY_MS = 30_000;
 const CONSOLE_MAX = 2000;
 const SOURCES = ['gui', 'cli', 'api', 'discord', 'schedule', 'daemon', 'web', 'remote', 'mcp', 'agent', 'restart'];
 
@@ -96,12 +95,7 @@ function DaemonConsole() {
                         later();
                     },
                 );
-            const close = await Promise.resolve()
-                .then(open)
-                .then(
-                    (c) => (typeof c === 'function' ? c : null),
-                    () => null,
-                );
+            const close = await connectStream(open);
             if (!alive) return close?.();
             if (close) closeStream = close;
             else {

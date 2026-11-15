@@ -1,7 +1,8 @@
 import { useEffect, useId, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { wordmarkFor } from '../art';
+import { wordmarkFor } from '@gui/utils/wordmark';
+import { wordmarks } from '../art';
 import { useApp } from '../store';
 import { Icon } from './icons';
 import type { ApiBody, TFn } from '../types';
@@ -61,7 +62,7 @@ export function StatusDot({ status }: { status: string }) {
 /** 공식 글자 로고. 색은 글자색을 따른다 (그림을 가림막으로 쓴다) */
 export function Wordmark({ className = '' }) {
     const { t, i18n } = useTranslation();
-    const mark = wordmarkFor(i18n.language);
+    const mark = wordmarkFor(i18n.language, wordmarks);
     return (
         <span
             className={`wordmark ${className}`}

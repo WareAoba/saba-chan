@@ -177,3 +177,9 @@ export function branchesUnderParents<T extends ServerInfo>(servers: T[]): T[] {
     const grouped = top.flatMap((parent) => [parent, ...servers.filter((s) => branchParentOf(s, servers) === parent)]);
     return grouped.every((s, i) => s === servers[i]) ? servers : grouped;
 }
+
+/** 인스턴스 사용 모드: 서버 공용(길드 레벨 권한)이 기본이고, 전용 멤버면 명단에 든 사람만 조작한다 */
+export type Access = 'shared' | 'members';
+
+export const accessOf = (server: { access?: string | null } | undefined): Access =>
+    server?.access === 'members' ? 'members' : 'shared';
