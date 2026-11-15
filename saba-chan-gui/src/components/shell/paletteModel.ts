@@ -9,7 +9,7 @@
  */
 import type { CommandInput } from '../../types/daemon';
 import { matchScore } from '../../utils/hangul';
-import { SETTINGS_TAB_LABELS, SETTINGS_TABS } from '../Modals/settingsTabs';
+import { CUSTOM_RELAY_URL_VISIBLE, SETTINGS_TAB_LABELS, SETTINGS_TABS } from '../Modals/settingsTabs';
 
 export type Translate = (key: string, options?: Record<string, unknown>) => string;
 
@@ -136,7 +136,7 @@ const APP_SETTINGS: [string, string][] = [
     ['servers', 'new_server_defaults_label'],
     ['servers', 'audit_keep_label'],
     ['connection', 'ipc_port_label'],
-    ['connection', 'relay_url_label'],
+    ...(CUSTOM_RELAY_URL_VISIBLE ? [['connection', 'relay_url_label'] as [string, string]] : []),
 ];
 const STORAGE_TABS = ['components', 'modules', 'extensions'];
 
