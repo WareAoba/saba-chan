@@ -3,6 +3,7 @@ import type { ApiBody } from '../types/daemon';
 import type { NoticeInput } from '../types/global';
 import { type AuditEntry, auditReason, auditWhat, sourceText } from './audit';
 import { safeShowToast } from './helpers';
+import { SERVER_UPDATE_ACTION } from './serverUpdateNotice';
 
 export { sourceText };
 
@@ -298,6 +299,67 @@ export function claimServerNotice(instanceId: string | undefined, kind: 'stop' |
     }
     serverNotices.set(key, { source, at: when });
     return true;
+}
+
+/** 누르면 그 게임 서버를 업데이트하는 알림. 서버마다 하나만 둔다 (출처=서버 이름) */
+const serverUpdateNotice = (text: string, instanceId: string, name: string): NoticeInput => ({
+    message: text,
+    type: 'info',
+    source: name,
+    instanceId,
+    action: SERVER_UPDATE_ACTION,
+    data: { instanceId, name },
+    dedup: true,
+});
+
+/** 토스트 없이 알림함에만 남기는 이벤트 (켠 서버의 새 버전·업데이트 대기·실패) */
+const NOTICE_ONLY = ['instance.update_notice', 'instance.update_waiting', 'instance.update_failed'];
+export const noticeOnly = (ev: DaemonEvent) => NOTICE_ONLY.includes(ev.type);
+
+/** 이벤트 → 알림함에 남길 알림 (없으면 null). 화면이 바로 받은 이벤트와 창이 없던 동안 셸이 모아 둔 이벤트가 같이 쓴다 */
+export function eventNotice(ev: DaemonEvent, t: TFunction, nameOf: (id: string) => string = (id) => id): NoticeInput | null {
+    const d = ev.data;
+    const name = () => d.instance || nameOf(d.instanceId);
+    if (ev.type === 'instance.update_notice') {
+        // 켠 서버의 모듈 새 버전(업데이트 화면으로)·게임 서버 새 빌드 — 어디서 켰든 앱에도 남긴다
+        if (d.kind === 'module') {
+            return {
+                message: t('events.module_update', { name: name(), module: d.module, version: d.latest }),
+                type: 'info',
+                source: 'Updater',
+                action: 'openUpdateModal',
+                dedup: true,
+            };
+        }
+        return d.kind === 'server' ? serverUpdateNotice(t('events.server_update', { name: name() }), d.instanceId, name()) : null;
+    }
+    if (ev.type === 'instance.update_waiting') {
+        // 자동 업데이트가 접속자 때문에 기다린다 — 누르면 5분 예고 뒤 업데이트
+        return serverUpdateNotice(
+            typeof d.players === 'number'
+                ? t('events.server_update_waiting', { name: name(), count: d.players })
+                : t('events.server_update_waiting_unknown', { name: name() }),
+            d.instanceId,
+            name(),
+        );
+    }
+    if (ev.type === 'instance.update_failed') {
+        return {
+            message: t('events.server_update_failed', { name: name(), error: d.error || '' }).trim(),
+            type: 'error',
+            source: name(),
+            instanceId: d.instanceId,
+        };
+    }
+    return eventToast(ev, t, nameOf)?.notice ?? null;
+}
+
+/** 창이 없던 동안의 이벤트를 알림함에 넣는다: 토스트 없이, 일어난 시각(`at`, 초)으로 */
+export function addBacklogNotice(ev: DaemonEvent, t: TFunction, nameOf?: (id: string) => string) {
+    const notice = eventNotice(ev, t, nameOf);
+    if (!notice) return;
+    const at = ev.data.at;
+    window.__sabaNotice?.addNotice({ ...notice, ...(typeof at === 'number' ? { timestamp: new Date(at * 1000).toISOString() } : {}) });
 }
 
 /** 토스트를 띄우고, 시작·정지·복원·크래시는 알림 모음에 서버별로 남긴다 */

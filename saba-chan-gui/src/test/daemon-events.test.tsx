@@ -203,6 +203,38 @@ describe('데몬 이벤트 스트림', () => {
         expect(stream.subs.size).toBe(0);
     });
 
+    // 인터페이스만 종료한 동안(창이 없던 동안)의 일도 평소처럼 알림함에 (사용자 11-15)
+    it('창이 없던 동안 셸이 모아 둔 이벤트를 화면이 뜰 때 알림함에 넣는다 (토스트 없이, 일어난 시각으로)', async () => {
+        window.showToast = vi.fn();
+        window.__sabaNotice = { addNotice: vi.fn() } as unknown as typeof window.__sabaNotice;
+        const stream = fakeStream();
+        const crash = { id: 7, type: 'instance.exit', data: { instanceId: 'srv-1', instance: 'Survival', kind: 'crash', at: 1700000000 } };
+        const started = { id: 8, type: 'instance.started', data: { instanceId: 'srv-1', instance: 'Survival', source: 'discord', userName: 'Kimchi', at: 1700000100 } };
+        let answer: (v: unknown[]) => void = () => {};
+        (window.api as Partial<typeof window.api>).eventsBacklog = vi.fn(() => new Promise<unknown[]>((r) => (answer = r))) as never;
+        const { unmount } = render(<DaemonEvents onServersChanged={vi.fn()} />);
+        // 가져오는 사이 바로 받은 것(같은 번호)은 두 번 넣지 않는다
+        await stream.emit(started);
+        await act(async () => answer([crash, started]));
+        const add = vi.mocked(window.__sabaNotice!.addNotice);
+        expect(add).toHaveBeenCalledTimes(2);
+        expect(add.mock.calls[0][0]).toMatchObject({
+            source: 'Survival',
+            type: 'info',
+            message: 'Started · Discord · Kimchi',
+        });
+        expect(add.mock.calls[1][0]).toMatchObject({
+            source: 'Survival',
+            type: 'error',
+            timestamp: new Date(1700000000 * 1000).toISOString(),
+        });
+        // 바로 받은 것만 토스트, 모아 둔 것은 알림함에만
+        expect(window.showToast).toHaveBeenCalledTimes(1);
+        delete window.__sabaNotice;
+        delete (window.api as Partial<typeof window.api>).eventsBacklog;
+        unmount();
+    });
+
     it('켠 서버의 모듈·게임 서버에 새 버전이 있으면 알림을 남긴다 (모듈은 업데이트 화면으로)', async () => {
         const stream = fakeStream();
         window.__sabaNotice = { addNotice: vi.fn() } as unknown as typeof window.__sabaNotice;
