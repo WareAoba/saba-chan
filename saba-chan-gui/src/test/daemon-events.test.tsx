@@ -43,10 +43,7 @@ describe('데몬 이벤트 스트림', () => {
         vi.useRealTimers();
     });
 
-    it('채널이 없으면 구독하지 않고, 문자열 data도 읽는다', () => {
-        (window.api as Partial<typeof window.api>).onDaemonEvent = undefined;
-        const off = subscribeDaemonEvents(vi.fn());
-        expect(typeof off).toBe('function');
+    it('문자열 data도 읽는다', () => {
         expect(normalizeEvent({ id: 3, event: 'backup.done', data: '{"ok":true}' })).toEqual({
             id: 3,
             type: 'backup.done',

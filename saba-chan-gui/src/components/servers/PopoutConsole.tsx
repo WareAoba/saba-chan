@@ -44,7 +44,7 @@ export function PopoutConsole({
 
     const handlePopin = useCallback(async () => {
         try {
-            await window.api?.consolePopin(popoutParams.instanceId);
+            await window.api.consolePopin(popoutParams.instanceId);
         } catch (err) {
             console.error('Popin failed:', err);
         }
@@ -54,7 +54,7 @@ export function PopoutConsole({
         const newPinned = !pinned;
         setPinned(newPinned);
         try {
-            await window.api?.consoleToggleAlwaysOnTop(popoutParams.instanceId, newPinned);
+            await window.api.consoleToggleAlwaysOnTop(popoutParams.instanceId, newPinned);
         } catch (err) {
             console.error('Toggle pin failed:', err);
             setPinned(pinned);
@@ -63,9 +63,7 @@ export function PopoutConsole({
 
     // 사용자가 닫으면 다음에 다시 띄우지 않는다 (서버가 꺼져 닫힐 때·앱을 끌 때는 기억한다)
     const handleClose = useCallback(() => {
-        const close = window.api?.consolePopoutClose;
-        if (typeof close !== 'function') return window.api?.closeWindow();
-        Promise.resolve(close(popoutParams.instanceId, false)).catch(() => window.api?.closeWindow());
+        Promise.resolve(window.api.consolePopoutClose(popoutParams.instanceId, false)).catch(() => window.api.closeWindow());
     }, [popoutParams.instanceId]);
 
     const name = server?.name || popoutParams.name;

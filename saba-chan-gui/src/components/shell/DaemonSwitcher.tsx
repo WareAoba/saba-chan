@@ -29,7 +29,7 @@ export function useDaemonTarget() {
     const [target, setTarget] = useState<string | null | undefined>(undefined);
     useEffect(() => {
         let alive = true;
-        Promise.resolve(window.api?.daemonTarget?.())
+        Promise.resolve(window.api.daemonTarget())
             .then((res) => alive && setTarget(res?.target || null))
             .catch(() => alive && setTarget(null));
         return () => {
@@ -77,7 +77,7 @@ export function DaemonSwitcher({ onSwitched = reloadWindow }: { onSwitched?: () 
     // 이 PC로 돌아간다. 닿지 않는 것은 꺼진 PC일 수 있어 그대로 둔다 (설정의 원격 데몬 절이 까닭을 보인다)
     const leaveForgotten = useCallback(
         async (chosen: string) => {
-            if (chosen === LOCAL || typeof window.api.remoteServers !== 'function') return;
+            if (chosen === LOCAL) return;
             const all = await window.api.remoteServers();
             const mine = all?.daemons?.find((d: RemoteDaemon) => d.hostId === chosen);
             if (mine?.error_code !== 'remote_unauthorized') return;

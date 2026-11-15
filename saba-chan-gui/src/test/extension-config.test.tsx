@@ -18,14 +18,11 @@ describe('익스텐션 전역 설정 (config_fields)', () => {
         window.api = {} as unknown as typeof window.api;
     });
 
-    it('config_fields가 없거나 채널이 없으면 그리지 않는다', () => {
+    it('config_fields가 없으면 그리지 않는다', () => {
         window.api.extensionConfigGet = vi.fn();
-        const { container, rerender } = render(
+        const { container } = render(
             <ExtensionConfigForm ext={{ id: 'x', enabled: true } as ExtensionListItem} />,
         );
-        expect(container).toBeEmptyDOMElement();
-        window.api = {} as unknown as typeof window.api;
-        rerender(<ExtensionConfigForm ext={ext} />);
         expect(container).toBeEmptyDOMElement();
     });
 

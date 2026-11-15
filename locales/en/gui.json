@@ -2126,7 +2126,6 @@
   },
   "activity": {
     "idle": "Click to view the daemon console log",
-    "empty": "No server commands run yet",
     "expand": "Show daemon console",
     "collapse": "Hide daemon console",
     "console_title": "Daemon console",

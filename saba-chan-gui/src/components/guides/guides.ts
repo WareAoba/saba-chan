@@ -93,7 +93,6 @@ export const useGuideStore = create<GuideState>()((set, get) => ({
         return mode;
     },
     refreshOnboarding: async () => {
-        if (!window.api?.onboarding) return;
         try {
             const res = (await window.api.onboarding()) as ApiBody;
             set({ onboarding: Array.isArray(res?.steps) ? { steps: res.steps, next: res.next ?? null } : null });
@@ -102,7 +101,6 @@ export const useGuideStore = create<GuideState>()((set, get) => ({
         }
     },
     refreshGuides: async () => {
-        if (!window.api?.guides) return;
         try {
             const res = (await window.api.guides(i18n.language)) as ApiBody;
             if (Array.isArray(res?.guides)) set({ guides: res.guides as GuideItem[] });
@@ -170,7 +168,7 @@ export function resolveAddress(go: string): string | null {
 }
 
 function report(id: string, body: { opened?: boolean; step?: number; finished?: boolean }) {
-    return Promise.resolve(window.api?.guideUpdate?.(id, body)).catch(() => {});
+    return Promise.resolve(window.api.guideUpdate(id, body)).catch(() => {});
 }
 
 /** 가이드를 연다: new!를 끄고 이어서 볼 단계부터 화면 강조 */

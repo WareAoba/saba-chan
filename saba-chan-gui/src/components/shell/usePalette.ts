@@ -13,12 +13,7 @@ import { safeShowToast } from '../../utils/helpers';
 import { isImeKey } from '../../utils/ime';
 import { openScreen } from '../../utils/openScreen';
 import { commandInputLabel, commandText, interactionOf } from '../../utils/serverView';
-import { botSettingsAvailable } from '../discord/BotSettingsTab';
-import { chatbotAvailable } from '../discord/ChatbotView';
-import { instanceWordsAvailable } from '../discord/InstanceWordsTab';
-import { moderationAvailable } from '../discord/ModerationTab';
 import { startGuide, useGuideStore } from '../guides/guides';
-import { maintenanceAvailable } from '../servers/MaintenanceTab';
 import {
     CATEGORIES,
     type Category,
@@ -72,23 +67,15 @@ function serverTabs(server: Parameters<typeof interactionOf>[0], module?: Module
         interaction.commands && 'commands',
         'settings',
         'saba',
-        maintenanceAvailable() && 'maintenance',
-        instanceWordsAvailable() && 'discord',
+        'maintenance',
+        'discord',
         'info',
     ].filter(Boolean) as string[];
 }
 
 /** 디스코드 서버 화면에 있는 탭 (NodeView와 같은 조건) */
 function guildTabs() {
-    return [
-        'instances',
-        'members',
-        moderationAvailable() && 'moderation',
-        botSettingsAvailable() && 'bot',
-        chatbotAvailable() && 'chatbot',
-        botSettingsAvailable() && 'music',
-        botSettingsAvailable() && 'tts',
-    ].filter(Boolean) as string[];
+    return ['instances', 'members', 'moderation', 'bot', 'chatbot', 'music', 'tts'];
 }
 
 /** 데몬 명령 목록 → 팔레트 명령 (모듈 locales 이름, module.toml 위험도 우선) */
@@ -160,7 +147,6 @@ export function usePalette(onClose: () => void, busyRef: MutableRefObject<boolea
     const serverIds = servers.map((s) => s.id).join('|');
     // biome-ignore lint/correctness/useExhaustiveDependencies: 서버 목록이 바뀔 때만
     useEffect(() => {
-        if (!window.api?.instanceCommands) return;
         let alive = true;
         for (const s of servers) {
             Promise.resolve(window.api.instanceCommands(s.id))

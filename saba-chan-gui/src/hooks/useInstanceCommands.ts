@@ -12,7 +12,7 @@ export function useInstanceCommands(server: Server | null | undefined, moduleCom
 
     useEffect(() => {
         setCatalog(null);
-        if (!server?.id || !window.api?.instanceCommands) return;
+        if (!server?.id) return;
         let alive = true;
         window.api
             .instanceCommands(server.id)

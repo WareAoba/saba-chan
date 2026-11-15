@@ -1,6 +1,6 @@
-import { DataTransferSection, dataTransferAvailable } from '../DataTransferSection';
-import { FolderPathsSection, folderPathsAvailable } from '../FolderPathsSection';
-import { StorageSection, storageAvailable } from '../StorageSection';
+import { DataTransferSection } from '../DataTransferSection';
+import { FolderPathsSection } from '../FolderPathsSection';
+import { StorageSection } from '../StorageSection';
 
 /** 설정 › 저장 공간: 디스크·사바쨩 파일·파일 이동, 접어 둔 내보내기·가져오기와 폴더 위치. `daemonTarget`: 지금 다루는 데몬 (설정을 열 때 받는다) */
 export function StorageTab({ daemonTarget }: { daemonTarget: string | null | undefined }) {
@@ -8,9 +8,9 @@ export function StorageTab({ daemonTarget }: { daemonTarget: string | null | und
     const key = daemonTarget || 'local';
     return (
         <>
-            {storageAvailable() && <StorageSection key={key} />}
-            {dataTransferAvailable() && <DataTransferSection key={key} defaultOpen={false} />}
-            {folderPathsAvailable() && <FolderPathsSection key={key} defaultOpen={false} />}
+            <StorageSection key={key} />
+            <DataTransferSection key={key} defaultOpen={false} />
+            <FolderPathsSection key={key} defaultOpen={false} />
         </>
     );
 }

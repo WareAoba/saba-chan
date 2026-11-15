@@ -29,10 +29,7 @@ export function ExtensionConfigForm({ ext, inline = false }: { ext: ExtensionLis
     const [busy, setBusy] = useState(false);
     const [message, setMessage] = useState<{ tone: string; text: string } | null>(null); // {tone, text}
 
-    const usable =
-        fields.length > 0 &&
-        typeof window.api?.extensionConfigGet === 'function' &&
-        typeof window.api?.extensionConfigSet === 'function';
+    const usable = fields.length > 0;
 
     const load = async () => {
         setBusy(true);

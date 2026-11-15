@@ -20,7 +20,7 @@ export function RuntimePreflight({ daemonStatus }: { daemonStatus?: string }) {
 
     useEffect(() => {
         setState(null);
-        if (!window.api?.runtimePreflight || daemonStatus !== 'running') return undefined;
+        if (daemonStatus !== 'running') return undefined;
         let alive = true;
         let timer: ReturnType<typeof setTimeout> | undefined;
         const poll = async () => {

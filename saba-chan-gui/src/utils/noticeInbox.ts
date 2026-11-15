@@ -17,7 +17,7 @@ const changed = () => window.dispatchEvent(new CustomEvent(NOTICE_UPDATE));
 
 /** 데몬에서 다시 읽는다. 데몬이 없거나 실패하면 받아 둔 목록을 그대로 둔다 */
 export async function refreshNotices() {
-    const res = await window.api?.noticesList?.();
+    const res = await window.api.noticesList();
     if (!res?.success || !Array.isArray(res.notices)) return;
     cache = res.notices.map(toNotice);
     changed();
@@ -40,17 +40,17 @@ export function markAllRead() {
     if (!cache.some((n) => !n.read)) return;
     cache = cache.map((n) => ({ ...n, read: true }));
     changed();
-    send(window.api?.noticesRead?.());
+    send(window.api.noticesRead());
 }
 
 export function removeNotice(id: number) {
     cache = cache.filter((n) => n.id !== id);
     changed();
-    send(window.api?.noticeRemove?.(id));
+    send(window.api.noticeRemove(id));
 }
 
 export function clearAllNotices() {
     cache = [];
     changed();
-    send(window.api?.noticesClear?.());
+    send(window.api.noticesClear());
 }

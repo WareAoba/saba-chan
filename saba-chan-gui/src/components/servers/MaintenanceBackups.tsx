@@ -131,8 +131,6 @@ export function BackupsCard({ server }: { server: Server }) {
             minute: '2-digit',
         });
     const list = [...(backups || [])].sort((a, b) => b.created - a.created);
-    const canTransfer =
-        typeof window.api?.instanceBackupExport === 'function' && typeof window.api?.instanceBackupImport === 'function';
     // 파일 이름에 쓸 수 없는 글자는 뺀다
     const exportName = () => {
         const d = new Date();
@@ -175,7 +173,7 @@ export function BackupsCard({ server }: { server: Server }) {
         <section className="dc-card" aria-label={t('maintenance.backups_title')}>
             <div className="dc-card-head">
                 <h2>{t('maintenance.backups_title')}</h2>
-                {canTransfer && (
+                {(
                     <button type="button" className="btn btn-ghost btn-sm" disabled={!!busy} onClick={pickImport}>
                         {busy === 'import' && !importing ? <SabaSpinner size="sm" /> : <Icon name="download" size="sm" />}{' '}
                         {t('maintenance.backup_import')}
@@ -251,7 +249,7 @@ export function BackupsCard({ server }: { server: Server }) {
                                     onSelect: () => setArmed(restoreKey),
                                 },
                                 !game &&
-                                    canTransfer && {
+                                    {
                                         id: 'export',
                                         label: t('maintenance.backup_export'),
                                         icon: 'arrowUp',
@@ -295,7 +293,7 @@ export function BackupsCard({ server }: { server: Server }) {
                                     tone={KIND_TONE[b.kind] || 'idle'}
                                     label={t(`maintenance.kind_${b.kind}`, { defaultValue: b.kind })}
                                 />
-                                {!game && canTransfer && (
+                                {!game && (
                                     <button
                                         type="button"
                                         className="btn btn-ghost btn-sm"

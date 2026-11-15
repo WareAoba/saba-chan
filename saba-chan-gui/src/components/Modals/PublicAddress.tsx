@@ -31,7 +31,7 @@ export function usePublicAddress(hostId: string | null, enabled = true) {
     const [current, setCurrent] = useState<ApiBody | null>(null);
     const [loaded, setLoaded] = useState(false);
     const load = useCallback(async () => {
-        if (!enabled || typeof window.api?.publicAddress !== 'function') {
+        if (!enabled) {
             setLoaded(true);
             return;
         }

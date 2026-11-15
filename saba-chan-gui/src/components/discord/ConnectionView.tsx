@@ -40,7 +40,7 @@ function SleepAllButton({ nodes, onAsleepChange }: SleepAllButtonProps) {
     const load = useCallback(async () => {
         const gen = ++generation.current;
         const list = ids ? ids.split(',') : [];
-        if (!list.length || !window.api?.discordSettingsGet) return setAsleep(false);
+        if (!list.length) return setAsleep(false);
         const res = await Promise.all(list.map((g) => window.api.discordSettingsGet(g)));
         if (gen !== generation.current) return;
         const sleepingCount = res.filter((r) => !failed(r) && r?.sleeping === true).length;

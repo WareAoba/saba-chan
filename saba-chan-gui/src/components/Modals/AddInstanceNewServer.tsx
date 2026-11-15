@@ -159,7 +159,7 @@ export function AddInstanceNewServer({
         let alive = true;
         const timer = setTimeout(() => {
             Promise.resolve(
-                window.api?.moduleListVersions?.(selectedExtension, { per_page: 50, settings: JSON.parse(versionKey) }),
+                window.api.moduleListVersions(selectedExtension, { per_page: 50, settings: JSON.parse(versionKey) }),
             )
                 .then((res) => {
                     if (!alive) return;
@@ -190,7 +190,7 @@ export function AddInstanceNewServer({
         const timer = setTimeout(async () => {
             let res = null;
             try {
-                res = await window.api?.instanceCheck?.(JSON.parse(checkKey));
+                res = await window.api.instanceCheck(JSON.parse(checkKey));
             } catch (_e) {
                 res = null;
             }
@@ -219,7 +219,7 @@ export function AddInstanceNewServer({
     }, [step]);
 
     const browseFolder = async () => {
-        const picked = await window.api?.openFolderDialog?.();
+        const picked = await window.api.openFolderDialog();
         if (picked) setFolder(picked);
     };
 

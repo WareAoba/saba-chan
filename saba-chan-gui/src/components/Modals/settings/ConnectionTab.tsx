@@ -1,11 +1,11 @@
 import { useTranslation } from 'react-i18next';
 import { useDiscordStore } from '../../../stores/useDiscordStore';
 import { DEFAULT_IPC_PORT } from '../../../stores/useSettingsStore';
-import { AgentLink, agentLinkAvailable } from '../../discord/AgentLink';
+import { AgentLink } from '../../discord/AgentLink';
 import { Icon } from '../../Icon';
 import { SabaNumberInput } from '../../ui/SabaUI';
 import { useHostDraft, usePendingChange } from '../../ui/SaveBar';
-import { RemoteDaemonSection, remoteDaemonAvailable } from '../RemoteDaemonSection';
+import { RemoteDaemonSection } from '../RemoteDaemonSection';
 import { CUSTOM_RELAY_URL_VISIBLE } from '../settingsTabs';
 
 interface ConnectionTabProps {
@@ -55,10 +55,10 @@ export function ConnectionTab({
     });
     return (
         <>
-            {remoteDaemonAvailable() && <RemoteDaemonSection />}
+            <RemoteDaemonSection />
 
             {/* AI 에이전트(MCP) 연결: PC 카드와 같은 카드로 보인다 */}
-            {discordHostId && agentLinkAvailable() && <AgentLink />}
+            {discordHostId && <AgentLink />}
 
             <section className="saba-card">
                 {/* IPC 포트 설정 */}

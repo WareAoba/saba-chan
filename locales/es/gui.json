@@ -2126,7 +2126,6 @@
   },
   "activity": {
     "idle": "Haz clic para ver el registro de la consola del daemon",
-    "empty": "Sin comandos de servidor ejecutados todavía",
     "expand": "Mostrar consola del daemon",
     "collapse": "Ocultar consola del daemon",
     "console_title": "Consola del daemon",

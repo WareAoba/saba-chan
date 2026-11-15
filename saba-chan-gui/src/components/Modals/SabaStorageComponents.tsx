@@ -101,12 +101,12 @@ export function ComponentsTab({ devMode }: { devMode?: boolean }) {
         try {
             if (toMock) {
                 // 업데이트는 릴레이 전용이다. 데몬은 relay_url만 본다 (src/ipc/updates.rs set_config)
-                throwIfRejected(await window.api?.updaterSetConfig?.({ relay_url: MOCK_RELAY_URL }));
+                throwIfRejected(await window.api.updaterSetConfig({ relay_url: MOCK_RELAY_URL }));
                 setMockMode(true);
                 setMessage(t('saba_storage.switch_to_mock'));
             } else {
                 // 빈 문자열이면 데몬이 기본 릴레이로 돌아간다
-                throwIfRejected(await window.api?.updaterSetConfig?.({ relay_url: '' }));
+                throwIfRejected(await window.api.updaterSetConfig({ relay_url: '' }));
                 setMockMode(false);
                 setMessage(t('saba_storage.switch_to_real'));
             }
@@ -129,7 +129,7 @@ export function ComponentsTab({ devMode }: { devMode?: boolean }) {
         setError(null);
         setMessage(null);
         try {
-            const res = await window.api?.updaterCheck?.();
+            const res = await window.api.updaterCheck();
             if (res?.success) {
                 setComponents(parseComponents(res.components));
             } else {
@@ -152,15 +152,15 @@ export function ComponentsTab({ devMode }: { devMode?: boolean }) {
         setError(null);
         setMessage(null);
         try {
-            const downloaded = await window.api?.updaterDownload?.([]);
+            const downloaded = await window.api.updaterDownload([]);
             if (failed(downloaded)) addError(downloaded?.error || t('saba_storage.download_failed'));
-            const res = await window.api?.updaterApply?.([]);
+            const res = await window.api.updaterApply([]);
             clearModuleAuditCache();
             // 일부만 적용돼도(success:false) 적용된 것은 알린다 (G-U9b)
             const applied: string[] = res?.applied || [];
             if (failed(res)) addError(res?.errors?.length > 0 ? res.errors.join('; ') : res?.error || t('saba_storage.apply_failed'));
             if (res?.requires_updater && res?.needs_updater?.length > 0) {
-                const launchRes = await window.api?.updaterLaunchApply?.(res.needs_updater);
+                const launchRes = await window.api.updaterLaunchApply(res.needs_updater);
                 if (launchRes?.ok === false) addError(launchRes?.error || t('saba_storage.updater_launch_failed'));
                 // 설치기가 돌면 데몬이 내려간다. GUI가 남으면 다시 뜬 데몬에 붙는다
                 else if (launchRes?.gui_restart === false)
@@ -185,7 +185,7 @@ export function ComponentsTab({ devMode }: { devMode?: boolean }) {
     const handleAutoCheckToggle = useCallback(async (enabled: boolean) => {
         setAutoCheckEnabled(enabled);
         try {
-            throwIfRejected(await window.api?.updaterSetConfig?.({ enabled }));
+            throwIfRejected(await window.api.updaterSetConfig({ enabled }));
         } catch (e) {
             console.error('Failed to set auto-check config:', e);
             setAutoCheckEnabled(!enabled);
@@ -199,7 +199,7 @@ export function ComponentsTab({ devMode }: { devMode?: boolean }) {
             if (mode === previous) return;
             setUpdateMode(mode);
             try {
-                throwIfRejected(await window.api?.updaterSetConfig?.(UPDATE_MODES[mode]));
+                throwIfRejected(await window.api.updaterSetConfig(UPDATE_MODES[mode]));
             } catch (e) {
                 console.error('Failed to set update mode:', e);
                 setUpdateMode(previous);
@@ -216,7 +216,7 @@ export function ComponentsTab({ devMode }: { devMode?: boolean }) {
             if (channel === previous) return;
             setUpdateChannel(channel);
             try {
-                throwIfRejected(await window.api?.updaterSetConfig?.({ channel }));
+                throwIfRejected(await window.api.updaterSetConfig({ channel }));
             } catch (e) {
                 console.error('Failed to set update channel:', e);
                 setUpdateChannel(previous);
@@ -233,7 +233,7 @@ export function ComponentsTab({ devMode }: { devMode?: boolean }) {
         mountedRef.current = true;
         (async () => {
             try {
-                const cfgRes = await window.api?.updaterGetConfig?.();
+                const cfgRes = await window.api.updaterGetConfig();
                 const cfg = cfgRes?.config || cfgRes;
                 const isMock = !!cfg?.relay_url?.includes('127.0.0.1');
                 if (mountedRef.current) {
@@ -257,7 +257,7 @@ export function ComponentsTab({ devMode }: { devMode?: boolean }) {
                 if (!res?.components?.length && mountedRef.current) {
                     // 캐시가 비어있음 (아직 check가 한 번도 안 됨) → 최초 1회 check
                     setChecking(true);
-                    const checkRes = await window.api?.updaterCheck?.();
+                    const checkRes = await window.api.updaterCheck();
                     if (checkRes?.success && mountedRef.current) {
                         setComponents(parseComponents(checkRes.components));
                     }

@@ -30,14 +30,13 @@ export function useQuickServers(refreshMs: number) {
 
     const refresh = useCallback(async () => {
         const [status, current] = await Promise.all([
-            Promise.resolve(window.api?.daemonStatus?.()).catch(() => null),
-            Promise.resolve(window.api?.daemonTarget?.()).catch(() => null),
+            Promise.resolve(window.api.daemonStatus()).catch(() => null),
+            Promise.resolve(window.api.daemonTarget()).catch(() => null),
         ]);
         const up = status?.running === true;
         const target = current?.target || null;
-        // 고를 수 없는 창이면 늘 이 PC 데몬, 물었는데 답을 못 받았으면 모른다
-        targetRef.current =
-            typeof window.api?.daemonTarget !== 'function' ? null : current && 'target' in current ? target : undefined;
+        // 물었는데 답을 못 받았으면 모른다
+        targetRef.current = current && 'target' in current ? target : undefined;
         setDaemonUp(up);
         if (!up) {
             setRemote(null);
@@ -45,8 +44,8 @@ export function useQuickServers(refreshMs: number) {
             return;
         }
         const [list, daemons] = await Promise.all([
-            Promise.resolve(window.api?.serverList?.()).catch(() => null),
-            target ? Promise.resolve(window.api?.remoteDaemons?.()).catch(() => null) : null,
+            Promise.resolve(window.api.serverList()).catch(() => null),
+            target ? Promise.resolve(window.api.remoteDaemons()).catch(() => null) : null,
         ]);
         const reachable = Array.isArray(list?.servers);
         if (target) {

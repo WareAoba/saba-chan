@@ -12,13 +12,12 @@ import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { LinkedText } from '../ui/ScreenLink';
 import { Segmented } from '../ui/StatusChip';
 import { Avatar, initialOf } from './Avatar';
-import { BotSettingsTab, botSettingsAvailable } from './BotSettingsTab';
+import { BotSettingsTab } from './BotSettingsTab';
 import { ChatbotGuildTab } from './ChatbotGuildTab';
-import { chatbotAvailable } from './ChatbotView';
 import { ControllersTab } from '../servers/ControllersTab';
 import { AccessMode, KickButton, MembersKick } from './InstanceAccess';
 import * as P from './nodePermissions';
-import { ModerationTab, moderationAvailable } from './ModerationTab';
+import { ModerationTab } from './ModerationTab';
 import { MembersPanel, PermissionPanel } from './PermissionsTab';
 import { SleepCorner } from './SleepCorner';
 import type { DiscordMember, DiscordNode } from './types';
@@ -310,29 +309,11 @@ export function NodeView({
     const tabs = [
         { id: 'instances', label: t('discord.tab_instances'), icon: <Icon name="server" size="sm" /> },
         { id: 'members', label: t('discord.tab_members'), icon: <Icon name="user" size="sm" /> },
-        ...(moderationAvailable()
-            ? [{ id: 'moderation', label: t('discord.tab_moderation'), icon: <Icon name="tool" size="sm" /> }]
-            : []),
-        ...(botSettingsAvailable()
-            ? [{ id: 'bot', label: t('discord.tab_bot'), icon: <Icon name="settings" size="sm" /> }]
-            : []),
-        ...(chatbotAvailable()
-            ? [{ id: 'chatbot', label: t('chatbot.nav'), icon: <Icon name="sabaTalking" size="sm" /> }]
-            : []),
-        ...(botSettingsAvailable()
-            ? [
-                  {
-                      id: 'music',
-                      label: t('discord.bot_settings.music_title'),
-                      icon: <Icon name="musicNote" size="sm" />,
-                  },
-                  {
-                      id: 'tts',
-                      label: t('discord.bot_settings.tts_title'),
-                      icon: <Icon name="sabaReading" size="sm" />,
-                  },
-              ]
-            : []),
+        { id: 'moderation', label: t('discord.tab_moderation'), icon: <Icon name="tool" size="sm" /> },
+        { id: 'bot', label: t('discord.tab_bot'), icon: <Icon name="settings" size="sm" /> },
+        { id: 'chatbot', label: t('chatbot.nav'), icon: <Icon name="sabaTalking" size="sm" /> },
+        { id: 'music', label: t('discord.bot_settings.music_title'), icon: <Icon name="musicNote" size="sm" /> },
+        { id: 'tts', label: t('discord.bot_settings.tts_title'), icon: <Icon name="sabaReading" size="sm" /> },
     ];
 
     // 화면 주소 링크로 연 탭. 이 디스코드 서버에서 쓸 수 없는 탭이면 지금 탭에 두고 이유를 알린다

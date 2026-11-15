@@ -112,7 +112,7 @@ export function ModuleMakerCard({ defaultOpen = false }: { defaultOpen?: boolean
                     <button
                         type="button"
                         className="btn btn-ghost btn-sm"
-                        onClick={() => window.api?.shellOpenExternal?.(info.guide as string)}
+                        onClick={() => window.api.shellOpenExternal(info.guide as string)}
                     >
                         <Icon name="externalLink" size="sm" />
                         {t('saba_storage.maker_guide')}

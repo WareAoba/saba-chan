@@ -20,21 +20,21 @@ const flush = () => act(async () => {});
 describe('ActivityBar', () => {
     beforeEach(() => {
         vi.useFakeTimers({ shouldAdvanceTime: true });
-        (window.api as Partial<typeof window.api>).onDaemonEvent = undefined; // 이벤트 스트림이 없을 때의 폴링
+        window.api.daemonEventsLive = vi.fn(() => false) as never; // 이벤트 스트림이 끊겼을 때의 폴링
     });
     afterEach(() => {
         vi.useRealTimers();
-        delete (window.api as Partial<typeof window.api>).onDaemonEvent;
+        delete (window.api as Partial<typeof window.api>).daemonEventsLive;
         delete (window.api as Partial<typeof window.api>).auditList;
         delete (window.api as Partial<typeof window.api>).daemonConsole;
     });
 
     it('최신 감사 1건을 한 줄로 보이고, 다음 폴링에서 바뀐다', async () => {
-        (window.api as Partial<typeof window.api>).daemonConsole = undefined; // preload에 아직 없을 때
         window.api.auditList = vi
             .fn()
             .mockResolvedValueOnce({ entries: [entry()] })
-            .mockResolvedValue({
+            // 다음 폴링에서 방금 실행된 명령
+            .mockImplementation(async () => ({
                 entries: [
                     entry({
                         source: 'gui',
@@ -45,14 +45,12 @@ describe('ActivityBar', () => {
                         status: 500,
                     }),
                 ],
-            });
+            }));
         render(<ActivityBar />);
         await flush();
         expect(window.api.auditList).toHaveBeenCalledWith({ limit: 1 });
         expect(screen.getByText('Discord · kimchi · Survival · Stop')).toBeInTheDocument();
         expect(screen.getByText('Succeeded')).toBeInTheDocument();
-        // 데몬 콘솔 IPC가 없으면 펼칠 수 없다
-        expect(screen.queryByRole('button')).toBeNull();
 
         await act(async () => {
             vi.advanceTimersByTime(ACTIVITY_POLL_MS);

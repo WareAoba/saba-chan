@@ -65,7 +65,7 @@ export function AddInstanceMigration({
 
     // ─── 디렉토리 선택 ───
     const handleBrowse = useCallback(async () => {
-        const selected = await window.api?.openFolderDialog?.();
+        const selected = await window.api.openFolderDialog();
         if (selected) {
             setDirPath(selected);
             // 선택하면 자동 스캔
@@ -84,7 +84,7 @@ export function AddInstanceMigration({
             setNotices([]);
 
             try {
-                const result = await window.api?.migrationScanDir?.(path);
+                const result = await window.api.migrationScanDir(path);
                 if (!result?.success) {
                     setScanError(result?.error || t('migration_modal.scan_error'));
                     setScanning(false);

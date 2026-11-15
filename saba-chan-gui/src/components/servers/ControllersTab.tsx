@@ -24,7 +24,7 @@ function useMemberChoices() {
     const missingKey = missing.join(',');
     // biome-ignore lint/correctness/useExhaustiveDependencies: 빠진 길드 목록이 바뀔 때만 받는다
     useEffect(() => {
-        if (!missingKey || typeof window.api?.relayListNodeMembers !== 'function') return;
+        if (!missingKey) return;
         let alive = true;
         for (const guildId of missing) {
             window.api.relayListNodeMembers(guildId, relayUrl).then((data) => {

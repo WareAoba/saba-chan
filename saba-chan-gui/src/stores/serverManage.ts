@@ -19,7 +19,7 @@ export function serverManageActions(get: () => ServerState, fetchServers: () => 
     const renameServer = async (id: string, newName: string) => {
         const name = (newName || '').trim();
         const srv = get().servers.find((s) => s.id === id);
-        if (!srv || !name || name === srv.name || !window.api.instanceRename) return false;
+        if (!srv || !name || name === srv.name) return false;
         try {
             const result = await window.api.instanceRename(id, name);
             if (result?.success) {

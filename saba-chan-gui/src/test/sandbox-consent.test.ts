@@ -73,16 +73,6 @@ describe('격리를 준비하지 못했을 때 (sandbox_unavailable)', () => {
         expect(window.api.sandboxAllowUnisolated).not.toHaveBeenCalled();
         expect(window.api.instanceStart).toHaveBeenCalledTimes(1);
     });
-
-    it('동의 채널이 없으면 묻지 않고 이유만 알린다', async () => {
-        window.api.instanceStart = vi.fn().mockResolvedValue(unavailable);
-        const { result, setModal } = setup();
-        await act(async () => result.current.startServer('p1'));
-        expect(setModal).not.toHaveBeenCalled();
-        expect(vi.mocked(window.showToast!).mock.calls.at(-1)![0]).toContain(
-            'Not run: isolated environment setup failed for module-palworld',
-        );
-    });
 });
 
 describe('격리·검사 문구', () => {

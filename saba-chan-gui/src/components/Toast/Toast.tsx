@@ -112,11 +112,9 @@ function Toast() {
         };
 
         // StatusBar의 상태 업데이트 신호를 받아 로그만 출력
-        if (window.api && window.api.onStatusUpdate) {
-            window.api.onStatusUpdate((data: { step: string; message: string }) => {
-                console.log('[Status Update]', data.step, ':', data.message);
-            });
-        }
+        window.api.onStatusUpdate((data: { step: string; message: string }) => {
+            console.log('[Status Update]', data.step, ':', data.message);
+        });
 
         return () => {
             delete window.showToast;

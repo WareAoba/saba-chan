@@ -101,7 +101,7 @@ function syncWindowBackground() {
     const root = document.documentElement;
     if (transparentWindow(root)) return;
     const color = getComputedStyle(root).getPropertyValue('--bg-0').trim();
-    if (color) window.api?.windowSetBackground?.(color);
+    if (color) window.api.windowSetBackground(color);
 }
 
 /**
@@ -450,7 +450,7 @@ export async function applyWindowBackdrop(config: WindowBackdropConfig) {
     if (transparentWindow(root)) return;
     let info: BackdropSupport | null = null;
     try {
-        info = (await window.api?.windowSetBackdrop?.(config)) ?? null;
+        info = (await window.api.windowSetBackdrop(config)) ?? null;
     } catch (e) {
         console.warn('[Theme] Failed to apply window backdrop:', e);
     }

@@ -7,8 +7,6 @@ import { Icon } from '../Icon';
 /** 데몬이 삭제표를 받았는지 묻는 간격 */
 const POLL_MS = 3000;
 
-export const privacyEraseAvailable = () =>
-    typeof window.api?.relayPrivacyErase === 'function' && typeof window.api?.relayPrivacyEraseStatus === 'function';
 
 interface PrivacyEraseProps {
     onErased: () => void;
@@ -58,9 +56,7 @@ export function PrivacyErase({ onErased, className }: PrivacyEraseProps) {
         try {
             const res = await window.api.relayPrivacyErase(i18n.language);
             if (!res?.url) throw new Error(res?.error || 'no url');
-            const openExternal = window.api?.shellOpenExternal;
-            if (!openExternal) throw new Error('shell bridge unavailable');
-            const opened = await openExternal(res.url);
+            const opened = await window.api.shellOpenExternal(res.url);
             if (opened?.error) throw new Error(opened.error);
             setPhase('waiting');
         } catch (e) {

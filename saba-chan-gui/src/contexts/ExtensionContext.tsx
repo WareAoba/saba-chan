@@ -203,7 +203,7 @@ async function loadExtensionI18n(ext: ExtensionListItem, lang: string) {
  * 고르지 않았으면 null. 받지 못하면 throw한다: 빈 목록으로 보면 원격 PC의 허락으로 판단한 채 다시 묻지 않는다
  */
 async function localExtensions(): Promise<ExtensionListItem[] | null> {
-    const current = await window.api.daemonTarget?.();
+    const current = await window.api.daemonTarget();
     if (!current?.target) return null;
     const local = await window.api.extensionList({ local: true });
     if (!local || local.error || !Array.isArray(local.extensions)) {
@@ -351,7 +351,7 @@ export function ExtensionProvider({ children, surface = 'main' }: { children: Re
         const first = overlaySeen.current === null;
         if (overlaySeen.current === overlayKey) return;
         overlaySeen.current = overlayKey;
-        if (!first) window.api?.overlaySync?.();
+        if (!first) window.api.overlaySync();
     }, [surface, loading, overlayKey]);
 
     // 활성 익스텐션 변경 시 GUI 번들 로드 & 슬롯 등록
@@ -582,7 +582,7 @@ export function ExtensionProvider({ children, surface = 'main' }: { children: Re
                 safeShowToast(t('trust.extension_gui.allowed', { id: extId }), 'info', 4000);
                 await fetchExtensions();
                 // 이 PC의 바탕화면 번들이면 셸이 오버레이를 다시 보게 (원격 데몬을 고른 동안엔 위 목록에 없다)
-                window.api?.overlaySync?.();
+                window.api.overlaySync();
                 return true;
             } catch (e) {
                 safeShowToast(t('trust.extension_gui.allow_failed', { error: (e as Error).message }), 'error', 5000);
@@ -599,7 +599,7 @@ export function ExtensionProvider({ children, surface = 'main' }: { children: Re
 
     // 허락을 기다리는 익스텐션을 하나씩 묻는다. 다른 창이 떠 있으면 닫힌 뒤에 묻는다
     useEffect(() => {
-        if (surface !== 'main' || modalOpen || !window.api?.sandboxAllowExtensionGui) return;
+        if (surface !== 'main' || modalOpen) return;
         const next = allPending.find((ext) => !askedGuiRef.current.has(ext.id));
         if (!next) return;
         askedGuiRef.current.add(next.id);
@@ -625,7 +625,7 @@ export function ExtensionProvider({ children, surface = 'main' }: { children: Re
     const fetchManifest = useCallback(async (refresh = false) => {
         setManifestLoading(true);
         try {
-            const data = await window.api.extensionFetchManifest?.(refresh);
+            const data = await window.api.extensionFetchManifest(refresh);
             if (data) {
                 setManifestExtensions(data.extensions || []);
             }
@@ -644,7 +644,7 @@ export function ExtensionProvider({ children, surface = 'main' }: { children: Re
             if (!extId) return false;
             return run(extId, async () => {
                 try {
-                    const result = await window.api.extensionInstall?.(extId, opts);
+                    const result = await window.api.extensionInstall(extId, opts);
                     if (result && failed(result)) {
                         const msg =
                             // 함께 받는 의존 익스텐션이 거절되면 그 이름(result.extension)으로
@@ -684,7 +684,7 @@ export function ExtensionProvider({ children, surface = 'main' }: { children: Re
         async (extId: string) => {
             if (!extId) return false;
             try {
-                const result = await window.api?.extensionRemove?.(extId);
+                const result = await window.api.extensionRemove(extId);
                 if (result && failed(result)) {
                     const code = result.error_code || 'unknown';
                     const related = (result.related || []).join(', ');

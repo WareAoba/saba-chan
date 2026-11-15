@@ -14,12 +14,6 @@ interface PlanSummary {
     before?: unknown;
 }
 
-/**
- * 명령 팔레트 (Ctrl+K): Spotlight 모양의 검색 막대 + 카테고리 버튼(조작·게임 명령·바로 가기).
- * 항목 계산은 paletteModel. 바로 가기는 실행하지 않고 그 화면을 열고, 조작은 데몬 액션(plan → run),
- * 게임 명령은 지금 보낼 수 있는 것만(데몬 `/commands`의 ready) 칸을 하나씩 받아 보낸다.
- */
-export const paletteAvailable = () => !!window.api?.actionsPlan && !!window.api?.actionsRun;
 
 /** 계획 요약 값. 설정 변경은 `before`가 붙어 "이전 → 새 값"으로 보인다 (null이면 없음) */
 export const summaryValue = (s: PlanSummary, t: Translate) =>
@@ -514,7 +508,7 @@ function Palette({ onClose, busyRef }: { onClose: () => void; busyRef: MutableRe
     );
 }
 
-/** Ctrl+K (macOS ⌘K)로 여닫는다. 액션 IPC가 없으면 아무것도 하지 않는다 */
+/** Ctrl+K (macOS ⌘K)로 여닫는다 */
 export function CommandPalette() {
     const [open, setOpen] = useState(false);
     const busyRef = useRef(false);

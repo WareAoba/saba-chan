@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { BotSettingsTab, botSettingsAvailable } from '../components/discord/BotSettingsTab';
+import { BotSettingsTab } from '../components/discord/BotSettingsTab';
 import { pickOption } from './dropdown';
 
 const flush = () => act(async () => {});
@@ -23,11 +23,6 @@ describe('디스코드 봇 설정 탭', () => {
         delete (window.api as Partial<typeof window.api>).chatbotGet;
         delete (window.api as Partial<typeof window.api>).chatbotSave;
         window.showToast = undefined;
-    });
-
-    it('채널이 없으면 탭을 숨긴다', () => {
-        (window.api as Partial<typeof window.api>).discordSettingsGet = undefined;
-        expect(botSettingsAvailable()).toBe(false);
     });
 
     it('토글은 바뀐 키만 보내고, 음악은 부분 객체로 보낸다', async () => {

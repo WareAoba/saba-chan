@@ -178,7 +178,7 @@ export const useServerStore = create<ServerState>()((set, get) => ({
                 const i18n = serverI18n();
                 const loadLocales = async (mod: { name: string }) => {
                     try {
-                        if (i18n && window.api.moduleGetLocales) {
+                        if (i18n) {
                             const locales = await window.api.moduleGetLocales(mod.name);
                             if (locales && typeof locales === 'object') {
                                 for (const [lang, localeData] of Object.entries(locales)) {

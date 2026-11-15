@@ -15,11 +15,11 @@ import {
 } from './components';
 import { AgreementDialog } from './components/AgreementList';
 import { DiscordPage } from './components/discord/DiscordPage';
-import { ActivityBar, activityAvailable } from './components/shell/ActivityBar';
+import { ActivityBar } from './components/shell/ActivityBar';
 import { ActivityPage } from './components/servers/AuditTab';
 import { SabaBubble } from './components/shell/SabaBubble';
 import { useSabaBubble } from './stores/useSabaBubble';
-import { CommandPalette, paletteAvailable } from './components/shell/CommandPalette';
+import { CommandPalette } from './components/shell/CommandPalette';
 import { Spotlight } from './components/guides/Spotlight';
 import { DaemonEvents } from './components/shell/DaemonEvents';
 import { AppBar } from './components/shell/AppBar';
@@ -44,7 +44,7 @@ import { useServerStore } from './stores/useServerStore';
 import { setSettingsI18n, useSettingsStore } from './stores/useSettingsStore';
 import { applyConsoleFonts } from './utils/consoleFonts';
 import { type ActiveTab, type ModalConfig, useUIStore } from './stores/useUIStore';
-import { eventsAvailable, eventsLive, serverListPollMs } from './utils/daemonEvents';
+import { eventsLive, serverListPollMs } from './utils/daemonEvents';
 import { startPoll } from './utils/poll';
 import { motionAllowed } from './hooks/useSwapAnimation';
 import {
@@ -268,67 +268,60 @@ function App() {
         // { running: false } and we fall through to the onStatusUpdate listener.
         // On HMR or Vite full-reload the daemon is already alive, so we skip
         // the loading screen immediately.
-        if (window.api && window.api.daemonStatus) {
-            window.api
-                .daemonStatus()
-                .then((status) => {
-                    if (status && status.running) {
-                        // 데몬이 이미 떠 있던 창(인터페이스만 종료 뒤 다시 연 창·새로고침)은 오프닝 없이 연다
-                        setQuickOpen(true);
-                        window.__sabaReadyReceived = true;
-                        setInitStatus(t('loading.step_done'));
-                        setInitProgress(100);
-                        setDaemonReady(true);
-                        setServersInitializing(false);
-                    }
-                })
-                .catch(() => {});
-        }
+        window.api
+            .daemonStatus()
+            .then((status) => {
+                if (status && status.running) {
+                    // 데몬이 이미 떠 있던 창(인터페이스만 종료 뒤 다시 연 창·새로고침)은 오프닝 없이 연다
+                    setQuickOpen(true);
+                    window.__sabaReadyReceived = true;
+                    setInitStatus(t('loading.step_done'));
+                    setInitProgress(100);
+                    setDaemonReady(true);
+                    setServersInitializing(false);
+                }
+            })
+            .catch(() => {});
 
         // 이 구독만 정리할 함수 (다른 화면의 상태 구독은 건드리지 않는다)
-        let offStatus: (() => void) | undefined;
-        if (window.api && window.api.onStatusUpdate) {
-            offStatus = window.api.onStatusUpdate((data) => {
-                setInitSeen((n) => n + 1);
+        const offStatus = window.api.onStatusUpdate((data) => {
+            setInitSeen((n) => n + 1);
 
-                const progressValues = {
-                    init: 10,
-                    ui: 20,
-                    daemon: 50,
-                    modules: 70,
-                    instances: 85,
-                    ready: 90,
-                };
+            const progressValues = {
+                init: 10,
+                ui: 20,
+                daemon: 50,
+                modules: 70,
+                instances: 85,
+                ready: 90,
+            };
 
-                // 데몬을 못 띄웠으면 로딩 화면에 실패와 할 일을 보인다 (main이 ready를 보내지 않는다)
-                if (data.step === 'daemon_failed') {
-                    setInitFailed(data.message || t('loading.daemon_failed'));
-                    return;
-                }
-                // 데몬 단계 문구는 main이 현지화해서 보낸다. 나머지 단계는 렌더러 locales를 쓴다
-                setInitStatus(
-                    data.step === 'daemon' && data.message
-                        ? data.message
-                        : t(`loading.step_${data.step}`, { defaultValue: data.message || '' }),
-                );
-                setInitProgress((prev) => Math.max(prev, progressValues[data.step as keyof typeof progressValues] || prev));
+            // 데몬을 못 띄웠으면 로딩 화면에 실패와 할 일을 보인다 (main이 ready를 보내지 않는다)
+            if (data.step === 'daemon_failed') {
+                setInitFailed(data.message || t('loading.daemon_failed'));
+                return;
+            }
+            // 데몬 단계 문구는 main이 현지화해서 보낸다. 나머지 단계는 렌더러 locales를 쓴다
+            setInitStatus(
+                data.step === 'daemon' && data.message
+                    ? data.message
+                    : t(`loading.step_${data.step}`, { defaultValue: data.message || '' }),
+            );
+            setInitProgress((prev) => Math.max(prev, progressValues[data.step as keyof typeof progressValues] || prev));
 
-                if (data.step === 'ready') {
-                    // 셸이 이번에 데몬을 띄운 기동에서만 오프닝을 재생한다 (이미 떠 있던 데몬에 붙었거나 다시 보낸 ready는 false)
-                    if (data.opening === false) setQuickOpen(true);
-                    window.__sabaReadyReceived = true;
-                    setTimeout(() => setDaemonReady(true), 600);
-                    setTimeout(() => setServersInitializing(false), 3500);
-                }
-            });
-        }
+            if (data.step === 'ready') {
+                // 셸이 이번에 데몬을 띄운 기동에서만 오프닝을 재생한다 (이미 떠 있던 데몬에 붙었거나 다시 보낸 ready는 false)
+                if (data.opening === false) setQuickOpen(true);
+                window.__sabaReadyReceived = true;
+                setTimeout(() => setDaemonReady(true), 600);
+                setTimeout(() => setServersInitializing(false), 3500);
+            }
+        });
 
         // Post-update completion notification
-        if (window.api && window.api.onUpdateCompleted) {
-            window.api.onUpdateCompleted((data) => {
-                setTimeout(() => announceUpdateCompleted(data, t), 1500);
-            });
-        }
+        window.api.onUpdateCompleted((data) => {
+            setTimeout(() => announceUpdateCompleted(data, t), 1500);
+        });
 
         return () => {
             // Cleanup IPC listeners on unmount / Fast Refresh re-run
@@ -396,13 +389,9 @@ function App() {
         if (!daemonReady) return;
         const checkDaemonStatus = async () => {
             try {
-                if (window.api && window.api.daemonStatus) {
-                    const status = await window.api.daemonStatus();
-                    setBackgroundDaemonStatus(daemonStateOf(status));
-                    setDaemonInParentJob(status?.in_parent_job === true);
-                } else {
-                    setBackgroundDaemonStatus('error');
-                }
+                const status = await window.api.daemonStatus();
+                setBackgroundDaemonStatus(daemonStateOf(status));
+                setDaemonInParentJob(status?.in_parent_job === true);
             } catch (error) {
                 console.error('Failed to check daemon status:', error);
                 setBackgroundDaemonStatus('error');
@@ -442,17 +431,17 @@ function App() {
         fetchServers();
 
         // 다른 인터페이스(CLI의 `gui`)가 이 창을 띄우며 고른 서버를 연다
-        const offOpenServer = window.api.onOpenServer?.((p) => {
+        const offOpenServer = window.api.onOpenServer((p) => {
             if (p?.instanceId) useUIStore.getState().revealServer(p.instanceId);
         });
         // 바탕화면 펫이 고른 탭 (서버는 위 openServer로 온다)
-        const offOpenRoute = window.api.onOpenRoute?.((p) => {
+        const offOpenRoute = window.api.onOpenRoute((p) => {
             const route = p?.route;
             if (isAppRoute(route) && !serverRoute(route)) useUIStore.getState().setActiveTab(route as ActiveTab);
         });
 
         // App close request handler
-        const offClose = window.api.onCloseRequest?.(() => answerCloseRequest(t, setModal));
+        const offClose = window.api.onCloseRequest(() => answerCloseRequest(t, setModal));
 
         return () => {
             if (typeof offClose === 'function') offClose();
@@ -517,13 +506,13 @@ function App() {
     const playChime = () => {
         if (chimeRef.current.chime && !chimeRef.current.played) {
             chimeRef.current.played = true;
-            window.api?.playSound?.('startup');
+            window.api.playSound('startup');
         }
     };
     // 오프닝이 내는 소리: 정상이면 기동음 자리에 맡은 소리(처음 사용자 가이드 열림음)가 있으면 그것을 낸다
     const playOpeningSound = (sound: OpeningSound) => {
         if (sound === 'startup') playChime();
-        else window.api?.playSound?.(sound);
+        else window.api.playSound(sound);
     };
 
     // 로딩이 끝나면 로딩 화면을 그대로 덮어 둔 채 메인 화면을 아래에 다 그리고(prepare),
@@ -611,7 +600,7 @@ function App() {
                     initProgress={initProgress}
                     failed={initFailed}
                     onRetry={async () => {
-                        const res = await window.api.daemonRestart?.().catch((e: Error) => ({ error: e.message }));
+                        const res = await window.api.daemonRestart().catch((e: Error) => ({ error: e.message }));
                         // 성공하면 main이 멈춘 초기화를 이어서 마치고 ready를 보낸다: 진행 화면으로 돌아가 기다린다
                         if (res?.success) setInitFailed(null);
                         else setInitFailed(res?.error || t('loading.daemon_failed'));
@@ -820,11 +809,11 @@ function App() {
                         </KeptPage>
                     </div>
 
-                    {activityAvailable() && <ActivityBar />}
+                    <ActivityBar />
                     <SabaBubble />
-                    {paletteAvailable() && <CommandPalette />}
+                    <CommandPalette />
                     <Spotlight />
-                    {eventsAvailable() && <DaemonEvents onServersChanged={fetchServers} />}
+                    <DaemonEvents onServersChanged={fetchServers} />
 
                     {/* 모달 렌더링 */}
                     {patchNotes && <PatchNotesModal data={patchNotes} onClose={() => setPatchNotes(null)} />}

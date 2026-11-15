@@ -14,7 +14,7 @@ export const cachedModuleCatalog = () => moduleCatalog;
 export async function loadModuleCatalog(
     refresh = false,
 ): Promise<{ ok: true; modules: CatalogModule[] } | { ok: false; error?: string }> {
-    const res = await window.api?.moduleManifest?.(refresh);
+    const res = await window.api.moduleManifest(refresh);
     if (res?.success && res.manifest?.modules) {
         const entries = Object.entries(res.manifest.modules as Record<string, Omit<CatalogModule, 'id'>>);
         moduleCatalog = entries.map(([id, info]) => ({ ...info, id }));

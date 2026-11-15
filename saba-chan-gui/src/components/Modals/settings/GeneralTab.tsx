@@ -6,7 +6,7 @@ import Icon from '../../Icon';
 import { SabaToggle } from '../../ui/SabaUI';
 import { SegmentedChoice } from '../../ui/StatusChip';
 import { SYSTEM_MONITOR_MODES } from '../../../stores/useSettingsStore';
-import { AutostartSetting, autostartAvailable } from '../AutostartSetting';
+import { AutostartSetting } from '../AutostartSetting';
 import { DesktopOverlaySetting } from '../DesktopOverlaySetting';
 import { setOption } from './options';
 
@@ -116,7 +116,7 @@ export function GeneralTab({ selectedLanguage, handleLanguageChange }: GeneralTa
                 />
             </div>
 
-            {autostartAvailable() && <AutostartSetting />}
+            <AutostartSetting />
 
             {/* 바탕화면 오버레이: 그 slot을 쓰는 익스텐션이 켜져 있을 때만 */}
             <DesktopOverlaySetting />

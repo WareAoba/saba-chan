@@ -14,8 +14,6 @@ import {
 import type { Server } from '../../stores/useServerStore';
 import { Icon } from '../Icon';
 
-/** 데몬에 포트포워딩 확인이 있을 때만 (예전 브리지면 숨긴다) */
-export const portCheckAvailable = () => typeof window.api?.instancePortCheck === 'function';
 
 /** 포트 확인 결과 (port_check::Report) */
 interface PortCheckResult extends PortCheckReport {
@@ -38,7 +36,6 @@ const STATUS_ICON: Record<string, string> = {
 export function useLastPortCheck(serverId: string): [PortCheckResult | null, SetReport] {
     const [report, setReport] = useState<PortCheckResult | null>(null);
     const reload = useCallback(async () => {
-        if (typeof window.api?.instancePortCheckLast !== 'function') return;
         const res = await window.api.instancePortCheckLast(serverId);
         if (res?.verdict) setReport(res as PortCheckResult);
     }, [serverId]);
@@ -56,10 +53,8 @@ function HelpLink() {
     const { t, i18n } = useTranslation('gui');
     const url = portHelpUrl(i18n.language);
     const open = (e: MouseEvent<HTMLAnchorElement>) => {
-        const openExternal = window.api?.shellOpenExternal;
-        if (!openExternal) return;
         e.preventDefault();
-        openExternal(url);
+        window.api.shellOpenExternal(url);
     };
     return (
         <a href={url} target="_blank" rel="noreferrer" onClick={open}>
@@ -118,7 +113,6 @@ export function PortCheck({ server }: { server: Server }) {
     const [report, setReport] = useLastPortCheck(server.id);
     const { run, running, error } = usePortCheckRun(server.id, setReport);
 
-    if (!portCheckAvailable()) return null;
 
     return (
         <section className="server-check port-check">

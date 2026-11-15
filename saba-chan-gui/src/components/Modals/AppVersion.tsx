@@ -175,7 +175,7 @@ export function useAppVersion(nameOf: (key: string) => string, core?: string) {
     const reverted = useUIStore((s) => s.revertResult);
 
     const load = useCallback(async () => {
-        const res: ApiBody | undefined = await window.api?.updaterVersions?.();
+        const res: ApiBody | undefined = await window.api.updaterVersions();
         // 읽지 못하면 줄을 그리지 않는다
         setVersions(!failed(res) && typeof res?.installed === 'string' ? (res as AppVersionsResponse) : null);
     }, []);
@@ -207,7 +207,7 @@ export function useAppVersion(nameOf: (key: string) => string, core?: string) {
         setReverting({ launched: false, reopen: false });
         let res: ApiBody | undefined;
         try {
-            res = await window.api?.updaterRollback?.();
+            res = await window.api.updaterRollback();
         } catch (e) {
             res = { ok: false, error: (e as Error)?.message };
         }
@@ -231,7 +231,7 @@ export function useAppVersion(nameOf: (key: string) => string, core?: string) {
         setBanner(null);
         let res: ApiBody | undefined;
         try {
-            res = await window.api?.updaterRestart?.();
+            res = await window.api.updaterRestart();
         } catch (e) {
             res = { ok: false, error: (e as Error)?.message };
         }

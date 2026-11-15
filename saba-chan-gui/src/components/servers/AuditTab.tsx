@@ -24,13 +24,11 @@ import { DateField } from '../ui/DateTimePicker';
 import { Popover } from '../ui/Popover';
 import { SabaCheckbox, SabaSpinner } from '../ui/SabaUI';
 import { Segmented, StatusChip } from '../ui/StatusChip';
-import { UpcomingSchedules, upcomingAvailable } from './UpcomingSchedules';
+import { UpcomingSchedules } from './UpcomingSchedules';
 import { failed } from '../../utils/apiResult';
 
 export { auditRange, auditResult, auditWhat, auditWho };
 
-/** 이 화면을 띄울 IPC가 있는지 (구버전 브리지에는 없다) */
-export const auditAvailable = () => !!window.api?.auditList;
 
 /** 감사 로그 한 줄: 서버를 가리키는 칸은 데몬 버전에 따라 instance 또는 instanceId */
 interface AuditRow extends AuditEntry {
@@ -189,11 +187,9 @@ export function AuditLog({ instanceId }: { instanceId?: string }) {
             <div className="dc-card-head">
                 <h2>{t('audit.title')}</h2>
                 <AuditFilter value={filters} onChange={setFilters} />
-                {typeof window.api?.auditExport === 'function' && (
-                    <button type="button" className="btn btn-ghost btn-sm" onClick={doExport} disabled={exporting}>
-                        {exporting ? <SabaSpinner size="sm" /> : <Icon name="download" size="sm" />} {t('audit.export')}
-                    </button>
-                )}
+                <button type="button" className="btn btn-ghost btn-sm" onClick={doExport} disabled={exporting}>
+                    {exporting ? <SabaSpinner size="sm" /> : <Icon name="download" size="sm" />} {t('audit.export')}
+                </button>
                 <button type="button" className="btn btn-ghost btn-sm" onClick={load} disabled={loading}>
                     {loading ? <SabaSpinner size="sm" /> : <Icon name="refresh" size="sm" />} {t('audit.refresh')}
                 </button>
@@ -392,7 +388,7 @@ export function ActivityPage() {
             </aside>
             <main className="server-detail-pane activity-pane">
                 <div className="server-detail activity-page">
-                    {!current && upcomingAvailable() && <UpcomingSchedules />}
+                    {!current && <UpcomingSchedules />}
                     <AuditLog instanceId={current ?? undefined} />
                 </div>
             </main>

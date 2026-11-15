@@ -28,7 +28,6 @@ export function ServerLogs({ server }: { server: Server }) {
     const { t } = useTranslation('gui');
     const [view, setView] = useState<LogView | false | null>(null);
     const [busy, setBusy] = useState<'load' | 'more' | 'export' | null>(null);
-    const available = typeof window.api?.instanceLogs === 'function';
 
     const load = useCallback(
         async (source: string | undefined) => {
@@ -45,12 +44,11 @@ export function ServerLogs({ server }: { server: Server }) {
     );
 
     useEffect(() => {
-        if (!available) return;
         setView(null);
         load(undefined);
-    }, [available, load]);
+    }, [load]);
 
-    if (!available || !view) return null;
+    if (!view) return null;
 
     const more = async () => {
         setBusy('more');

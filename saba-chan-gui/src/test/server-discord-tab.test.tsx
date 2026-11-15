@@ -44,11 +44,4 @@ describe('서버 상세의 디스코드 탭', () => {
         expect(await screen.findByLabelText('Names for 야생')).toBeTruthy();
         expect(window.api.instanceWords).toHaveBeenCalledWith('s1');
     });
-
-    it('데몬이 낱말 API를 모르면 탭을 두지 않는다', () => {
-        useServerStore.setState({ modulesLoaded: true });
-        window.api = {} as unknown as typeof window.api;
-        detail();
-        expect(screen.queryByText('Discord')).toBeNull();
-    });
 });

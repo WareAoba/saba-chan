@@ -2126,7 +2126,6 @@
   },
   "activity": {
     "idle": "Clique para ver o registro do console do daemon",
-    "empty": "Nenhum comando de servidor executado ainda",
     "expand": "Mostrar console do daemon",
     "collapse": "Ocultar console do daemon",
     "console_title": "Console do daemon",
