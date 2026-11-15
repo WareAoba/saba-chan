@@ -63,7 +63,8 @@
     "ask_dir": "Folder to install into",
     "ask_run": "How should the server run?",
     "run_managed": "Managed by saba-chan (recommended)",
-    "run_unmanaged": "Self-managed (no Saba-chan console)"
+    "run_unmanaged": "Self-managed (no Saba-chan console)",
+    "branch_name": "{{name}} · branch"
   },
   "bot": {
     "ask_token": "Node token",
@@ -1169,7 +1170,9 @@
     "bad_date": "\"{{got}}\" is not a date. Use YYYY-MM-DD, e.g. 2026-12-24.",
     "bad_arg": "\"{{got}}\" is not an argument. Use NAME=VALUE.",
     "confirm_danger": "{{command}} is hard to undo and runs at the set time without confirmation. Schedule it?",
-    "from_needs_every_days": "--from only works with every-N-days tasks (--every-days)."
+    "from_needs_every_days": "--from only works with every-N-days tasks (--every-days).",
+    "clash": "overlaps",
+    "upcoming_none": "Nothing scheduled in the next {{hours}} hours"
   },
   "chatbot": {
     "api_key": "API key saved",
@@ -1790,5 +1793,24 @@
     "some_failed": "Some agents failed to change",
     "is_linked": "✓ {{agent}}: Saba-chan added",
     "is_not_linked": "· {{agent}}: no Saba-chan (saba-chan agent link)"
+  },
+  "access": {
+    "mode": "Usage mode",
+    "shared": "Shared",
+    "members": "Members only",
+    "member_list": "Member list",
+    "kick_others": "Kick non-members",
+    "kick_list": "Auto kick",
+    "none": "No one",
+    "not_listed": "{{name}} is not on the list",
+    "saved": "Saved usage mode of {{server}}"
+  },
+  "notice": {
+    "col": "Notice",
+    "none": "No notices",
+    "unread": "{{count}} unread notice(s)",
+    "read_done": "Marked all as read",
+    "removed": "Notice {{id}} deleted",
+    "cleared": "{{count}} notice(s) deleted"
   }
 }

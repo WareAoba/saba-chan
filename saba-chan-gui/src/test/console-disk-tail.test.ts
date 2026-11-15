@@ -1,6 +1,6 @@
 /**
- * G-C1: 줄 key가 데몬 id라 디스크 꼬리와 새 프로세스 줄이 같은 key를 가졌다.
- * G-C3: 크래시·외부 정지 뒤 이미 본 줄이 담긴 디스크 꼬리를 통째로 다시 붙였다.
+ * 줄 key가 데몬 id라 디스크 꼬리와 새 프로세스 줄이 같은 key를 가졌다.
+ * 크래시·외부 정지 뒤 이미 본 줄이 담긴 디스크 꼬리를 통째로 다시 붙였다.
  */
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';

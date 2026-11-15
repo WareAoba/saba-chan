@@ -80,6 +80,12 @@ pub enum Cmd {
     /// Scheduled tasks of a server (backup, restart, announce, update)
     #[command(subcommand, visible_alias = "schedules")]
     Schedule(ScheduleCmd),
+    /// The notification inbox the daemon keeps (crashes, failed starts, update results). Same list as the app
+    #[command(visible_alias = "notices")]
+    Notice {
+        #[command(subcommand)]
+        action: Option<NoticeCmd>,
+    },
     /// Talking Saba-chan, the AI for Discord (API key, settings, memory)
     #[command(subcommand, visible_alias = "ai")]
     Chatbot(ChatbotCmd),
@@ -471,10 +477,29 @@ pub struct ScheduleWhen {
 }
 
 #[derive(Subcommand, Debug)]
+pub enum NoticeCmd {
+    /// Mark every notice as read
+    Read,
+    /// Delete one notice
+    #[command(visible_alias = "rm")]
+    Remove {
+        /// The number in the first column of `notice`
+        id: u64,
+    },
+    /// Delete every notice
+    Clear,
+}
+
+#[derive(Subcommand, Debug)]
 pub enum ScheduleCmd {
-    /// Show the schedule
+    /// Show a server's schedule. Without a server: what runs next on every server
     #[command(visible_alias = "ls")]
-    Show { server: Option<String> },
+    Show {
+        server: Option<String>,
+        /// Without a server: look this many hours ahead (default 24, up to 720)
+        #[arg(long, value_name = "HOURS", conflicts_with = "server", value_parser = clap::value_parser!(u32).range(1..=720))]
+        hours: Option<u32>,
+    },
     /// Add a task: start, stop, restart, save, backup, announce, update or command
     Add {
         server: String,
@@ -648,6 +673,28 @@ pub enum ServerCmd {
         #[arg(value_name = "KEY=VALUE")]
         args: Vec<String>,
     },
+    /// Who uses this server from Discord: shared or members mode, the member list and nicknames to kick. No options: show
+    Access {
+        server: Option<String>,
+        /// shared (everyone by Discord level) or members (only the member list)
+        #[arg(long, value_parser = ["shared", "members"], requires = "server")]
+        mode: Option<String>,
+        /// Add to the member list: NICKNAME or NICKNAME=DISCORD_ID (repeatable)
+        #[arg(long = "add-member", value_name = "NICKNAME[=DISCORD_ID]", requires = "server")]
+        add_member: Vec<String>,
+        /// Remove from the member list (repeatable)
+        #[arg(long = "remove-member", value_name = "NICKNAME", requires = "server")]
+        remove_member: Vec<String>,
+        /// Members mode: kick players who are not on the member list
+        #[arg(long = "kick-others", value_name = "on|off", value_parser = on_off, requires = "server")]
+        kick_others: Option<bool>,
+        /// Shared mode: kick this nickname when it joins (repeatable)
+        #[arg(long, value_name = "NICKNAME", requires = "server")]
+        kick: Vec<String>,
+        /// Stop kicking this nickname (repeatable)
+        #[arg(long, value_name = "NICKNAME", requires = "server")]
+        unkick: Vec<String>,
+    },
     /// What Discord chat calls this server and its commands (the same in every Discord server). No options: show
     Discord {
         server: Option<String>,
@@ -804,6 +851,9 @@ pub struct AddArgs {
     /// `--yes` never accepts an agreement
     #[arg(long = "accept", value_name = "ID")]
     pub accept: Vec<String>,
+    /// Make a branch of this server: same game and a one-time copy of its settings, with its own folder, world and port
+    #[arg(long = "branch-of", value_name = "SERVER", conflicts_with_all = ["module", "from", "game_version", "dir", "unmanaged", "preset", "accept"])]
+    pub branch_of: Option<String>,
 }
 
 #[derive(Args, Debug, Clone, Default)]
@@ -1821,7 +1871,7 @@ mod tests {
         assert!(p(&["bot", "alias"]).is_err(), "old alias command is gone");
         assert!(matches!(p(&["bot", "channels"]).unwrap().cmd, Some(Cmd::Bot(BotCmd::Channels { guild: None, .. }))));
         assert!(matches!(p(&["bot", "members"]).unwrap().cmd, Some(Cmd::Bot(BotCmd::Members { guild: None }))));
-        // 토큰은 셸 기록에 남지 않게 인자로 받지 않는다 (C15)
+        // 토큰은 셸 기록에 남지 않게 인자로 받지 않는다
         assert!(p(&["bot", "token", "secret-token"]).is_err());
         assert!(matches!(p(&["bot", "token"]).unwrap().cmd, Some(Cmd::Bot(BotCmd::Token))));
         assert!(matches!(p(&["bot", "erase"]).unwrap().cmd, Some(Cmd::Bot(BotCmd::Erase))));
@@ -1914,7 +1964,7 @@ mod tests {
         walk(&Cli::command(), "", &mut missing);
         assert!(missing.is_empty(), "help.cmd keys missing: {:?}", missing);
     }
-    /// `server add --preset`은 게임의 추천 설정 id다. 권한 프리셋(`perm preset`)의 설명을 빌려 쓰면 안 된다 (L73)
+    /// `server add --preset`은 게임의 추천 설정 id다. 권한 프리셋(`perm preset`)의 설명을 빌려 쓰면 안 된다
     #[test]
     fn server_add_preset_is_explained_as_a_game_preset() {
         crate::i18n::init("ko");

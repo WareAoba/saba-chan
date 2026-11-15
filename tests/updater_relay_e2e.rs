@@ -1,4 +1,4 @@
-//! 업데이터 릴레이(R2) 경로 E2E (U9g) — mock 릴레이 + mock R2로 확인 → 서명 검증 → 다운로드
+//! 업데이터 릴레이 경로 E2E — mock 릴레이 + mock R2로 확인 → 서명 검증 → 다운로드
 //! → 해시 검증 → 적용 → 설치 버전 기록까지 한 번에 돌린다. 변조된 에셋과 신뢰하지 않는 서명도 확인한다.
 
 use axum::{extract::State, http::{HeaderMap, StatusCode}, response::IntoResponse, routing::get, Json, Router};

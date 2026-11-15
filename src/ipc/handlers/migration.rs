@@ -1,4 +1,4 @@
-//! 설정·인스턴스 내보내기/가져오기 (A9) — PC를 옮길 때 쓴다
+//! 설정·인스턴스 내보내기/가져오기 — PC를 옮길 때 쓴다
 //!
 //! - `POST /api/migration/export` `{path, secrets?}` — 데몬이 `path`에 zip을 쓴다
 //! - `POST /api/migration/import` `{path, dryRun?, overwrite?}` — 데몬이 `path`의 zip을 읽어 반영한다
@@ -286,7 +286,7 @@ pub async fn import(State(state): State<IPCServer>, Json(req): Json<ImportReques
         // 쓰기 잠금 안에서 본다: 그 사이에 켜진 서버를 덮어쓰지 않게
         let running: HashSet<String> = {
             let mut ids: HashSet<String> = sup.managed_store.running_instance_ids().await.into_iter().collect();
-            ids.extend(sup.instance_store.list().iter().filter(|i| sup.tracker.get_pid(&i.id).is_ok()).map(|i| i.id.clone()));
+            ids.extend(sup.instance_store.list().iter().filter(|i| sup.tracker.get_pid(&i.id).is_some()).map(|i| i.id.clone()));
             ids
         };
         // 앞서 더하거나 바꾼 인스턴스까지 보고 판정한다: 미리보기(dry run)도 실제 가져오기와 같은 결과를 내게
@@ -607,7 +607,7 @@ mod tests {
             "relay".into(),
             json!({ "prefix": "!s", "cloud": { "hostId": "old", "relayUrl": "https://x" }, "cloudNodes": [1], "cloudMembers": {}, "nodeSettings": { "g": { "members": {} } } }),
         );
-        // 길드 설정(금지 멤버·주인·허용 서버·명령 레벨)도 그 페어링의 것이다 (EE8)
+        // 길드 설정(금지 멤버·주인·허용 서버·명령 레벨)도 그 페어링의 것이다
         keep_local_pairing(&mut sections);
         assert_eq!(sections["relay"], json!({ "prefix": "!s" }));
     }

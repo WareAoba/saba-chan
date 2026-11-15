@@ -61,7 +61,7 @@ describe('트레이 팝업', () => {
         expect(window.api.trayPopupFit).toHaveBeenCalled();
     });
 
-    // F1·F4: 다른 곳(디스코드·CLI)에서 켜도 서버가 바뀌었다는 이벤트로 다시 읽고, 데몬의 transition으로 "켜는 중"을 보인다
+    // 다른 곳(디스코드·CLI)에서 켜도 서버가 바뀌었다는 이벤트로 다시 읽고, 데몬의 transition으로 "켜는 중"을 보인다
     it('서버가 바뀌었다는 이벤트에 다시 읽고 켜는 중을 보인다', async () => {
         let emit: (ev: unknown) => void = () => {};
         window.api.onDaemonEvent = vi.fn((cb) => {

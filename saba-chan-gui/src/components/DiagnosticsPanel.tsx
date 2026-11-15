@@ -18,7 +18,7 @@ interface Diagnostics {
 export const diagnosticsAvailable = () => typeof window.api?.daemonDiagnostics === 'function';
 
 /**
- * 데몬 진단 정보 (GET /api/diagnostics, Q-2). 문제를 물어볼 때 붙여 넣을 수 있게 통째로 복사한다.
+ * 데몬 진단 정보 (GET /api/diagnostics). 문제를 물어볼 때 붙여 넣을 수 있게 통째로 복사한다.
  * 비밀은 데몬이 싣지 않는다(토큰은 파일 경로와 존재 여부만).
  */
 export function DiagnosticsPanel() {

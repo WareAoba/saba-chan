@@ -81,7 +81,7 @@ function WordsInput({ value, onChange, label, placeholder, invalid = [] }: Words
 }
 
 /**
- * 디스코드 호출어 (2026-11-03 사용자 지정 시안: 서버 상세 › 설정 › 사바쨩). GUI 서버 상세의 디스코드 탭과 같은 값:
+ * 디스코드 호출어 (서버 상세 › 설정 › 사바쨩). GUI 서버 상세의 디스코드 탭과 같은 값:
  * 이 서버를 부르는 말과 명령마다 부르는 말. 어느 디스코드 서버에서나 같다. 데몬 GET·PUT /api/instance/:id/words
  */
 export function InstanceWords({ api, server }: { api: WebApi; server: Pick<Server, 'id'> }) {

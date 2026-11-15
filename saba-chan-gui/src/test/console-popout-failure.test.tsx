@@ -1,5 +1,5 @@
 /**
- * 콘솔을 별도 창으로 열지 못하면(셸이 {ok:false}로 답하거나 예외) 조용히 넘기지 않고 알린다 (G-C5).
+ * 콘솔을 별도 창으로 열지 못하면(셸이 {ok:false}로 답하거나 예외) 조용히 넘기지 않고 알린다.
  */
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import i18n from 'i18next';

@@ -1,4 +1,4 @@
-//! `do` — 데몬 액션 카탈로그(P2)의 액션을 id로 실행한다. 액션 없이 부르면 목록
+//! `do` — 데몬 액션 카탈로그의 액션을 id로 실행한다. 액션 없이 부르면 목록
 
 use crate::ctx::Ctx;
 use crate::error::{usage, Result};
@@ -201,7 +201,7 @@ mod tests {
         assert_eq!(failure(&json!({ "success": false, "result": { "error": "boom" } })), "boom");
     }
 
-    /// Codex 리뷰 #548: 빨리 실패한 여러 단계 실행은 2xx `success:false`라 공통 검사가 `HTTP 200` 오류로 바꿨고,
+    /// 빨리 실패한 여러 단계 실행은 2xx `success:false`라 공통 검사가 `HTTP 200` 오류로 바꿨고,
     /// `--json`에서는 멈춘 단계 상세가 사라졌다. 본문을 받아 원인과 단계를 함께 싣는다
     #[test]
     fn a_failed_multi_step_run_keeps_its_steps_and_cause() {

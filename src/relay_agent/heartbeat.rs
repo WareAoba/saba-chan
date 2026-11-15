@@ -283,16 +283,16 @@ impl Session {
         // 인스턴스별로 서버와 명령을 부르는 낱말 (어느 길드에서나 같다, 릴레이는 찾기·위험 확인에 쓴다).
         // 비어도 싣는다: 이 키가 있으면 릴레이는 옛 길드별 `instanceWords`·전역 별명을 보지 않는다
         meta["serverWords"] = crate::chat::words::heartbeat(&bot.server_words);
-        // 디스코드·챗봇에서 쓸 수 있는 액션 (P2). 상한을 넘으면 잘라 표시한다
+        // 디스코드·챗봇에서 쓸 수 있는 액션. 상한을 넘으면 잘라 표시한다
         let loaded = self.server.supervisor.read().await.list_modules().unwrap_or_default();
         let (actions, truncated) = crate::actions::heartbeat_actions(&crate::chat::i18n::languages(), &loaded);
         // 권한 원본은 데몬이다: 릴레이는 이 값으로 바깥 검사용 캐시를 맞춘다. 요구 레벨은 위 서버·모듈·액션 목록 그대로 센다
         let targets = crate::actions::RemoteTargets { actions, commands, instances: remote_instances(&servers) };
         meta["permissions"] = permissions_by_guild(&bot.node_settings, &targets);
         meta["permissionsAt"] = json!(permissions_at);
-        // `/사바쨩 상태` 끝 줄의 다음 할 일 (J1-a, GUI·CLI와 같은 단계)
+        // `/사바쨩 상태` 끝 줄의 다음 할 일 (GUI·CLI와 같은 단계)
         meta["onboarding"] = crate::service::onboarding::now(&self.server).await;
-        // 언어가 `auto`인 길드는 이 언어로 답한다 (I2)
+        // 언어가 `auto`인 길드는 이 언어로 답한다
         // (릴레이 스키마는 10자까지. 넘으면 heartbeat 전체가 거절되므로 싣지 않는다)
         if let Some(language) = Some(self.server.config_store.pc_language().await).filter(|l| l.len() <= 10) {
             meta["language"] = Value::String(language);

@@ -281,10 +281,10 @@ pub struct ServerInfo {
     /// 꺼져 있고 마지막 정지가 접속자 없음 자동 정지였을 때 `{at, minutes}` (`supervisor::idle`)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub idle_stopped: Option<crate::supervisor::idle::Stopped>,
-    /// 익스텐션 데이터 slot (Q-7): 데몬이 조건을 판정하고 값을 찾아 둔 것 (`ExtensionManager::server_slots`)
+    /// 익스텐션 데이터 slot: 데몬이 조건을 판정하고 값을 찾아 둔 것 (`ExtensionManager::server_slots`)
     #[serde(default, skip_serializing_if = "serde_json::Map::is_empty")]
     pub slots: serde_json::Map<String, serde_json::Value>,
-    /// 접속자 수 (Q-5): 켜진 서버이고 모듈이 `[status] players`로 알려 줄 때만 (`supervisor::players`)
+    /// 접속자 수: 켜진 서버이고 모듈이 `[status] players`로 알려 줄 때만 (`supervisor::players`)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub players: Option<crate::supervisor::players::PlayerCount>,
     /// 켜져 있지만 상태 질문(접속자 수)에 인스턴스 설정 `unresponsive_minutes`(기본 10분) 넘게 답하지 않을 때 마지막 실패 이유.
@@ -343,10 +343,10 @@ fn yes() -> bool {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ExtensionInfo {
+pub struct ModuleInfo {
     pub name: String,
     pub version: String,
-    /// 신뢰 표시: verified(서명된 카탈로그에서 받았고 그대로) · modified · unverified (M12)
+    /// 신뢰 표시: verified(서명된 카탈로그에서 받았고 그대로) · modified · unverified
     pub trust: saba_chan_updater_lib::integrity::Trust,
     pub description: Option<String>,
     /// module.toml schema_version (0 = 스키마 이전 모듈)
@@ -361,10 +361,10 @@ pub struct ExtensionInfo {
     /// 로드는 됐지만 모듈 작성자가 고쳐야 할 점
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<String>,
-    /// `[module.dependencies]` 중 지금 설치된 버전이 못 맞추는 것 (M9). saba-core 미달은 아예 로드하지 않는다
+    /// `[module.dependencies]` 중 지금 설치된 버전이 못 맞추는 것. saba-core 미달은 아예 로드하지 않는다
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub unmet_dependencies: Vec<UnmetDependency>,
-    /// `[extensions.saba-core] platforms`: 이 모듈이 돌아가는 OS. 없으면 선언하지 않음 (D3·M1)
+    /// `[extensions.saba-core] platforms`: 이 모듈이 돌아가는 OS. 없으면 선언하지 않음
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub platforms: Option<Vec<String>>,
     /// `[extensions.saba-core] architectures`: 이 모듈이 돌아가는 CPU. 없으면 선언하지 않음
@@ -411,7 +411,7 @@ pub struct ExtensionInfo {
     /// `[[lists]]` 플레이어 목록 선언 (있으면 클라이언트가 목록 화면을 보인다. 이름과 지금 명단은 `GET /api/instance/:id/lists`)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub lists: Vec<crate::module_loader::ModuleList>,
-    /// 모듈이 `functions`로 밝힌 lifecycle 함수 (MK1). null이면 모름: 클라이언트는 아무 기능도 숨기지 않는다
+    /// 모듈이 `functions`로 밝힌 lifecycle 함수. null이면 모름: 클라이언트는 아무 기능도 숨기지 않는다
     #[serde(default)]
     pub functions: Option<Vec<String>>,
     /// 사용자가 고른 판: `pinned {version, until_newer_than}`, 바꾸기가 켜진 서버를 기다리면 `pending_version` (없으면 둘 다 빠진다)
@@ -420,8 +420,8 @@ pub struct ExtensionInfo {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ExtensionListResponse {
-    pub modules: Vec<ExtensionInfo>,
+pub struct ModuleListResponse {
+    pub modules: Vec<ModuleInfo>,
     /// 로드하지 못한 모듈과 이유
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub failed: Vec<crate::module_loader::ModuleLoadError>,
@@ -837,7 +837,7 @@ impl IPCServer {
     /// 데몬 HTTP 라우터 전체 (인증·감사 미들웨어 포함). 액션 카탈로그도 이것을 안에서 부른다
     pub fn router(&self) -> Router {
         self.routes()
-            // 고른 원격 데몬으로 중계 (G1, `X-Saba-Target`). 로컬 IPC에만: 원격 포트는 `routes`를 따로 씌운다
+            // 고른 원격 데몬으로 중계 (`X-Saba-Target`). 로컬 IPC에만: 원격 포트는 `routes`를 따로 씌운다
             .layer(axum::middleware::from_fn_with_state(self.clone(), crate::remote_daemon::target::layer))
             .layer(axum::middleware::from_fn(auth::auth_middleware))
     }
@@ -854,6 +854,9 @@ impl IPCServer {
             .route("/api/audit", get(handlers::diagnostics::audit))
             .route("/api/audit/export", post(handlers::diagnostics::audit_export))
             .route("/api/events", get(handlers::events::stream))
+            .route("/api/notices", get(handlers::notices::list).delete(handlers::notices::clear))
+            .route("/api/notices/read", post(handlers::notices::read_all))
+            .route("/api/notices/{id}", delete(handlers::notices::remove))
             // ── Server query/control ──
             .route("/api/servers", get(handlers::server::list_servers))
             .route("/api/instance/{id}/status", get(handlers::server::get_instance_status))
@@ -910,7 +913,7 @@ impl IPCServer {
             .route("/api/instance/{id}/diagnose", post(handlers::managed::diagnose_handler))
             .route("/api/instance/{id}/port-check", get(handlers::port_check::last).post(handlers::port_check::check))
             .route("/api/instance/{id}/address", get(handlers::port_check::address))
-            // 백업 (A2)·예약 작업 (A3)
+            // 백업·예약 작업
             .route("/api/instance/{id}/backups", get(handlers::backup::list_backups).post(handlers::backup::create_backup))
             .route("/api/instance/{id}/backups/{name}", delete(handlers::backup::delete_backup))
             .route("/api/instance/{id}/backups/{name}/restore", post(handlers::backup::restore_backup))
@@ -930,7 +933,7 @@ impl IPCServer {
             .route("/api/config/client/{kind}", get(handlers::config::get_client_config).put(handlers::config::save_client_config))
             .route("/api/config/{kind}/defaults", get(handlers::config::get_config_defaults))
             .route("/api/config/{kind}/reset", post(handlers::config::reset_config))
-            // ── 설정·인스턴스 내보내기/가져오기 (A9) ──
+            // ── 설정·인스턴스 내보내기/가져오기 ──
             .route("/api/migration/export", post(handlers::migration::export))
             .route("/api/migration/import", post(handlers::migration::import))
             // ── Node token (cloud relay auth) ──
@@ -955,7 +958,7 @@ impl IPCServer {
             .route("/api/client/register", post(handlers::client::client_register))
             .route("/api/clients", get(handlers::client::client_list))
             .route("/api/clients/launch", get(handlers::client::client_launchable).post(handlers::client::client_launch))
-            // ── 디스코드 명령 권한 (P1) ──
+            // ── 디스코드 명령 권한 ──
             .route(
                 "/api/permissions/{guild_id}",
                 get(handlers::permissions::get_permissions).patch(handlers::permissions::update_permissions),
@@ -968,7 +971,7 @@ impl IPCServer {
                 "/api/permissions/{guild_id}/members/{discord_id}",
                 axum::routing::put(handlers::permissions::set_member).delete(handlers::permissions::remove_member),
             )
-            // ── 디스코드 길드 설정 (I2) ──
+            // ── 디스코드 길드 설정 ──
             .route(
                 "/api/discord/{guild_id}/settings",
                 get(handlers::discord::get_settings).patch(handlers::discord::patch_settings),
@@ -984,7 +987,7 @@ impl IPCServer {
                 "/api/sandbox/extension-gui/{component}",
                 post(handlers::sandbox::allow_extension_gui).delete(handlers::sandbox::revoke_extension_gui),
             )
-            // ── 액션 카탈로그 (P2) ──
+            // ── 액션 카탈로그 ──
             .route("/api/actions", get(handlers::actions::list_actions))
             .route("/api/actions/plan", post(handlers::actions::plan_steps))
             .route("/api/actions/runs/{run_id}", get(handlers::actions::run_status))
@@ -1070,7 +1073,7 @@ impl IPCServer {
             .route("/api/guilds/{guild}/full-notice", get(handlers::start_notice::full_get))
             .route("/api/instance/{id}/full-notice/{guild}", put(handlers::start_notice::full_put))
             .route("/api/chatbot/guilds/{guild}", get(handlers::chatbot::get_guild).patch(handlers::chatbot::patch_guild))
-            // ── 원격 데몬 (D1): 원격 포트 설정과 짝 맺은 PC (로컬 전용, 원격 포트에서는 막는다) ──
+            // ── 원격 데몬: 원격 포트 설정과 짝 맺은 PC (로컬 전용, 원격 포트에서는 막는다) ──
             .route("/api/remote/settings", get(handlers::remote_daemon::get_settings).put(handlers::remote_daemon::put_settings))
             .route("/api/public-address", get(handlers::remote_daemon::get_public_address).put(handlers::remote_daemon::put_public_address))
             .route("/api/remote/clients", get(handlers::remote_daemon::list_clients))
@@ -1090,9 +1093,9 @@ impl IPCServer {
             .merge(updates::updates_router(self.update_state.clone()))
             // 디스코드 탭의 릴레이 읽기를 잠깐 기억하고, 쓰는 요청이 끝나면 잊는다 (`relay_cache.rs`)
             .layer(axum::middleware::from_fn(handlers::relay_cache::layer))
-            // 감사 로그 출처 (A10): 요청마다 X-Saba-Client로 정한다. 인증층은 이 바깥에 씌운다 (업데이트 라우터까지)
+            // 감사 로그 출처: 요청마다 X-Saba-Client로 정한다. 인증층은 이 바깥에 씌운다 (업데이트 라우터까지)
             .layer(axum::middleware::from_fn(crate::audit::layer))
-            // 짝 맺은 PC(출처 `remote`)의 PC 전용 경로·칸 (D1). 원격 포트와 안에서 다시 부르는 라우터(`actions::call_as`)가 모두 지난다
+            // 짝 맺은 PC(출처 `remote`)의 PC 전용 경로·칸. 원격 포트와 안에서 다시 부르는 라우터(`actions::call_as`)가 모두 지난다
             .layer(axum::middleware::from_fn_with_state(self.clone(), crate::remote_daemon::server::rules))
     }
 
@@ -1161,7 +1164,7 @@ impl IPCServer {
                     });
                     // 익스텐션 `event:<종류>` hook: 이벤트 버스를 따라 부른다
                     crate::extension::event_hooks::spawn(self.extension_manager.clone());
-                    // 원격 포트 (D1): 켜져 있으면 열고 릴레이에 주소를 올린다
+                    // 원격 포트: 켜져 있으면 열고 릴레이에 주소를 올린다
                     let remote_server = self.clone();
                     tokio::spawn(async move { crate::remote_daemon::apply(&remote_server).await });
                     // 서버쨩의 내 PC 목록에 맞춘다 (빠진 PC의 짝 풀기, 원격 데몬의 바뀐 주소)
@@ -1207,7 +1210,7 @@ mod tests {
     use serde_json::json;
 
     /// 데몬 시작 때 다른 작업(data_roots 보충)이 감독자 잠금을 쥐고 있어도 모듈의 HOST 통로(REST·콘솔 중계)가 붙는다.
-    /// 빠지면 감독자가 부르는 모듈(정지·접속자)이 내내 `no_instance`로 실패해, 팰월드가 일반 정지를 거절했다 (test-pal 실측 2026-10-26)
+    /// 빠지면 감독자가 부르는 모듈(정지·접속자)이 내내 `no_instance`로 실패해, 팰월드가 일반 정지를 거절했다 (test-pal 실측)
     #[tokio::test]
     async fn the_module_host_channel_is_attached_even_when_startup_work_holds_the_lock() {
         let tmp = tempfile::tempdir().unwrap();
@@ -1327,7 +1330,7 @@ mod tests {
         assert!(!tracker.take_creating("existing"));
     }
 
-    // 리뷰 289 P3-2: 지운 인스턴스의 옛 오류 배너가 남았다 (이름이 바뀌어도 진행 표시는 id를 따라가므로 따로 옮기지 않는다)
+    // 지운 인스턴스의 옛 오류 배너가 남았다 (이름이 바뀌어도 진행 표시는 id를 따라가므로 따로 옮기지 않는다)
     #[test]
     fn a_deleted_instance_leaves_no_progress() {
         let failed = || ProvisionProgress {
@@ -1340,91 +1343,14 @@ mod tests {
         assert!(tracker.get("old-b").is_none() && !tracker.take_creating("old-b"));
     }
 
-    #[tokio::test]
-    async fn test_ipc_handle_request() {
-        // HTTP 엔드포인트 테스트는 integration test로 이동
-        let response = json!({
-            "success": true,
-            "result": "ok"
-        });
-        assert!(response["success"].as_bool().unwrap());
-    }
-
-    #[test]
-    fn test_module_info_serialization_with_commands() {
-        let module_info = ExtensionInfo {
+    fn module_info(commands: Option<crate::module_loader::ModuleCommands>) -> ModuleInfo {
+        ModuleInfo {
             platforms: None,
             platform_supported: true,
             architectures: None,
             unsupported_reason: None,
             trust: saba_chan_updater_lib::integrity::Trust::Unverified,
             name: "palworld".to_string(),
-            version: "1.0.0".to_string(),
-            description: Some("Palworld 서버 관리".to_string()),
-            schema_version: 1,
-            display_name: None,
-            game_name: None,
-            author: None,
-            warnings: Vec::new(),
-            unmet_dependencies: Vec::new(),
-            path: "/modules/palworld".to_string(),
-            executable_path: Some("PalServer.exe".to_string()),
-            server_executable: None,
-            icon: None,
-            interaction_mode: None,
-            protocols: None,
-            settings: None,
-            syntax_highlight: None,
-            install: None,
-            dir_signatures: vec!["PalServer.exe".to_string()],
-            module_aliases: vec![],
-            command_aliases: std::collections::HashMap::new(),
-            presets: Vec::new(),
-            queries: Vec::new(),
-            agreements: Vec::new(),
-            lists: Vec::new(),
-            functions: None,
-            addon: Default::default(),
-            commands: Some(crate::module_loader::ModuleCommands {
-                fields: vec![
-                    crate::module_loader::CommandField {
-                        name: "players".to_string(),
-                        label: "플레이어 목록".to_string(),
-                        description: Some("현재 접속 중인 플레이어 조회".to_string()),
-                        method: Some("rest".to_string()),
-                        http_method: Some("GET".to_string()),
-                        endpoint_template: Some("/v1/api/players".to_string()),
-                        console_template: None,
-                        risk: None,
-                        inputs: vec![],
-                        remote: true,
-                        reply_pattern: None,
-                    },
-                ],
-                hook: false,
-                failure_patterns: Vec::new(),
-            }),
-        };
-
-        let json = serde_json::to_value(&module_info).unwrap();
-        assert!(json.get("commands").is_some(), "commands field should exist");
-        let commands = json.get("commands").unwrap();
-        assert!(commands.get("fields").is_some(), "commands.fields should exist");
-        let fields = commands.get("fields").unwrap().as_array().unwrap();
-        assert_eq!(fields.len(), 1);
-        assert_eq!(fields[0].get("http_method").unwrap().as_str().unwrap(), "GET");
-        assert_eq!(fields[0].get("name").unwrap().as_str().unwrap(), "players");
-    }
-
-    #[test]
-    fn test_module_info_without_commands() {
-        let module_info = ExtensionInfo {
-            platforms: None,
-            platform_supported: true,
-            architectures: None,
-            unsupported_reason: None,
-            trust: saba_chan_updater_lib::integrity::Trust::Unverified,
-            name: "test".to_string(),
             version: "1.0.0".to_string(),
             description: None,
             schema_version: 1,
@@ -1433,7 +1359,7 @@ mod tests {
             author: None,
             warnings: Vec::new(),
             unmet_dependencies: Vec::new(),
-            path: "/modules/test".to_string(),
+            path: "/modules/palworld".to_string(),
             executable_path: None,
             server_executable: None,
             icon: None,
@@ -1451,137 +1377,51 @@ mod tests {
             lists: Vec::new(),
             functions: None,
             addon: Default::default(),
-            commands: None,
-        };
-
-        let json = serde_json::to_value(&module_info).unwrap();
-        assert!(json.get("commands").is_some());
-        assert!(json.get("commands").unwrap().is_null());
-        assert!(json["functions"].is_null(), "unknown functions are sent as null, not left out");
+            commands,
+        }
     }
 
     #[test]
     fn test_module_list_response_includes_commands() {
-        let response = ExtensionListResponse {
-            failed: Vec::new(),
-            modules: vec![
-                ExtensionInfo {
-                    platforms: None,
-                    platform_supported: true,
-                    architectures: None,
-                    unsupported_reason: None,
-                    trust: saba_chan_updater_lib::integrity::Trust::Unverified,
-                    name: "palworld".to_string(),
-                    version: "1.0.0".to_string(),
-                    description: Some("Palworld".to_string()),
-                    schema_version: 1,
-                    display_name: None,
-                    game_name: None,
-                    author: None,
-                    warnings: Vec::new(),
-                    unmet_dependencies: Vec::new(),
-                    path: "/modules/palworld".to_string(),
-                    executable_path: None,
-                    server_executable: None,
-                    icon: None,
-                    interaction_mode: None,
-                    protocols: None,
-                    settings: None,
-                    syntax_highlight: None,
-                    install: None,
-                    dir_signatures: vec![],
-                    module_aliases: vec![],
-                    command_aliases: std::collections::HashMap::new(),
-                    presets: Vec::new(),
-                    queries: Vec::new(),
-                    agreements: Vec::new(),
-                    lists: Vec::new(),
-                    functions: None,
-                    addon: Default::default(),
-                    commands: Some(crate::module_loader::ModuleCommands {
-                        fields: vec![
-                            crate::module_loader::CommandField {
-                                name: "info".to_string(),
-                                label: "서버 정보".to_string(),
-                                description: None,
-                                method: Some("rest".to_string()),
-                                http_method: Some("GET".to_string()),
-                                endpoint_template: Some("/v1/api/info".to_string()),
-                                console_template: None,
-                                risk: None,
-                                inputs: vec![],
-                                remote: true,
-                                reply_pattern: None,
-                            },
-                            crate::module_loader::CommandField {
-                                name: "announce".to_string(),
-                                label: "공지 전송".to_string(),
-                                description: None,
-                                method: Some("rest".to_string()),
-                                http_method: Some("POST".to_string()),
-                                endpoint_template: Some("/v1/api/announce".to_string()),
-                                console_template: None,
-                                risk: None,
-                                inputs: vec![
-                                    crate::module_loader::CommandInput {
-                                        name: "message".to_string(),
-                                        label: Some("메시지".to_string()),
-                                        input_type: Some("string".to_string()),
-                                        required: Some(true),
-                                        placeholder: Some("공지 내용".to_string()),
-                                        default: None,
-                                        min: None,
-                                        max: None,
-                                        options: None,
-                                    },
-                                ],
-                                remote: true,
-                                reply_pattern: None,
-                            },
-                        ],
-                        hook: false,
-                        failure_patterns: Vec::new(),
-                    }),
-                },
-            ],
+        let announce = crate::module_loader::CommandField {
+            name: "announce".to_string(),
+            label: "공지 전송".to_string(),
+            description: None,
+            method: Some("rest".to_string()),
+            http_method: Some("POST".to_string()),
+            endpoint_template: Some("/v1/api/announce".to_string()),
+            console_template: None,
+            risk: None,
+            inputs: vec![crate::module_loader::CommandInput {
+                name: "message".to_string(),
+                label: Some("메시지".to_string()),
+                input_type: Some("string".to_string()),
+                required: Some(true),
+                placeholder: Some("공지 내용".to_string()),
+                default: None,
+                min: None,
+                max: None,
+                options: None,
+            }],
+            remote: true,
+            reply_pattern: None,
         };
+        let commands = crate::module_loader::ModuleCommands { fields: vec![announce], hook: false, failure_patterns: Vec::new() };
+        let response = ModuleListResponse { failed: Vec::new(), modules: vec![module_info(Some(commands))] };
 
         let json = serde_json::to_value(&response).unwrap();
-        let modules = json.get("modules").unwrap().as_array().unwrap();
-        assert_eq!(modules.len(), 1);
-
-        let palworld = &modules[0];
-        let commands = palworld.get("commands").unwrap();
-        let fields = commands.get("fields").unwrap().as_array().unwrap();
-        assert_eq!(fields.len(), 2);
-        assert_eq!(fields[0].get("http_method").unwrap().as_str().unwrap(), "GET");
-        assert_eq!(fields[1].get("http_method").unwrap().as_str().unwrap(), "POST");
-
-        let announce_inputs = fields[1].get("inputs").unwrap().as_array().unwrap();
-        assert_eq!(announce_inputs.len(), 1);
-        assert_eq!(announce_inputs[0].get("name").unwrap().as_str().unwrap(), "message");
-        assert_eq!(announce_inputs[0].get("required").unwrap().as_bool().unwrap(), true);
+        let field = &json["modules"][0]["commands"]["fields"][0];
+        assert_eq!((field["name"].as_str(), field["http_method"].as_str()), (Some("announce"), Some("POST")));
+        assert_eq!(
+            field["inputs"][0],
+            json!({"name": "message", "label": "메시지", "type": "string", "required": true, "placeholder": "공지 내용", "default": null}),
+        );
     }
 
     #[test]
-    fn test_command_input_serialization() {
-        let input = crate::module_loader::CommandInput {
-            name: "user_id".to_string(),
-            label: Some("유저 ID".to_string()),
-            input_type: Some("string".to_string()),
-            required: Some(true),
-            placeholder: Some("steam_xxxxxxxxx".to_string()),
-            default: None,
-            min: None,
-            max: None,
-            options: None,
-        };
-
-        let json = serde_json::to_value(&input).unwrap();
-        assert_eq!(json.get("name").unwrap().as_str().unwrap(), "user_id");
-        assert_eq!(json.get("label").unwrap().as_str().unwrap(), "유저 ID");
-        assert_eq!(json.get("type").unwrap().as_str().unwrap(), "string");
-        assert_eq!(json.get("required").unwrap().as_bool().unwrap(), true);
-        assert_eq!(json.get("placeholder").unwrap().as_str().unwrap(), "steam_xxxxxxxxx");
+    fn test_module_info_without_commands() {
+        let json = serde_json::to_value(module_info(None)).unwrap();
+        assert!(json["commands"].is_null() && json.get("commands").is_some());
+        assert!(json["functions"].is_null(), "unknown functions are sent as null, not left out");
     }
 }

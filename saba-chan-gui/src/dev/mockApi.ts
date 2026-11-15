@@ -1,6 +1,6 @@
 /**
  * 개발용 가짜 window.api — Tauri 셸 없이 `npm run dev`로 브라우저에서 화면을 볼 때만 쓴다.
- * index.js가 DEV 빌드이고 window.api가 없을 때만 설치한다. 프로덕션 번들에는 들어가지 않는다.
+ * index.tsx가 DEV 빌드이고 window.api가 없을 때만 설치한다. 프로덕션 번들에는 들어가지 않는다.
  */
 import type { SabaApi } from '../api/createApi';
 import { mockStorage } from './mockStorage';
@@ -142,7 +142,7 @@ let servers: Record<string, unknown>[] = [
         server_version: '1.21.1',
         module_settings: { port: 25565 },
         players: { online: 3, max: 20 },
-        // 데몬이 판정한 익스텐션 데이터 slot (Q-7)
+        // 데몬이 판정한 익스텐션 데이터 slot
         slots: {
             'ServerCard.badge': [{ extension: 'backup', text: '💾' }],
             'ServerDetail.status': [{ extension: 'backup', label: '마지막 백업', value: '2시간 전' }],
@@ -828,7 +828,7 @@ const impl: Record<string, MockFn> = {
     // GUI ⇄ CLI 전환 (GET·POST /api/clients/launch)
     clientsLaunchable: () => ok({ cli: true, gui: true }),
     clientLaunch: () => ok({ success: true, pid: 4242 }),
-    // 데몬 이벤트 스트림 (P4): 잠시 뒤 디스코드에서 실행한 명령 한 건
+    // 데몬 이벤트 스트림: 잠시 뒤 디스코드에서 실행한 명령 한 건
     onDaemonEvent: (cb) => {
         const timer = setTimeout(
             () =>
@@ -851,7 +851,7 @@ const impl: Record<string, MockFn> = {
         );
         return () => clearTimeout(timer);
     },
-    // 디스코드 봇 취향 설정 (I2: GET/PATCH /api/discord/:guild/settings)
+    // 디스코드 봇 취향 설정 (GET/PATCH /api/discord/:guild/settings)
     discordSettingsGet: (guildId) => ok({ guildId, ...mockBotSettings, sync: { ok: true } }),
     discordSettingsSet: (guildId, patch) => {
         const { music, ...rest } = patch;
@@ -859,7 +859,7 @@ const impl: Record<string, MockFn> = {
         if (music) Object.assign(mockBotSettings.music, music);
         return ok({ success: true, settings: { guildId, ...mockBotSettings }, sync: { ok: true } });
     },
-    // 데몬 액션 카탈로그 (P2: GET /api/actions, POST …/:id/plan·run)
+    // 데몬 액션 카탈로그 (GET /api/actions, POST …/:id/plan·run)
     actionsList: ({ instance } = {}) =>
         ok({
             actions: [
@@ -1047,7 +1047,10 @@ const impl: Record<string, MockFn> = {
     languageGet: () => ok('ko'),
     playSound: () => undefined,
     soundHold: () => undefined,
-    eventsBacklog: async () => [],
+    noticesList: async () => ({ success: true, notices: [], unread: 0 }),
+    noticesRead: async () => ({ success: true, unread: 0 }),
+    noticeRemove: async () => ({ success: true }),
+    noticesClear: async () => ({ success: true, removed: 0 }),
     languageSet: () => ok(),
     shellOpenExternal: () => ok(),
     // spans를 달라고 하면(하이라이트 켬) 데몬처럼 조각 토큰을 붙인다: 시각·스레드/레벨·따옴표·숫자·플레이어

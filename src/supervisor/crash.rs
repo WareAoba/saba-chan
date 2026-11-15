@@ -1,4 +1,4 @@
-//! 서버가 왜 끝났는지 가르고, 크래시면 다시 띄울지 정한다 (A1)
+//! 서버가 왜 끝났는지 가르고, 크래시면 다시 띄울지 정한다
 //!
 //! 판정 순서:
 //! 1. 데몬이 정지를 보냈다 (GUI·CLI·디스코드의 정지, 재시작) → `user_stop`
@@ -150,13 +150,13 @@ pub fn next_restart_delay(history: &mut VecDeque<Instant>, now: Instant) -> Opti
 }
 
 /// PC 밖(디스코드 알림·원격 조회)으로 보내도 되는 종료 근거: 종료 코드·신호·메모리 상한만.
-/// 콘솔 줄(`console: …`, `ended …: <줄>`)과 크래시 파일 경로는 PC에 남긴다 (I3)
+/// 콘솔 줄(`console: …`, `ended …: <줄>`)과 크래시 파일 경로는 PC에 남긴다
 pub fn shareable_evidence(evidence: &str) -> bool {
     ["exit code", "signal", "memory limit"].iter().any(|p| evidence.starts_with(p))
 }
 
 /// 판정 근거 한 줄 → 화면이 번역할 이유 코드와 값 (`instance.exit`의 `evidenceCode`·`evidenceArgs`).
-/// 근거는 `classify`가 만든 문장이다. 콘솔 줄과 크래시 파일 경로는 코드에 싣지 않는다 (I3)
+/// 근거는 `classify`가 만든 문장이다. 콘솔 줄과 크래시 파일 경로는 코드에 싣지 않는다
 pub fn evidence_code(evidence: &str) -> (&'static str, serde_json::Value) {
     use serde_json::json;
     let number = |s: &str| s.split_whitespace().next().and_then(|n| n.trim_end_matches('s').parse::<u64>().ok());
@@ -267,7 +267,7 @@ mod tests {
         assert_eq!(k(waiting(code(0))), ExitKind::StartFailed, "ended before the ready line");
     }
 
-    /// 화면은 근거 문장 대신 코드로 이유를 번역한다. 콘솔 줄·크래시 파일 경로는 코드에 싣지 않는다 (I3)
+    /// 화면은 근거 문장 대신 코드로 이유를 번역한다. 콘솔 줄·크래시 파일 경로는 코드에 싣지 않는다
     #[test]
     fn evidence_becomes_a_reason_code_without_console_lines_or_paths() {
         let cases = [

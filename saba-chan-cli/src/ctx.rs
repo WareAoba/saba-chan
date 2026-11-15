@@ -33,7 +33,7 @@ impl Ctx {
         }
     }
 
-    /// 셸 한 줄 전에 포트를 다시 찾는다: 셸 안에서 설정 포트를 바꾸거나 데몬을 다시 켰을 수 있다 (L62)
+    /// 셸 한 줄 전에 포트를 다시 찾는다: 셸 안에서 설정 포트를 바꾸거나 데몬을 다시 켰을 수 있다
     pub fn follow_daemon_port(&mut self) {
         if self.port_fixed {
             return;

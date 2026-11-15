@@ -1,8 +1,8 @@
-/* ═══════════════════════════════════════════════════════
+/*
  * 설치기·업데이터 창 공용 스타일 — 미니 GUI
  * 색·입체·간격·글자는 GUI 토큰(tokens.css, 빌드 때 saba-chan-gui에서 복사)만 쓴다.
  * 창은 750 × 520(설치기)·750 × 500(업데이터) 고정 크기다 (src-tauri/src/lib.rs `main_window`).
- * ═══════════════════════════════════════════════════════ */
+ */
 
 * { box-sizing: border-box; }
 html, body {
@@ -311,10 +311,10 @@ input { font: inherit; }
     background: radial-gradient(in oklch ellipse 46% 56% at 50% 46%, var(--bg-0) 36%, color-mix(in oklch, var(--bg-0) 70%, transparent) 62%, transparent 100%);
 }
 
-/* ═══════════════════════════════════════════════════════
+/*
  * 흐름: start(시작) → sheet(설정) → expand(그림 펼침) → install(접히며 매트릭스) → done(완료·실패)
  * 그림은 창 전체 크기로 두고 clip-path로 보이는 곳만 연다. 시간은 common.js `TIMING`이 --t-*로 넣는다
- * ═══════════════════════════════════════════════════════ */
+ */
 .flow {
     /* clip: 시트 안의 눌린 버튼이 아래로 내려갈 때 본문이 따라 스크롤되지 않게 */
     overflow: clip;

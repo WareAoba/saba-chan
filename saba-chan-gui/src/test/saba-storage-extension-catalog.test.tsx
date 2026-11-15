@@ -1,5 +1,5 @@
 /**
- * 익스텐션 탭 (리뉴얼 시안 2026-11-14): 받을 수 있는 목록을 ▾ 뒤에 숨기지 않고 늘 펼쳐 보인다.
+ * 익스텐션 탭: 받을 수 있는 목록을 ▾ 뒤에 숨기지 않고 늘 펼쳐 보인다.
  * 목록에는 앱 언어의 설명과 데몬이 받아 둔 그림을 쓴다. 카드의 업데이트 단추는 saba-storage-addon-update.test.tsx가 본다.
  */
 import { act, fireEvent, render, waitFor } from '@testing-library/react';

@@ -97,7 +97,7 @@ export function GeneralTab({ selectedLanguage, handleLanguageChange }: GeneralTa
                 />
             </div>
 
-            {/* 시스템 모니터: 끔 / 고정 / 떠 있는 창 (사용자 11-11) */}
+            {/* 시스템 모니터: 끔 / 고정 / 떠 있는 창 */}
             <div className="setting-item">
                 <label className="setting-label">
                     <span className="setting-title">

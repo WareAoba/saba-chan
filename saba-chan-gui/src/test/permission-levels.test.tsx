@@ -174,7 +174,6 @@ describe('권한 레벨 계산', () => {
             members: { 1002: 10, 1004: -1 },
         });
         expect(L.grantable(perm)).toEqual([10, 2, 0, -1]);
-        expect(L.requirable(perm)).toEqual([3, 10, 2, 0]);
         expect(L.membersByLevel(perm).map((g) => g.level)).toEqual([3, 10, -1]);
         expect(L.ladderOf(base()).map((l) => l.id)).toEqual([3, 2, 1, 0, -1]);
     });
@@ -200,7 +199,7 @@ describe('권한 레벨 계산', () => {
         expect(L.ladderValid(L.addLevel(many, 'one more'))).toBe(false);
     });
 
-    // 사용자 지정 2026-11-06: 모든 레벨의 이름을 바꾼다 (비우면 로케일 이름). 소유자·게스트·금지는 지울 수 없다
+    // 모든 레벨의 이름을 바꾼다 (비우면 로케일 이름). 소유자·게스트·금지는 지울 수 없다
     it('사다리 편집: 기본 레벨 이름도 보내고, 게스트는 지우지 않는다', () => {
         const ladder = L.ladderOf(base());
         const named = L.renameLevel(L.renameLevel(ladder, 0, ' 방장 '), 3, '  ');
@@ -249,8 +248,6 @@ describe('권한 레벨 계산', () => {
         const saved = L.ladderOf(base());
         // 줄은 금지 칸과 아직 저장하지 않은 새 칸에는 놓지 않는다
         const draft = L.addLevel(saved, 'Mod');
-        expect(L.lineDrop(draft, 5)).toBe(4);
-        expect(L.lineDrop(draft, 1)).toBe(0);
         expect(L.lineStep(draft, 0, 1)).toBe(2);
         expect(L.lineStep(draft, 4, 1)).toBeNull();
         expect(L.lineStep(draft, 0, -1)).toBeNull();
@@ -259,7 +256,7 @@ describe('권한 레벨 계산', () => {
         expect(L.lineAt(saved, saved, 1)).toBe(2);
     });
 
-    // 사용자 지정 2026-11-07: 사람은 두고 두 레벨이 그 레벨부터 가진 명령만 바꾼다
+    // 사람은 두고 두 레벨이 그 레벨부터 가진 명령만 바꾼다
     it('권한 맞바꾸기: 두 레벨의 명령만 바꾸고, 고정 명령·지운 레벨은 그대로, 줄은 명령을 따라간다', () => {
         const board = baseBoard();
         const ladder = L.ladderOf(base());
@@ -363,7 +360,7 @@ describe('권한 화면', () => {
         fireEvent.click(within(user).getByRole('button', { name: 'Show 1 on the default level' }));
         expect(within(user).getByRole('button', { name: 'Newbie' })).toBeInTheDocument();
 
-        // 사람 추가: 멤버 드롭다운 없이 서버 닉네임으로 찾아 고른다 (사용자 지정 2026-11-07)
+        // 사람 추가: 멤버 드롭다운 없이 서버 닉네임으로 찾아 고른다
         fireEvent.click(screen.getByRole('button', { name: 'Add person to Admin' }));
         expect(screen.queryByLabelText('Pick a Discord member')).toBeNull();
         const add = screen.getByRole('combobox', { name: 'Find a member to add to Admin' });
@@ -722,7 +719,7 @@ describe('권한 화면', () => {
         fireEvent.change(screen.getByRole('textbox', { name: 'New level name' }), { target: { value: 'Mod' } });
         fireEvent.click(screen.getByRole('button', { name: 'Add' }));
         dragTo(block('Mod'), block('VIP'));
-        // 사용자 11-06 #9: 저장은 화면 아래에 붙는 막대에서
+        // 저장은 화면 아래에 붙는 막대에서
         expect(document.querySelector('.saba-savebar.dirty')).not.toBeNull();
         fireEvent.click(screen.getByRole('button', { name: 'Save' }));
         await flush();
@@ -752,7 +749,7 @@ describe('권한 화면', () => {
         });
     });
 
-    // 사용자 지정 2026-11-06: 사다리에 조작 가능 줄을 긋고 끌어서 네 명령을 한꺼번에 옮긴다
+    // 사다리에 조작 가능 줄을 긋고 끌어서 네 명령을 한꺼번에 옮긴다
     it('레벨 편집: 제목은 "레벨 편집", 사바쨩 기능만 보이고 게임 명령·조작 가능 줄은 없다', async () => {
         board.items.push(
             stair('mc-1', 'start', 'Start', 2, { controllers: true, preset: 2 }),

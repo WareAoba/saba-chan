@@ -298,7 +298,7 @@ fn validate_string(field: &SettingField, value: &Value) -> Result<(), Validation
     }
 }
 
-/// 목록 타입 (06 §8.1): 문자열 배열. 항목마다 `options`·`format`·`pattern`을 보고, 빈 항목·같은 값 두 번은 형식 오류다
+/// 목록 타입: 문자열 배열. 항목마다 `options`·`format`·`pattern`을 보고, 빈 항목·같은 값 두 번은 형식 오류다
 fn validate_list_value(field: &SettingField, value: &Value) -> Result<(), ValidationError> {
     let items: Option<Vec<&str>> = value.as_array().and_then(|a| a.iter().map(Value::as_str).collect());
     let Some(items) = items else {
@@ -329,7 +329,7 @@ fn validate_list(field: &SettingField, items: &[&str]) -> Result<(), ValidationE
     Ok(())
 }
 
-/// 여러 줄 타입 (06 §8.1): 줄바꿈을 받는 문자열. `max_length`는 글자 수
+/// 여러 줄 타입: 줄바꿈을 받는 문자열. `max_length`는 글자 수
 fn validate_multiline(field: &SettingField, value: &Value) -> Result<(), ValidationError> {
     let error = |message: String, error_type| Err(ValidationError { field: field.name.clone(), message, error_type });
     let Some(s) = value.as_str() else {
@@ -344,7 +344,7 @@ fn validate_multiline(field: &SettingField, value: &Value) -> Result<(), Validat
     Ok(())
 }
 
-/// 06 §8.1 옮기기: 문자열로 저장된 값이 모듈 업데이트로 `list` 설정이 됐으면 쉼표로 나눠 배열로 바꾼다
+/// 옮기기: 문자열로 저장된 값이 모듈 업데이트로 `list` 설정이 됐으면 쉼표로 나눠 배열로 바꾼다
 /// (앞뒤 공백·빈 항목은 버린다). 바꾼 것이 있으면 true. 파일에는 다음 저장 때 쓴다
 pub fn migrate_list_values(fields: &[SettingField], settings: &mut std::collections::HashMap<String, Value>) -> bool {
     let mut changed = false;
@@ -358,7 +358,7 @@ pub fn migrate_list_values(fields: &[SettingField], settings: &mut std::collecti
     changed
 }
 
-/// 06 §8.2: `visible_when`에 따라 지금 숨겨진 설정 이름. 값이 없으면 그 설정의 `default`로 비교한다
+/// `visible_when`에 따라 지금 숨겨진 설정 이름. 값이 없으면 그 설정의 `default`로 비교한다
 pub fn hidden_fields(fields: &[SettingField], value_of: impl Fn(&str) -> Option<Value>) -> Vec<String> {
     fields
         .iter()
@@ -870,7 +870,7 @@ mod tests {
         }
     }
 
-    /// 06 §8.1: 목록은 문자열 배열이고 항목마다 검사한다. 여러 줄은 줄바꿈을 받는다
+    /// 목록은 문자열 배열이고 항목마다 검사한다. 여러 줄은 줄바꿈을 받는다
     #[test]
     fn list_and_multiline_values_follow_the_contract() {
         use serde_json::json;
@@ -902,7 +902,7 @@ mod tests {
         assert_eq!(check(&motd, json!(["a"])), Err(ValidationErrorType::TypeMismatch));
     }
 
-    /// 06 §8.1 옮기기와 §8.2 숨김 계산
+    /// 옮기기와 숨김 계산
     #[test]
     fn list_values_migrate_and_hidden_follows_typed_values() {
         use serde_json::json;
@@ -1165,10 +1165,6 @@ mod tests {
         assert!(conflicts.is_empty(), "대상 모듈이 REST 미지원이면 rest_port 충돌 없어야 합니다: {:?}", conflicts);
     }
 
-    // ═══════════════════════════════════════════════════════
-    // 추가 심층 테스트
-    // ═══════════════════════════════════════════════════════
-
     /// 비필수 필드에 None 전달 → Ok
     #[test]
     fn test_optional_field_none_is_ok() {
@@ -1367,18 +1363,6 @@ mod tests {
         assert_eq!(conflicts.len(), 2, "Should detect 2 conflicts: {:?}", conflicts);
     }
 
-    /// ValidationError — Display trait 출력 포맷
-    #[test]
-    fn test_validation_error_display() {
-        let err = ValidationError {
-            field: "port".to_string(),
-            message: "Required field 'port' is missing".to_string(),
-            error_type: ValidationErrorType::Required,
-        };
-        let display = format!("{}", err);
-        assert_eq!(display, "port: Required field 'port' is missing");
-    }
-
     #[test]
     fn ports_held_by_another_program_are_found_over_tcp_and_udp() {
         let tcp = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).unwrap();
@@ -1458,20 +1442,5 @@ mod tests {
             vec![("port".to_string(), 16261), ("rest_port".to_string(), 27015), ("steam_port1".to_string(), 8766)],
             "the REST port setting is checked once, as rest_port"
         );
-    }
-
-    /// PortConflict — Display trait 출력 포맷
-    #[test]
-    fn test_port_conflict_display() {
-        let conflict = PortConflict {
-            port: 25565,
-            port_type: "port".to_string(),
-            conflicting_instance_name: "other-server".to_string(),
-            conflicting_instance_id: "abc".to_string(),
-            conflicting_port_type: "port".to_string(),
-        };
-        let display = format!("{}", conflict);
-        assert!(display.contains("25565"));
-        assert!(display.contains("other-server"));
     }
 }

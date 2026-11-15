@@ -1,5 +1,5 @@
-/* ── 그라데이션 버튼 호버 순환 (utils/gradCycle.js 가 --gs 를 0→200% 로 민다) ──
- * 선택자는 gradCycle.js GRAD_CYCLE_SELECTOR 와 같다. 강조색 그라데이션 설정이 켜졌을 때만 (themeManager)
+/* ── 그라데이션 버튼 호버 순환 (utils/gradCycle.ts 가 --gs 를 0→200% 로 민다) ──
+ * 선택자는 gradCycle.ts GRAD_CYCLE_SELECTOR 와 같다. 강조색 그라데이션 설정이 켜졌을 때만 (themeManager)
  * 첫 색·둘째 색·첫 색이 한 주기다. 정지점만 밀어서 135deg 각도를 그대로 둔 채 이음매 없이 흐른다.
  * --brand-grad-mid 는 첫 색→둘째 색 사이에서 반씩 섞이는 자리 (tokens.css) */
 :root[data-brand-gradient="on"] :is(.btn-primary, .console-send, .background-restart-btn, .btn-accent) {

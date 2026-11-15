@@ -12,7 +12,7 @@ import { type CSSProperties, type InputHTMLAttributes, type ReactNode, useRef } 
 import { Icon } from '../Icon';
 import './SabaUI.css';
 
-/* ── Toggle Switch ────────────────────────────────────────── */
+/* ── Toggle Switch ── */
 
 /**
  * @param {Object}   props
@@ -48,7 +48,7 @@ export function SabaToggle({ checked, onChange, disabled, size, className, title
     );
 }
 
-/* ── Checkbox ─────────────────────────────────────────────── */
+/* ── Checkbox ── */
 
 /**
  * 뉴모피즘 체크박스 (16px 한 크기). children을 주면 글자까지 누르는 범위가 되고,
@@ -100,7 +100,7 @@ export function SabaCheckbox({
     );
 }
 
-/* ── Spinner ──────────────────────────────────────────────── */
+/* ── Spinner ── */
 
 /**
  * @param {Object}   props
@@ -120,10 +120,10 @@ export function SabaSpinner({ size, light, className, ...rest }: SabaSpinnerProp
     return <span className={cls} role="status" aria-label="Loading" {...rest} />;
 }
 
-/* ── Number Input ─────────────────────────────────────────── */
+/* ── Number Input ── */
 
 /**
- * 숫자 입력칸. 브라우저 기본 다이얼 대신 앱 모양의 올림·내림 단추를 붙인다 (사용자 11-07).
+ * 숫자 입력칸. 브라우저 기본 다이얼 대신 앱 모양의 올림·내림 단추를 붙인다.
  * 단추는 stepUp/stepDown 뒤 input 이벤트를 보내므로 onChange는 직접 입력과 같게 불린다.
  * 키보드는 입력칸의 화살표 키를 그대로 쓰므로 단추는 탭 순서와 읽기에서 뺀다.
  */
@@ -152,7 +152,7 @@ export function SabaNumberInput({ className, disabled, ...rest }: Omit<InputHTML
     );
 }
 
-/* ── Slider ───────────────────────────────────────────────── */
+/* ── Slider ── */
 
 interface SabaSliderProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'type' | 'value' | 'onChange' | 'min' | 'max'> {
     value: number;

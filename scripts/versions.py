@@ -74,7 +74,7 @@ def load() -> dict:
     return data
 
 
-# ── 파일 형식별 읽기·쓰기 ─────────────────────────────────────
+# ── 파일 형식별 읽기·쓰기 ──
 
 CARGO_PACKAGE_VERSION = re.compile(r'(?ms)^(\[package\][^\[]*?^version\s*=\s*")([^"]*)(")')
 
@@ -135,7 +135,7 @@ def set_file_version(path: Path, version: str) -> bool:
     return False
 
 
-# ── Cargo.lock: 워크스페이스 크레이트 항목 ─────────────────────
+# ── Cargo.lock: 워크스페이스 크레이트 항목 ──
 
 def cargo_targets(data: dict) -> dict[str, str]:
     """크레이트 이름 → 기대 버전"""
@@ -179,7 +179,7 @@ def lock_sync(data: dict) -> bool:
     return False
 
 
-# ── 명령 ───────────────────────────────────────────────────
+# ── 명령 ──
 
 def registration_channel(channel: str) -> str:
     """릴레이에 등록할 채널: 베타·RC 번호는 그 채널, 정식 번호는 베타에 먼저 걸고 promote-release.yml로 올린다"""

@@ -12,7 +12,7 @@
 //! `--headless`(헤드리스 설치에서 데몬이 붙인다)면 창을 띄우지 않고 바로 적용한 뒤 `--relaunch`만 다시 띄운다.
 //! 설치된 GUI를 찾아 띄우는 예비 동작은 쓰지 않는다. 종료 코드는 적용이 다 됐으면 0, 아니면 1이다.
 //!
-//! 보통 데몬이 띄운다(`POST /api/updates/launch-updater`, U7). `--wait-pid`는 데몬 PID로,
+//! 보통 데몬이 띄운다(`POST /api/updates/launch-updater`). `--wait-pid`는 데몬 PID로,
 //! 데몬이 끝날 때까지(최대 30초) 기다린 뒤 적용한다. 30초 뒤에도 살아 있으면 파일을 바꾸지 않고 `deferred`로 끝낸다.
 //! 코어를 바꿨으면 다시 띄운 새 데몬의 `/health`를 지켜보고, 건강하지 않으면 이번 묶음과 데이터 스냅샷을 되돌린 뒤
 //! 이전 데몬을 띄운다 (`saba_chan_updater_lib::live_apply`). 결과는 성공·실패 모두
@@ -40,9 +40,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::RwLock;
 use saba_chan_updater_lib::constants;
 
-// ═══════════════════════════════════════════════════════
 // 타입
-// ═══════════════════════════════════════════════════════
 
 #[cfg(feature = "window")]
 type ManagerState = Arc<RwLock<UpdateManager>>;
@@ -57,9 +55,7 @@ struct ApplyConfig {
     wait_pid: Option<u32>,
 }
 
-// ═══════════════════════════════════════════════════════
 // Tauri 커맨드
-// ═══════════════════════════════════════════════════════
 
 #[cfg(feature = "window")]
 /// Apply 모드 정보 — 프론트엔드 `init()` 에서 호출
@@ -181,9 +177,7 @@ async fn get_theme() -> Result<String, String> {
     Ok(load_setting("theme").unwrap_or_else(|| "auto".to_string()))
 }
 
-// ═══════════════════════════════════════════════════════
 // 헬퍼
-// ═══════════════════════════════════════════════════════
 
 /// 다시 띄운 프로그램
 #[derive(Debug, Clone, PartialEq)]
@@ -532,9 +526,7 @@ fn spawn_detached(cmd: &str, extra_args: &[String], after_update: bool) -> Resul
     }
 }
 
-// ═══════════════════════════════════════════════════════
 // 엔트리
-// ═══════════════════════════════════════════════════════
 
 /// `--apply ...`로 띄운 실행. 창 없이 적용했으면 그 종료 코드로 끝난다
 pub(crate) fn run(args: &[String]) {
@@ -798,7 +790,7 @@ fn run_headless(mut manager: UpdateManager, relaunch_exe: Option<String>, relaun
 mod tests {
     use super::*;
 
-    // Codex 재리뷰: 되돌린 이전 판까지 띄우지 못했거나 데이터를 되돌리지 못했으면 창을 닫지 않고 알린다
+    // 되돌린 이전 판까지 띄우지 못했거나 데이터를 되돌리지 못했으면 창을 닫지 않고 알린다
     #[test]
     fn the_window_stays_open_when_the_rollback_cannot_finish() {
         let ok = WatchEnd::Healthy;
@@ -820,7 +812,7 @@ mod tests {
             install_dir: "/opt/saba".into(),
         };
         assert_eq!(window_end(&WatchEnd::RestoreFailed { recovery: recovery.clone() }, true, true, true), WindowEnd::RestoreFailed(recovery.clone()));
-        // Codex 3차 리뷰: 새 데몬을 끝내지 못해 새 판을 둔 것도 성공처럼 닫지 않고 알린다
+        // 새 데몬을 끝내지 못해 새 판을 둔 것도 성공처럼 닫지 않고 알린다
         assert_eq!(window_end(&WatchEnd::LeftInPlace { recovery: recovery.clone() }, true, true, true), WindowEnd::LeftInPlace(recovery.clone()));
         // 화면에는 끝내기 → 실행 파일 → 데이터(두 갈래와 각각 되살릴 곳, 따로 둔 인스턴스 폴더 포함)를 싣는다
         let payload = recovery_payload(&recovery);
@@ -834,7 +826,7 @@ mod tests {
         assert_eq!(payload["instancesDir"], "/srv/instances");
     }
 
-    // Codex 리뷰: 코어를 바꾼 뒤 다시 띄우지 못하면(권한 오류 등) 성공으로 끝내지 않고 되돌린다
+    // 코어를 바꾼 뒤 다시 띄우지 못하면(권한 오류 등) 성공으로 끝내지 않고 되돌린다
     #[test]
     fn a_failed_relaunch_after_the_core_swap_rolls_back() {
         let launched = Launched { cmd: "saba-core".into(), pid: 7 };
@@ -845,7 +837,7 @@ mod tests {
         assert_eq!(watch_plan(true, None, false), WatchPlan::Skip, "nothing was meant to be relaunched");
     }
 
-    // M3: 받은 GUI 경로(0.1.1의 `Saba-chan.exe`)가 업데이트로 비켜났으면 지금 설치된 GUI를 띄운다
+    // 받은 GUI 경로(0.1.1의 `Saba-chan.exe`)가 업데이트로 비켜났으면 지금 설치된 GUI를 띄운다
     #[test]
     fn a_retired_gui_is_relaunched_as_the_installed_one() {
         let dir = std::env::temp_dir().join(format!("saba-relaunch-{}", std::process::id()));

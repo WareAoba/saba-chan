@@ -204,7 +204,7 @@ pub(crate) async fn list(state: &IPCServer, notices_after: u64) -> Outcome {
 
         servers.push(server);
     }
-    // ── 데이터 slot (Q-7): 조건 판정과 값 찾기는 여기서 한 번만 ──
+    // ── 데이터 slot: 조건 판정과 값 찾기는 여기서 한 번만 ──
     {
         let ext_mgr = state.extension_manager.read().await;
         for srv in servers.iter_mut() {
@@ -212,7 +212,7 @@ pub(crate) async fn list(state: &IPCServer, notices_after: u64) -> Outcome {
         }
     }
 
-    // ── 접속자 수 (Q-5): 모듈이 알려 준 마지막 값, 켜진 서버만 ──
+    // ── 접속자 수: 모듈이 알려 준 마지막 값, 켜진 서버만 ──
     let catalog = crate::chat::i18n::Catalog::for_language(&state.config_store.ui_language().await);
     let runtime = state.supervisor.read().await.runtime.clone();
     for srv in servers.iter_mut().filter(|s| s.status == "running") {
@@ -283,7 +283,7 @@ pub(crate) async fn players(state: &IPCServer, id: &str) -> Outcome {
         let Some(function) = sup.module_loader.get_module(&instance.module_name).ok().and_then(|m| m.metadata.players_function) else {
             return fail(StatusCode::NOT_IMPLEMENTED, "not_supported", "This server's module cannot list players".into());
         };
-        if sup.tracker.get_pid(id).is_err() {
+        if sup.tracker.get_pid(id).is_none() {
             return fail(StatusCode::CONFLICT, "server_not_running", "The server is not running".into());
         }
         sup.instance_call(id, &function)

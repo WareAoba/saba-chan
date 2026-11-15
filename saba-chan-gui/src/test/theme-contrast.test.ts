@@ -13,7 +13,7 @@ import {
     getContrastColor,
 } from '../utils/themeManager';
 
-// ── 1. ACCENT_PRESETS 중복/유효성 ──────────────────────────
+// ── 1. ACCENT_PRESETS 중복/유효성 ──
 
 describe('ACCENT_PRESETS 팔레트', () => {
     it('프리셋 이름에 중복이 없어야 한다', () => {
@@ -47,7 +47,7 @@ describe('ACCENT_PRESETS 팔레트', () => {
     });
 });
 
-// ── 2. getContrastColor() WCAG 대비 검증 ──────────────────
+// ── 2. getContrastColor() WCAG 대비 검증 ──
 
 /**
  * sRGB → 선형 RGB (WCAG 2.1 공식)

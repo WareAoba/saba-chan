@@ -1,13 +1,11 @@
 import type { TFunction } from 'i18next';
 import type { ApiBody } from '../types/daemon';
-import type { NoticeInput } from '../types/global';
 import { type AuditEntry, auditReason, auditWhat, sourceText } from './audit';
 import { safeShowToast } from './helpers';
-import { SERVER_UPDATE_ACTION } from './serverUpdateNotice';
 
 export { sourceText };
 
-/** 데몬 이벤트 스트림 (P4: GET /api/events → Tauri 셸 → window.api.onDaemonEvent) */
+/** 데몬 이벤트 스트림 (GET /api/events → Tauri 셸 → window.api.onDaemonEvent) */
 /** 정규화한 이벤트 한 건. data의 칸은 이벤트 종류마다 다르다 */
 export interface DaemonEvent {
     id?: unknown;
@@ -19,8 +17,6 @@ export interface EventToast {
     message: string;
     type: 'info' | 'warning' | 'error' | 'success';
     duration: number;
-    /** 알림 모음에 남길 한 줄 (서버별로 묶는다). 단순히 켜고 끈 것은 남기지 않는다 (사용자 2026-11-15) */
-    notice?: NoticeInput;
     /** 토스트는 띄우지 않는다: 앱에서 한 일은 그 자리에서 이미 알렸다 */
     silent?: boolean;
 }
@@ -115,34 +111,13 @@ function exitReason(d: ApiBody, t: TFunction) {
     return t(`events.reason_${code}`, { ...(d.evidenceArgs || {}), defaultValue: '' });
 }
 
-/** 다시 켜기 안내: 몇 초 뒤 다시 켬, 자동 재시작 꺼짐, 너무 자주 꺼져 포기함 */
-function restartNote(d: ApiBody, t: TFunction) {
-    if (d.restartInSecs != null) return t('shell.exit_restart_in', { secs: d.restartInSecs });
-    if (d.noteCode === 'auto_restart_off') return t('shell.exit_note_auto_off');
-    if (d.noteCode === 'gave_up') return t('shell.exit_note_gave_up', { count: d.noteArgs?.count });
-    return '';
-}
-
-/** 서버 하나에 묶을 알림 한 줄. 앱에서 한 일은 이미 본 것이라 읽은 것으로 둔다 */
-function serverNotice(d: ApiBody, name: string, message: string, type: NoticeInput['type'], detail?: string): NoticeInput {
-    return {
-        message,
-        ...(detail ? { detail } : {}),
-        type,
-        source: name,
-        ...(d.instanceId ? { instanceId: d.instanceId } : {}),
-        ...(d.source === 'gui' ? { read: true } : {}),
-    };
-}
-
 // 켜고 끄는 일은 instance.started·stopped가 출처와 함께 알린다 (action.run은 실패만)
 const LIFECYCLE_ACTIONS = ['start', 'stop', 'restart'];
 
 /**
- * 이벤트 → 토스트 {message, type, duration, notice?, silent?} 또는 null.
+ * 이벤트 → 토스트 {message, type, duration, silent?} 또는 null.
  * 토스트: GUI에서 직접 한 일은 이미 그 자리에서 띄우므로 다른 곳에서 일어난 일만.
- * 알림 모음(notice): 크래시·실패·원인 모를 종료·사바쨩 밖 시작·복원처럼 확인할 일만, 서버별로 묶을 짧은 줄과 이유.
- * 어디서 시켰든 정상적으로 켜고 끈 것(instance.started·stopped)은 남기지 않는다 (사용자 2026-11-15)
+ * 알림함에 무엇을 남길지는 데몬이 정한다 (`notices.rs`, 정상 시작·정지는 넣지 않는다)
  */
 export function eventToast(ev: DaemonEvent, t: TFunction, nameOf: (id: string) => string = (id) => id): EventToast | null {
     const d = ev.data;
@@ -151,20 +126,17 @@ export function eventToast(ev: DaemonEvent, t: TFunction, nameOf: (id: string) =
             const name = d.instance || nameOf(d.instanceId);
             if (d.action === 'restore' && (d.instanceId || d.instance)) {
                 const source = sourceText(d, t);
-                const reason = auditReason(d as AuditEntry, t);
                 return d.ok
                     ? {
                           message: t('events.instance_restored', { name, source }),
                           type: 'success',
                           duration: 5000,
-                          notice: serverNotice(d, name, t('events.n_restored', { source }), 'success'),
                           ...(d.source === 'gui' ? { silent: true } : {}),
                       }
                     : {
                           message: t('events.instance_restore_failed', { name }),
                           type: 'error',
                           duration: 8000,
-                          notice: serverNotice(d, name, t('events.n_restore_failed'), 'error', reason),
                           ...(d.source === 'gui' ? { silent: true } : {}),
                       };
             }
@@ -184,12 +156,10 @@ export function eventToast(ev: DaemonEvent, t: TFunction, nameOf: (id: string) =
             const reason = exitReason(d, t);
             const restart = d.restartInSecs != null ? ` ${t('shell.exit_restart_in', { secs: d.restartInSecs })}` : '';
             const why = reason ? ` ${t('events.reason_sentence', { reason })}` : '';
-            const detail = [reason, restartNote(d, t)].filter(Boolean).join(' · ');
             return {
                 message: `${t('events.instance_exit', { name, kind })}${why}${restart}`,
                 type: 'warning',
                 duration: 8000,
-                notice: serverNotice(d, name, t(`events.n_exit_${d.kind}`), 'error', detail || undefined),
             };
         }
         case 'instance.started': {
@@ -200,7 +170,6 @@ export function eventToast(ev: DaemonEvent, t: TFunction, nameOf: (id: string) =
                     message: t('events.instance_started_external', { name }),
                     type: 'warning',
                     duration: 10000,
-                    notice: serverNotice(d, name, t('events.n_started_external'), 'info'),
                 };
             }
             const source = sourceText(d, t);
@@ -229,7 +198,6 @@ export function eventToast(ev: DaemonEvent, t: TFunction, nameOf: (id: string) =
                 message: t(key, { name, minutes: d.minutes }),
                 type: 'warning',
                 duration: 8000,
-                notice: serverNotice(d, name, t('events.n_unresponsive', { minutes: d.minutes }), 'error'),
             };
         }
         case 'backup.done': {
@@ -268,12 +236,12 @@ export function showPortMoved({ instanceId, name, from, to }: { instanceId: stri
     const key = `${instanceId}|${from}|${to}`;
     if (shownPortMoves.has(key)) return;
     shownPortMoves.add(key);
-    // 알림 모음에는 시작·정지·복원·크래시만 남긴다 (#14): 포트 이동은 토스트로만
+    // 포트 이동은 토스트로만 (알림함에 넣지 않는다)
     safeShowToast(t('servers.port_moved', { name: name || instanceId, from, to }), 'warning', 8000);
 }
 
 // 서버의 예기치 않은 멈춤·사바쨩 밖의 시작 하나는 이벤트(instance.exit, instance.started unexpected)와
-// 목록 폴링이 따로 알아챈다. 먼저 알린 쪽이 표시를 남기고, 다른 쪽은 그 표시를 지우며 한 번만 건너뛴다 (G-S6).
+// 목록 폴링이 따로 알아챈다. 먼저 알린 쪽이 표시를 남기고, 다른 쪽은 그 표시를 지우며 한 번만 건너뛴다.
 // 같은 쪽이 연달아 알리면(재시작 사이 크래시가 거듭되면) 모두 알린다.
 // 이벤트는 일어난 시각(`at`)으로 짝짓는다: 스트림이 끊긴 동안 폴링이 알린 일을 다시 붙은 뒤 밀려 온 이벤트가 또 알리지 않게
 const serverNotices = new Map<string, { source: string; at: number }>();
@@ -293,75 +261,13 @@ export function claimServerNotice(instanceId: string | undefined, kind: 'stop' |
     return true;
 }
 
-/** 누르면 그 게임 서버를 업데이트하는 알림. 서버마다 하나만 둔다 (출처=서버 이름) */
-const serverUpdateNotice = (text: string, instanceId: string, name: string): NoticeInput => ({
-    message: text,
-    type: 'info',
-    source: name,
-    instanceId,
-    action: SERVER_UPDATE_ACTION,
-    data: { instanceId, name },
-    dedup: true,
-});
-
-/** 토스트 없이 알림함에만 남기는 이벤트 (켠 서버의 새 버전·업데이트 대기·실패) */
-const NOTICE_ONLY = ['instance.update_notice', 'instance.update_waiting', 'instance.update_failed'];
-export const noticeOnly = (ev: DaemonEvent) => NOTICE_ONLY.includes(ev.type);
-
-/** 이벤트 → 알림함에 남길 알림 (없으면 null). 화면이 바로 받은 이벤트와 창이 없던 동안 셸이 모아 둔 이벤트가 같이 쓴다 */
-export function eventNotice(ev: DaemonEvent, t: TFunction, nameOf: (id: string) => string = (id) => id): NoticeInput | null {
-    const d = ev.data;
-    const name = () => d.instance || nameOf(d.instanceId);
-    if (ev.type === 'instance.update_notice') {
-        // 켠 서버의 모듈 새 버전(업데이트 화면으로)·게임 서버 새 빌드 — 어디서 켰든 앱에도 남긴다
-        if (d.kind === 'module') {
-            return {
-                message: t('events.module_update', { name: name(), module: d.module, version: d.latest }),
-                type: 'info',
-                source: 'Updater',
-                action: 'openUpdateModal',
-                dedup: true,
-            };
-        }
-        return d.kind === 'server' ? serverUpdateNotice(t('events.server_update', { name: name() }), d.instanceId, name()) : null;
-    }
-    if (ev.type === 'instance.update_waiting') {
-        // 자동 업데이트가 접속자 때문에 기다린다 — 누르면 5분 예고 뒤 업데이트
-        return serverUpdateNotice(
-            typeof d.players === 'number'
-                ? t('events.server_update_waiting', { name: name(), count: d.players })
-                : t('events.server_update_waiting_unknown', { name: name() }),
-            d.instanceId,
-            name(),
-        );
-    }
-    if (ev.type === 'instance.update_failed') {
-        return {
-            message: t('events.server_update_failed', { name: name(), error: d.error || '' }).trim(),
-            type: 'error',
-            source: name(),
-            instanceId: d.instanceId,
-        };
-    }
-    return eventToast(ev, t, nameOf)?.notice ?? null;
-}
-
-/** 창이 없던 동안의 이벤트를 알림함에 넣는다: 토스트 없이, 일어난 시각(`at`, 초)으로 */
-export function addBacklogNotice(ev: DaemonEvent, t: TFunction, nameOf?: (id: string) => string) {
-    const notice = eventNotice(ev, t, nameOf);
-    if (!notice) return;
-    const at = ev.data.at;
-    window.__sabaNotice?.addNotice({ ...notice, ...(typeof at === 'number' ? { timestamp: new Date(at * 1000).toISOString() } : {}) });
-}
-
-/** 토스트를 띄우고, 시작·정지·복원·크래시는 알림 모음에 서버별로 남긴다 */
+/** 토스트를 띄운다 (앱에서 한 일은 띄우지 않는다) */
 export function showEventToast(ev: DaemonEvent, t: TFunction, nameOf?: (id: string) => string) {
     const toast = eventToast(ev, t, nameOf);
     if (!toast) return null;
     const kind = ev.type === 'instance.exit' ? 'stop' : ev.type === 'instance.started' && ev.data.unexpected ? 'start' : null;
     if (kind && !claimServerNotice(ev.data.instanceId, kind, 'event', ev.data.at)) return null;
     if (!toast.silent) safeShowToast(toast.message, toast.type, toast.duration);
-    if (toast.notice) window.__sabaNotice?.addNotice(toast.notice);
     return toast;
 }
 

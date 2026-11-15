@@ -1,4 +1,4 @@
-/* 콘솔 글꼴 (utils/consoleFonts.js): 글꼴마다 글자 범위를 나눠 싣는다.
+/* 콘솔 글꼴 (utils/consoleFonts.ts): 글꼴마다 글자 범위를 나눠 싣는다.
    `saba-<글자>-<글꼴>`은 그 글자 범위에서만 쓰이고, 화면에 그 범위의 글자가 나올 때만 내려받는다.
    글꼴 파일은 assets/fonts (모두 SIL OFL 1.1, assets/fonts/LICENSES.md) — 각 글꼴을 쓰는 범위만 남겼다 */
 

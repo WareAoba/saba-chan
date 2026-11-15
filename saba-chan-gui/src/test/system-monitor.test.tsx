@@ -100,7 +100,7 @@ describe('시스템 모니터 항목 고르기', () => {
         expect(ring(rings, 'adapter:Ethernet')).toMatchObject({ value: '2.0', unit: 'MB/s' });
     });
 
-    // 사용자 요청(2026-11-06 #26): 알 수 없는 값은 "알 수 없음"으로 두지 않고 아예 보이지 않는다
+    // 알 수 없는 값은 "알 수 없음"으로 두지 않고 아예 보이지 않는다
     it('못 재는 클럭·온도·디스크 종류는 알약을 빼고, 사용률을 모르는 GPU는 원째 뺀다', () => {
         const snap = snapshot({
             cpu: { cores: 8, total_percent: 50, others_percent: 20, clock_mhz: null, temp_c: null },
@@ -314,7 +314,7 @@ describe('SystemMonitor', () => {
     });
 });
 
-describe('시스템 모니터 표시 방식 (사용자 11-11: 끔·고정·떠 있는 창)', () => {
+describe('시스템 모니터 표시 방식 (끔·고정·떠 있는 창)', () => {
     beforeEach(() => {
         window.api.systemMetrics = vi.fn().mockResolvedValue(snapshot());
         window.showToast = vi.fn();
@@ -366,7 +366,7 @@ describe('시스템 모니터 표시 방식 (사용자 11-11: 끔·고정·떠 �
         Object.defineProperties(box, { offsetWidth: { value: 200 }, offsetHeight: { value: 100 } });
         const head = box.querySelector('.monitor-head')!;
         // 기본 자리(오른쪽 위 = left 788, top 12)에서 왼쪽 가운데쯤으로 끌어 놓는다
-        // 끌기 시작이 글자 선택을 시작하지 않아야 아래 콘솔 등이 함께 선택되지 않는다 (사용자 11-12)
+        // 끌기 시작이 글자 선택을 시작하지 않아야 아래 콘솔 등이 함께 선택되지 않는다
         const notPrevented = fireEvent.pointerDown(head, { clientX: 800, clientY: 20, pointerId: 1, button: 0 });
         expect(notPrevented).toBe(false);
         fireEvent.pointerMove(head, { clientX: 300, clientY: 200, pointerId: 1 });

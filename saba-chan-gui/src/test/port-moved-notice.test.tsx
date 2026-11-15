@@ -5,7 +5,7 @@ import { setupServerStore } from './serverStore';
 import i18n from '../i18n';
 import type { Server } from '../stores/useServerStore';
 
-// 데몬이 Windows 예약 범위를 피해 REST 포트를 옮겼으면(port_moved) 저장값이 조용히 바뀌지 않게 알린다 (M13)
+// 데몬이 Windows 예약 범위를 피해 REST 포트를 옮겼으면(port_moved) 저장값이 조용히 바뀌지 않게 알린다
 const startWith = async (response: Record<string, unknown>, action = 'start') => {
     const list = [{ id: 'a', name: 'A', module: 'game', status: 'stopped' }] as unknown as Server[];
     window.api = {

@@ -5,7 +5,7 @@ import { useSabaBubble } from '../stores/useSabaBubble';
 import type { ProgressBarConfig } from '../stores/useUIStore';
 
 // 요리하는 사바쨩은 받기·설치 진행이 멈춰 보일 때만 뜬다.
-// 서버 시작·정지처럼 끝을 모르는 진행은 서버 상태가 따로 보여 주니 띄우지 않는다 (사용자 11-12)
+// 서버 시작·정지처럼 끝을 모르는 진행은 서버 상태가 따로 보여 주니 띄우지 않는다
 describe('느린 진행 말풍선', () => {
     beforeEach(() => {
         vi.useFakeTimers();

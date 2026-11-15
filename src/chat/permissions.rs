@@ -1,4 +1,4 @@
-//! 디스코드 명령 권한 판정 (P1). 원본은 `config.json`의 `nodeSettings[guildId]` 하나다
+//! 디스코드 명령 권한 판정. 원본은 `config.json`의 `nodeSettings[guildId]` 하나다
 //!
 //! 레벨: 소유자(3) > 관리자(2) > 유저(1) > 챗봇(0) > 금지(-1). 숫자는 릴레이(server-chan `commandAccess.ts`)와 같다.
 //! 길드마다 단계 사다리(`ladder`)를 바꿀 수 있다: 단계를 더하고(id ≥ 10) 이름과 순서를 바꾸고 지운다. 소유자는 늘 맨 위,
@@ -6,7 +6,7 @@
 //! 명령마다 요구 레벨이 있다 (`commandLevels` 덮어쓰기, 없으면 프리셋표[risk]). 유효 레벨이 모자라면 거부한다.
 //! 챗봇을 거친 요청의 유효 레벨은 min(작성자 레벨, `chatbotCap`)이다.
 //! 레벨은 누적이다: 어떤 레벨에서 쓸 수 있는 명령은 그 위 레벨에서 모두 쓴다. 사람마다 명령을 따로 막는 규칙은 없다
-//! (예전 `memberPermissions`는 읽지 않는다, 사용자 지정 2026-10-28).
+//! (예전 `memberPermissions`는 읽지 않는다).
 
 use serde::Serialize;
 use serde_json::{json, Map, Value};
@@ -82,7 +82,7 @@ pub const PRESETS: [&str; 3] = ["loose", "default", "strict"];
 /// 액션(`server.<명령>`)이 따로 있는 내장 명령
 // `players`는 `[status] players` 모듈의 채팅 접속자 조회 (`server.players`와 같은 키)
 const BUILTIN_COMMANDS: [&str; 5] = ["start", "stop", "restart", "status", "players"];
-/// 위험도가 아니라 조작 가능 명단과 유저 이상(기본값, 사용자 지정 2026-11-07)이 하는 내장 명령 (`crate::controllers`, 액션의 고정 기본 레벨과 같다)
+/// 위험도가 아니라 조작 가능 명단과 유저 이상(기본값)이 하는 내장 명령 (`crate::controllers`, 액션의 고정 기본 레벨과 같다)
 pub const LIFECYCLE_COMMANDS: [&str; 3] = ["start", "stop", "restart"];
 
 /// 프리셋이 risk(safe/caution/danger)에 요구하는 레벨. 모르는 risk는 caution
@@ -274,7 +274,7 @@ impl NodePermissions {
     }
 
     /// 이 명령의 요구 레벨. 내장 명령은 `<instance>/<명령>`이 없으면 그 액션 키(`<instance>/server.<명령>`)도 본다:
-    /// 액션 경로와 같은 덮어쓰기를 따른다 (D-A2)
+    /// 액션 경로와 같은 덮어쓰기를 따른다
     pub fn required(&self, instance_id: &str, command: &str, risk: &str) -> i64 {
         let action_key = || BUILTIN_COMMANDS.contains(&command).then(|| format!("{}/server.{}", instance_id, command));
         self.command_levels
@@ -398,7 +398,7 @@ fn apply_ladder(node: &mut Map<String, Value>, input: &[LevelInput]) -> Result<(
         })
         .collect();
     check_ladder(&ladder)?;
-    // 게스트는 지울 수 없다 (사용자 지정 2026-11-06). 이미 지운 예전 사다리는 그대로 둔다
+    // 게스트는 지울 수 없다. 이미 지운 예전 사다리는 그대로 둔다
     if old.position(CHATBOT).is_some() && !ladder.iter().any(|l| l.id == CHATBOT) {
         return Err("invalid_ladder");
     }
@@ -457,7 +457,7 @@ pub fn apply(node: &mut Map<String, Value>, change: &Change, owner_id: Option<&s
             node.insert("chatbotCap".into(), json!(l));
         }
         Change::Preset(p) if !PRESETS.contains(&p.as_str()) => return Err("invalid_preset"),
-        // 프리셋은 한 번 적용하는 틀이다: 고르면 명령별 레벨을 지워 모두 프리셋 값을 따른다 (사용자 지정 2026-10-25)
+        // 프리셋은 한 번 적용하는 틀이다: 고르면 명령별 레벨을 지워 모두 프리셋 값을 따른다
         Change::Preset(p) => {
             node.insert("preset".into(), json!(p));
             node.remove("commandLevels");
@@ -557,7 +557,7 @@ mod tests {
         assert_eq!(p.effective_level(&low), CHATBOT);
     }
 
-    // D-A2: 내장 명령은 액션 경로처럼 `<instance>/server.<명령>` 덮어쓰기도 본다. `<instance>/<명령>`이 있으면 그쪽이 먼저다
+    // 내장 명령은 액션 경로처럼 `<instance>/server.<명령>` 덮어쓰기도 본다. `<instance>/<명령>`이 있으면 그쪽이 먼저다
     #[test]
     fn built_in_commands_also_take_the_level_set_for_their_actions() {
         let p = NodePermissions::from_node(Some(&json!({ "preset": "loose", "defaultLevel": 2, "commandLevels": { "i/server.stop": 3, "i/server.start": 3, "i/start": 1 } })));

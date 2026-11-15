@@ -1,10 +1,10 @@
-//! 포트포워딩 확인 (사용자 결정 2026-10-26): 친구가 밖에서 이 PC의 게임 서버에 닿는지 릴레이가 대신 접속해 본다
+//! 포트포워딩 확인: 친구가 밖에서 이 PC의 게임 서버에 닿는지 릴레이가 대신 접속해 본다
 //!
 //! 확인할 포트는 모듈이 `[[settings.fields]] public = "tcp" | "udp" | "both"`로 선언한 것뿐이다 (게임 이름으로 나누지 않는다).
 //! 1. 서버가 꺼져 있으면 그 포트에 잠깐 시험 리스너를 연다. 켜져 있으면 게임이 연 포트를 그대로 쓴다.
 //! 2. 릴레이 `POST /api/port-check`에 일회용 확인값(nonce)과 포트를 보낸다. 릴레이는 요청이 온 공인 주소의 그 포트로만 보낸다.
 //!    PC의 공개 주소(도메인·IP, `remote_daemon::configured_address`)를 정했으면 `host`로 싣는다. 릴레이는 그 주소가 이 PC를 가리킬 때만 보내고,
-//!    아니면 `hostResult`(mismatch·unresolved)만 답한다 → 판정 `host_mismatch`·`host_unresolved` (사용자 결정 2026-11-10)
+//!    아니면 `hostResult`(mismatch·unresolved)만 답한다 → 판정 `host_mismatch`·`host_unresolved`
 //! 3. 시험 리스너가 확인값을 받았으면 열림. 켜진 서버의 TCP는 릴레이의 접속 결과로, 켜진 서버의 UDP는 알 수 없음(서버를 끄면 확인된다).
 //!
 //! 공유기가 공인 주소를 받지 못한 경우(CGNAT)는 UPnP로 공유기가 아는 바깥 주소를 물어 릴레이가 본 주소와 견준다.

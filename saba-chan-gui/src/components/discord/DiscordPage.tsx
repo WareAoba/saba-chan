@@ -84,7 +84,7 @@ interface DiscordPageProps {
 }
 
 /**
- * 디스코드 페이지 (V1): 왼쪽 메뉴 | 오른쪽 화면. 서버 페이지와 같은 목록-상세 구조.
+ * 디스코드 페이지: 왼쪽 메뉴 | 오른쪽 화면. 서버 페이지와 같은 목록-상세 구조.
  * 메뉴: 연결 · 사바쨩 설정(모든 서버가 함께 쓰는 키·모델) · 디스코드 서버(노드) 목록.
  * 기능을 켜고 쓰는 일(말하는·노래하는 사바쨩, 접두사, 권한)은 모두 서버 화면에서 한다.
  * 노드 권한은 바꾸는 즉시 저장(잠깐 모아서)한다.
@@ -173,7 +173,7 @@ export function DiscordPage({
         return () => useUIStore.getState().setOpenDiscordNodeId(null);
     }, [openNodeId]);
 
-    // 화면 주소 링크 (사용자 11-06 #19): 없는 디스코드 서버면 연결 화면을 열고 이유를 알린다
+    // 화면 주소 링크: 없는 디스코드 서버면 연결 화면을 열고 이유를 알린다
     const requested = useUIStore((s) => s.requestedDiscordView);
     // 처음 열 때는 서버 목록을 받을 때까지 기다린다 (빈 목록으로 판단해 연결 화면으로 빠지지 않게)
     const waitNodes = !!discordCloudHostId && relayConnected && !nodesLoaded;
@@ -396,7 +396,7 @@ export function DiscordPage({
         }
     }, [view, cloudNodes]);
 
-    // 붙는 중은 꺼짐 회색으로 깜빡이고, 붙어 있다가 끊겨 다시 붙는 중만 노랑 (사용자 11-11)
+    // 붙는 중은 꺼짐 회색으로 깜빡이고, 붙어 있다가 끊겨 다시 붙는 중만 노랑
     const connTone =
         cloudState === 'connecting' && reconnecting
             ? 'warn'

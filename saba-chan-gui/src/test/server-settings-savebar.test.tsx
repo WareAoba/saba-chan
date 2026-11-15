@@ -3,7 +3,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { ServerSettingsModal } from '../components/ServerSettingsModal';
 
-// 서버 설정도 바뀐 게 있을 때만 공통 저장 막대가 올라와 저장·되돌리기를 묻는다 (사용자 11-11)
+// 서버 설정도 바뀐 게 있을 때만 공통 저장 막대가 올라와 저장·되돌리기를 묻는다
 const modules = [
     {
         name: 'dl',

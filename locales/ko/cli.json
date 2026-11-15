@@ -63,7 +63,8 @@
     "ask_dir": "설치할 폴더 경로",
     "ask_run": "서버를 어떻게 실행할까요?",
     "run_managed": "사바쨩이 관리 (추천)",
-    "run_unmanaged": "직접 관리 (사바쨩 콘솔 사용 불가)"
+    "run_unmanaged": "직접 관리 (사바쨩 콘솔 사용 불가)",
+    "branch_name": "{{name}} · 브랜치"
   },
   "bot": {
     "ask_token": "노드 토큰",
@@ -1001,7 +1002,7 @@
       "backup.export": "백업 하나를 다른 PC로 옮길 수 있는 zip 하나로 내보내기 (이름이 없으면 목록에서 고르기)",
       "backup.import": "`backup export`로 만든 zip을 검사해 이 서버의 백업 목록에 올리기 (그 뒤 복원)",
       "schedule": "서버 예약 작업 (시작, 정지, 재시작, 저장, 백업, 공지, 업데이트, 게임 명령)",
-      "schedule.show": "예약 보기",
+      "schedule.show": "서버의 예약 보기. 서버를 안 주면 모든 서버의 다가오는 예약",
       "schedule.add": "작업 예약: start, stop, restart, save, backup, announce, update, command",
       "schedule.edit": "N번 작업을 지우지 않고 고치기: 준 옵션만 바뀜 (schedule show 참고)",
       "schedule.remove": "N번 작업 지우기 (schedule show 참고)",
@@ -1108,7 +1109,12 @@
       "remote.install": "이 PC의 ssh로 리눅스 PC에 사바쨩을 설치하고 붙기 (`계정@호스트`)",
       "remote.remove": "내 PC 하나 지우기: 여기서 잊고, 원하면 그 PC에서 사바쨩을 지우고 서버쨩 목록에서도 빼기",
       "remote.update": "원격 데몬을 지금 업데이트하거나 자동 업데이트 켜고 끄기 (`--auto on|off`)",
-      "config.public-address": "이 PC의 공개 주소(게임 서버 주소와 원격 데몬 연결이 함께 써요): 값 없이 쓰면 지금 값, 도메인이나 IP를 주면 저장, auto면 서버쨩이 본 공인 IP"
+      "config.public-address": "이 PC의 공개 주소(게임 서버 주소와 원격 데몬 연결이 함께 써요): 값 없이 쓰면 지금 값, 도메인이나 IP를 주면 저장, auto면 서버쨩이 본 공인 IP",
+      "server.access": "디스코드에서 이 서버를 쓰는 사람: 서버 공용·전용 멤버, 전용 멤버 명단, 자동 강퇴 닉네임. 옵션 없으면 보기",
+      "notice": "데몬이 보관하는 알림함 (크래시·시작 실패·업데이트 결과). 앱과 같은 목록",
+      "notice.read": "모든 알림을 읽음으로 표시",
+      "notice.remove": "알림 하나 삭제",
+      "notice.clear": "알림 모두 삭제"
     },
     "arg": {
       "module.maker.game": "첫 부탁에 넣을 게임 이름",
@@ -1363,7 +1369,16 @@
       "remote.update.host_id": "원격 데몬 PC id (`remote daemons`에 표시)",
       "remote.update.auto": "자동 업데이트 켜기(on)·끄기(off). 없으면 지금 업데이트",
       "config.public-address.address": "도메인이나 IP (auto면 공인 IP 자동)",
-      "config.public-address.share": "디스코드 /<서버> 주소로 알려 줄지 (on|off)"
+      "config.public-address.share": "디스코드 /<서버> 주소로 알려 줄지 (on|off)",
+      "branch_of": "이 서버의 브랜치로 만들기: 같은 게임, 설정은 한 번 복사, 폴더·월드·포트는 따로",
+      "server.access.mode": "shared(서버 공용, 디스코드 레벨 권한) 또는 members(전용 멤버 명단만)",
+      "server.access.add_member": "전용 멤버 명단에 넣기: 닉네임 또는 닉네임=디스코드ID (여러 번 가능)",
+      "server.access.remove_member": "전용 멤버 명단에서 빼기 (여러 번 가능)",
+      "server.access.kick_others": "전용 멤버: 명단 밖 닉네임 자동 강퇴",
+      "server.access.kick": "서버 공용: 이 닉네임이 들어오면 자동 강퇴 (여러 번 가능)",
+      "server.access.unkick": "자동 강퇴 명단에서 빼기 (여러 번 가능)",
+      "schedule.show.hours": "서버 없이: 몇 시간 앞까지 볼지 (기본 24, 최대 720)",
+      "notice.remove.id": "`notice` 첫 칸의 번호"
     },
     "after": "이름은 일부만 적어도 됩니다 (예: start pal). 인자 없이 터미널에서 실행하면 전체 화면 메뉴가 열립니다(SABA_NO_TUI=1이면 대화형 셸).\n스크립트에서는 --json과 --yes를 써 주세요. 종료 코드: 0 성공 · 1 실패 · 2 사용법 · 3 데몬 연결 실패 · 4 없음 · 130 취소"
   },
@@ -1480,7 +1495,9 @@
     "bad_date": "\"{{got}}\": 날짜가 아님. 2026-12-24처럼 YYYY-MM-DD로 써 주세요.",
     "bad_arg": "\"{{got}}\": 인자가 아님. 이름=값으로 써 주세요.",
     "confirm_danger": "{{command}}은(는) 되돌리기 어려운 명령이며, 정한 때에 확인 없이 실행됩니다. 예약할까요?",
-    "from_needs_every_days": "--from은 N일마다(--every-days) 작업에만 씁니다."
+    "from_needs_every_days": "--from은 N일마다(--every-days) 작업에만 씁니다.",
+    "clash": "겹침",
+    "upcoming_none": "앞으로 {{hours}}시간 안에 도는 예약 없음"
   },
   "chatbot": {
     "api_key": "API 키 저장됨",
@@ -2101,5 +2118,24 @@
     "some_failed": "일부 에이전트 변경 실패",
     "is_linked": "✓ {{agent}}: 사바쨩 있음",
     "is_not_linked": "· {{agent}}: 사바쨩 없음 (saba-chan agent link)"
+  },
+  "access": {
+    "mode": "사용 모드",
+    "shared": "서버 공용",
+    "members": "전용 멤버",
+    "member_list": "전용 멤버 명단",
+    "kick_others": "명단 밖 자동 강퇴",
+    "kick_list": "자동 강퇴",
+    "none": "없음",
+    "not_listed": "{{name}}은(는) 명단에 없음",
+    "saved": "{{server}} 사용 모드 저장됨"
+  },
+  "notice": {
+    "col": "알림",
+    "none": "알림 없음",
+    "unread": "읽지 않은 알림 {{count}}개",
+    "read_done": "모두 읽음으로 표시함",
+    "removed": "알림 {{id}} 삭제됨",
+    "cleared": "알림 {{count}}개 삭제됨"
   }
 }

@@ -13,7 +13,7 @@ import type { AddServerPayload } from '../../stores/serverActions';
 import './AddServer.css';
 
 /**
- * AddInstanceModal — 서버 추가 창 (사용자 11-11 A안).
+ * AddInstanceModal — 서버 추가 창.
  *
  * 고르기 화면 없이 게임 목록부터 보인다. 쓰던 서버 가져오기·익스텐션이 더한 방법(`AddServer.method`)은
  * 그 목록의 칸이고, 고르면 같은 창에서 그 화면으로 바뀐다. 창은 공통 Dialog(반투명 모드에서 유리)다.
@@ -64,7 +64,7 @@ export function AddInstanceModal({
         if (isOpen && onRefreshextensions) {
             onRefreshextensions();
         }
-    }, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [isOpen]);
 
     // 가이드에서 "쓰던 서버 불러오기"·"새 서버 만들기"로 열었으면 그 화면으로 바로 연다
     useEffect(() => {

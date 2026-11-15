@@ -185,7 +185,7 @@
         padding: var(--sp-4) var(--sp-4) 0;
     }
 }
-/* 요약 줄 항목: 작은 원 + 이름 + 값 (사용자 11-07) */
+/* 요약 줄 항목: 작은 원 + 이름 + 값 */
 .monitor-chip {
     display: inline-flex;
     align-items: center;
@@ -198,7 +198,7 @@
     flex: none;
 }
 
-/* ── 떠 있는 창 (사용자 11-11): 서버 페이지 위에 겹쳐 끌어 옮긴다. 자리는 FloatingMonitor가 left·top으로 준다 ── */
+/* ── 떠 있는 창: 서버 페이지 위에 겹쳐 끌어 옮긴다. 자리는 FloatingMonitor가 left·top으로 준다 ── */
 .servers-page {
     position: relative;
 }

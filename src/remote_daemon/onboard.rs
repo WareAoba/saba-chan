@@ -67,7 +67,7 @@ pub fn valid_code(code: &str) -> bool {
 const READY_WAIT: Duration = if cfg!(test) { Duration::from_secs(2) } else { Duration::from_secs(120) };
 const READY_POLL: Duration = if cfg!(test) { Duration::from_millis(100) } else { Duration::from_secs(3) };
 
-/// 코드를 이 PC 주인의 것으로 받고 그 PC와 짝을 맺는다. 짝을 맺으면 그 데몬의 자동 업데이트를 켠다 (사용자 결정 2026-11-08)
+/// 코드를 이 PC 주인의 것으로 받고 그 PC와 짝을 맺는다. 짝을 맺으면 그 데몬의 자동 업데이트를 켠다
 pub async fn claim_and_connect(peers: &peer::Pool, file: &ConfigFile, relay: Option<Target>, code: &str, stop: &CancellationToken) -> Result<Daemon, ClaimError> {
     let target = relay.clone().ok_or(ClaimError::RelayNotPaired)?;
     let claimed = relay::claim(&target, code).await.map_err(|e| match e {

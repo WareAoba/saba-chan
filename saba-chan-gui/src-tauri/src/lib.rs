@@ -1,4 +1,4 @@
-//! Saba-chan GUI 셸 (Tauri) — Electron main.js를 옮긴 것
+//! Saba-chan GUI 셸 (Tauri)
 //!
 //! 화면(React)은 그대로 두고, 네이티브 일(창·트레이·데몬 기동·토큰·이벤트 스트림)만 여기서 한다.
 //! 데몬 API 응답 가공은 JS 브리지(src/api)가 맡는다.
@@ -197,7 +197,6 @@ pub fn run() {
             streams::daemon_stream_close,
             sounds::sound_play,
             sounds::sound_hold,
-            native::events_backlog,
             native::app_ready,
             native::daemon_status,
             native::daemon_restart,
@@ -209,7 +208,6 @@ pub fn run() {
             native::settings_local_load,
             native::settings_local_save,
             native::settings_get_path,
-            native::refresh_ipc_base,
             native::language_get,
             native::language_set,
             native::daemon_target_get,

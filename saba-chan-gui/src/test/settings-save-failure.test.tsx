@@ -1,5 +1,5 @@
 /**
- * GUI 설정 자동 저장과 언어 저장이 실패하면 조용히 넘기지 않고 알린다 (G-U6).
+ * GUI 설정 자동 저장과 언어 저장이 실패하면 조용히 넘기지 않고 알린다.
  */
 import { act, render, screen } from '@testing-library/react';
 import i18n from 'i18next';

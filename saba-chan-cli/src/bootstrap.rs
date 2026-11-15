@@ -27,7 +27,7 @@ fn settings_port() -> u16 {
 
 /// 붙을 데몬 포트: 설정 포트에 데몬이 없는데 실행 중인 데몬이 남긴 기록(`daemon.lock.owner`)의 포트에서
 /// 그 데몬(같은 pid)이 답하면 그쪽이다. 설정에서 포트를 바꾸고 데몬을 아직 다시 켜지 않았을 때 그 데몬을 끄고
-/// 다시 켤 수 있게 한다 (L62)
+/// 다시 켤 수 있게 한다
 pub fn live_port(configured: u16) -> u16 {
     let record = saba_chan_updater_lib::constants::resolve_data_dir().join("daemon.lock.owner");
     let record = std::fs::read_to_string(record).ok().and_then(|t| recorded(&t));
@@ -181,7 +181,7 @@ pub const STOP_TIMEOUT: Duration = Duration::from_secs(40);
 mod port_tests {
     use super::*;
 
-    /// 설정 파일의 포트를 바꾼 뒤에도 옛 포트에서 도는 데몬을 찾는다 (L62).
+    /// 설정 파일의 포트를 바꾼 뒤에도 옛 포트에서 도는 데몬을 찾는다.
     /// 설정 포트에 데몬이 없고, 기록된 포트에서 기록된 그 데몬(pid)이 답할 때만 그쪽으로 붙는다
     #[test]
     fn a_daemon_still_on_its_old_port_is_found_from_its_lock_record() {

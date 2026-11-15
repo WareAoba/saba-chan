@@ -29,7 +29,7 @@ const tabNames = () =>
         .getAllByRole('tab')
         .map((b) => b.textContent);
 
-// 사용자 11-06 #25: 웹 서버 탭을 앱과 같은 이름·순서로, 모듈이 지원하는 것만
+// 웹 서버 탭을 앱과 같은 이름·순서로, 모듈이 지원하는 것만
 describe('웹 서버 탭', () => {
     beforeAll(() => initI18n('en'));
     beforeEach(() => useData.setState({ modules: asModules([minecraft]), modulesLoaded: true }));
@@ -69,7 +69,7 @@ describe('웹 서버 탭', () => {
     });
 });
 
-// 사용자 11-06 #24: 정보 탭에 날것 값(exit 0, stdin)을 보이지 않는다. 인스턴스 ID는 그대로 보인다
+// 정보 탭에 날것 값(exit 0, stdin)을 보이지 않는다. 인스턴스 ID는 그대로 보인다
 describe('웹 정보 탭', () => {
     beforeAll(() => initI18n('en'));
 
@@ -79,14 +79,14 @@ describe('웹 정보 탭', () => {
         await act(async () => render(<InfoPanel api={api} server={server} moduleData={minecraft as never} />));
         const text = document.body.textContent || '';
         expect(text).toContain('abc-123');
-        expect(text).not.toContain('Exit code 3'); // 최근 종료 기록은 뺐다 (사용자 지정 2026-11-08)
+        expect(text).not.toContain('Exit code 3'); // 최근 종료 기록은 뺐다
         expect(text).not.toMatch(/exit 0|exit 3/);
         expect(text).not.toContain('—');
         const more = screen.getByText('Details').closest('details') as HTMLElement;
         expect(within(more).getByText('STDIN')).toBeTruthy();
     });
 
-    // 사용자 11-12: 시작·정지가 클 필요도, 다시 시작이 글자 단추일 이유도, … 메뉴도 없다 (앱 상세 머리처럼)
+    // 시작·정지가 클 필요도, 다시 시작이 글자 단추일 이유도, … 메뉴도 없다 (앱 상세 머리처럼)
     it('머리 오른쪽에 다시 시작 아이콘과 정지 단추만 두고 … 메뉴는 없다', async () => {
         const server = asServer({ id: 's1', name: 'MC', module: 'minecraft', status: 'running' });
         await act(async () => render(<ServerDetail api={apiWith()} server={server} />));

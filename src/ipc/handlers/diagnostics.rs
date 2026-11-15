@@ -1,4 +1,4 @@
-//! 데몬 상태 진단 (A6). 인증 실패·포트 충돌·토큰 불일치를 사용자가 알아볼 수 있게
+//! 데몬 상태 진단. 인증 실패·포트 충돌·토큰 불일치를 사용자가 알아볼 수 있게
 //! 데이터 경로, 토큰 파일, 익스텐션·모듈 상태, 최근 경고·오류를 한 번에 돌려준다.
 
 use axum::{extract::State, response::IntoResponse, Json};
@@ -68,7 +68,7 @@ pub struct AuditQuery {
     pub until: Option<u64>,
 }
 
-/// GET /api/audit?limit=&instance=&since=&until= — 감사 로그 (A10), 최신이 먼저. 기본 100건, 최대 1000건
+/// GET /api/audit?limit=&instance=&since=&until= — 감사 로그, 최신이 먼저. 기본 100건, 최대 1000건
 pub async fn audit(axum::extract::Query(q): axum::extract::Query<AuditQuery>) -> impl IntoResponse {
     let limit = q.limit.unwrap_or(100).clamp(1, 1000);
     let entries = tokio::task::spawn_blocking(move || {
@@ -119,7 +119,7 @@ pub async fn audit_export(Json(req): Json<AuditExportRequest>) -> axum::response
     }
 }
 
-/// GET /api/onboarding — 처음 쓰는 사람의 다음 할 일 (J1-a). GUI 첫 화면과 CLI가 같은 단계를 보인다.
+/// GET /api/onboarding — 처음 쓰는 사람의 다음 할 일. GUI 첫 화면과 CLI가 같은 단계를 보인다.
 /// 문구는 클라이언트가 단계 `id`로 고른다
 pub async fn onboarding(State(state): State<IPCServer>) -> impl IntoResponse {
     Json(crate::service::onboarding::now(&state).await)

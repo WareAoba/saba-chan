@@ -31,7 +31,7 @@ async function installNew(install: Record<string, unknown>) {
     return vi.mocked(window.showToast!).mock.calls.at(-1)![0];
 }
 
-// 서버 파일이 없을 때 "새로 설치"는 최신 버전을 데몬이 그 인스턴스 설정(서버 종류)으로 고르게 맡긴다 (L23)
+// 서버 파일이 없을 때 "새로 설치"는 최신 버전을 데몬이 그 인스턴스 설정(서버 종류)으로 고르게 맡긴다
 describe('서버 파일이 없을 때 새로 설치', () => {
     it('버전을 묻지 않고 instance_id를 보내며, 데몬이 고른 버전을 그 게임 이름과 알린다', async () => {
         const toast = await installNew({ success: true, version: '1.21.4', install_path: '/srv/a', warning: 'x' });
@@ -43,7 +43,7 @@ describe('서버 파일이 없을 때 새로 설치', () => {
         expect(toast).toContain('Terraria 1.21.4');
     });
 
-    // 데몬의 영어 원문 대신 이유를 현지화해 보인다 (리뷰 343 P3-1)
+    // 데몬의 영어 원문 대신 이유를 현지화해 보인다
     it.each([
         ['instance_busy', /Another task/],
         ['server_running', /Cannot install a version while the server is running/],
@@ -53,7 +53,7 @@ describe('서버 파일이 없을 때 새로 설치', () => {
         expect(toast).toMatch(text);
     });
 
-    // 모듈이 install_server를 구현하지 않으면(functions 목록에 없음) "새로 설치"를 보이지 않는다 (MK1)
+    // 모듈이 install_server를 구현하지 않으면(functions 목록에 없음) "새로 설치"를 보이지 않는다
     it('설치를 구현하지 않은 모듈이면 새로 설치를 보이지 않는다', async () => {
         const modal = await openJarModal([
             { name: 'game', game_name: 'Terraria', functions: ['validate'] },

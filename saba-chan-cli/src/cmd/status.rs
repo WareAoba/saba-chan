@@ -24,14 +24,17 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
         Err(e) => return Err(e),
     };
 
-    let (servers, modules, agent, updates, preflight, onboarding) = tokio::join!(
+    let (servers, modules, agent, updates, preflight, onboarding, notices) = tokio::join!(
         ctx.api.servers(false),
         ctx.api.modules(),
         ctx.api.agent(),
         ctx.api.update_status(),
         ctx.api.preflight(),
-        ctx.api.onboarding()
+        ctx.api.onboarding(),
+        ctx.api.notices()
     );
+    // 알림함의 읽지 않은 수 (예전 데몬에는 알림함이 없다)
+    let unread = notices.ok().and_then(|n| n.get("unread").and_then(Value::as_u64));
     let preflight = preflight.ok();
     let onboarding = onboarding.ok();
     let servers = servers?;
@@ -52,6 +55,7 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
         "updates": updates.as_ref().ok(),
         "preflight": preflight,
         "onboarding": onboarding,
+        "notices_unread": unread,
     });
     ctx.out.data(&v, |_| {
         say!(
@@ -104,6 +108,10 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
         if failed > 0 {
             ctx.out.warn(&t!("status.modules_failed", count = failed));
             ctx.out.hint("saba-chan-cli module list");
+        }
+        if let Some(n) = unread.filter(|n| *n > 0) {
+            ctx.out.note(&t!("notice.unread", count = n));
+            ctx.out.hint("saba-chan-cli notice");
         }
         // 부팅 준비 (게임 모듈이 쓰는 Python 등). 끝나고 문제없으면 말하지 않는다.
         if let Some(p) = &preflight {
@@ -319,7 +327,7 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    /// 켜져 있지만 응답이 없는 서버(H1)를 목록·상태에서도 알 수 있게 (C3)
+    /// 켜져 있지만 응답이 없는 서버를 목록·상태에서도 알 수 있게
     #[test]
     fn an_unresponsive_server_is_marked() {
         crate::i18n::init("ko");

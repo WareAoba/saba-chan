@@ -15,7 +15,7 @@ use super::{crash, players, ready};
 /// 인스턴스 하나의 런타임 상태
 #[derive(Default)]
 pub(crate) struct InstanceRuntime {
-    /// 데몬이 정지를 보냈고 그 정지를 시킨 쪽. 이 상태로 끝나면 사용자 정지다 (A1)
+    /// 데몬이 정지를 보냈고 그 정지를 시킨 쪽. 이 상태로 끝나면 사용자 정지다
     pub stop_requested: Option<crate::audit::Origin>,
     /// 정지 요청과 시작마다 오르는 실행 세대. 예약된 재시작은 세대가 그대로일 때만 실행한다
     pub run_generation: u64,
@@ -25,7 +25,7 @@ pub(crate) struct InstanceRuntime {
     pub exit_events: Option<VecDeque<crash::ExitEvent>>,
     /// 정지한 때. 이 뒤 잠깐은 auto-detect가 다시 붙지 않는다
     pub stop_cooldown: Option<Instant>,
-    /// 지금 시작 중이다. 시작은 락을 놓고 진행하므로 중복 시작을 이것으로 막는다 (C12, `StartGuard`)
+    /// 지금 시작 중이다. 시작은 락을 놓고 진행하므로 중복 시작을 이것으로 막는다 (`StartGuard`)
     pub starting: bool,
     /// 마지막으로 켠 쪽. 켜진 뒤 곧 끝난 시작 실패(`instance.exit` `start_failed`)에 싣는다
     pub start_origin: Option<crate::audit::Origin>,

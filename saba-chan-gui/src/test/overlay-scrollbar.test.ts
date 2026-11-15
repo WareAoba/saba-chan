@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { installOverlayScrollbars } from '../utils/overlayScrollbar';
 
-// 스크롤바는 포인터를 올릴 때가 아니라 사람이 실제로 스크롤할 때만 뜬다 (사용자 11-07)
+// 스크롤바는 포인터를 올릴 때가 아니라 사람이 실제로 스크롤할 때만 뜬다
 const box = document.createElement('div');
 const thumb = () => document.querySelector('.ovs-y') as HTMLElement;
 
@@ -34,7 +34,7 @@ describe('오버레이 스크롤바', () => {
     });
 });
 
-// 바깥 상자에 잘린 부분에는 손잡이를 그리지 않는다: 다른 요소 위로 뚫고 나오지 않게 (사용자 11-07)
+// 바깥 상자에 잘린 부분에는 손잡이를 그리지 않는다: 다른 요소 위로 뚫고 나오지 않게
 describe('오버레이 스크롤바 자르기', () => {
     it('바깥 상자 밖으로 나간 부분을 잘라 낸다', () => {
         const outer = document.createElement('div');

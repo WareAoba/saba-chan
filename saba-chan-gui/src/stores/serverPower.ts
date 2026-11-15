@@ -81,7 +81,7 @@ export function serverPowerActions(get: () => ServerState, fetchServers: () => P
         });
     };
 
-    // ── startServer ─────────────────────────────────────────
+    // ── startServer ──
     // 데몬이 Windows 예약 범위를 피해 포트를 옮겨 저장했다 (시작·재시작, 성공·실패 모두): 조용히 바뀌지 않게 알린다
     const notifyPortMoved = (result: ApiBody | undefined, srv: Server) => {
         for (const m of Array.isArray(result?.port_moved) ? result.port_moved : []) {
@@ -169,7 +169,7 @@ export function serverPowerActions(get: () => ServerState, fetchServers: () => P
 
                                     setProgressBar({ message: t('servers.progress_installing'), indeterminate: true });
 
-                                    // 최신 버전은 데몬이 이 인스턴스 설정(서버 종류 등)으로 고른다 (L23)
+                                    // 최신 버전은 데몬이 이 인스턴스 설정(서버 종류 등)으로 고른다
                                     const installResult = await window.api.moduleInstallServer(module, {
                                         instance_id: id,
                                         install_dir: installDir,
@@ -340,7 +340,7 @@ export function serverPowerActions(get: () => ServerState, fetchServers: () => P
                 return;
             }
 
-            // ── already_running — 이미 켜져 있다: "시작 완료" 대신 그렇다고만 알린다 (사용자 11-06 #10) ──
+            // ── already_running — 이미 켜져 있다: "시작 완료" 대신 그렇다고만 알린다 ──
             if (outcome.kind === 'alreadyRunning') {
                 revertOptimistic(id);
                 safeShowToast(t('servers.already_running_toast', { name }), 'info', 3000);
@@ -445,7 +445,7 @@ export function serverPowerActions(get: () => ServerState, fetchServers: () => P
         }
     };
 
-    // ── stopServer ──────────────────────────────────────────
+    // ── stopServer ──
     const stopServer = async (id: string) => {
         const srv = get().servers.find((s) => s.id === id);
         const name = srv?.name ?? id;

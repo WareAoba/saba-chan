@@ -2,7 +2,7 @@ import { createContext, type ReactNode, useContext, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 
 /*
- * 서버 추가 창의 화면 틀 (사용자 11-11). 창 껍데기는 공통 Dialog 하나(AddInstanceModal)이고,
+ * 서버 추가 창의 화면 틀. 창 껍데기는 공통 Dialog 하나(AddInstanceModal)이고,
  * 화면마다 다른 제목·설명·그림·바닥 단추는 그 자리에 옮겨 그린다. 그래서 화면을 바꿔도 창이 닫혔다 열리지 않는다.
  * 틀이 없으면(화면 하나만 그리는 시험) 제목·본문·바닥을 차례로 그린다.
  */

@@ -102,7 +102,7 @@ pub(crate) fn settings_rejection(supervisor: &crate::supervisor::Supervisor, ins
         if let Ok(module) = supervisor.module_loader.get_module(&instance.module_name) {
             if let Some(ref settings_meta) = module.metadata.settings {
                 // 부분 변경이므로 보낸 필드만 검증한다
-                // 숨겨진 설정은 required를 보지 않는다 (06 §8.2). 숨김은 저장된 값에 이번 요청을 얹어 계산한다
+                // 숨겨진 설정은 required를 보지 않는다. 숨김은 저장된 값에 이번 요청을 얹어 계산한다
                 let view = serde_json::to_value(instance).unwrap_or_default();
                 let mut hidden = crate::validator::hidden_fields(&settings_meta.fields, |k| settings_obj.get(k).cloned().or_else(|| crate::instance::stored_setting(&view, instance, k)));
                 // 설치된 버전에 없는 설정도 숨긴 설정이다 (이번 요청이 버전을 바꾸면 그 버전으로)
@@ -212,7 +212,7 @@ pub(crate) async fn update(state: &IPCServer, id: &str, mut settings: Value) -> 
     // 설정값 업데이트
     let mut updated = instance.clone();
     let stop_timeout = apply_fields(&mut updated, &settings)?;
-    // 06 §8.2: 켜져 있을 때 값이 바뀐 restart_required 모듈 설정. 데몬은 스스로 재시작하지 않는다
+    // 켜져 있을 때 값이 바뀐 restart_required 모듈 설정. 데몬은 스스로 재시작하지 않는다
     let restart_required = if supervisor.is_running(id).await { changed_restart_settings(&supervisor, instance, &updated, &settings) } else { Vec::new() };
     store_module_settings(&mut updated, &settings, stop_timeout);
 
@@ -237,7 +237,7 @@ pub(crate) async fn update(state: &IPCServer, id: &str, mut settings: Value) -> 
     // 켜 둔 서버의 게임 채팅도 바로 따른다
     crate::supervisor::game_chat::remember(id, &updated_clone.game_chat());
 
-    // 익스텐션 hook에 넘길 값을 챙기고 락을 놓는다. 아래 모듈·익스텐션 호출은 락 밖에서 (C12)
+    // 익스텐션 hook에 넘길 값을 챙기고 락을 놓는다. 아래 모듈·익스텐션 호출은 락 밖에서
     let instance_dir = supervisor.instance_store.instance_dir(id);
     // 모듈의 모든 익스텐션 설정을 범용으로 전달 (특정 익스텐션 이름 참조 없음)
     let module = supervisor.module_loader.get_module(&updated_clone.module_name).ok();
@@ -269,7 +269,7 @@ pub(crate) async fn update(state: &IPCServer, id: &str, mut settings: Value) -> 
     let mut body = json!({ "success": true, "synced": sync_error.is_none(), "restart_required": restart_required, "revision": new_revision });
     if let Some(e) = sync_error {
         body["sync_error"] = e.get("message").or_else(|| e.get("error")).cloned().unwrap_or(Value::Null);
-        // 설정은 이미 저장했다: 게임 파일 동기화 실패의 칸(오류 코드 등)만 덧붙이고 성공 표시는 덮지 않는다 (Codex 리뷰 #550)
+        // 설정은 이미 저장했다: 게임 파일 동기화 실패의 칸(오류 코드 등)만 덧붙이고 성공 표시는 덮지 않는다
         if let (Some(body), Some(fields)) = (body.as_object_mut(), e.as_object()) {
             body.extend(fields.iter().filter(|(k, _)| k.as_str() != "success").map(|(k, v)| (k.clone(), v.clone())));
         }
@@ -409,7 +409,7 @@ fn apply_fields(updated: &mut crate::instance::ServerInstance, settings: &Value)
         }
     }
     // 명단 밖 자동 강퇴는 전용 멤버 모드의 스위치다: 서버 공용이면 끈다. 꺼 두어야 access가 없는 예전 파일(켠 채 저장된 것)과
-    // 가려진다 (`InstanceStore::load_instance_from_dir`의 옮기기, 리뷰 P1)
+    // 가려진다 (`InstanceStore::load_instance_from_dir`의 옮기기)
     if updated.access.is_shared() {
         updated.controllers_only = false;
     }

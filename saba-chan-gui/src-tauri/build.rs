@@ -16,7 +16,6 @@ const COMMANDS: &[&str] = &[
     "settings_local_load",
     "settings_local_save",
     "settings_get_path",
-    "refresh_ipc_base",
     "language_get",
     "language_set",
     "daemon_target_get",
@@ -55,7 +54,6 @@ const COMMANDS: &[&str] = &[
     "overlay_set_scale",
     "sound_play",
     "sound_hold",
-    "events_backlog",
 ];
 
 /// 자리표시 index.html에만 있는 문구

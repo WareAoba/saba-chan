@@ -27,7 +27,7 @@ fn str_list(v: Option<&Value>) -> Vec<String> {
 }
 
 /// 낱말 목록: 쉼표(전각·일본식 포함)로 나누고 사이 공백은 한 칸으로 (데몬 `chat::words::tidy`와 같다).
-/// 띄어 쓴 말은 한 낱말이다 (사용자 11-06 #2)
+/// 띄어 쓴 말은 한 낱말이다
 fn clean_words<'a>(raw: impl IntoIterator<Item = &'a str>) -> Vec<String> {
     raw.into_iter()
         .flat_map(|w| w.split([',', '，', '、', '､']))

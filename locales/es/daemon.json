@@ -315,6 +315,59 @@
       "apiKey": "Clave de API",
       "command": "Comando",
       "settings": "Ajustes"
+    },
+    "notice": {
+      "list": {
+        "title": "Ver avisos",
+        "description": "Muestra la bandeja de avisos que guarda el daemon (caídas, fallos de inicio, resultados de actualización)"
+      },
+      "clear": {
+        "title": "Eliminar todos los avisos",
+        "description": "Vacía la bandeja de avisos"
+      }
     }
+  },
+  "notices": {
+    "main": "Saba-chan",
+    "exit_crash": "Cerrado por fallo",
+    "exit_start_failed": "Error al iniciar",
+    "exit_unknown_exit": "Detenido inesperadamente",
+    "started_external": "Iniciado fuera de Saba-chan",
+    "unresponsive": "Sin respuesta durante {{minutes}} min",
+    "restored": "Restaurado · {{source}}",
+    "restore_failed": "Error al restaurar",
+    "port_conflict": "Detenido: el puerto {{port}} choca con {{existing}}",
+    "reason_memory_limit": "Límite de memoria alcanzado ({{mb}} MiB)",
+    "reason_exit_code": "Código de salida {{code}}",
+    "reason_signal": "Finalizado por la señal {{signal}}",
+    "reason_crash_file": "Nuevo informe de fallo generado",
+    "reason_ended_early": "Finalizado {{secs}} s después de iniciar",
+    "restart_in": "Reiniciando en {{secs}} s",
+    "note_auto_off": "El reinicio automático está desactivado",
+    "note_gave_up": "Se abandonó tras {{count}} reinicios en 10 minutos",
+    "module_update": "{{name}}: nueva versión {{version}} del módulo {{module}}",
+    "server_update": "{{name}}: nueva versión del servidor de juego. Si no se puede entrar, actualiza el servidor.",
+    "server_update_waiting": "{{name}}: nueva versión del servidor de juego. {{count}} conectado(s); actualización automática en espera",
+    "server_update_waiting_unknown": "{{name}}: nueva versión del servidor de juego. Hay jugadores conectados; actualización automática en espera",
+    "server_update_failed": "{{name}}: error al actualizar el servidor de juego. {{error}}",
+    "update_done": "Actualizado a Saba-chan {{version}}",
+    "update_failed": "{{count}} elementos con error de actualización",
+    "unknown_version": "la nueva versión",
+    "reverted": "Revertido de {{from}} a {{version}}",
+    "revert_incomplete": "Reversión parcial de {{from}} a {{version}} con errores",
+    "source_gui": "App",
+    "source_cli": "CLI",
+    "source_api": "API",
+    "source_discord": "Discord",
+    "source_chatbot": "Saba-chan parlante",
+    "source_schedule": "Programación",
+    "source_daemon": "Daemon",
+    "source_web": "Web de Saba-chan",
+    "source_remote": "PC remoto",
+    "source_mcp": "Agente de IA",
+    "source_agent": "Agente de IA de este PC",
+    "source_restart": "Reinicio automático",
+    "source_idle": "Detención automática sin jugadores",
+    "source_watchdog": "Vigilancia sin respuesta"
   }
 }

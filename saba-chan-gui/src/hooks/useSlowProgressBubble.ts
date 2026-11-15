@@ -13,7 +13,7 @@ const SLOW_PROGRESS_BUBBLE = 'slow-progress';
 
 /**
  * 진행이 5초 넘게 멈춰 보이면 사바쨩 말풍선으로 "멈춘 게 아니에요"를 알린다 (다시 움직이거나 끝나면 내린다).
- * 퍼센트가 있는 진행(받기·설치)만 본다: 서버 시작·정지처럼 끝을 모르는 진행은 서버 상태가 따로 보여 준다 (사용자 11-12)
+ * 퍼센트가 있는 진행(받기·설치)만 본다: 서버 시작·정지처럼 끝을 모르는 진행은 서버 상태가 따로 보여 준다
  */
 export function useSlowProgressBubble(progressBar: ProgressBarConfig | null, text: string) {
     const textRef = useRef(text);

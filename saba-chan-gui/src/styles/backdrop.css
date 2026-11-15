@@ -1,11 +1,11 @@
-/* ════════════════════════════════════════════════════════════════
+/*
  * 창 바탕 반투명 (설정 → 외관, themeManager.applyWindowBackdrop)
  * 셸이 창 뒤에 OS 효과(Mica·아크릴·리퀴드 글래스·KWin 흐림)를 깔았을 때만 data-backdrop="on"이다.
  * 창 바닥 한 겹만 테마 바탕을 고른 진하기·밝기로 덮고, 그 위의 큰 판(목록·상세·상단바)은 비워 겹쳐 진해지지 않게 한다.
  * 카드·버튼·입력칸은 유리 재질이 된다: 면 토큰(tokens.css 재질 층)을 단단한 색의 비치는 섞임으로 바꾸고,
  * 뉴모피즘의 밝은 쪽 그림자는 비치는 바탕 위에서 얼룩이 되므로 빼고 위쪽 빛 테두리와 아래 그림자만 남긴다.
  * 떠 있는 창(모달·팝오버·알림·메뉴)도 같은 유리이고, 뒤의 화면 위에서 읽히도록 뒤를 흐린다
- * ════════════════════════════════════════════════════════════════ */
+ */
 
 :root[data-backdrop="on"] {
     --backdrop-base: color-mix(in oklab, var(--bg-0), var(--backdrop-mix, white) var(--backdrop-mix-amount, 0%));
@@ -38,10 +38,9 @@
     --neu-light: transparent;
 }
 
-/* 떠 있는 창도 같은 70% 유리다 (사용자 11-11). 대신 뒤의 화면을 흐려서 겹친 글자가 섞이지 않게 한다.
+/* 떠 있는 창도 같은 70% 유리다. 대신 뒤의 화면을 흐려서 겹친 글자가 섞이지 않게 한다.
    흐림은 바깥 판 하나에만 준다: 판 안에 또 흐림을 두면 안쪽은 바깥 판만 흐려 겹이 진해진다.
    (test/glass-material.test.ts가 --shadow-float를 쓰는 창이 모두 여기 있는지 본다) */
-:root[data-backdrop="on"] .modal-content,
 :root[data-backdrop="on"] .background-modal-container,
 :root[data-backdrop="on"] .notice-modal-container,
 :root[data-backdrop="on"] .context-menu,

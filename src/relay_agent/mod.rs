@@ -6,7 +6,7 @@
 //!   3. GET  /poll (롱폴링)      — 디스코드에서 온 텍스트 명령 수신
 //!   4. POST /ack               — 받은 명령 id 알림 (릴레이는 ack한 호스트에만 답 없는 명령을 다시 보낸다)
 //!   5. POST /result/:id        — 채팅 처리기(`crate::chat`) 결과 반환
-//!   6. POST /events            — 디스코드 알림 채널(I3)에 띄울 이벤트 (`relay_event`)
+//!   6. POST /events            — 디스코드 알림 채널에 띄울 이벤트 (`relay_event`)
 //!
 //! 인증은 노드 토큰(`config.json` `node.token`, sbn_<id>.<secret>) HMAC 서명입니다.
 //!   7. `web_session` 명령    — 사바쨩 웹 세션이 열렸다: `crate::remote::link`가 릴레이 웹소켓에 붙는다
@@ -55,8 +55,8 @@ const POLL_TIMEOUT: Duration = Duration::from_secs(40); // 릴레이 롱폴 25�
 const RETRY_BASE: Duration = Duration::from_secs(3);
 const RETRY_MAX: Duration = Duration::from_secs(60);
 
-/// 알림 이벤트(I3): 처음 한 건이 오면 같은 순간에 난 것만 이만큼 모아 곧 보내고, 한 번에 이만큼까지 보낸다
-/// (사용자 11-02: 게임 채팅이 디스코드에 늦게 올라간다. 이벤트는 대부분 한 건씩 온다)
+/// 알림 이벤트: 처음 한 건이 오면 같은 순간에 난 것만 이만큼 모아 곧 보내고, 한 번에 이만큼까지 보낸다
+/// (게임 채팅이 디스코드에 늦게 올라간다. 이벤트는 대부분 한 건씩 온다)
 const EVENT_GATHER: Duration = Duration::from_millis(20);
 /// 보내기 사이 최소 간격: relay `/events` 한도(노드당 초당 5건, 분당 300건) 안에 머문다. 이어서 오면 이 간격으로 묶여 간다
 const EVENT_MIN_GAP: Duration = Duration::from_millis(200);
@@ -262,7 +262,7 @@ impl RelayAgent {
                 return;
             }
             tracing::info!("[RelayAgent] started (relay={})", session.base);
-            // 디스코드 길드 설정과 챗봇 설정은 데몬이 원본 (I2): 연결될 때마다 릴레이에 맞춘다. 첫 하트비트 응답을 처리한 뒤에 보낸다:
+            // 디스코드 길드 설정과 챗봇 설정은 데몬이 원본: 연결될 때마다 릴레이에 맞춘다. 첫 하트비트 응답을 처리한 뒤에 보낸다:
             // 꺼져 있는 동안 다시 묶인 길드(`linkedGuilds`)는 릴레이 값을 먼저 받아야 옛 사본으로 덮지 않는다
             crate::service::discord::request_sync();
             tokio::join!(session.heartbeat_loop(), session.poll_loop(), session.events_loop(), session.unsent_loop());

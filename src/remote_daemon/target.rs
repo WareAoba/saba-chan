@@ -1,4 +1,4 @@
-//! 원격 데몬 고르기 (G1): GUI·CLI가 로컬 IPC 요청에 `X-Saba-Target: <hostId 또는 저장한 이름, 퍼센트 인코딩>`을 실으면 저장한 그 원격 데몬에 중계한다.
+//! 원격 데몬 고르기: GUI·CLI가 로컬 IPC 요청에 `X-Saba-Target: <hostId 또는 저장한 이름, 퍼센트 인코딩>`을 실으면 저장한 그 원격 데몬에 중계한다.
 //!
 //! 이 PC의 앱·연결에 관한 경로(`stays_local`)는 고른 데몬과 상관없이 이 데몬이 처리한다.
 //! 머리가 없거나 `local`이면 그대로 이 데몬이 처리한다. 원격 포트(`server`)에는 이 층을 씌우지 않는다 (중계를 잇지 않는다)
@@ -79,7 +79,7 @@ async fn relay_with(file: &ConfigFile, state: &IPCServer, req: Request<Body>, ne
         Ok(h) => h,
         Err(code) => return peer::error(if code == "remote_ambiguous" { StatusCode::CONFLICT } else { StatusCode::NOT_FOUND }, code),
     };
-    let relay = server::RelaySource::Configured(state.clone()).target().await;
+    let relay = server::relay_target(state).await;
     // 이 층은 감사 출처 층(`audit::layer`) 바깥이라 출처를 여기서 정한다 (`audit::layer`와 같이). 중계한 조작을 이 PC 감사 로그에 남길 때 쓴다
     let origin = req.extensions().get::<crate::audit::Origin>().cloned().unwrap_or_else(|| crate::audit::Origin::from_headers(req.headers()));
     crate::audit::with_origin(origin, state.remote_daemon.peers.forward(file, relay, &host_id, &path, req, state.shutdown_token.clone())).await

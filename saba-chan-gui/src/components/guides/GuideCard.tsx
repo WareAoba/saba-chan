@@ -85,7 +85,7 @@ function GuideList({ guides, from, onClose }: { guides: GuideItem[]; from: { x: 
 }
 
 /**
- * 가이드 카드 (사용자 11-11 시안 v4): 서버 목록 아래 늘 있는 얇은 "가이드" 카드.
+ * 가이드 카드: 서버 목록 아래 늘 있는 얇은 "가이드" 카드.
  * 누르면 안 끝낸 가이드를 세 개까지 펼치고(진행 중 → new! → 나머지), "더 보기"는 끝낸 것까지 전체 목록.
  */
 export function GuideCard() {
@@ -116,7 +116,7 @@ export function GuideCard() {
                 <span className="guide-dock-label">{t('guides.title')}</span>
                 <Icon name="chevronUp" size="xs" />
             </button>
-            {/* 접혀도 그려 두고 높이만 접는다: 펼치고 접는 움직임 (사용자 11-13) */}
+            {/* 접혀도 그려 두고 높이만 접는다: 펼치고 접는 움직임 */}
             <div className="guide-dock-wrap" inert={!open}>
                 <div className="guide-dock-body">
                     {pending.map((g) => (

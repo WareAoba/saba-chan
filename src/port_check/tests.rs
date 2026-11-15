@@ -216,7 +216,7 @@ async fn a_stopped_server_is_open_when_the_probe_reaches_the_test_listener() {
     std::net::UdpSocket::bind(("127.0.0.1", udp)).expect("udp port released");
 }
 
-/// 공개 주소를 정했으면 릴레이에 실어 보내고, 그 주소가 이 PC를 가리키면 평소처럼 확인한다 (사용자 결정 2026-11-10)
+/// 공개 주소를 정했으면 릴레이에 실어 보내고, 그 주소가 이 PC를 가리키면 평소처럼 확인한다
 #[tokio::test]
 async fn a_public_name_is_sent_and_checked_when_it_points_here() {
     let relay = mock_relay_for(Mode::Deliver, "mc.example.com").await;

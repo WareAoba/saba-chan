@@ -13,7 +13,7 @@ import { failed } from '../../utils/apiResult';
 
 
 /**
- * 디스코드 서버 화면 › 서버 관리 (2026-10-31): 디스코드 명령 /청소·/자동청소·/슬로우·/잠금·/음소거 와 채널 정보 수정,
+ * 디스코드 서버 화면 › 서버 관리: 디스코드 명령 /청소·/자동청소·/슬로우·/잠금·/음소거 와 채널 정보 수정,
  * 사바쨩 채널 배정(예전 "채널" 탭)을 한 화면에서 한다. 앱은 데몬 API 만 부르고, 데몬이 서버쨩에 넘긴다.
  * 채널 상태·음소거: GET/PATCH/POST/PUT /api/relay/node/:guild/moderation… , 배정: GET/PUT /api/relay/node/:guild/channels
  */

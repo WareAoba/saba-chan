@@ -1,5 +1,6 @@
 //! 명령 처리 — 갈래마다 파일 하나
 
+pub mod access;
 pub mod agent;
 pub mod audit;
 pub mod backup;
@@ -17,6 +18,7 @@ pub mod install;
 pub mod mcp;
 pub mod module;
 pub mod monitor;
+pub mod notice;
 pub mod perm;
 pub mod remote;
 pub mod sandbox;
@@ -68,6 +70,7 @@ pub async fn dispatch(ctx: &Ctx, cmd: Cmd) -> Result<()> {
         Cmd::Bot(c) => bot::run(ctx, c).await,
         Cmd::Backup(c) => backup::run(ctx, c).await,
         Cmd::Schedule(c) => schedule::run(ctx, c).await,
+        Cmd::Notice { action } => notice::run(ctx, action).await,
         Cmd::Chatbot(c) => chatbot::run(ctx, c).await,
         Cmd::Update(c) => update::run(ctx, c).await,
         Cmd::Config(c) => config::run(ctx, c).await,
@@ -474,7 +477,7 @@ mod tests {
         assert!(typed("maybe", "boolean").is_err());
     }
 
-    /// 스키마 2 `list`는 문자열 배열로 (쉼표로 나누거나 JSON 배열), `multiline`은 `\\n`을 줄바꿈으로 보낸다 (06 §8.1)
+    /// 스키마 2 `list`는 문자열 배열로 (쉼표로 나누거나 JSON 배열), `multiline`은 `\\n`을 줄바꿈으로 보낸다
     #[test]
     fn list_and_multiline_values_take_their_shape() {
         assert_eq!(typed(" a, b ,,c", "list").unwrap(), json!(["a", "b", "c"]));

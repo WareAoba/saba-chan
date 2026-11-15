@@ -1,4 +1,4 @@
-//! 데몬 이벤트 스트림 (P4): 데몬에서 일어난 일을 GUI·CLI가 폴링 없이 받는다 (`GET /api/events`, SSE)
+//! 데몬 이벤트 스트림: 데몬에서 일어난 일을 GUI·CLI가 폴링 없이 받는다 (`GET /api/events`, SSE)
 //!
 //! 최근 `KEPT`건만 메모리에 두고 파일에는 남기지 않는다. 번호는 데몬이 켜진 뒤 1부터 늘어난다.
 //! 다시 붙는 클라이언트는 마지막 번호를 주고 그 뒤 것을 먼저 받는다. 놓친 건이 있으면
@@ -118,8 +118,9 @@ pub fn bus() -> &'static Bus {
     GLOBAL.get_or_init(Bus::new)
 }
 
-/// 데몬 버스로 한 건 낸다
+/// 데몬 버스로 한 건 낸다. 알림함에 넣을 일이면 알림함에도 (`crate::notices::from_event`)
 pub fn emit(kind: &str, data: Value) {
+    crate::notices::on_event(kind, &data);
     bus().emit(kind, data);
 }
 

@@ -55,7 +55,7 @@ describe('릴레이 상태 확인 수명', () => {
 describe('데몬보다 앱이 먼저 뜬 경우', () => {
     it('처음 설정 읽기에 실패해도 데몬이 뜬 뒤 상태 확인에서 다시 읽어 연결을 이어 간다', async () => {
         window.api.botConfigLoad = vi.fn().mockRejectedValueOnce(new Error('ECONNREFUSED')) as never;
-        await useDiscordStore.getState().loadConfig();
+        await useDiscordStore.getState().loadConfig({ attempts: 1 });
         expect(useDiscordStore.getState().discordCloudHostId).toBe('');
 
         vi.mocked(window.api.botConfigLoad).mockResolvedValue({ cloud: { hostId: 'h1', relayUrl: 'https://r' } });
@@ -73,7 +73,7 @@ describe('늦게 읽은 설정과 그 전에 고친 값', () => {
     it('설정을 읽기 전에 고친 값은 늦게 읽은 값으로 덮지 않고 데몬에 저장한다', async () => {
         window.api.botConfigLoad = vi.fn().mockRejectedValueOnce(new Error('ECONNREFUSED')) as never;
         window.api.botConfigSave = vi.fn().mockResolvedValue({ success: true }) as never;
-        await useDiscordStore.getState().loadConfig();
+        await useDiscordStore.getState().loadConfig({ attempts: 1 });
         useDiscordStore.getState().update({ discordPrefixes: ['!new'] });
 
         vi.mocked(window.api.botConfigLoad).mockResolvedValue({

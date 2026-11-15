@@ -90,7 +90,7 @@ export function PcSettingsDialog(props: PcSettingsDialogProps) {
             open
             onOpenChange={(open) => !open && !busy && props.onClose(false)}
             title={
-                // 제목 자리가 곧 PC 이름 칸이고, 바로 오른쪽 별이 메인 데몬이다 (사용자 11-12)
+                // 제목 자리가 곧 PC 이름 칸이고, 바로 오른쪽 별이 메인 데몬이다
                 <span className="pc-settings-titlerow">
                     {props.onRename ? (
                         <input

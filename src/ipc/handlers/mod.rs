@@ -21,6 +21,7 @@ pub mod discord;
 pub mod words;
 pub mod start_notice;
 pub mod events;
+pub mod notices;
 pub mod migration;
 pub mod storage;
 pub mod diagnostics;

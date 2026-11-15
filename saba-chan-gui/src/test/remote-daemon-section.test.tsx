@@ -32,7 +32,7 @@ const vpsDaemon = { hostId: 'host-b', name: 'vps', label: '김마무(vps)', addr
 
 const cards = () => screen.getByRole('list', { name: 'My PCs' });
 const card = (name: string) => within(cards()).getByText(name).closest('li')!;
-// 카드마다 수정 버튼 하나: 업데이트·지우기는 그 창 안에 있다 (사용자 결정 2026-11-11)
+// 카드마다 수정 버튼 하나: 업데이트·지우기는 그 창 안에 있다
 const openEdit = async (name: string) => {
     await act(async () => fireEvent.click(within(card(name)).getByRole('button', { name: 'Edit' })));
     return screen.getByRole('dialog');
@@ -71,7 +71,7 @@ describe('설정 > 연결: 원격 데몬 (/api/remote/*)', () => {
         expect(within(first).getByText('Listening on port 57480')).toBeInTheDocument();
         // OS 줄은 OS 이름만 (x86_64는 적지 않는다)
         expect(within(first).getByText('Windows', { selector: '.remote-pc-sub' })).toBeInTheDocument();
-        // 이름 줄은 이름이 혼자 쓴다: 상태·OS·판은 그 아래 한 줄 (이름이 잘리지 않게, 사용자 11-13)
+        // 이름 줄은 이름이 혼자 쓴다: 상태·OS·판은 그 아래 한 줄 (이름이 잘리지 않게)
         const meta = first.querySelector('.remote-pc-meta') as HTMLElement;
         expect(within(meta).getByText('Online')).toBeInTheDocument();
         expect(within(meta).getByText('v0.1.13')).toBeInTheDocument();
@@ -307,7 +307,7 @@ describe('설정 > 연결: 원격 데몬 (/api/remote/*)', () => {
         expect(useSettingsStore.getState().daemonView).toBe('unified');
     });
 
-    // 설정은 절 하나 = 카드 하나 (사용자 11-11): 내 PC도 제목·설명·PC 카드·서버 목록 보기가 카드 한 장에 든다 (사용자 11-15)
+    // 설정은 절 하나 = 카드 하나: 내 PC도 제목·설명·PC 카드·서버 목록 보기가 카드 한 장에 든다
     it('내 PC 절은 제목·PC 카드·서버 목록 보기를 카드 한 장에 담는다', async () => {
         vi.mocked(window.api.remoteDaemons).mockResolvedValue({ daemons: [{ hostId: 'host-b', name: '게임 PC', label: '게임 PC', address: 'g', port: 57480 }] });
         await act(async () => render(<RemoteDaemonSection />));
@@ -317,8 +317,8 @@ describe('설정 > 연결: 원격 데몬 (/api/remote/*)', () => {
         expect(within(section).getByRole('combobox', { name: 'Server list' })).toBeInTheDocument();
     });
 
-    // 주소는 내 PC 카드의 게임 서버 주소 줄 한 칸에서 정한다 (PublicAddress, 사용자 결정 2026-11-10): 여기서는 켬·포트만
-    // 켬은 바로 저장한다. 포트는 다 친 뒤 저장 막대로 묻는다 (사용자 11-11: 즉시 저장 + 어쩔 수 없는 것만 아래 막대)
+    // 주소는 내 PC 카드의 게임 서버 주소 줄 한 칸에서 정한다 (PublicAddress): 여기서는 켬·포트만
+    // 켬은 바로 저장한다. 포트는 다 친 뒤 저장 막대로 묻는다 (즉시 저장 + 어쩔 수 없는 것만 아래 막대)
     it('켜면 바로 저장하고 데몬이 준 상태를 보인다', async () => {
         vi.mocked(window.api.remoteSettings).mockResolvedValue({ ...settings, enabled: false, status: { listening: false, published: false } });
         vi.mocked(window.api.remoteSettingsSet).mockResolvedValue({ ...settings });
@@ -389,7 +389,7 @@ describe('설정 > 연결: 원격 데몬 (/api/remote/*)', () => {
         expect(screen.getByRole('alert')).toHaveTextContent('Port in use');
     });
 
-    // 내 PC 카드 개편 뒤 쓸모가 없어진 "이 PC에 붙은 PC" 목록은 뺐다 (사용자 11-12)
+    // 내 PC 카드 개편 뒤 쓸모가 없어진 "이 PC에 붙은 PC" 목록은 뺐다
     it('릴레이에 연결하지 않았으면 안내를 보이고, 이 PC에 붙은 PC 목록은 없다', async () => {
         vi.mocked(window.api.remotePeers).mockResolvedValue({ error: 'relay_not_paired', error_code: 'relay_not_paired' });
         await act(async () => render(<RemoteDaemonSection />));
@@ -397,7 +397,7 @@ describe('설정 > 연결: 원격 데몬 (/api/remote/*)', () => {
         expect(screen.queryByRole('list', { name: 'PCs connected to this one' })).toBeNull();
     });
 
-    // 사용자 11-12: "연결"을 누르면 결과가 뜰 때까지 화면이 멈췄다 (칸의 모든 버튼이 잠겼다)
+    // "연결"을 누르면 결과가 뜰 때까지 화면이 멈췄다 (칸의 모든 버튼이 잠겼다)
     it('한 PC에 연결하는 동안 그 카드만 진행 중이고 다른 PC·켬 스위치는 그대로 쓸 수 있다', async () => {
         vi.mocked(window.api.remotePeers).mockResolvedValue({
             peers: [
@@ -423,7 +423,7 @@ describe('설정 > 연결: 원격 데몬 (/api/remote/*)', () => {
         await act(async () => finish({ hostId: 'host-c', name: '게임 PC', label: '게임 PC' }));
     });
 
-    // 어느 PC에서든 내 PC 이름을 바꾼다. 이름은 서버쨩 한 곳에 있다 (사용자 11-12)
+    // 어느 PC에서든 내 PC 이름을 바꾼다. 이름은 서버쨩 한 곳에 있다
     it('이 PC 카드는 PC 이름에 이 PC 표시를 붙이고, 수정 창에서 바꾼 이름을 데몬에 보낸다', async () => {
         vi.mocked(window.api.remotePeers).mockResolvedValue({ self: { hostId: 'host-me', name: '작업용', label: '작업용' }, peers: [vps] });
         vi.mocked(window.api.remoteDaemons).mockResolvedValue({ daemons: [vpsDaemon], thisName: '작업용' });

@@ -82,7 +82,7 @@ export function notePid(feed: ConsoleFeed, pid: number | null | undefined, rules
 const lineMark = (line: FeedLine) => `${line.timestamp ?? ''}|${line.source ?? ''}|${String(line.content ?? '').trimStart()}`;
 
 /**
- * 디스크 꼬리에서 이미 본 줄 뒤의 것만 (G-C3). 마지막으로 본 실행 줄들(seen)과 겹치는 곳을
+ * 디스크 꼬리에서 이미 본 줄 뒤의 것만. 마지막으로 본 실행 줄들(seen)과 겹치는 곳을
  * 앞에서부터 찾는다: 같은 줄이 되풀이된 로그에서 모호하면 못 본 줄을 버리기보다 다시 보이는 쪽을 고른다.
  * 못 찾으면 다른 기록이라 보고 전부 준다
  */

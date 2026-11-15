@@ -95,9 +95,9 @@ async fn delete_instance_held(state: IPCServer, id: String, keep_settings: bool)
     };
 
     // ── 실행 중이면 먼저 정지 ──
-    // 저장소에서 떼어 내는 것만 락 안에서, 강제 종료 대기는 락 밖에서 (C12)
-    let running_pid = supervisor.tracker.get_pid(&id).ok();
-    let started = supervisor.tracker.get_start_time(&id).ok();
+    // 저장소에서 떼어 내는 것만 락 안에서, 강제 종료 대기는 락 밖에서
+    let running_pid = supervisor.tracker.get_pid(&id);
+    let started = supervisor.tracker.get_start_time(&id);
     let managed = supervisor.managed_store.remove(&id).await;
     let _ = supervisor.tracker.untrack(&id);
     drop(supervisor);
@@ -126,7 +126,7 @@ async fn delete_instance_held(state: IPCServer, id: String, keep_settings: bool)
             if let Some(m) = managed {
                 supervisor.managed_store.insert(&id, m).await;
             }
-            let _ = supervisor.tracker.track_since(&id, pid, started.unwrap_or_default());
+            supervisor.tracker.track_since(&id, pid, started.unwrap_or_default());
             return super::super::error(StatusCode::CONFLICT, "server_running", "The server is still running and could not be stopped");
         }
     }

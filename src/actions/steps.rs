@@ -1,4 +1,4 @@
-//! 여러 단계 계획 (I1): "모듈 설치 → 서버 만들기 → 시작"을 확인 한 번으로
+//! 여러 단계 계획: "모듈 설치 → 서버 만들기 → 시작"을 확인 한 번으로
 //!
 //! - 단계 `{id, instance?, input}`. `instance`가 `@N`이면 N번째 단계(1부터)의 `instance.create`가 만들 서버다.
 //!   그런 단계는 고정 액션만 된다(모듈 명령·조회는 서버가 있어야 펼쳐진다).
@@ -176,7 +176,7 @@ fn lock(rec: &Mutex<Record>) -> std::sync::MutexGuard<'_, Record> {
     rec.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// `lane`은 계획을 꺼내기 전에 잡아 둔 자리다: 꺼낸 뒤에 잡다가 409가 나면 계획만 쓰이고 사라진다 (D-F6)
+/// `lane`은 계획을 꺼내기 전에 잡아 둔 자리다: 꺼낸 뒤에 잡다가 409가 나면 계획만 쓰이고 사라진다
 pub(super) async fn run_steps(server: &IPCServer, steps: Vec<Step>, caller: Caller, lane: Option<Lane>) -> Result<Value, ActionError> {
     let lane = match lane {
         Some(lane) => lane,

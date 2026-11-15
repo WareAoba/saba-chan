@@ -16,7 +16,7 @@ fn highlight_rules_carry_background_underline_priority() {
     assert_eq!((rules[1].underline, rules[1].priority, rules[1].background.as_deref()), (true, 5, Some("dim")));
 }
 
-/// 인스턴스 `protocol_mode`는 모듈이 받는 프로토콜만: `auto`·예전 `rcon`·받지 않는 값은 모듈 기본값으로 (F13)
+/// 인스턴스 `protocol_mode`는 모듈이 받는 프로토콜만: `auto`·예전 `rcon`·받지 않는 값은 모듈 기본값으로
 #[test]
 fn protocol_mode_follows_the_module() {
     let meta = |protocols: &str| {
@@ -77,12 +77,6 @@ fn folders_and_files_starting_with_a_dot_are_not_modules() {
 }
 
 #[test]
-fn test_module_loader_creation() {
-    let loader = ModuleLoader::new("./modules");
-    assert_eq!(loader.modules_dir, "./modules");
-}
-
-#[test]
 fn test_discover_modules_empty_dir() {
     let loader = ModuleLoader::new("./nonexistent_modules");
     let modules = loader.discover_modules().unwrap();
@@ -104,19 +98,25 @@ entry = "lifecycle.py"
     assert!(meta.description.is_none());
     assert!(meta.settings.is_none());
     assert!(meta.commands.is_none());
+    assert!(meta.module_aliases.is_empty() && meta.command_aliases.is_empty());
+    assert!(meta.cmd_patterns.is_empty());
+    assert!(meta.dependencies.is_empty());
 }
 
+/// `[module]`의 name·version·entry가 없거나 TOML이 아니면 읽지 않는다. 빠진 키는 에러에 이름이 나온다
 #[test]
-fn test_parse_module_toml_missing_name() {
-    let toml = r#"
-[module]
-version = "1.0.0"
-entry = "lifecycle.py"
-"#;
-    let result = parse_module_toml(toml);
-    assert!(result.is_err());
-    let err_msg = result.unwrap_err().to_string();
-    assert!(err_msg.contains("name"), "Error should mention missing field 'name': {}", err_msg);
+fn test_parse_module_toml_missing_required_keys() {
+    for (missing, toml) in [
+        ("name", "[module]\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n"),
+        ("version", "[module]\nname = \"test-game\"\nentry = \"lifecycle.py\"\n"),
+        ("entry", "[module]\nname = \"test-game\"\nversion = \"1.0.0\"\n"),
+    ] {
+        let err = parse_module_toml(toml).unwrap_err().to_string();
+        assert!(err.contains(missing), "error should mention '{missing}': {err}");
+    }
+    for bad in ["", "this is not [valid toml =!", "[config]\nprocess_name = \"java\"\n"] {
+        assert!(parse_module_toml(bad).is_err(), "{bad:?}");
+    }
 }
 
 #[test]
@@ -207,38 +207,6 @@ custom_unknown_field = "should not cause error"
 }
 
 #[test]
-fn test_parse_module_toml_missing_version() {
-    let toml = r#"
-[module]
-name = "test-game"
-entry = "lifecycle.py"
-"#;
-    let result = parse_module_toml(toml);
-    assert!(result.is_err());
-    let err_msg = result.unwrap_err().to_string();
-    assert!(err_msg.contains("version"), "Error should mention missing 'version': {}", err_msg);
-}
-
-#[test]
-fn test_parse_module_toml_missing_entry() {
-    let toml = r#"
-[module]
-name = "test-game"
-version = "1.0.0"
-"#;
-    let result = parse_module_toml(toml);
-    assert!(result.is_err());
-    let err_msg = result.unwrap_err().to_string();
-    assert!(err_msg.contains("entry"), "Error should mention missing 'entry': {}", err_msg);
-}
-
-#[test]
-fn test_parse_module_toml_empty_string() {
-    let result = parse_module_toml("");
-    assert!(result.is_err(), "Empty TOML should fail");
-}
-
-#[test]
 fn test_parse_module_toml_aliases() {
     let toml = r#"
 [module]
@@ -269,35 +237,6 @@ stop = { aliases = ["정지", "끄기"], description = "Stop the server" }
 }
 
 #[test]
-fn test_parse_module_toml_aliases_empty_by_default() {
-    let toml = r#"
-[module]
-name = "test-game"
-version = "1.0.0"
-entry = "lifecycle.py"
-"#;
-    let meta = parse_module_toml(toml).unwrap();
-    assert!(meta.module_aliases.is_empty());
-    assert!(meta.command_aliases.is_empty());
-}
-
-#[test]
-fn test_parse_module_toml_invalid_toml_syntax() {
-    let result = parse_module_toml("this is not [valid toml =!");
-    assert!(result.is_err(), "Invalid TOML syntax should fail");
-}
-
-#[test]
-fn test_parse_module_toml_no_module_section() {
-    let toml = r#"
-[config]
-process_name = "java"
-"#;
-    let result = parse_module_toml(toml);
-    assert!(result.is_err(), "TOML without [module] section should fail");
-}
-
-#[test]
 fn test_parse_module_toml_protocols_section() {
     let toml = r#"
 [module]
@@ -324,7 +263,7 @@ fn rcon_is_used_only_when_it_is_the_only_protocol_and_needs_a_port() {
     assert!(err.contains("rcon_port"), "{err}");
 }
 
-/// 관리형 시작을 끄면 콘솔 stdin이 없다: stdin과 rcon을 함께 받는 모듈은 그때 RCON이 명령 길이다 (사용자 정의 2026-11-08)
+/// 관리형 시작을 끄면 콘솔 stdin이 없다: stdin과 rcon을 함께 받는 모듈은 그때 RCON이 명령 길이다
 #[test]
 fn stdin_modules_with_rcon_fall_back_to_rcon_without_a_console() {
     let with = |protocols: &str| parse_module_toml(&format!("[module]\nschema_version = 1\nname = \"g\"\nversion = \"1\"\nentry = \"lifecycle.py\"\n[protocols]\n{protocols}\n"));
@@ -390,18 +329,6 @@ common_paths = ["C:\\PZServer"]
     assert!(meta.cmd_patterns.contains(&"ProjectZomboid".to_string()));
 }
 
-#[test]
-fn test_parse_module_toml_cmd_patterns_empty_by_default() {
-    let toml = r#"
-[module]
-name = "test-game"
-version = "1.0.0"
-entry = "lifecycle.py"
-"#;
-    let meta = parse_module_toml(toml).unwrap();
-    assert!(meta.cmd_patterns.is_empty());
-}
-
 // ── 컴포넌트 의존성(dependencies) 테스트 ──
 
 #[test]
@@ -420,18 +347,6 @@ entry = "lifecycle.py"
     assert_eq!(meta.dependencies.len(), 2);
     assert_eq!(meta.dependencies.get("saba-core").unwrap(), ">=0.3.0");
     assert_eq!(meta.dependencies.get("ext-steamcmd").unwrap(), ">=1.0.0");
-}
-
-#[test]
-fn test_parse_module_toml_dependencies_empty_by_default() {
-    let toml = r#"
-[module]
-name = "test-game"
-version = "1.0.0"
-entry = "lifecycle.py"
-"#;
-    let meta = parse_module_toml(toml).unwrap();
-    assert!(meta.dependencies.is_empty());
 }
 
 #[test]
@@ -631,7 +546,7 @@ fn modules_without_schema_version_still_load_with_warnings() {
     assert!(meta.warnings.iter().any(|w| w.contains("schema_version")));
 }
 
-/// 06 §2·§6: players_detail·stop_call_limit은 데몬 몫이다. 같은 이름의 설정은 로드하되 경고한다
+/// players_detail·stop_call_limit은 데몬 몫이다. 같은 이름의 설정은 로드하되 경고한다
 #[test]
 fn settings_named_like_daemon_call_keys_are_warned_about() {
     let meta = parse_module_toml(&format!("{V1}\n[[settings.fields]]\nname = \"players_detail\"\ntype = \"boolean\"\n")).unwrap();
@@ -647,7 +562,7 @@ fn newer_schema_version_is_refused() {
     assert_eq!((failed.error_code.as_deref(), failed.required), (Some("module_schema_unsupported"), Some(3)));
 }
 
-/// MK2 (06 §7): 스키마 2는 스키마 1에 list·multiline 타입과 설정 키를 더한 것이다. 스키마 1에 있으면 로드 실패이고,
+/// 스키마 2는 스키마 1에 list·multiline 타입과 설정 키를 더한 것이다. 스키마 1에 있으면 로드 실패이고,
 /// 실패한 모듈은 `failed[]`에 `module_schema_invalid`와 `problems`로 보인다
 #[test]
 fn schema_v2_adds_setting_types_and_keys_that_schema_v1_refuses() {
@@ -686,7 +601,7 @@ fn schema_type_errors_and_bad_list_defaults_are_schema_problems() {
     }
 }
 
-/// 리뷰 554: 스키마 이전 모듈의 list·multiline은 0.1.8처럼 글자로 다루고, list 프리셋 값도 로드 때 검사한다
+/// 스키마 이전 모듈의 list·multiline은 0.1.8처럼 글자로 다루고, list 프리셋 값도 로드 때 검사한다
 #[test]
 fn pre_schema_list_types_stay_text_and_list_presets_are_checked() {
     let old = format!("{}\n[[settings.fields]]\nname = \"admins\"\ntype = \"list\"\n\n[[settings.fields]]\nname = \"motd\"\ntype = \"multiline\"\n", V1.replace("schema_version = 1\n", ""));
@@ -719,7 +634,7 @@ fn public_declares_the_protocol_of_a_port_field() {
     }
 }
 
-/// D3 (0.1.14-beta.2): REST 접속값은 모듈이 선언한 설정에 있다. 선언이 없으면 `rest_host`·`rest_port` 설정을 본다
+/// REST 접속값은 모듈이 선언한 설정에 있다. 선언이 없으면 `rest_host`·`rest_port` 설정을 본다
 #[test]
 fn rest_connection_values_come_from_the_declared_settings() {
     let fields = "[[settings.fields]]\nname = \"api_port\"\ntype = \"number\"\nport = true\ndefault = 8212\n\n\
@@ -749,7 +664,7 @@ fn rest_connection_values_come_from_the_declared_settings() {
     assert_eq!((console.rest().is_some(), console.rest_port(&inst), console.rest_target_settings().len()), (false, None, 0));
 }
 
-/// D4·A-02·A-07·A-09 (0.1.14-beta.2): 런타임 경로 설정, 진단 로그 파일, 원격 접속 강제 값, 내려받는 크기
+/// 런타임 경로 설정, 진단 로그 파일, 원격 접속 강제 값, 내려받는 크기
 #[test]
 fn runtime_settings_diagnose_files_remote_access_and_download_size_are_declared() {
     let toml = format!(
@@ -792,7 +707,7 @@ fn schema_v1_checks_values() {
     assert!(parse_module_toml(&format!("{V1}\n[protocols]\nsupported = [\"rest\", \"stdin\"]\ndefault = \"rest\"\n")).is_ok());
 }
 
-/// 클라이언트가 그리지 못하는 설정·명령 입력 type은 화면에서 조용히 사라진다: 로드할 때 알린다 (MK2)
+/// 클라이언트가 그리지 못하는 설정·명령 입력 type은 화면에서 조용히 사라진다: 로드할 때 알린다
 #[test]
 fn schema_v1_checks_setting_and_command_input_types() {
     let setting = |ty: &str| format!("{V1}\n[[settings.fields]]\nname = \"motd\"\ntype = \"{ty}\"\n");
@@ -809,7 +724,7 @@ fn schema_v1_checks_setting_and_command_input_types() {
     assert!(parse_module_toml(&setting("textarea").replace("schema_version = 1\n", "")).is_ok());
 }
 
-/// 06 §8.2: visible_when은 같은 모듈의 값 하나짜리 설정을 가리키고, 값은 그 설정 타입에 맞아야 하며, 순환하면 안 된다
+/// visible_when은 같은 모듈의 값 하나짜리 설정을 가리키고, 값은 그 설정 타입에 맞아야 하며, 순환하면 안 된다
 #[test]
 fn visible_when_is_checked_when_the_module_loads() {
     let v2 = V1.replace("schema_version = 1", "schema_version = 2");
@@ -852,7 +767,7 @@ fn schema_v1_reads_names_detection_and_extension_sections() {
     assert_eq!(meta.extensions["backup"]["paths"][0], "world");
 }
 
-/// R39: 준비 문구는 `[extensions.saba-core]`에 둔다 (0.1.8 로더가 거부하지 않는 자리). 틀린 값은 그 값만 빼고 경고다
+/// 준비 문구는 `[extensions.saba-core]`에 둔다 (0.1.8 로더가 거부하지 않는 자리). 틀린 값은 그 값만 빼고 경고다
 /// 테라리아 점검: 갱신마다 새 줄을 쓰는 진행 표시는 모듈이 모양을 선언하면 러너가 단계마다 첫·마지막 줄로 접는다
 #[test]
 fn schema_v1_reads_progress_patterns_from_the_daemon_table() {
@@ -862,7 +777,7 @@ fn schema_v1_reads_progress_patterns_from_the_daemon_table() {
     assert!(parse_module_toml(V1).unwrap().progress_patterns.is_empty());
 }
 
-/// D3·M1: 지원 OS는 `[extensions.saba-core] platforms`에 둔다 (0.1.10 로더가 거부하지 않는 자리). 없으면 막지 않는다
+/// 지원 OS는 `[extensions.saba-core] platforms`에 둔다 (0.1.10 로더가 거부하지 않는 자리). 없으면 막지 않는다
 #[test]
 fn schema_v1_reads_supported_platforms_from_the_daemon_table() {
     let meta = parse_module_toml(&format!("{V1}\n[extensions.saba-core]\nplatforms = ['windows', 'Linux', 'beos']\n")).unwrap();
@@ -1103,7 +1018,7 @@ fn pattern_fragments_stop_growing_at_the_limit() {
     assert!(legacy.warnings.iter().any(|w| w.contains("ready_patterns '{big}'") && w.contains("expand to more than")), "{:?}", legacy.warnings.first());
 }
 
-/// MK8 §8.3: 접속·퇴장 문구도 `[extensions.saba-core]`에 둔다. `(?P<name>…)`이 없거나 정규식이 아니면 그 항목만 버린다
+/// 접속·퇴장 문구도 `[extensions.saba-core]`에 둔다. `(?P<name>…)`이 없거나 정규식이 아니면 그 항목만 버린다
 #[test]
 fn schema_v1_reads_player_patterns_from_the_daemon_table() {
     let table = "[extensions.saba-core]\nplayer_join_patterns = ['(?P<name>\\w+) joined', '(\\w+) joined', '(']\nplayer_leave_patterns = '(?P<name>\\w+) left'\n";
@@ -1370,7 +1285,7 @@ fn module_zip_with_a_link_is_refused() {
     assert!(!dir.path().join(".extracted/linked").exists());
 }
 
-/// 모듈이 더 새 saba-core를 요구하면 로드하지 않고 이유를 남긴다 (M9)
+/// 모듈이 더 새 saba-core를 요구하면 로드하지 않고 이유를 남긴다
 #[test]
 fn module_needing_newer_core_is_refused() {
     let dir = tempfile::tempdir().unwrap();

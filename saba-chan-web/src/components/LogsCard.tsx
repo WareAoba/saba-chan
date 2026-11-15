@@ -35,7 +35,7 @@ function download(fileName: string, content: string) {
 }
 
 /**
- * 지난 로그 (2026-11-03 사용자 지정 시안: 점검 탭 안 카드). 실행 한 번이 한 묶음이다.
+ * 지난 로그 (점검 탭 안 카드). 실행 한 번이 한 묶음이다.
  * 고른 묶음의 끝에서 200줄을 보이고 [더 보기]로 앞을 붙인다. 내보내기는 그 묶음을 .log 파일로 받는다.
  * 데몬 GET /api/instance/:id/logs, /logs/export (웹으로 나가며 PC 경로는 가려진다)
  */

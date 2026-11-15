@@ -9,7 +9,7 @@ import type { Server } from '../stores/useServerStore';
 const server = { id: 'a', name: 'A', module: 'game', status: 'running' } as unknown as Server;
 const port = (p: number, label = 'Game port') => ({ field: 'port', label, port: p, protocols: ['tcp'] });
 
-describe('PC 공개 주소 (사용자 결정 2026-11-10)', () => {
+describe('PC 공개 주소', () => {
     beforeEach(() => {
         window.api = {} as unknown as typeof window.api;
         try {
@@ -130,7 +130,7 @@ describe('인스턴스 접속 주소', () => {
         expect(writeText).toHaveBeenCalledWith('mc.example.com:25565');
     });
 
-    it('공인 IP도 가리기 없이 그대로 보인다 (사용자 11-12). 포트가 여럿이면 줄마다', async () => {
+    it('공인 IP도 가리기 없이 그대로 보인다. 포트가 여럿이면 줄마다', async () => {
         localStorage.setItem('saba.hideServerIp', '1');
         window.api.instanceAddress = vi
             .fn()

@@ -1,5 +1,5 @@
 /**
- * 받는 진행은 묻지 않고 데몬의 `update.progress` 이벤트로 받는다 (F3). 퍼센트는 데몬이 계산한다.
+ * 받는 진행은 묻지 않고 데몬의 `update.progress` 이벤트로 받는다. 퍼센트는 데몬이 계산한다.
  * 업데이트 한 번에 데몬이 구성요소를 차례로 받으면, 막대는 지금 받는 것의 이름과 퍼센트를 보인다.
  */
 import { act, fireEvent, render, waitFor } from '@testing-library/react';

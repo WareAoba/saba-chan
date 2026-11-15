@@ -3,6 +3,9 @@
 use super::*;
 
 pub(super) async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
+    if let Some(parent) = a.branch_of.clone() {
+        return add_branch(ctx, &a, &parent).await;
+    }
     let all = resolve::modules(ctx).await?;
     if all.is_empty() {
         return Err(failed(t!("add.no_modules")));
@@ -140,18 +143,40 @@ pub(super) async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
     // 7-0-a) 만들기 전에 동의하지 않은 약관 안내 (`--accept` 오타, 물을 수 없을 때)
     offer_agreements(ctx, &id, &name, &a.accept).await;
 
+    finish(ctx, &a, &created, &id, &name, &module_name, &display, patch).await
+}
+
+/// 브랜치 서버 (GUI '브랜치 서버 만들기'): 상위 서버의 모듈로 만들고, 설정은 데몬이 만들 때 한 번 옮긴다.
+/// 폴더·월드·포트는 따로 쓴다 (포트는 `--game-port`가 없으면 데몬이 비어 있는 것으로 정한다)
+async fn add_branch(ctx: &Ctx, a: &AddArgs, parent: &str) -> Result<()> {
+    let parent = resolve::server(ctx, Some(parent)).await?;
+    let name = choose_name(ctx, a.name.clone(), &t!("add.branch_name", name = parent.name)).await?;
+    let mut body = json!({ "name": name, "module_name": parent.module, "branch_of": parent.id });
+    if let Some(p) = a.game_port {
+        body["port"] = json!(p);
+    }
+    check_new_server(ctx, &body, None, true).await?;
+    let created = ctx.api.create_instance(body).await?;
+    let id = s(&created, "id").to_string();
+    crate::cmd::print_trust_warnings(ctx, &created);
+    finish(ctx, a, &created, &id, &name, &parent.module, &parent.module, Map::new()).await
+}
+
+/// 만든 뒤: 설치를 따라가고(`--no-wait`면 맡기고), 남은 설정(--set)을 저장하고, `--start`면 켠다
+#[allow(clippy::too_many_arguments)]
+async fn finish(ctx: &Ctx, a: &AddArgs, created: &Value, id: &str, name: &str, module_name: &str, display: &str, patch: Map<String, Value>) -> Result<()> {
     // 8) 설치 진행
     let provisioning = created.get("provisioning").and_then(Value::as_bool) == Some(true);
     if provisioning {
         // 저장할 설정이 남았으면 설치가 끝날 때까지 기다린다 (위에서 --no-wait와 함께 쓰는 것은 막았다)
         if a.no_wait && patch.is_empty() {
-            ctx.out.done(&t!("add.created_installing", name = name), &created);
+            ctx.out.done(&t!("add.created_installing", name = name), created);
             ctx.out.hint(&format!("saba-chan-cli server progress {}", name));
             return Ok(());
         }
-        let result = follow_provision(ctx, &name, true).await?;
+        let result = follow_provision(ctx, name, true).await?;
         if let Some(err) = result.get("error").and_then(Value::as_str) {
-            let rolled = ctx.api.dismiss_provision(&name).await.ok();
+            let rolled = ctx.api.dismiss_provision(name).await.ok();
             let removed = rolled.and_then(|r| r.get("rolled_back").and_then(Value::as_bool)) == Some(true);
             return Err(failed(if removed {
                 t!("add.install_failed_removed", error = err)
@@ -164,7 +189,7 @@ pub(super) async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
     // 틀린 값은 위에서 이미 걸렀다. 데몬이 거절하면 서버는 남기고 끝에 실패로 알린다
     let mut settings_error = None;
     if !patch.is_empty() {
-        match ctx.api.update_instance(&id, Value::Object(patch)).await {
+        match ctx.api.update_instance(id, Value::Object(patch)).await {
             Err(e) => {
                 ctx.out.warn(&t!("add.settings_failed", error = e));
                 settings_error = Some(t!("add.created_settings_failed", name = name, error = e));
@@ -172,7 +197,7 @@ pub(super) async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
             Ok(r) => {
                 if let Some(e) = sync_failure(&r) {
                     ctx.out.warn(&e);
-                    settings_error = add_settings_failure(&name, &r);
+                    settings_error = add_settings_failure(name, &r);
                 }
             }
         }
@@ -191,13 +216,13 @@ pub(super) async fn add(ctx: &Ctx, a: AddArgs) -> Result<()> {
         return start(
             ctx,
             StartArgs {
-                server: Some(id),
+                server: Some(id.to_string()),
                 ..Default::default()
             },
         )
         .await;
     }
-    ctx.out.hint(&format!("saba-chan-cli start {}", shell_word(&name)));
+    ctx.out.hint(&format!("saba-chan-cli start {}", shell_word(name)));
     Ok(())
 }
 
@@ -266,10 +291,10 @@ async fn choose_game(ctx: &Ctx, all: &[Value], given: Option<Value>, from: Optio
     })
 }
 
-/// 새 서버 이름: 준 이름, 아니면 묻는다 (기본값은 다른 서버와 겹치지 않는 게임 이름).
+/// 새 서버 이름: 준 이름, 아니면 묻는다 (기본값은 `base`(게임 이름, 브랜치면 "상위 · branch")에서 다른 서버와 겹치지 않는 것).
 /// 대소문자만 다른 이름도 겹침으로 막는다 (데몬은 정확히 같은 이름만 막는다).
 /// 쓸 수 없는 글자는 데몬의 만들기 전 확인(`check_new_server`)이 본다
-async fn choose_name(ctx: &Ctx, given: Option<String>, module_name: &str) -> Result<String> {
+async fn choose_name(ctx: &Ctx, given: Option<String>, base: &str) -> Result<String> {
     let existing: Vec<String> = resolve::servers(ctx)
         .await?
         .into_iter()
@@ -280,7 +305,7 @@ async fn choose_name(ctx: &Ctx, given: Option<String>, module_name: &str) -> Res
         Some(n) => n,
         None => {
             let suggested = (1..)
-                .map(|i| if i == 1 { module_name.to_string() } else { format!("{}-{}", module_name, i) })
+                .map(|i| if i == 1 { base.to_string() } else { format!("{}-{}", base, i) })
                 .find(|n| !taken(n))
                 .unwrap();
             ctx.ask.text(&t!("add.ask_name"), Some(&suggested), false)?.unwrap_or(suggested)
@@ -587,7 +612,7 @@ pub(super) fn provision_lost(p: &Value) -> bool {
 }
 
 /// 항목이 사라졌는데 그 이름의 서버가 설치 중이 아닌 채로 있으면, 끝난 항목을 다른 곳(GUI 카드)에서 다음 폴링 전에 닫은 것이다.
-/// 실패한 새 설치는 닫을 때 지워지므로 남은 서버는 성공으로 본다 (L65). 새로 만든 서버의 설치에만 쓴다
+/// 실패한 새 설치는 닫을 때 지워지므로 남은 서버는 성공으로 본다. 새로 만든 서버의 설치에만 쓴다
 pub(super) fn closed_after_finish(servers: &Value, name: &str) -> bool {
     servers
         .get("servers")

@@ -505,7 +505,7 @@ textarea {
     .set-card-grid > * {
         margin-bottom: 20px;
     }
-    /* 넉넉한 카드 (사용자 2026-11-12: 4K에서 빽빽함). 휴대폰은 그대로 */
+    /* 넉넉한 카드 (4K에서 빽빽함). 휴대폰은 그대로 */
     .set-card {
         padding: 22px 24px;
     }
@@ -558,9 +558,9 @@ textarea {
     color: var(--text-3);
     font-size: 12px;
 }
-/* 안내 문구 속 화면 링크 (ScreenLink, 사용자 11-06 #19). 앱 .screen-link와 같은 모양 */
+/* 안내 문구 속 화면 링크 (ScreenLink). 앱 .screen-link와 같은 모양 */
 .screen-link {
-    /* 글줄 안에 든 링크 (사용자 지적 2026-11-07, 앱과 같다): 글자 기준선을 둘레 글자와 맞추고 줄 높이는 둘레 글을 따른다.
+    /* 글줄 안에 든 링크 (앱과 같다): 글자 기준선을 둘레 글자와 맞추고 줄 높이는 둘레 글을 따른다.
        위아래 여백 2px은 음수 바깥 여백으로 상쇄해 글줄 높이를 늘리지 않는다 */
     display: inline-flex;
     align-items: baseline;
@@ -603,7 +603,7 @@ textarea {
     color: var(--text-2);
     font-size: 12px;
 }
-/* 누르면 여는 칩 (서버 머리의 접속 칩 → 접속자 목록, 사용자 11-06 #25) */
+/* 누르면 여는 칩 (서버 머리의 접속 칩 → 접속자 목록) */
 .pill-button {
     border: 0;
     font: inherit;
@@ -749,7 +749,7 @@ textarea {
 .status-running .status-dot {
     background: var(--ok);
 }
-/* 정지된 서버는 오류처럼 빨갛지 않고 기본 회색 점이다 (사용자 11-06 #26) */
+/* 정지된 서버는 오류처럼 빨갛지 않고 기본 회색 점이다 */
 .status-starting .status-dot,
 .status-stopping .status-dot,
 .status-missing .status-dot {
@@ -844,24 +844,6 @@ textarea {
     gap: 12px;
     padding: 12px 12px 12px 0;
 }
-.card-main {
-    flex: 1;
-    min-width: 0;
-    display: grid;
-    gap: 4px;
-    padding: 4px 0 4px 16px;
-    text-align: left;
-    background: none;
-    border: 0;
-    cursor: pointer;
-}
-.card-title {
-    font-weight: 700;
-    font-size: 16px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
 .card-sub {
     margin: 0;
     color: var(--text-2);
@@ -891,11 +873,11 @@ textarea {
     flex: 1;
     min-width: 0;
 }
-/* 권한 맞바꾸기 (사용자 지정 2026-11-07): 칸마다 그 레벨부터 쓰는 명령 칩, 고르기 중에는 칸 전체가 버튼 */
+/* 권한 맞바꾸기: 칸마다 그 레벨부터 쓰는 명령 칩, 고르기 중에는 칸 전체가 버튼 */
 .row.ladder-row {
     position: relative;
 }
-/* 레벨 편집 카드 (사용자 지정 2026-11-07, 앱과 같다): 카드를 끌어 순서를 바꾸고, 들어갈 자리에 선이 보인다 */
+/* 레벨 편집 카드 (앱과 같다): 카드를 끌어 순서를 바꾸고, 들어갈 자리에 선이 보인다 */
 .rows.ladder .row.ladder-row {
     padding: 12px 16px;
     cursor: grab;
@@ -1500,7 +1482,7 @@ textarea {
     border-radius: var(--r-sm);
     background: var(--inset);
 }
-/* 원마다 칸 (시안 2026-11-12). ⓘ는 칸 오른쪽 위, 펼친 안내는 칸 아래 */
+/* 원마다 칸. ⓘ는 칸 오른쪽 위, 펼친 안내는 칸 아래 */
 .metrics-rings {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
@@ -1727,7 +1709,7 @@ textarea {
 }
 /* biome-ignore-end lint/complexity/noImportantStyles: 위와 같다 */
 
-/* ── 넓은 화면: 탭은 맨 위 줄 (앱 상단바처럼 로고 · 탭 · 상태, 사용자 2026-11-12). 쪽마다 왼쪽 목록은 .side-layout ── */
+/* ── 넓은 화면: 탭은 맨 위 줄 (앱 상단바처럼 로고 · 탭 · 상태). 쪽마다 왼쪽 목록은 .side-layout ── */
 @media (min-width: 768px) {
     .shell {
         padding-bottom: 0;
@@ -1735,7 +1717,7 @@ textarea {
     .topbar-title {
         flex: none;
     }
-    /* 탭 바 모양은 상세 탭(.segments)과 같다: 오목한 판 위에 고른 칸만 솟는다 (사용자 11-12) */
+    /* 탭 바 모양은 상세 탭(.segments)과 같다: 오목한 판 위에 고른 칸만 솟는다 */
     .tabs {
         position: static;
         flex: none;
@@ -1992,7 +1974,7 @@ textarea {
     cursor: pointer;
     touch-action: auto;
 }
-/* 저장하지 않은 변경 (사용자 지정 2026-11-07): 제자리로 돌려 놓으면 사라진다 */
+/* 저장하지 않은 변경: 제자리로 돌려 놓으면 사라진다 */
 .cmd-chip.is-changed {
     border-color: var(--warn);
     box-shadow: 0 0 0 1px var(--warn);
@@ -2528,7 +2510,7 @@ textarea {
 .info-row dt {
     color: var(--text-3);
 }
-/* 개발 용어(통신 방식)는 '자세히' 안에 (사용자 11-06 #24) */
+/* 개발 용어(통신 방식)는 '자세히' 안에 */
 .info-more {
     margin-top: 10px;
 }
@@ -2543,15 +2525,6 @@ textarea {
     text-align: right;
     overflow-wrap: anywhere;
     font-variant-numeric: tabular-nums;
-}
-.exit-crash,
-.exit-start_failed {
-    background: var(--stop-soft);
-    color: var(--stop);
-}
-.exit-unknown_exit {
-    background: var(--warn-soft);
-    color: var(--warn);
 }
 .row-title .pill:first-child {
     margin: 0 8px 0 0;
@@ -2746,7 +2719,7 @@ textarea {
     color: var(--text-3);
 }
 
-/* ── 쪽 안 왼쪽 목록 (앱 server-list-pane 처럼, 사용자 2026-11-12): 고르기 줄·서버 칩이 넓은 화면에서 세로 목록이 된다 ── */
+/* ── 쪽 안 왼쪽 목록 (앱 server-list-pane 처럼): 고르기 줄·서버 칩이 넓은 화면에서 세로 목록이 된다 ── */
 @media (min-width: 1100px) {
     .side-layout {
         display: grid;
@@ -2914,7 +2887,7 @@ textarea {
     line-height: 1;
 }
 
-/* 명령 입력 줄 (사용자 11-06 #4): 칸 모양은 바깥 상자가 맡고, 안의 입력은 색칠한 줄 위에 투명하게 겹친다 */
+/* 명령 입력 줄: 칸 모양은 바깥 상자가 맡고, 안의 입력은 색칠한 줄 위에 투명하게 겹친다 */
 .command-line {
     display: grid;
     gap: 8px;
@@ -2947,7 +2920,7 @@ textarea {
     box-shadow: none;
 }
 
-/* 저장 막대 (인스턴스 권한, 사용자 지정 2026-11-07): 옮긴 레벨은 초안이고 여기서 저장한다 */
+/* 저장 막대 (인스턴스 권한): 옮긴 레벨은 초안이고 여기서 저장한다 */
 .save-bar {
     position: sticky;
     bottom: 12px;
@@ -2967,7 +2940,7 @@ textarea {
     font-size: 13px;
 }
 
-/* ── 멤버 탭 (앱 PeopleView와 같다, 사용자 지정 2026-11-07) ── */
+/* ── 멤버 탭 (앱 PeopleView와 같다) ── */
 .people-bar {
     display: flex;
     flex-wrap: wrap;
@@ -3110,7 +3083,7 @@ textarea {
     align-items: center;
     gap: 6px;
 }
-/* 사람 칩은 얇게, 여백은 사방 고르게 (사용자 지정 2026-11-07) */
+/* 사람 칩은 얇게, 여백은 사방 고르게 */
 .person-chip {
     display: inline-flex;
     align-items: center;

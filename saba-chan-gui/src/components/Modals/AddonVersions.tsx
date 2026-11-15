@@ -11,7 +11,6 @@ import { SabaSpinner } from '../ui/SabaUI';
 import { StatusChip } from '../ui/StatusChip';
 import { QuestionModal } from './Modals';
 
-// ─────────────────────────────────────────────────────────────
 // 모듈·익스텐션 버전 고르기 (사바 스토리지 카드 우클릭 메뉴)와 업데이트 단추
 //
 // 새 버전이 있는지는 데몬의 업데이트 상태(`update.status`)가 알린다. 업데이트 단추는 "자동 업데이트로 돌아가기"와 같이
@@ -19,7 +18,6 @@ import { QuestionModal } from './Modals';
 //
 // 고를 수 있는 버전, 받기·서명 확인·설치, 켜진 서버 기다리기, 고정과 풀기는 모두 데몬이 한다.
 // 여기서는 데몬이 준 목록을 보여 주고 고른 것을 보낸 뒤 답을 알린다.
-// ─────────────────────────────────────────────────────────────
 
 /** 버전을 고를 카드 하나. key는 릴리스 키(module-<이름>·ext-<id>) */
 export interface AddonCard {

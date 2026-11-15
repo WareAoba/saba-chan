@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { SaveBar, SaveBarHost, useHostDraft, usePendingChange } from '../components/ui/SaveBar';
 
-// 바뀐 게 있을 때만 아래에서 올라와 저장·되돌리기를 묻는 막대 (사용자 11-11)
+// 바뀐 게 있을 때만 아래에서 올라와 저장·되돌리기를 묻는 막대
 describe('SaveBar', () => {
     it('바뀐 게 없으면 그리지 않는다', () => {
         render(<SaveBar dirty={false} saving={false} onSave={vi.fn()} onRevert={vi.fn()} />);
@@ -90,7 +90,7 @@ describe('SaveBarHost', () => {
         expect((screen.getByLabelText('port') as HTMLInputElement).value).toBe('a');
     });
 
-    // 리뷰 #9: 칸이 든 탭을 떠나도 저장하지 않은 바뀜은 막대에 남아 저장하거나 되돌릴 수 있다
+    // 칸이 든 탭을 떠나도 저장하지 않은 바뀜은 막대에 남아 저장하거나 되돌릴 수 있다
     it('바뀐 칸이 사라져도 막대가 남고, 저장하면 그 값을 저장하고 내려간다', async () => {
         const onSave = vi.fn();
         const Page = ({ show }: { show: boolean }) => (
@@ -105,7 +105,7 @@ describe('SaveBarHost', () => {
         expect(document.querySelector('.saba-savebar.dirty')).toBeNull();
     });
 
-    // 리뷰 3차 #5: 사라진 칸의 저장이 끝나기 전에 칸이 돌아와 다시 바뀌면, 앞 저장의 끝이 새 바뀜을 지우지 않는다
+    // 사라진 칸의 저장이 끝나기 전에 칸이 돌아와 다시 바뀌면, 앞 저장의 끝이 새 바뀜을 지우지 않는다
     it('앞 저장이 늦게 끝나도 다시 그린 칸의 새 바뀜은 막대에 남는다', async () => {
         let finish = () => {};
         const onSave = vi.fn(() => new Promise<void>((r) => (finish = r)));

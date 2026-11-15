@@ -123,7 +123,7 @@ async fn nonmanaged_stop_http_keeps_the_modules_path_failure() {
         .args(["-c", "import time; time.sleep(60)"])
         .kill_on_drop(true)
         .spawn().unwrap();
-    state.supervisor.read().await.tracker.track(&id, process.id().unwrap()).unwrap();
+    state.supervisor.read().await.tracker.track(&id, process.id().unwrap());
     let response = into_internal(server::stop_instance_handler(Path(id), State(state), saba_core::ipc::handlers::LooseJson(None)).await).await;
     let _ = process.kill().await;
     assert_eq!(response.status, StatusCode::INTERNAL_SERVER_ERROR);

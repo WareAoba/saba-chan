@@ -2,12 +2,18 @@ import {
     ACTIONS,
     COMMAND,
     draftProblems,
+    findCommand,
+    formatRunAt,
     fromDraft,
+    hasNewDanger,
     MAX_EVERY_DAYS,
     MODES,
+    nextRunOf,
     offsetText,
+    otherZone,
     type ScheduledTask,
     type TaskDraft,
+    taskKey,
     toDraft,
     WARNS,
     WEEKDAYS,
@@ -43,17 +49,6 @@ interface ScheduleFailure {
 const isFailure = (info: ScheduleInfo | ScheduleFailure): info is ScheduleFailure => 'error' in info && !!info.error;
 
 const strip = (drafts: TaskDraft[], keep: string) => JSON.stringify({ d: drafts.map(({ key, ...r }) => r), k: keep });
-const findCommand = (commands: ReturnType<typeof useCommands>, name: string) => commands.find((c) => c.name === name);
-// 저장된 작업과 같은지 (키 순서와 무관하게 비교)
-const sameKey = (v: unknown): string =>
-    v && typeof v === 'object'
-        ? Array.isArray(v)
-            ? `[${v.map(sameKey).join(',')}]`
-            : `{${Object.keys(v)
-                  .sort()
-                  .map((k) => `${JSON.stringify(k)}:${sameKey((v as Record<string, unknown>)[k])}`)
-                  .join(',')}}`
-        : JSON.stringify(v);
 
 /** 예약 작업 (GUI 백업·예약 탭과 같은 규칙: @gui/utils/schedule). 시각은 서버 PC의 시계다 */
 export function SchedulePanel({
@@ -137,30 +132,10 @@ export function SchedulePanel({
         }
         return task;
     };
-    const saved = info.schedule.map(sameKey);
-    const newDanger = drafts.some(
-        (d) =>
-            d.enabled &&
-            d.action === COMMAND &&
-            findCommand(commands, d.command)?.risk === 'danger' &&
-            !saved.includes(sameKey(toTask(d))),
-    );
-    const otherZone = info.utcOffset !== null && info.utcOffset !== -new Date().getTimezoneOffset();
-    const fmtRun = (secs: number) =>
-        new Date(secs * 1000).toLocaleString(i18n.language, {
-            month: 'numeric',
-            day: 'numeric',
-            weekday: 'short',
-            hour: '2-digit',
-            minute: '2-digit',
-        });
-    const nextRunOf = (d: TaskDraft): { at?: number; done?: boolean } | null => {
-        const i = saved.indexOf(sameKey(toTask(d)));
-        if (i < 0) return null;
-        const at = info.nextRuns[i];
-        if (typeof at === 'number' && at > Date.now() / 1000) return { at };
-        return d.mode === 'date' ? { done: true } : null;
-    };
+    const saved = info.schedule.map(taskKey);
+    const newDanger = hasNewDanger(drafts, saved, toTask, (name) => findCommand(commands, name)?.risk);
+    const zoneDiffers = otherZone(info.utcOffset);
+    const fmtRun = (secs: number) => formatRunAt(secs, i18n.language);
 
     const patch = (key: string, change: Partial<TaskDraft>) => {
         setArmed(false);
@@ -229,7 +204,7 @@ export function SchedulePanel({
             }
         >
             <p className="hint">{tg('maintenance.schedule_desc')}</p>
-            {otherZone && (
+            {zoneDiffers && (
                 <p className="hint">{tg('maintenance.server_clock', { zone: offsetText(info.utcOffset as number) })}</p>
             )}
             {drafts.length === 0 ? (
@@ -238,7 +213,7 @@ export function SchedulePanel({
                 <ul className="tasks">
                     {drafts.map((d, i) => {
                         const command = d.action === COMMAND ? findCommand(commands, d.command) : null;
-                        const next = d.enabled ? nextRunOf(d) : null;
+                        const next = d.enabled ? nextRunOf(d, saved.indexOf(taskKey(toTask(d))), info.nextRuns) : null;
                         return (
                             <li key={d.key} className={d.enabled ? 'task' : 'task off'}>
                                 <div className="task-head">

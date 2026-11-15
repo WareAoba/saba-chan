@@ -24,7 +24,7 @@ function webScreen(to: string, t: TFunction) {
     return null;
 }
 
-/** 안내 문구 속 화면 링크 (사용자 11-06 #19). 앱 ui/ScreenLink와 같은 모양 */
+/** 안내 문구 속 화면 링크. 앱 ui/ScreenLink와 같은 모양 */
 export function ScreenLink({ to }: { to: string }) {
     const { t } = useTranslation();
     const { t: tg } = useTranslation('gui');

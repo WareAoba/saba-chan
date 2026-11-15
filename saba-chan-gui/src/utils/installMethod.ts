@@ -1,5 +1,5 @@
 /**
- * 설치 방식 (M5): manual / download만 데몬에 내장이고, 그 밖의 이름은 같은 이름의 익스텐션이 맡는다.
+ * 설치 방식: manual / download만 데몬에 내장이고, 그 밖의 이름은 같은 이름의 익스텐션이 맡는다.
  * 데몬은 익스텐션 방식으로 설치한 인스턴스의 extension_data에 `install_method_<방식>` = true와
  * `<방식>_<필드>`를 쓴다 (src/instance/mod.rs `apply_install_extension_data`).
  */

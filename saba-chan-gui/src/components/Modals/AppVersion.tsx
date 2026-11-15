@@ -13,13 +13,11 @@ import { StatusChip } from '../ui/StatusChip';
 import { type Banner, reasonOf, StatusBanner, VersionRadio } from './AddonVersions';
 import { QuestionModal } from './Modals';
 
-// ─────────────────────────────────────────────────────────────
 // 사바쨩 버전 고르기 (사바 스토리지 컴포넌트 탭, 업데이트 설정 맨 아래 줄)
 //
 // 고를 수 있는 버전(지금·이 PC에 남겨 둔 직전·기다리는 새 버전)과 고정 여부는 데몬이 정하고,
 // 되돌리기·자동 업데이트로 돌아가기는 셸 명령이 데몬에 업데이터를 띄우게 한다(상단 바 알약의 지금 다시 시작과 같은 길).
 // 이 PC의 데몬을 볼 때만 보인다: 원격 PC는 데몬이 되돌리기·다시 시작을 막는다.
-// ─────────────────────────────────────────────────────────────
 
 type Choice = 'previous' | 'latest';
 /** 확인을 받는 일: 직전 버전으로 되돌리기 · 고정을 풀고 가장 새 버전으로 · 기다리는 업데이트 적용 */
@@ -38,10 +36,10 @@ export const revertMessage = (r: RevertResult, t: TFunction) =>
 const REVERT_SEEN_KEY = 'saba-chan-revert-announced';
 
 /**
- * 시작할 때 읽은 마지막 결과가 사용자 되돌리기면 한 번만 알린다. 데몬은 이 결과를 확인한 것으로 남기므로(acknowledged)
- * 업데이트 결과 알림과 따로 센다. 알린 결과는 이번 실행 동안 컴포넌트 탭 위에도 보인다
+ * 시작할 때 읽은 마지막 결과가 사용자 되돌리기면 이번 실행 동안 컴포넌트 탭 위에 보인다. 같은 결과는 한 번만
+ * (알림함 알림은 데몬이 넣는다)
  */
-export function announceRevert(r: RevertResult, t: TFunction) {
+export function announceRevert(r: RevertResult) {
     let seen: string | null = null;
     try {
         seen = localStorage.getItem(REVERT_SEEN_KEY);
@@ -54,11 +52,6 @@ export function announceRevert(r: RevertResult, t: TFunction) {
     } catch {
         /* quota exceeded 등 무시 */
     }
-    window.__sabaNotice?.addNotice({
-        message: revertMessage(r, t),
-        type: r.success ? 'success' : 'error',
-        source: 'Updater',
-    });
     useUIStore.getState().setRevertResult(r);
 }
 

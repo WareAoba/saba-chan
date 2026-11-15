@@ -78,7 +78,7 @@ pub enum Published {
     Failed,
 }
 
-/// 주소가 없으면(`None`) 터널로만 붙는 PC로 올린다 (T1)
+/// 주소가 없으면(`None`) 터널로만 붙는 PC로 올린다
 pub async fn publish(target: &Target, address: Option<&str>, port: u16, cert_sha256: &str) -> Published {
     let body = json!({ "address": address, "port": port, "certSha256": cert_sha256 });
     match send(target, reqwest::Method::PUT, "/api/remote/endpoint", Some(&body)).await {
@@ -309,7 +309,7 @@ mod tests {
         Target { base, token: "sbn_host-a.secret".into() }
     }
 
-    /// PC 이름은 어느 PC에서든 바꾼다 (사용자 11-12). 이 PC 이름도 내 PC 목록에서 받아 둔다
+    /// PC 이름은 어느 PC에서든 바꾼다. 이 PC 이름도 내 PC 목록에서 받아 둔다
     #[tokio::test]
     async fn any_of_my_pcs_can_be_renamed_and_this_pcs_name_is_remembered() {
         let target = relay().await;

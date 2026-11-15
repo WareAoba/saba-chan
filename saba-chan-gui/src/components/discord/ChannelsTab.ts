@@ -2,10 +2,10 @@ import type { TFunction } from 'i18next';
 import type { ApiBody } from '../../types/daemon';
 
 /**
- * 채널 배정 도우미 — 배정 화면은 서버 관리 탭(ModerationTab.js)에 있다.
+ * 채널 배정 도우미 — 배정 화면은 서버 관리 탭(ModerationTab.tsx)에 있다.
  */
 
-/** 릴레이 계약: 챗봇·게임 채팅·상황판은 길드당 종류마다 최대 20채널, 음악·알림은 1채널 (2026-11-04) */
+/** 릴레이 계약: 챗봇·게임 채팅·상황판은 길드당 종류마다 최대 20채널, 음악·알림은 1채널 */
 export const CHATBOT_MAX = 20;
 
 /** 여러 채널에 둘 수 있는 일 — 나머지(음악·알림)는 서버마다 한 채널 */

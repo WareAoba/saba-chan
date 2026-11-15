@@ -1,12 +1,10 @@
 //! GUI가 띄운 데몬은 stderr가 GUI의 파이프다. GUI가 먼저 죽어 파이프가 닫혀도 데몬은 로그를 쓰다 죽지 않아야 한다.
 
+mod common;
+
 use std::io::{Read, Write};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
-
-fn free_port() -> u16 {
-    std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port()
-}
 
 /// HTTP/1.1 요청 하나를 보내고 상태 줄을 돌려준다. 연결이 응답 없이 끊기면 None
 fn status_line(port: u16, request: &str) -> Option<String> {
@@ -31,7 +29,7 @@ impl Drop for KillOnDrop {
 #[test]
 fn a_daemon_keeps_serving_after_its_parent_closes_the_log_pipe() {
     let data_dir = tempfile::tempdir().unwrap();
-    let port = free_port();
+    let port = common::free_port();
     let mut daemon = KillOnDrop(Command::new(env!("CARGO_BIN_EXE_saba-core"))
         .arg("--spawned")
         .env("SABA_NO_TRAY", "1")

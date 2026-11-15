@@ -1,6 +1,7 @@
 import type { TFunction } from 'i18next';
 import type { Notice } from '../types/global';
 import { safeShowToast } from './helpers';
+import { removeNotice } from './noticeInbox';
 
 /** 누르면 그 게임 서버를 업데이트하는 알림 (켤 때 안내·자동 업데이트 대기). data: {instanceId, name} */
 export const SERVER_UPDATE_ACTION = 'applyServerUpdate';
@@ -13,7 +14,7 @@ export async function applyServerUpdateFromNotice(notice: Notice, t: TFunction) 
     const data = (notice.data || {}) as { instanceId?: string; name?: string };
     if (!data.instanceId || !window.api?.instanceApplyUpdate) return;
     const name = data.name || data.instanceId;
-    window.__sabaNotice?.removeNotice(notice.id);
+    removeNotice(notice.id);
     const result = await window.api.instanceApplyUpdate(data.instanceId);
     if (!result?.success) {
         safeShowToast(t('events.server_update_apply_failed', { name, error: result?.error || '' }).trim(), 'error', 5000);

@@ -1,5 +1,5 @@
 /**
- * 새 slot 자리 (익스텐션 slot 확장 1단계, 사용자 2026-11-09): 맨 위 탭·아이콘 버튼·설정 탭·서버 추가 카드·트레이 칸.
+ * 새 slot 자리 (익스텐션 slot 확장 1단계): 맨 위 탭·아이콘 버튼·설정 탭·서버 추가 카드·트레이 칸.
  */
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

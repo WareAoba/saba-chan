@@ -6,7 +6,7 @@ import { initI18n } from '../i18n';
 import { useApp } from '../store';
 import { mockApi, mockSession } from './mocks';
 
-// 웹 서버 관리 — /제재·슬로우 기간·자동 청소 매일·지금 청소 (2026-11-04 사용자 OK 시안)
+// 웹 서버 관리 — /제재·슬로우 기간·자동 청소 매일·지금 청소
 const G = '111111111111111111';
 const CH = '222222222222222222';
 const PHOTOS = '222222222222222223';

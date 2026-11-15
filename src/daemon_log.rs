@@ -1,9 +1,4 @@
-//! Daemon Log Buffer — Captures tracing output into a shared ring buffer
-//!
-//! Provides:
-//! - `DaemonLogBuffer`: Thread-safe ring buffer of daemon log entries
-//! - `DaemonLogLayer`: tracing Layer that pipes events into the buffer
-//! - `daemon_terminal_loop`: daemon-only mode console output loop
+//! 데몬 로그 버퍼: tracing 출력을 링버퍼에 담아 API(`GET /api/daemon/console`)로 보이고, 데몬만 켠 모드에서는 서버 콘솔을 터미널에 찍는다
 
 use std::collections::VecDeque;
 use std::fmt;
@@ -17,36 +12,31 @@ use tracing::Subscriber;
 use tracing_subscriber::layer::Context;
 use tracing_subscriber::Layer;
 
-/// Maximum number of log entries retained in the ring buffer.
 const DEFAULT_DAEMON_LOG_CAPACITY: usize = 10_000;
 
 // ─── Types ───────────────────────────────────────────────────
 
-/// A single daemon log entry.
 #[derive(Debug, Clone, Serialize)]
 pub struct DaemonLogEntry {
-    /// Sequential ID for incremental polling (`?since=<id>`)
+    /// 이어 읽기 번호 (`?since=<id>`)
     pub id: u64,
-    /// Unix timestamp in milliseconds
+    /// 유닉스 밀리초
     pub timestamp: u64,
-    /// Log level (info, warn, error, debug, trace)
     pub level: String,
-    /// tracing target (module path)
+    /// tracing target (모듈 경로)
     pub target: String,
-    /// Formatted message
     pub message: String,
 }
 
 /// 데몬 로그에 줄이 생기면 울린다 (`GET /api/daemon/console?wait=`가 기다린다)
 pub(crate) static DAEMON_LOG_CHANGED: tokio::sync::Notify = tokio::sync::Notify::const_new();
 
-/// Shared daemon log buffer accessible from multiple threads.
 #[derive(Clone)]
 pub struct DaemonLogBuffer {
     inner: Arc<Mutex<VecDeque<DaemonLogEntry>>>,
     next_id: Arc<AtomicU64>,
     capacity: usize,
-    /// 버퍼 세대. 번호는 데몬을 켤 때마다 1부터라, 클라이언트는 세대가 바뀌면 이어 읽던 번호를 버린다 (L55)
+    /// 버퍼 세대. 번호는 데몬을 켤 때마다 1부터라, 클라이언트는 세대가 바뀌면 이어 읽던 번호를 버린다
     epoch: u64,
 }
 
@@ -68,14 +58,13 @@ impl DaemonLogBuffer {
         self.epoch
     }
 
-    /// Push a new log entry into the buffer, evicting the oldest if at capacity.
     pub fn push(&self, level: String, target: String, message: String) {
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis() as u64;
 
-        // 번호는 잠금 안에서 매긴다: 버퍼 순서와 번호 순서가 같아야 since 폴링이 줄을 건너뛰지 않는다 (D-S14)
+        // 번호는 잠금 안에서 매긴다: 버퍼 순서와 번호 순서가 같아야 since 폴링이 줄을 건너뛰지 않는다
         let mut buf = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         let entry = DaemonLogEntry {
             id: self.next_id.fetch_add(1, Ordering::Relaxed),
@@ -92,7 +81,7 @@ impl DaemonLogBuffer {
         DAEMON_LOG_CHANGED.notify_waiters();
     }
 
-    /// Retrieve entries with `id >= since`. Returns at most `count` entries.
+    /// `since`부터(포함) 최대 `count`개
     pub fn get_since(&self, since: Option<u64>, count: Option<usize>) -> Vec<DaemonLogEntry> {
         let buf = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         let count = count.unwrap_or(200);
@@ -133,7 +122,6 @@ impl Default for DaemonLogBuffer {
 
 // ─── Tracing Layer ───────────────────────────────────────────
 
-/// tracing Layer that captures formatted events into a `DaemonLogBuffer`.
 pub struct DaemonLogLayer {
     buffer: DaemonLogBuffer,
 }
@@ -144,7 +132,6 @@ impl DaemonLogLayer {
     }
 }
 
-/// Visitor that collects the `message` field from tracing events.
 struct MessageVisitor {
     message: String,
     fields: Vec<(String, String)>,
@@ -186,7 +173,7 @@ impl<S: Subscriber> Layer<S> for DaemonLogLayer {
         let mut visitor = MessageVisitor::new();
         event.record(&mut visitor);
 
-        // Build final message: "message field1=val1 field2=val2"
+        // "message field1=val1 field2=val2"
         let mut msg = visitor.message;
         for (k, v) in &visitor.fields {
             msg.push(' ');
@@ -201,9 +188,7 @@ impl<S: Subscriber> Layer<S> for DaemonLogLayer {
 
 // ─── Daemon-Only Terminal Loop ───────────────────────────────
 
-/// Runs a polling loop that prints process console logs to stderr.
-/// Intended for daemon-only mode where no GUI/CLI is attached.
-///
+/// 데몬만 켠 모드(GUI·CLI 없음)에서 서버 콘솔 줄을 stderr에 찍는다.
 /// 데몬 자체 tracing 로그는 이미 stderr로 출력되므로 여기서는
 /// 관리형 프로세스 콘솔 로그만 표시합니다.
 /// 데몬 로그 버퍼는 커서 동기화용으로만 보관합니다 (API용).
@@ -389,7 +374,7 @@ mod tests {
         assert!(std::fs::metadata(&path).unwrap().len() <= 32, "the file must not grow past the cap");
     }
 
-    // 백로그 L6: 꺼진 인스턴스는 디스크 로그로 답하는데, 그 답은 since를 무시해 같은 200줄을 0.5초마다 다시 찍었다
+    // 꺼진 인스턴스는 디스크 로그로 답하는데, 그 답은 since를 무시해 같은 200줄을 0.5초마다 다시 찍었다
     #[test]
     fn the_terminal_shows_only_live_console_lines() {
         let line = serde_json::json!({ "id": 3, "content": "hi" });
@@ -414,7 +399,7 @@ mod tests {
         assert_eq!(entries[1].level, "warn");
     }
 
-    // D-S14: 번호를 잠금 밖에서 매기면 늦은 번호가 먼저 들어가, since 폴링이 이른 번호 한 줄을 건너뛴다
+    // 번호를 잠금 밖에서 매기면 늦은 번호가 먼저 들어가, since 폴링이 이른 번호 한 줄을 건너뛴다
     #[test]
     fn ids_follow_buffer_order_when_threads_log_at_once() {
         let buf = DaemonLogBuffer::new();

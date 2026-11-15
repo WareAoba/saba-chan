@@ -41,7 +41,7 @@ export function MaintenanceTab({ server, moduleCommands = [] }: { server: Server
                 history: Array.isArray(res?.history) ? res.history : [],
                 // 작업 시각은 서버 PC의 시계다
                 utcOffset: typeof res?.utc_offset_minutes === 'number' ? res.utc_offset_minutes : null,
-                // 저장할 때 다시 보낸다: 그사이 다른 곳에서 바뀌었으면 데몬이 덮어쓰지 않고 거절한다 (L51)
+                // 저장할 때 다시 보낸다: 그사이 다른 곳에서 바뀌었으면 데몬이 덮어쓰지 않고 거절한다
                 revision: res?.revision,
             });
         } catch (err) {

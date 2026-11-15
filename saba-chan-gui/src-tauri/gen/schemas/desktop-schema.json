@@ -447,12 +447,6 @@
           "markdownDescription": "Enables the dialog_save_file command without any pre-configured scope."
         },
         {
-          "description": "Enables the events_backlog command without any pre-configured scope.",
-          "type": "string",
-          "const": "allow-events-backlog",
-          "markdownDescription": "Enables the events_backlog command without any pre-configured scope."
-        },
-        {
           "description": "Enables the language_get command without any pre-configured scope.",
           "type": "string",
           "const": "allow-language-get",
@@ -535,12 +529,6 @@
           "type": "string",
           "const": "allow-overlay-sync",
           "markdownDescription": "Enables the overlay_sync command without any pre-configured scope."
-        },
-        {
-          "description": "Enables the refresh_ipc_base command without any pre-configured scope.",
-          "type": "string",
-          "const": "allow-refresh-ipc-base",
-          "markdownDescription": "Enables the refresh_ipc_base command without any pre-configured scope."
         },
         {
           "description": "Enables the sandbox_consent_allow command without any pre-configured scope.",
@@ -759,12 +747,6 @@
           "markdownDescription": "Denies the dialog_save_file command without any pre-configured scope."
         },
         {
-          "description": "Denies the events_backlog command without any pre-configured scope.",
-          "type": "string",
-          "const": "deny-events-backlog",
-          "markdownDescription": "Denies the events_backlog command without any pre-configured scope."
-        },
-        {
           "description": "Denies the language_get command without any pre-configured scope.",
           "type": "string",
           "const": "deny-language-get",
@@ -847,12 +829,6 @@
           "type": "string",
           "const": "deny-overlay-sync",
           "markdownDescription": "Denies the overlay_sync command without any pre-configured scope."
-        },
-        {
-          "description": "Denies the refresh_ipc_base command without any pre-configured scope.",
-          "type": "string",
-          "const": "deny-refresh-ipc-base",
-          "markdownDescription": "Denies the refresh_ipc_base command without any pre-configured scope."
         },
         {
           "description": "Denies the sandbox_consent_allow command without any pre-configured scope.",

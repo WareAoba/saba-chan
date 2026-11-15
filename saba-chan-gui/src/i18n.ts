@@ -43,7 +43,6 @@ const getInitialLanguage = async () => {
         if (window.api?.languageGet) {
             const savedLanguage = await window.api.languageGet();
             if (savedLanguage && SUPPORTED_LANGUAGES.includes(savedLanguage)) {
-                console.log('Using language from settings:', savedLanguage);
                 // localStorage도 동기화 (캐시 역할)
                 localStorage.setItem('i18nextLng', savedLanguage);
                 return savedLanguage;
@@ -53,7 +52,6 @@ const getInitialLanguage = async () => {
         // 2. 셸 브리지가 없으면 localStorage 폴백 (테스트 등)
         const storedLang = localStorage.getItem('i18nextLng');
         if (storedLang && SUPPORTED_LANGUAGES.includes(storedLang)) {
-            console.log('Using language from localStorage:', storedLang);
             return storedLang;
         }
     } catch (error) {
@@ -62,7 +60,6 @@ const getInitialLanguage = async () => {
 
     // 3. 시스템 언어(데몬·셸과 같은 해석), 맞는 것이 없으면 en
     const matched = pickLanguage([navigator.language]);
-    console.log('Using browser language:', matched);
     return matched;
 };
 

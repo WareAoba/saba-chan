@@ -15,7 +15,7 @@ export function moveItem<T>(list: T[], from: number, to: number): T[] {
 }
 
 /**
- * 서버 순서 바꾸기 (2026-11-03 사용자 지정 시안): 손잡이를 끌거나 ▲▼로 옮기고 저장한다.
+ * 서버 순서 바꾸기: 손잡이를 끌거나 ▲▼로 옮기고 저장한다.
  * 휴대폰은 HTML 끌어 놓기가 없어 pointer 이벤트로 끌고, 손가락이 지나가는 줄 자리로 바로 옮긴다.
  * 저장은 데몬 PUT /api/instances/reorder (GUI 와 같은 순서)
  */

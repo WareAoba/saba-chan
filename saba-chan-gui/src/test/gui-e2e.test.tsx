@@ -24,7 +24,7 @@ vi.mock('../components/servers/ServersPage', async (importOriginal) => {
     return { ...mod, ServersPage };
 });
 
-// ── shared mock factory ─────────────────────────────────────
+// ── shared mock factory ──
 function createApiMock(overrides: Record<string, unknown> = {}): typeof window.api {
     const base = {
         settingsLoad: vi.fn().mockResolvedValue({
@@ -132,7 +132,7 @@ import { useServerStore } from '../stores/useServerStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { useUIStore } from '../stores/useUIStore';
 
-// ── lifecycle helpers ───────────────────────────────────────
+// ── lifecycle helpers ──
 let statusCallback = null as ((s: { step: string; message: string }) => void) | null;
 
 /** 데몬이 꺼져 있던 기동: 셸이 데몬을 띄우고 ready를 보낸다 (`opening`: 셸이 이번에 데몬을 띄웠는가) */
@@ -170,9 +170,7 @@ afterEach(() => {
     vi.restoreAllMocks();
 });
 
-// ════════════════════════════════════════════════════════════
 // 1. 앱 부팅 파이프라인 E2E
-// ════════════════════════════════════════════════════════════
 describe('앱 부팅 파이프라인', () => {
     it('settings → botConfig → modules → servers: 전체 호출 체인', async () => {
         window.api = createApiMock();
@@ -298,9 +296,7 @@ describe('앱 부팅 파이프라인', () => {
     }, 15000);
 });
 
-// ════════════════════════════════════════════════════════════
 // 2. 로딩 스크린 상태 머신
-// ════════════════════════════════════════════════════════════
 describe('로딩 스크린 상태 머신', () => {
     it('daemon 미실행 → onStatusUpdate 수신 → ready → 3.5s 후 메인 UI', async () => {
         window.api = createApiMock({
@@ -591,9 +587,7 @@ describe('로딩 스크린 상태 머신', () => {
     });
 });
 
-// ════════════════════════════════════════════════════════════
 // 3. Discord 릴레이 에이전트 (데몬 내장) E2E
-// ════════════════════════════════════════════════════════════
 describe('Discord 릴레이 에이전트 라이프사이클', () => {
     it('부팅 시 GUI는 에이전트를 직접 시작하지 않는다 (데몬이 노드 토큰으로 자동 시작)', async () => {
         window.api = createApiMock({
@@ -664,9 +658,7 @@ describe('Discord 릴레이 에이전트 라이프사이클', () => {
     });
 });
 
-// ════════════════════════════════════════════════════════════
 // 5. 설정 자동저장 크로스 플로우
-// ════════════════════════════════════════════════════════════
 describe('설정 자동저장 크로스 플로우', () => {
     it('settings 로드 후 settingsSave가 initValue와 중복 저장되지 않음', async () => {
         const settingsSave = vi.fn().mockResolvedValue({ success: true });
@@ -692,9 +684,7 @@ describe('설정 자동저장 크로스 플로우', () => {
     });
 });
 
-// ════════════════════════════════════════════════════════════
 // 6. 서버 목록 ↔ 모듈 매핑 E2E
-// ════════════════════════════════════════════════════════════
 describe('서버 목록 ↔ 모듈 크로스 렌더링', () => {
     it('서버 2개 + 모듈 2개 → 서버 목록 렌더링, 상태 표시', async () => {
         window.api = createApiMock();
@@ -733,9 +723,7 @@ describe('서버 목록 ↔ 모듈 크로스 렌더링', () => {
     });
 });
 
-// ════════════════════════════════════════════════════════════
 // 7. safeShowToast 안전성
-// ════════════════════════════════════════════════════════════
 describe('safeShowToast 안전 호출', () => {
     it('window.showToast 미정의 → 에러 없이 부팅 완료', async () => {
         delete window.showToast;
@@ -754,9 +742,7 @@ describe('safeShowToast 안전 호출', () => {
     });
 });
 
-// ════════════════════════════════════════════════════════════
 // 8. uptime 포맷팅 + 서버 카드 통합
-// ════════════════════════════════════════════════════════════
 describe('uptime 포맷팅 통합', () => {
     it('running 서버의 uptime이 HH:MM:SS 포맷으로 렌더', async () => {
         const startTime = Math.floor(Date.now() / 1000) - 7384; // 2시간 3분 4초 전
@@ -793,9 +779,7 @@ describe('uptime 포맷팅 통합', () => {
     });
 });
 
-// ════════════════════════════════════════════════════════════
 // 9. 모듈 commands 필드 파이프라인
-// ════════════════════════════════════════════════════════════
 describe('모듈 commands 필드 크로스 E2E', () => {
     it('commands가 있는 모듈과 없는 모듈이 동시에 로드되어도 크래시 없음', async () => {
         window.api = createApiMock({
@@ -829,9 +813,7 @@ describe('모듈 commands 필드 크로스 E2E', () => {
     });
 });
 
-// ════════════════════════════════════════════════════════════
 // 11. 풀 부팅 → 서버표시 통합 시나리오
-// ════════════════════════════════════════════════════════════
 describe('풀 라이프사이클 시나리오', () => {
     it('부팅 → 설정 로드 → 서버 2개 표시', async () => {
         window.api = createApiMock({
@@ -863,27 +845,9 @@ describe('풀 라이프사이클 시나리오', () => {
     });
 });
 
-// ════════════════════════════════════════════════════════════
 // 12. 업데이트 알림 이벤트 크로스 E2E
-// ════════════════════════════════════════════════════════════
 describe('업데이트 알림 이벤트', () => {
-    it('onUpdatesAvailable → 이벤트 핸들러 등록됨', async () => {
-        const onUpdatesAvailable = vi.fn();
-        window.api = createApiMock({ onUpdatesAvailable });
-
-        await act(async () => {
-            render(<App />);
-        });
-
-        await waitFor(
-            () => {
-                expect(onUpdatesAvailable).toHaveBeenCalledWith(expect.any(Function));
-            },
-            { timeout: 4000 },
-        );
-    });
-
-    it('onUpdateCompleted → 업데이트 알림을 지우고 결과 알림 하나만 남긴다', async () => {
+    it('onUpdateCompleted → 완료를 토스트로 알린다 (결과 알림은 데몬이 알림함에 넣는다)', async () => {
         let updateHandler = null as ((u: { message: string }) => void) | null;
         window.api = createApiMock({
             onUpdateCompleted: vi.fn((handler) => {
@@ -895,13 +859,6 @@ describe('업데이트 알림 이벤트', () => {
                 result: { success: true, updated_components: ['saba-core'], failed: [] },
             }),
         });
-
-        // notice 시스템 mock
-        window.__sabaNotice = {
-            addNotice: vi.fn(),
-            removeNoticesByAction: vi.fn(),
-            getUnreadCount: vi.fn().mockReturnValue(0),
-        } as unknown as typeof window.__sabaNotice;
 
         await act(async () => {
             render(<App />);
@@ -916,37 +873,30 @@ describe('업데이트 알림 이벤트', () => {
 
         expect(updateHandler).not.toBeNull();
 
+        // Toast 컴포넌트가 건 showToast를 감싸 부른 것을 본다
+        const shown = vi.fn();
+        const origShowToast = window.showToast;
+        window.showToast = ((...args: Parameters<NonNullable<typeof window.showToast>>) => {
+            shown(...args);
+            return origShowToast?.(...args) ?? 0;
+        }) as typeof window.showToast;
+
         // 업데이트 완료 이벤트 발생
         await act(async () => {
             updateHandler!({ message: 'palworld 모듈 업데이트 완료!' });
         });
 
-        // 1.5초 지연 후 토스트 + notice
+        // 1.5초 지연 후 토스트
         await waitFor(
             () => {
-                expect(window.__sabaNotice!.removeNoticesByAction).toHaveBeenCalledWith('Updater', 'openUpdateModal');
-                // 완료 문구는 토스트로만, 알림함에는 같은 액션끼리 합쳐지는 결과 알림만 (앱이 뜰 때 한 번 더 물어도 하나로 합쳐진다)
-                const calls = vi.mocked(window.__sabaNotice!.addNotice).mock.calls.map(([n]) => n);
-                expect(calls.length).toBeGreaterThan(0);
-                for (const n of calls) {
-                    expect(n).toMatchObject({
-                        type: 'success',
-                        source: 'Updater',
-                        action: 'openPatchNotes',
-                        dedup: true,
-                    });
-                }
+                expect(shown).toHaveBeenCalledWith('palworld 모듈 업데이트 완료!', 'success', 5000);
             },
             { timeout: 5000 },
         );
-
-        delete window.__sabaNotice;
     });
 });
 
-// ════════════════════════════════════════════════════════════
 // 8. 게임 서버 업데이트 배지 및 업데이트 버튼
-// ════════════════════════════════════════════════════════════
 describe('게임 서버 업데이트 배지', () => {
     it('SteamCMD 인스턴스에 업데이트가 있으면 배지를 표시하고 실행 버튼 대신 업데이트 버튼을 표시한다', async () => {
         window.api = createApiMock({
@@ -1085,11 +1035,9 @@ describe('게임 서버 업데이트 배지', () => {
     }, 20000);
 });
 
-// ════════════════════════════════════════════════════════════
 // 종료 다이얼로그 E2E
-// ════════════════════════════════════════════════════════════
 describe('종료 다이얼로그', () => {
-    // 사용자 10-27: 창 닫기 버튼 동작 설정 (매번 묻기 / 트레이로 / 모두 끄기)
+    // 창 닫기 버튼 동작 설정 (매번 묻기 / 트레이로 / 모두 끄기)
     it.each([
         ['tray', 'exit-interface'],
         ['quit', 'quit'],

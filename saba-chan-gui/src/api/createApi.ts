@@ -29,10 +29,10 @@ const localDate = (d = new Date()) =>
 /** 서버 시작 요청을 기다리는 시간 (CLI `post_long`과 같다) */
 const START_TIMEOUT_MS = 30 * 60_000;
 
-/** 정지·재시작 요청을 기다리는 시간: 데몬은 인스턴스 stop_timeout(최대 3600초)까지 기다린 뒤 답한다 (CLI와 같다, L74) */
+/** 정지·재시작 요청을 기다리는 시간: 데몬은 인스턴스 stop_timeout(최대 3600초)까지 기다린 뒤 답한다 (CLI와 같다) */
 const STOP_TIMEOUT_MS = 70 * 60_000;
 
-// 오류·상태 문구는 main.js처럼 common 네임스페이스
+// 오류·상태 문구는 common 네임스페이스
 const t = (key: string, vars: Record<string, unknown> = {}) => i18n.t(key, { ns: 'common', ...vars });
 
 /** 대화상자 인자 (Rust `dialog_*`) */
@@ -70,7 +70,7 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
     };
 
     // 경로 고르기. 원격 데몬을 다루는 중이면 이 PC의 대화상자 대신 그 데몬의 폴더에서 고른다:
-    // 이 PC의 경로는 그 PC 데몬에 가면 엉뚱한 곳을 가리킨다 (G1, D2)
+    // 이 PC의 경로는 그 PC 데몬에 가면 엉뚱한 곳을 가리킨다
     const KINDS = { dialog_open_file: 'file', dialog_open_folder: 'folder', dialog_save_file: 'save' } as const;
     const pickLocal = async (cmd: keyof typeof KINDS, args?: DialogArgs): Promise<string | null> => {
         const current = await Promise.resolve(invoke('daemon_target_get')).catch(() => null);
@@ -94,7 +94,7 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         }
     };
 
-    // main.js sendStatus: 렌더러 안에서 바로 나눠 준다 (마지막 초기화 상태로는 기억하지 않는다)
+    // sendStatus: 렌더러 안에서 바로 나눠 준다 (마지막 초기화 상태로는 기억하지 않는다)
     const sendStatus = (step: string, message: string) => hub.dispatch('status:update', { step, message, ts: Date.now() });
 
     const connectionError = (error: DaemonError): ApiBody =>
@@ -211,7 +211,7 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
     const windowSetBackdrop = (config: WindowBackdropConfig) =>
         Promise.resolve(invoke('window_set_backdrop', { config })) as Promise<BackdropSupport>;
 
-    // 본 마지막 포트 충돌 정지 알림 id. 데몬은 읽어도 알림을 지우지 않으므로 그 뒤 것만 받는다 (L50)
+    // 본 마지막 포트 충돌 정지 알림 id. 데몬은 읽어도 알림을 지우지 않으므로 그 뒤 것만 받는다
     let noticesAfter = 0;
 
     const api = {
@@ -525,8 +525,6 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         instanceGet: (id: string) => call('get', instancePath(id)),
         instanceUpdateSettings: async (id: string, settings: ApiBody) => {
             try {
-                // 값에는 비밀번호가 들어갈 수 있어 키 이름만 남긴다
-                console.log(`[Bridge] Updating settings for instance ${id}:`, Object.keys(settings || {}));
                 // 데몬은 잠금을 기다리고 모듈 configure를 돌린 뒤 답한다: CLI(SLOW)처럼 기다린다
                 return (await request('patch', `/api/instance/${encodeURIComponent(id)}`, settings, { timeout: 60000 }))
                     .data;
@@ -898,7 +896,7 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         updaterApply: async (components: string[]) => {
             const body = { components: Array.isArray(components) ? components : [] };
             const data = await call('post', '/api/updates/apply', body, 120000);
-            // 일부만 적용됐으면(success:false) 성공 알림을 띄우지 않는다: 실패는 부른 화면이 보인다 (G-U9)
+            // 일부만 적용됐으면(success:false) 성공 알림을 띄우지 않는다: 실패는 부른 화면이 보인다
             if (!failed(data) && data.applied?.length > 0) {
                 hub.dispatch('updates:completed', {
                     count: data.applied.length,
@@ -1011,7 +1009,7 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         // 못 읽으면 던진다. 기본값을 돌려주면 호출한 쪽이 그 값을 저장해 디스크의 설정을 지운다
         botConfigLoad: async () => (await get('/api/config/bot')).data,
         // 데몬이 bot-config의 원천. `config`는 바뀐 칸만 담은 JSON Merge Patch다 (null은 지우기)
-        // 데몬 본문을 그대로: 권한 키라 저장하지 않은 경로는 `ignored`로 온다 (L61). 실패하면 error_code(invalid_relay_url 등)를 넘긴다
+        // 데몬 본문을 그대로: 권한 키라 저장하지 않은 경로는 `ignored`로 온다. 실패하면 error_code(invalid_relay_url 등)를 넘긴다
         botConfigSave: async (config: ApiBody) =>
             (await call('patch', '/api/config/bot', config || {}, 5000)) || { success: true },
         // 연결 해제: 데몬이 릴레이 에이전트를 멈추고 토큰을 지운다
@@ -1172,7 +1170,7 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         daemonDiagnostics: () => call('get', '/api/diagnostics'),
         // 폴더 위치: 데이터·프로그램·인스턴스·모듈·익스텐션 폴더와 기본값
         systemPaths: () => call('get', '/api/system/paths'),
-        // 고른 데몬 PC의 폴더 보기 (원격 경로 고르기, D2): path가 비면 드라이브·루트. extensions 없으면 폴더만, ['*']면 모든 파일
+        // 고른 데몬 PC의 폴더 보기 (원격 경로 고르기): path가 비면 드라이브·루트. extensions 없으면 폴더만, ['*']면 모든 파일
         systemBrowse: (path: string, extensions?: string[] | null) =>
             call('get', `/api/system/browse${queryString({ path: path || undefined, files: extensions?.length ? extensions.join(',') : undefined })}`),
         // 저장 공간: 내장 디스크와 사바쨩 파일 크기 (데몬이 백그라운드에서 잰다. refresh면 바로 다시 잰다)
@@ -1258,7 +1256,7 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
                 return error.response ? failureBody(error) : connectionError(error);
             }
         },
-        // 다룰 데몬 (G1): 셸이 데몬 요청마다 X-Saba-Target을 싣고 설정 gui.daemonTarget에 저장한다
+        // 다룰 데몬: 셸이 데몬 요청마다 X-Saba-Target을 싣고 설정 gui.daemonTarget에 저장한다
         daemonTarget: () => invoke('daemon_target_get'),
         daemonTargetSet: (target: string | null) => invoke('daemon_target_set', { target: target || null }),
         // 로그인할 때 자동 실행: `{supported, mode: 'off'|'daemon'|'full'}`
@@ -1313,6 +1311,11 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         instanceScheduleGet: (id: string) => call('get', instancePath(id, '/schedule')),
         // 모든 서버의 다가오는 예약 (작업 기록 화면). hours 안에 도는 것만
         schedulesUpcoming: (hours?: number) => call('get', `/api/schedules/upcoming${queryString({ hours })}`),
+        // 알림함 (데몬이 보관, 고른 데몬의 것). 문장은 화면 언어로 받는다
+        noticesList: () => call('get', `/api/notices${queryString({ locale: i18n.language })}`),
+        noticesRead: () => call('post', '/api/notices/read', {}),
+        noticeRemove: (id: number) => call('delete', `/api/notices/${id}`),
+        noticesClear: () => call('delete', '/api/notices'),
         instanceScheduleSave: (id: string, body: ApiBody) => call('put', instancePath(id, '/schedule'), body),
         chatbotGet: () => call('get', '/api/chatbot'),
         chatbotSave: (patch: ApiBody) => call('put', '/api/chatbot', patch),
@@ -1375,7 +1378,6 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         // 화면이 고른 때 내는 효과음 (정상 기동음 'startup'·가이드 열림 'guideOpen'). 셸이 설정 sounds를 따른다
         playSound: (name: 'startup' | 'guideOpen') => send('sound_play', { name }),
         soundHold: (hold: boolean) => send('sound_hold', { hold }),
-        eventsBacklog: () => invoke('events_backlog'),
         launchUninstaller: () => invoke('launch_uninstaller'),
         getAppVersion: () => invoke('app_get_version'),
         getComponentInfo: async () => {

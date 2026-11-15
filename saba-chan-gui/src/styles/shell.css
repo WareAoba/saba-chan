@@ -1,6 +1,6 @@
-/* ════════════════════════════════════════════════════════════════
+/*
  * 새 레이아웃: 상단바 + 페이지 + 서버 목록/상세 (gui-design-reference §3)
- * ════════════════════════════════════════════════════════════════ */
+ */
 
 .App {
     height: 100vh;
@@ -166,7 +166,7 @@
     }
 }
 /* 상단바 오른쪽 아이콘은 각자 알약 칸에, 창 버튼 셋은 알약 홈 하나에 묶어 연결 알약(.conn-rail)과 같은 홈 위에 둔다.
-   두 모드 같은 모양 (사용자 11-13 반투명 시안 B, 11-15 뉴모피즘도 같게). 닫기는 옅은 빨강 알약에 빨간 X */
+   두 모드 같은 모양이다. 닫기는 옅은 빨강 알약에 빨간 X */
 .appbar-status .icon-btn {
     --btn-height: 30px;
     width: 30px;
@@ -739,7 +739,7 @@
     border-radius: var(--r-md);
 }
 
-/* 콘솔 탭: 상세를 칸 높이에 맞춰 콘솔이 남은 자리를 채운다 (칸이 스크롤하지 않게, 사용자 11-14) */
+/* 콘솔 탭: 상세를 칸 높이에 맞춰 콘솔이 남은 자리를 채운다 (칸이 스크롤하지 않게) */
 .server-detail-host:has(> .server-detail--fit) {
     flex: 1 1 0;
     min-height: 0;
@@ -754,7 +754,7 @@
     min-height: 240px;
 }
 
-/* ── 콘솔 (N2: 눌린 화면) ── */
+/* ── 콘솔 (눌린 화면) ── */
 .term {
     display: flex;
     flex-direction: column;
@@ -812,7 +812,7 @@
     text-align: center;
 }
 /* 수준 칩(전체·경고·오류): 콘솔 위에 늘 둔다. 모양은 "자주 쓰는 명령" 칩과 같다 */
-/* 콘솔 상단바: 왼쪽 수준 칩, 오른쪽 PIP 띄우기 (사용자 11-14) */
+/* 콘솔 상단바: 왼쪽 수준 칩, 오른쪽 PIP 띄우기 */
 .term-bar {
     display: flex;
     align-items: flex-start;
@@ -964,7 +964,7 @@
     color: color-mix(in oklab, var(--console-custom-text) 45%, transparent);
     opacity: 1;
 }
-/* PIP로 띄운 동안 메인 창 콘솔 자리: 지난 줄을 흐리게 깔고 가운데에 안내 창 (사용자 11-11 N1) */
+/* PIP로 띄운 동안 메인 창 콘솔 자리: 지난 줄을 흐리게 깔고 가운데에 안내 창 */
 .term-popped {
     position: relative;
 }
@@ -1062,7 +1062,7 @@
     user-select: none;
 }
 
-/* 보낸 명령 줄 (사용자 11-13 시안 B): 줄 전체에 옅은 강조색 띠, 보낸 곳은 오른쪽 끝 알약 */
+/* 보낸 명령 줄: 줄 전체에 옅은 강조색 띠, 보낸 곳은 오른쪽 끝 알약 */
 .console-line.console-sent {
     display: flex;
     align-items: center;
@@ -1847,9 +1847,6 @@ button.activity-line:hover {
 }
 /* 다시 시작해야 적용되는 칸 (module.toml restart_required) */
 /* 저장 막대 위의 다시 시작 안내 (저장 줄 안 첫 줄) */
-.modal-footer:has(> .settings-restart-notice) {
-    flex-wrap: wrap;
-}
 .settings-restart-notice {
     flex: 1 0 100%;
     align-items: center;
@@ -1917,10 +1914,8 @@ button.activity-line:hover {
     vertical-align: middle;
 }
 
-/* ════════════════════════════════════════════════════════════════
-   디스코드 페이지: 왼쪽 메뉴(연결 · 디스코드 서버 · 봇) | 오른쪽 화면
-   서버 페이지의 목록-상세 틀(.server-list-pane / .server-detail-pane)을 그대로 쓴다
-   ════════════════════════════════════════════════════════════════ */
+/* 디스코드 페이지: 왼쪽 메뉴(연결 · 디스코드 서버 · 봇) | 오른쪽 화면
+   서버 페이지의 목록-상세 틀(.server-list-pane / .server-detail-pane)을 그대로 쓴다 */
 .dc-nav-list {
     padding-top: var(--sp-4);
 }
@@ -2485,9 +2480,9 @@ button.activity-line:hover {
     margin: 0;
 }
 
-/* 안내 문구 속 화면 링크 (ui/ScreenLink, 사용자 11-06 #19): 가는 길을 보이고 누르면 그 화면을 연다 */
+/* 안내 문구 속 화면 링크 (ui/ScreenLink): 가는 길을 보이고 누르면 그 화면을 연다 */
 .screen-link {
-    /* 글줄 안에 든 링크 (사용자 지적 2026-11-07): 버튼 기본 높이(--btn-height)를 풀고, 글자 기준선을 둘레 글자와 맞춘다.
+    /* 글줄 안에 든 링크: 버튼 기본 높이(--btn-height)를 풀고, 글자 기준선을 둘레 글자와 맞춘다.
        줄 높이는 둘레 글을 따르고, 위아래 여백은 음수 바깥 여백으로 상쇄해 글줄 높이를 늘리지 않는다 */
     display: inline-flex;
     align-items: baseline;
@@ -2522,7 +2517,7 @@ button.activity-line:hover {
     display: inline-flex;
 }
 
-/* 권한 레벨 (P1) */
+/* 권한 레벨 */
 .dc-field-row {
     display: flex;
     align-items: center;
@@ -2554,7 +2549,7 @@ button.activity-line:hover {
 .dc-owner .input {
     width: 200px;
 }
-/* 권한 탭 (PermissionsTab.js): 사람 = 레벨마다 사람 칩, 명령 = 레벨 계단 위의 명령 칩 */
+/* 권한 탭 (PermissionsTab.tsx): 사람 = 레벨마다 사람 칩, 명령 = 레벨 계단 위의 명령 칩 */
 .dc-perm {
     display: flex;
     flex-direction: column;
@@ -2642,7 +2637,7 @@ button.activity-line:hover {
     align-items: center;
     gap: var(--sp-1);
 }
-/* 사람·명령 칩은 얇게 (사용자 지정 2026-11-07): 앱 버튼 높이(--btn-height)·굵기를 풀고 글자 높이에 맞춘다 */
+/* 사람·명령 칩은 얇게: 앱 버튼 높이(--btn-height)·굵기를 풀고 글자 높이에 맞춘다 */
 .dc-chip,
 .dc-cmd-chip {
     height: auto;
@@ -2654,7 +2649,7 @@ button.activity-line:hover {
     display: inline-flex;
     align-items: center;
     gap: var(--sp-1-5);
-    /* 위·아래·왼쪽·오른쪽 모두 2px씩 키운 값 (사용자 미세조정 2026-11-07) */
+    /* 위·아래·왼쪽·오른쪽 모두 2px씩 키운 값 */
     padding: calc(var(--sp-0-5) + 1px) var(--sp-3) calc(var(--sp-0-5) + 1px) calc(var(--sp-0-5) + 1px);
     border: 1px solid var(--line-strong);
     border-radius: var(--r-pill);
@@ -2671,7 +2666,7 @@ button.activity-line:hover {
     border-color: var(--accent);
     box-shadow: 0 0 0 1px var(--accent);
 }
-/* 소유자 칩: 버튼 칩과 같은 높이·굵기(버튼 기본값을 맞춘다)에 강조 그라데이션 바탕 (사용자 지정 2026-11-07) */
+/* 소유자 칩: 버튼 칩과 같은 높이·굵기(버튼 기본값을 맞춘다)에 강조 그라데이션 바탕 */
 .dc-chip.is-static {
     cursor: default;
 }
@@ -2699,7 +2694,7 @@ button.activity-line:hover {
     margin-top: var(--sp-2);
     max-width: 360px;
 }
-/* 멤버 찾기 (사용자 지정 2026-11-07): 닉네임으로 찾고, 결과 팝업은 10명씩 보이며 끝까지 내리면 더 보인다 */
+/* 멤버 찾기: 닉네임으로 찾고, 결과 팝업은 10명씩 보이며 끝까지 내리면 더 보인다 */
 .dc-member-search {
     position: relative;
     max-width: 360px;
@@ -2954,7 +2949,7 @@ button.activity-line:hover {
     align-items: center;
     gap: var(--sp-1);
 }
-/* 레벨 편집: 위가 높은 레벨. 끌어서 순서를 바꾼다 (LadderTab.js) */
+/* 레벨 편집: 위가 높은 레벨. 끌어서 순서를 바꾼다 (LadderTab.tsx) */
 .dc-ladder {
     display: flex;
     flex-direction: column;
@@ -2968,7 +2963,7 @@ button.activity-line:hover {
     flex-wrap: wrap;
     align-items: center;
     gap: var(--sp-2);
-    /* 세로로 여유 있게 (사용자 지정 2026-11-07) */
+    /* 세로로 여유 있게 */
     min-height: 48px;
     padding: var(--sp-2-5) var(--sp-3);
     border: 1px solid var(--line);
@@ -3038,7 +3033,7 @@ button.activity-line:hover {
 .dc-ladder-rename > span {
     opacity: 0.5;
 }
-/* 권한 맞바꾸기 (사용자 지정 2026-11-07): 칸마다 그 레벨부터 쓰는 명령 칩. 버튼을 누르고 칸 두 개를 고르면 칩이 자리를 바꾼다 */
+/* 권한 맞바꾸기: 칸마다 그 레벨부터 쓰는 명령 칩. 버튼을 누르고 칸 두 개를 고르면 칩이 자리를 바꾼다 */
 .dc-ladder-block {
     position: relative;
     flex-wrap: wrap;
@@ -3075,7 +3070,7 @@ button.activity-line:hover {
 button.dc-ladder-chip.is-fixed {
     cursor: default;
 }
-/* 칩을 끄는 동안: 접힌 칩 칸·계단 칸이 끄는 칩을 잘라 숨기지 않게 (사용자 지적 2026-11-07) */
+/* 칩을 끄는 동안: 접힌 칩 칸·계단 칸이 끄는 칩을 잘라 숨기지 않게 */
 .dc-ladder-chips:has(.is-dragging),
 .dc-stairs-scroll:has(.is-dragging) {
     overflow: visible;
@@ -3085,7 +3080,7 @@ button.dc-ladder-chip.is-fixed {
     z-index: 30;
     opacity: 1;
 }
-/* 저장하지 않은 변경 (사용자 지정 2026-11-07) */
+/* 저장하지 않은 변경 */
 .dc-ladder-chip.is-changed {
     border-color: var(--warn);
     box-shadow: 0 0 0 1px var(--warn);
@@ -3195,7 +3190,7 @@ button.dc-ladder-chip.is-fixed {
 }
 
 /* 단어 칩 입력 */
-/* 낱말 칸: 겉모양은 다른 입력칸(base.css .input)과 같다 (사용자 11-07) */
+/* 낱말 칸: 겉모양은 다른 입력칸(base.css .input)과 같다 */
 .word-input {
     display: flex;
     flex-wrap: wrap;
@@ -3335,7 +3330,7 @@ button.dc-ladder-chip.is-fixed {
 .sticky-head > .segmented {
     align-self: flex-start;
 }
-/* 디스코드 서버·인스턴스 화면: 서버 정보 카드와 탭 바는 칸 위에 붙고 그 아래만 스크롤한다 (사용자 11-07, 11-14).
+/* 디스코드 서버·인스턴스 화면: 서버 정보 카드와 탭 바는 칸 위에 붙고 그 아래만 스크롤한다 (11-14).
    붙었을 때 위쪽 숨 쉴 틈만큼 바탕을 칠해 밑에서 올라오는 내용을 가린다 */
 .sticky-head {
     position: sticky;
@@ -3411,7 +3406,7 @@ button.dc-ladder-chip.is-fixed {
     max-width: 420px;
 }
 
-/* ── 말풍선 (data-tooltip, components/ui/Tooltip.js) ── */
+/* ── 말풍선 (data-tooltip, components/ui/Tooltip.tsx) ── */
 .saba-tooltip {
     position: fixed;
     z-index: 3000;
@@ -3455,7 +3450,7 @@ button.dc-ladder-chip.is-fixed {
     }
 }
 
-/* 실행 환경 준비 (C5): 데몬이 부팅 때 Python을 준비하는 동안만 보인다 */
+/* 실행 환경 준비: 데몬이 부팅 때 Python을 준비하는 동안만 보인다 */
 .appbar-preflight {
     display: inline-flex;
     align-items: center;
@@ -3478,7 +3473,7 @@ button.dc-ladder-chip.is-fixed {
 .appbar-preflight .preflight-track {
     stroke: var(--line);
 }
-/* 링의 호는 강조색 두 색 그라데이션 (PillRing, 사용자 11-13) */
+/* 링의 호는 강조색 두 색 그라데이션 (PillRing) */
 .appbar-preflight .preflight-fill {
     transition: stroke-dashoffset 0.4s ease;
 }
@@ -3722,7 +3717,7 @@ button.appbar-pill:focus-visible {
     font-size: var(--fs-sm);
 }
 .mt-field > span:first-child {
-    /* 필드 이름은 설명이 아니라 설정 이름이다: 토글 줄 이름(dc-list-name)과 같은 글자 (사용자 11-07) */
+    /* 필드 이름은 설명이 아니라 설정 이름이다: 토글 줄 이름(dc-list-name)과 같은 글자 */
     font-size: var(--fs-md);
     font-weight: 600;
     color: var(--text-1);
@@ -3993,7 +3988,7 @@ button.appbar-pill:focus-visible {
     margin-top: var(--sp-2);
 }
 
-/* 디스코드 서버 › 서버 관리 (2026-10-31): 요약 줄, 채널 목록 | 고른 채널 패널, 멤버 음소거 */
+/* 디스코드 서버 › 서버 관리: 요약 줄, 채널 목록 | 고른 채널 패널, 멤버 음소거 */
 .dc-srv-icon.has-img {
     background: transparent;
     border: none;
@@ -4173,7 +4168,7 @@ button.appbar-pill:focus-visible {
     color: var(--text-2);
 }
 
-/* 감사 로그 (A10): 서버별 기록 탭과 상단 탭의 작업 기록 페이지 */
+/* 감사 로그: 서버별 기록 탭과 상단 탭의 작업 기록 페이지 */
 .audit-time {
     flex: none;
     min-width: 9.5em;
@@ -4347,7 +4342,7 @@ button.appbar-pill:focus-visible {
     color: var(--text-3);
 }
 
-/* 명령 팔레트 (Ctrl+K, 사용자 11-10 시안 v5): 유리 검색 막대 + 둥근 카테고리 버튼, 아래 결과(왼쪽 목록 · 오른쪽 미리보기) */
+/* 명령 팔레트 (Ctrl+K): 유리 검색 막대 + 둥근 카테고리 버튼, 아래 결과(왼쪽 목록 · 오른쪽 미리보기) */
 .palette-overlay {
     position: fixed;
     inset: 0;
@@ -4517,7 +4512,7 @@ button.appbar-pill:focus-visible {
     background: var(--ok);
     box-shadow: 0 0 0 3px var(--ok-soft);
 }
-/* 켜는 중은 꺼짐 회색, 끄는 중은 켜짐 초록으로 깜빡인다 (사용자 11-11) */
+/* 켜는 중은 꺼짐 회색, 끄는 중은 켜짐 초록으로 깜빡인다 */
 .palette-dot.stopping {
     background: var(--ok);
 }
@@ -5331,7 +5326,7 @@ button.appbar-pill:focus-visible {
     background: var(--bg-2);
     text-align: left;
 }
-/* 빈 화면에서는 안내를 밀어내지 않고 오른쪽 아래에 떠오르는 카드로 (사용자 11-10) */
+/* 빈 화면에서는 안내를 밀어내지 않고 오른쪽 아래에 떠오르는 카드로 */
 .page-empty {
     position: relative;
 }
@@ -5453,7 +5448,7 @@ button.appbar-pill:focus-visible {
     color: var(--text-3);
 }
 
-/* 가이드 카드 (사용자 11-11 시안 v4): 서버 목록 아래 얇은 카드. 누르면 안 끝낸 가이드 세 개까지 */
+/* 가이드 카드: 서버 목록 아래 얇은 카드. 누르면 안 끝낸 가이드 세 개까지 */
 .guide-dock {
     flex: none;
     margin: auto var(--sp-3) var(--sp-3);
@@ -5490,7 +5485,7 @@ button.appbar-pill:focus-visible {
 .guide-dock.open .guide-dock-head > :last-child {
     transform: rotate(180deg);
 }
-/* 펼침 (사용자 11-13): 높이가 부드럽게 늘고 줄이 차례로 떠오른다 */
+/* 펼침: 높이가 부드럽게 늘고 줄이 차례로 떠오른다 */
 .guide-dock-wrap {
     display: grid;
     grid-template-rows: 0fr;
@@ -5596,7 +5591,7 @@ button.appbar-pill:focus-visible {
     white-space: nowrap;
     text-overflow: ellipsis;
 }
-/* new!: 알약 없이 글자만 (사용자 11-11) */
+/* new!: 알약 없이 글자만 */
 .guide-new {
     margin-left: var(--sp-1-5);
     color: var(--accent);
@@ -5611,7 +5606,7 @@ button.appbar-pill:focus-visible {
     overflow: auto;
     padding: var(--sp-5);
     text-align: left;
-    /* 가이드 카드 자리에서 커지며 열리고 그 자리로 줄어들며 닫힌다 (사용자 11-13 시안 A) */
+    /* 가이드 카드 자리에서 커지며 열리고 그 자리로 줄어들며 닫힌다 */
     animation: guide-sheet-in 0.38s cubic-bezier(0.2, 0.9, 0.25, 1.04) both;
 }
 .modal-overlay.closing .modal.guide-sheet {
@@ -5673,7 +5668,7 @@ button.appbar-pill:focus-visible {
     margin: 0;
 }
 
-/* 화면 강조 (사용자 11-11): 짚을 자리만 밝게, 바깥을 누르면 닫힌다 */
+/* 화면 강조: 짚을 자리만 밝게, 바깥을 누르면 닫힌다 */
 .spotlight {
     position: fixed;
     inset: 0;
@@ -5754,7 +5749,7 @@ button.appbar-pill:focus-visible {
     }
 }
 
-/* 처음 시작하기 가이드 (사용자 11-08~10): 서버가 없을 때 서버 화면 */
+/* 처음 시작하기 가이드: 서버가 없을 때 서버 화면 */
 .guide-page {
     overflow-y: auto;
 }
@@ -6404,7 +6399,7 @@ button.appbar-pill:focus-visible {
     gap: var(--sp-1);
 }
 
-/* 지난 로그 (ServerLogs.js) */
+/* 지난 로그 (ServerLogs.tsx) */
 .server-logs-head {
     display: flex;
     align-items: center;
@@ -6505,11 +6500,11 @@ button.appbar-pill:focus-visible {
     flex: 1;
     min-width: 0;
 }
-/* 숫자 칸의 단추 몫(32px)만큼 넓혀 "비우면 끔" 같은 안내가 잘리지 않게 한다 (사용자 11-07) */
+/* 숫자 칸의 단추 몫(32px)만큼 넓혀 "비우면 끔" 같은 안내가 잘리지 않게 한다 */
 .mt-field .saba-number > .input.mt-num {
     width: 124px;
 }
-/* 디스코드 화면의 짧은 선택 칸은 줄 끝까지 늘이지 않고 가장 긴 선택지 폭에 맞춘다 (사용자 11-07) */
+/* 디스코드 화면의 짧은 선택 칸은 줄 끝까지 늘이지 않고 가장 긴 선택지 폭에 맞춘다 */
 .dc-main :is(.mt-field, .dc-field) > .custom-dropdown:not(.dc-level-select),
 .dc-main .custom-dropdown.setting-select {
     align-self: flex-start;
@@ -6517,7 +6512,7 @@ button.appbar-pill:focus-visible {
     min-width: 140px;
     max-width: 100%;
 }
-/* 선택 칸 하나만 있는 필드는 토글 줄처럼: 이름·설명은 왼쪽에 붙여 쌓고, 선택 칸은 오른쪽 끝에서 두 줄 높이의 가운데 (사용자 11-07).
+/* 선택 칸 하나만 있는 필드는 토글 줄처럼: 이름·설명은 왼쪽에 붙여 쌓고, 선택 칸은 오른쪽 끝에서 두 줄 높이의 가운데.
    선택 칸이 첫 줄만 차지하면 그 높이만큼 이름과 설명 사이가 벌어진다 */
 .dc-main .mt-field:has(> .custom-dropdown:not(.dc-level-select)) {
     display: grid;
@@ -6540,7 +6535,7 @@ button.appbar-pill:focus-visible {
     align-self: center;
 }
 
-/* 서버 상세 머리 아래 접속 주소 (ServerAddress, 사용자 결정 2026-11-10): 친구에게 알려 줄 주소를 크게 */
+/* 서버 상세 머리 아래 접속 주소 (ServerAddress): 친구에게 알려 줄 주소를 크게 */
 .server-address {
     display: flex;
     flex-direction: column;

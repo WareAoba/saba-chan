@@ -20,7 +20,7 @@ import { markDaemonSwitch } from '../utils/opening';
 
 Element.prototype.scrollIntoView = vi.fn();
 
-// ── shared mock factory ─────────────────────────────────────
+// ── shared mock factory ──
 function createApiMock(overrides = {}) {
     const base = {
         settingsLoad: vi.fn().mockResolvedValue({
@@ -72,7 +72,7 @@ function createApiMock(overrides = {}) {
     });
 }
 
-// ── lifecycle helpers ───────────────────────────────────────
+// ── lifecycle helpers ──
 beforeEach(() => {
     vi.clearAllMocks();
     vi.useRealTimers();

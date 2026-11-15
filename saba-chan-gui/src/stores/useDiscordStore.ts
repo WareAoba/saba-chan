@@ -254,8 +254,7 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
     },
 
     loadConfig: async ({ attempts } = {}) => {
-        const isTest = process.env.NODE_ENV === 'test' || 'jest' in globalThis;
-        const maxAttempts = attempts ?? (isTest ? 1 : 5);
+        const maxAttempts = attempts ?? 5;
         const retryDelay = 800;
 
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -298,7 +297,7 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
                 if (attempt === maxAttempts) {
                     console.error('Failed to load bot config after retries:', err);
                 } else {
-                    if (!isTest) console.warn(`[Settings] Bot config load attempt ${attempt} failed, retrying...`);
+                    console.warn(`[Settings] Bot config load attempt ${attempt} failed, retrying...`);
                     await new Promise((r) => setTimeout(r, retryDelay));
                 }
             }
@@ -342,7 +341,7 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
             if (res?.error) {
                 console.error('[Settings] Failed to save bot config:', res.error);
                 set({ _saveErrorCode: res.error_code || null });
-                // 릴레이 주소가 거절되면(R31) 어떤 주소를 쓸 수 있는지 알린다
+                // 릴레이 주소가 거절되면 어떤 주소를 쓸 수 있는지 알린다
                 const invalidUrl = res.error_code === 'invalid_relay_url';
                 safeShowToast(_t(invalidUrl ? 'discord.invalid_relay_url' : 'settings.save_error'), 'error');
                 return false;
@@ -351,7 +350,7 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
                 state,
                 changed.flatMap((k) => BOT_KEYS[k]),
             );
-            // 권한 키는 권한 화면으로만 바뀐다: 데몬이 저장하지 않은 키를 알린다 (L61, CLI와 같게)
+            // 권한 키는 권한 화면으로만 바뀐다: 데몬이 저장하지 않은 키를 알린다 (CLI와 같게)
             if (Array.isArray(res?.ignored) && res.ignored.length > 0) {
                 safeShowToast(_t('discord.permission_keys_ignored'), 'warning', 6000);
                 // 화면이 저장되지 않은 값을 저장된 것처럼 보이지 않게 데몬 값으로 다시 읽는다

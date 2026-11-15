@@ -20,7 +20,7 @@ beforeEach(() => {
     } as unknown as typeof window.api;
 });
 
-// 사용자 요청(2026-10-29): 게임 채팅을 모두 보내거나 감지 단어로 시작하는 것만 보낸다 (데몬 game_chat·game_chat_keyword)
+// 게임 채팅을 모두 보내거나 감지 단어로 시작하는 것만 보낸다 (데몬 game_chat·game_chat_keyword)
 describe('게임 채팅 전달 칸', () => {
     it('저장된 값으로 채우고, 바꾼 칸만 보낸다', async () => {
         const { result } = setup();
@@ -55,7 +55,7 @@ describe('게임 채팅 전달 칸', () => {
     });
 });
 
-// 사용자 지정(2026-11-06): 사바쨩 탭의 "조작 가능한 사람만 접속" (데몬 controllers_only)
+// 사바쨩 탭의 "조작 가능한 사람만 접속" (데몬 controllers_only)
 describe('조작 가능한 사람만 접속 칸', () => {
     it('저장된 값으로 채우고, 바꿨을 때만 보낸다', async () => {
         const { result } = setup();

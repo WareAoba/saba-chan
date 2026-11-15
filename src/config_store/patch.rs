@@ -1,5 +1,5 @@
 //! 설정 부분 저장: JSON Merge Patch(RFC 7386)와 내용 지문(revision).
-//! `PATCH` 라우트가 바뀐 칸만 받고, 읽을 때 받은 revision이 지금과 다르면 거절한다 (0.1.10 결정 1)
+//! `PATCH` 라우트가 바뀐 칸만 받고, 읽을 때 받은 revision이 지금과 다르면 거절한다
 
 use serde_json::Value;
 

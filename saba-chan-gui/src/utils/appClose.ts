@@ -78,7 +78,7 @@ export function answerCloseRequest(t: TFunction, setModal: (modal: ModalConfig |
         });
     };
 
-    // 창 닫기 버튼 동작 설정 (사용자 10-27): 매번 묻기 / 트레이로 / 모두 끄기
+    // 창 닫기 버튼 동작 설정: 매번 묻기 / 트레이로 / 모두 끄기
     const closeAction = useSettingsStore.getState().closeAction;
     if (closeAction === 'tray') window.api.closeResponse('exit-interface');
     else if (closeAction === 'quit') quitAll();

@@ -263,7 +263,7 @@ pub fn status_badge(status: &str) -> String {
     let label = crate::i18n::try_t(&format!("status.{}", status)).unwrap_or_else(|| status.to_string());
     let dot: StyledObject<&str> = match status {
         "running" | "connected" => style("●").green(),
-        // 진행 중은 떠나온 상태의 색 (사용자 11-11): 켜는 중·설치 중은 꺼짐 회색, 끄는 중은 켜짐 초록
+        // 진행 중은 떠나온 상태의 색: 켜는 중·설치 중은 꺼짐 회색, 끄는 중은 켜짐 초록
         "starting" | "provisioning" => style("◐").dim(),
         "stopping" => style("◐").green(),
         "crashed" | "error" => style("●").red(),

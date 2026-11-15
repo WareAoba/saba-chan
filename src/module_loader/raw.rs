@@ -23,16 +23,16 @@ pub(crate) struct ModuleToml {
     syntax_highlight: Option<SyntaxHighlightSection>,
     #[serde(default)]
     install: Option<InstallSectionToml>,
-    /// [launch] 실행 관련 선언 (C8b)
+    /// [launch] 실행 관련 선언
     #[serde(default)]
     launch: Option<LaunchSection>,
     /// [aliases] 모듈 및 명령어 별명 (Discord/CLI 다국어 지원)
     #[serde(default)]
     aliases: Option<AliasesSection>,
-    /// [backup] 월드·세이브 백업 (A2)
+    /// [backup] 월드·세이브 백업
     #[serde(default)]
     backup: Option<ModuleBackup>,
-    /// [permissions] 모듈 코드가 쓰는 능력 (M12)
+    /// [permissions] 모듈 코드가 쓰는 능력
     #[serde(default)]
     permissions: ModulePermissions,
     /// [errors] 오류 코드 → 사용자 메시지 (채팅 명령 응답용)
@@ -43,10 +43,10 @@ pub(crate) struct ModuleToml {
     #[serde(default)]
     #[schemars(with = "std::collections::HashMap<String, serde_json::Map<String, serde_json::Value>>")]
     extensions: std::collections::HashMap<String, toml::Value>,
-    /// [[presets]] 추천 설정 묶음 (I1-b)
+    /// [[presets]] 추천 설정 묶음
     #[serde(default)]
     presets: Vec<ModulePreset>,
-    /// [[queries]] 읽기 전용 조회 (X-2)
+    /// [[queries]] 읽기 전용 조회
     #[serde(default)]
     queries: Vec<QueryToml>,
     /// [[agreements]] 켜기 전에 동의할 약관
@@ -897,7 +897,7 @@ pub(crate) fn parse_module_toml(content: &str) -> Result<ModuleMetadata> {
         }
         version => return Err(SchemaUnsupported { version }.into()),
     }
-    // 데몬이 호출마다 정해 넣는 이름: 모듈 설정 값은 넘기지 않는다 (06 §2·§6, `RESERVED_CALL_KEYS`)
+    // 데몬이 호출마다 정해 넣는 이름: 모듈 설정 값은 넘기지 않는다 (`RESERVED_CALL_KEYS`)
     for f in meta.settings.iter().flat_map(|s| &s.fields).filter(|f| RESERVED_CALL_KEYS.contains(&f.name.as_str())) {
         meta.warnings.push(format!("settings field '{}' is a name saba-chan sets on each call; its value is not passed to the module", f.name));
     }
@@ -1147,7 +1147,7 @@ fn read_pattern_list(
 
 
 
-/// `[extensions.saba-core]`의 `ready_patterns`·`ready_timeout`(R39), `player_join_patterns`·`player_leave_patterns`(MK8), `chat_patterns`(게임 채팅), `progress_patterns`를 읽는다.
+/// `[extensions.saba-core]`의 `ready_patterns`·`ready_timeout`, `player_join_patterns`·`player_leave_patterns`, `chat_patterns`(게임 채팅), `progress_patterns`를 읽는다.
 /// 틀린 값은 그 값만 빼고 경고로 남긴다
 fn read_daemon_table(meta: &mut ModuleMetadata, fragments: &mut PatternFragments) -> Vec<String> {
     let Some(table) = meta.extensions.get(DAEMON_TABLE).cloned() else { return Vec::new() };
@@ -1218,7 +1218,7 @@ fn list_default_problems(meta: &ModuleMetadata) -> Vec<String> {
         .collect()
 }
 
-/// 스키마 2 설정 키의 값 검사 (06 §8.1·8.2)
+/// 스키마 2 설정 키의 값 검사
 fn v2_field_problems(field: &SettingFieldToml, fields: &[&SettingFieldToml]) -> Vec<String> {
     let mut problems = Vec::new();
     let name = &field.name;

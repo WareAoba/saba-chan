@@ -147,7 +147,7 @@ pub(crate) async fn record(
     });
 }
 
-/// 감사 로그 (A10): 응답은 그대로 돌려주고, 출처(`crate::audit::current`)와 함께 한 건 남긴다.
+/// 감사 로그: 응답은 그대로 돌려주고, 출처(`crate::audit::current`)와 함께 한 건 남긴다.
 /// `key`는 인스턴스 id나 이름. 성공은 2xx이면서 본문의 `success`가 false가 아닐 때
 pub(crate) async fn audited(
     state: &crate::ipc::IPCServer,

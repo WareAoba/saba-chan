@@ -116,7 +116,7 @@ impl Supervisor {
     /// 옮겼으면 `(옮기기 전, 옮긴 뒤)`
     fn move_reserved_default_rest_port(&mut self, id: &str) -> Option<(u16, u16)> {
         // 이미 떠 있는 서버는 지금 포트로 붙어 있다
-        if self.tracker.get_pid(id).is_ok_and(process::is_process_alive) {
+        if self.tracker.get_pid(id).is_some_and(process::is_process_alive) {
             return None;
         }
         let instance = self.instance_store.get(id)?;
@@ -158,7 +158,7 @@ impl Supervisor {
         let all_instances = self.instance_store.list();
         let running_ids: std::collections::HashSet<String> = all_instances
             .iter()
-            .filter(|i| self.tracker.get_pid(&i.id).is_ok())
+            .filter(|i| self.tracker.get_pid(&i.id).is_some())
             .map(|i| i.id.clone())
             .collect();
         let rest_ports = self.rest_port_settings();
@@ -323,13 +323,13 @@ impl Supervisor {
             tracing::warn!("Launch of '{}' blocked: {:?}", instance.name, blocked);
             blocked.to_json(crate::sandbox::message(&blocked))
         })?;
-        tracing::info!("Starting '{}': program '{}' in '{}'", instance.name, program, working_dir);
+        tracing::debug!("Starting '{}': program '{}' in '{}'", instance.name, program, working_dir);
         Ok((program, gate))
     }
 
     /// 모듈 `[module.dependencies]`를 못 맞추면 시작을 막는 응답. 다 맞으면 None
     async fn unmet_dependencies_response(&self, module_name: &str, instance_name: &str) -> Option<Value> {
-        // 이 OS·CPU를 지원한다고 선언하지 않은 모듈 (D3·M1)
+        // 이 OS·CPU를 지원한다고 선언하지 않은 모듈
         if let Ok(module) = self.module_loader.get_module(module_name) {
             if let Some(body) = module_loader::host_unsupported_body(module_name, &module.metadata) {
                 tracing::warn!("Module '{}' does not run on {}/{}; '{}' is not started", module_name, std::env::consts::OS, std::env::consts::ARCH, instance_name);
@@ -394,7 +394,7 @@ impl Supervisor {
         (!unmet.is_empty()).then_some(unmet)
     }
 
-    /// 시작 전 검사 (D2). 관리형·비관리형 시작이 같은 검사를 같은 순서로 받는다:
+    /// 시작 전 검사. 관리형·비관리형 시작이 같은 검사를 같은 순서로 받는다:
     /// 이미 켜져 있음 → 모듈 의존성·지원 OS → 필수 익스텐션 → 포트 충돌 → 시작 중 표시.
     /// 막으면 그대로 돌려줄 응답을 `Err`로, 통과하면 시작 중 표시와 `server.pre_start` 문맥을 돌려준다
     async fn plan_start(&self, instance_id: &str, module_name: &str, config: &Value, managed: bool) -> Result<std::result::Result<StartPlan, Value>> {
@@ -404,13 +404,13 @@ impl Supervisor {
         let running = match self.managed_store.get(&instance.id).await.filter(|p| p.is_running()) {
             Some(existing) => Some(existing.pid),
             None => match self.tracker.get_pid(&instance.id) {
-                Ok(pid) if process::is_process_alive(pid) => Some(pid),
-                Ok(pid) => {
+                Some(pid) if process::is_process_alive(pid) => Some(pid),
+                Some(pid) => {
                     tracing::info!("Cleaning stale tracker entry for '{}' (PID {} no longer alive)", instance.name, pid);
                     let _ = self.tracker.untrack(&instance.id);
                     None
                 }
-                Err(_) => None,
+                None => None,
             },
         };
         if let Some(pid) = running {
@@ -466,11 +466,11 @@ impl Supervisor {
     /// 인스턴스 id로 서버를 시작한다
     /// Called by IPC API: POST /api/instance/:id/start (비관리)
     ///
-    /// managed 시작과 같이, 익스텐션 hook과 `get_launch_command`는 데몬 락 밖에서 부른다 (C12).
+    /// managed 시작과 같이, 익스텐션 hook과 `get_launch_command`는 데몬 락 밖에서 부른다.
     pub async fn start_server(sup: &tokio::sync::RwLock<Self>, instance_id: &str, module_name: &str, config: Value) -> Result<Value> {
         let gate = sup.read().await.addon_gate();
         let _swap = gate.hold_addons().await;
-        tracing::info!("Starting server '{}' with module '{}'", instance_id, module_name);
+        tracing::debug!("Starting server '{}' with module '{}'", instance_id, module_name);
 
         let moved = {
             let mut s = sup.write().await;
@@ -481,7 +481,7 @@ impl Supervisor {
         result.map(|result| with_port_moved(result, moved))
     }
 
-    /// 시작 결과로 준비 알림(R39, `ready.rs`)과 접속·퇴장 알림(MK8)·게임 채팅 전달(`player_events.rs`)을 시작한다. 콘솔을 읽는 managed 프로세스면 준비 문구를 기다린다
+    /// 시작 결과로 준비 알림(`ready.rs`)과 접속·퇴장 알림·게임 채팅 전달(`player_events.rs`)을 시작한다. 콘솔을 읽는 managed 프로세스면 준비 문구를 기다린다
     async fn announce_ready(sup: &tokio::sync::RwLock<Self>, instance_id: &str, result: &Result<Value>) {
         let (rt, id, name, console, patterns, timeout, join, leave, chat) = {
             let s = sup.read().await;
@@ -496,7 +496,7 @@ impl Supervisor {
             let console = s.managed_store.get(&instance.id).await.filter(|p| !p.log_follower);
             (s.runtime.clone(), instance.id.clone(), instance.name.clone(), console, patterns, Duration::from_secs(timeout), join, leave, chat)
         };
-        // 접속·퇴장 알림(MK8)과 게임 채팅도 같은 콘솔을 본다
+        // 접속·퇴장 알림과 게임 채팅도 같은 콘솔을 본다
         player_events::after_start(&rt, &id, &name, result, console.clone(), &join, &leave, &chat);
         ready::after_start(&rt, &id, &name, result, console, &patterns, timeout);
     }
@@ -626,7 +626,7 @@ impl Supervisor {
         drop(gate);
         match spawn_result {
             Ok(mut follower) => {
-                // 익스텐션이 붙인 다리라 서버 종료 판정(A1) 대상이 아니다
+                // 익스텐션이 붙인 다리라 서버 종료 판정 대상이 아니다
                 follower.log_follower = true;
                 sup.read().await.managed_store.insert(&instance.id, follower).await;
                 tracing::info!(
@@ -729,7 +729,7 @@ impl Supervisor {
             let s = sup.read().await;
             // ── Non-managed 모드: get_launch_command로 명령어를 받아 데몬이 직접 spawn ──
 
-            tracing::info!("Starting non-managed server for instance '{}' (module: {})", server_name, module_name);
+            tracing::debug!("Starting non-managed server for instance '{}' (module: {})", server_name, module_name);
 
             s.launch_command_call(&config, &instance, module_name, false)?.0
         };
@@ -812,7 +812,7 @@ impl Supervisor {
                 r.stop_requested = None;
                 r.run_generation += 1;
             });
-            s.tracker.track(&instance.id, pid)?;
+            s.tracker.track(&instance.id, pid);
         }
         tracing::info!("Non-managed server '{}' started with PID {}", server_name, pid);
         announce_started(&starting.runtime, &instance.id, &instance.name, &crate::audit::current(), false);
@@ -834,12 +834,11 @@ impl Supervisor {
         }
     }
 
-    /// Start a server as a managed process with full stdio capture.
-    /// Uses the module's `get_launch_command` to build the command, then spawns it natively.
+    /// 서버를 managed로 띄운다: 모듈 `get_launch_command`로 명령을 만들어 데몬이 stdio를 쥐고 띄운다.
     /// Extension 관리 모드에서는 extension hook을 통해 위임합니다.
     ///
     /// 데몬 락은 검사·준비·등록 때만 짧게 잡는다. 익스텐션 hook, `get_launch_command`,
-    /// 프로세스 띄우기는 락 밖에서 한다 (C12). 같은 인스턴스를 동시에 두 번 시작하지 않도록
+    /// 프로세스 띄우기는 락 밖에서 한다. 같은 인스턴스를 동시에 두 번 시작하지 않도록
     /// 시작하는 동안 `starting` 표시를 쥔다.
     pub async fn start_managed_server(
         sup: &tokio::sync::RwLock<Self>,
@@ -876,7 +875,7 @@ impl Supervisor {
         // ── 3) 실행 명령 받기: 준비는 읽기 락, 모듈 호출은 락 밖 ──
         let (call, module) = {
             let s = sup.read().await;
-            tracing::info!("Starting managed server for instance '{}' (module: {})", instance.name, module_name);
+            tracing::debug!("Starting managed server for instance '{}' (module: {})", instance.name, module_name);
 
             s.launch_command_call(&config, &instance, module_name, true)?
         };
@@ -904,7 +903,6 @@ impl Supervisor {
             return Ok(start_cancelled(&instance.name));
         }
 
-        // Spawn managed process
         let log_pattern = module.metadata.log_pattern.as_deref();
         let (inst_dir, state_dir, pid_file) = {
             let s = sup.read().await;
@@ -914,7 +912,7 @@ impl Supervisor {
         if let Err(e) = forget_legacy_run(&sup.read().await.instance_store, &instance.id) {
             tracing::warn!("Could not stop following the old runner record of '{}': {}", instance.name, e);
         }
-        // saba-runner가 서버를 쥐면 데몬이 재시작해도 콘솔·stdin·종료 코드가 이어진다 (C8b)
+        // saba-runner가 서버를 쥐면 데몬이 재시작해도 콘솔·stdin·종료 코드가 이어진다
         let managed = match managed_process::runner_binary() {
             Some(runner) => {
                 let keep = instance.module_settings.get("log_sessions_keep")
@@ -946,7 +944,7 @@ impl Supervisor {
             }
             // 단위 테스트는 러너를 빌드하지 않고 돈다: 그때만 데몬이 직접 붙는다
             None if cfg!(test) => ManagedProcess::spawn(program, &args, working_dir, env_vars, log_pattern, Some(&inst_dir)).await?,
-            // 관리형 시작은 러너가 콘솔을 쥐는 시작이다. 러너 없이 데몬이 대신 띄우지 않는다 (사용자 정의 2026-11-08)
+            // 관리형 시작은 러너가 콘솔을 쥐는 시작이다. 러너 없이 데몬이 대신 띄우지 않는다
             None => {
                 tracing::warn!("saba-runner not found next to the daemon; refusing managed start of '{}'", instance.name);
                 return Err(managed_process::RunnerMissing.into());
@@ -955,7 +953,6 @@ impl Supervisor {
         drop(gate);
         let pid = managed.pid;
 
-        // Track the process
         {
             let s = sup.write().await;
             // 띄우는 사이 정지가 들어왔으면 추적하지 않고 끈다: 정지는 이미 "꺼져 있음"으로 끝났다
@@ -970,11 +967,11 @@ impl Supervisor {
                 r.stop_requested = None;
                 r.run_generation += 1;
             });
-            s.tracker.track(&instance.id, pid)?;
+            s.tracker.track(&instance.id, pid);
             s.managed_store.insert(&instance.id, managed).await;
         }
 
-        // Persist PID to disk for orphan reattachment on daemon restart
+        // 데몬을 다시 켰을 때 다시 붙도록 PID를 남긴다
         if let Err(e) = saba_atomic_file::write(&pid_file, pid.to_string().as_bytes(), saba_atomic_file::Mode::Plain) {
             tracing::warn!("Failed to write managed.pid for '{}': {}", instance.name, e);
         }
@@ -1022,7 +1019,7 @@ mod tests {
         assert_eq!(inst.module_settings.len(), 1);
     }
 
-    /// R39 준비 알림을 기다린다 (그 인스턴스의 것만)
+    /// 준비 알림을 기다린다 (그 인스턴스의 것만)
     async fn ready_event(sub: &mut crate::events::Subscription, id: &str) -> Value {
         let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(20);
         loop {
@@ -1034,7 +1031,7 @@ mod tests {
         }
     }
 
-    /// R39: 시작마다 한 번 `instance.ready`. 준비 문구가 콘솔에 찍히면 ok, 준비 전에 끝나면 start_failed,
+    /// 시작마다 한 번 `instance.ready`. 준비 문구가 콘솔에 찍히면 ok, 준비 전에 끝나면 start_failed,
     /// 사용자가 끄면 stopped_while_starting, 시간이 지나면 ready_timeout. 선언이 없으면 시작이 성공한 때 ok
     #[cfg(unix)]
     #[tokio::test]
@@ -1105,7 +1102,7 @@ mod tests {
         }
     }
 
-    /// MK8 §8.3: managed 시작에서 접속·퇴장 문구가 콘솔에 찍히면 `instance.player`. 시스템 줄과 다른 그룹은 싣지 않는다
+    /// managed 시작에서 접속·퇴장 문구가 콘솔에 찍히면 `instance.player`. 시스템 줄과 다른 그룹은 싣지 않는다
     #[cfg(unix)]
     #[tokio::test]
     async fn a_managed_server_says_who_joined_and_left() {
@@ -1221,11 +1218,11 @@ mod tests {
         assert_eq!(resp["error_code"], "module_dependency_unsatisfied");
         assert_eq!(resp["module"], "future", "clients name the module in \"update required\"");
         assert!(resp["missing_dependencies"][0].as_str().unwrap().starts_with("saba-core >=99.0.0"));
-        // F8: 클라이언트는 문구를 쪼개지 않고 요구 버전을 그대로 읽는다
+        // 클라이언트는 문구를 쪼개지 않고 요구 버전을 그대로 읽는다
         assert_eq!(resp["required_core"], "99.0.0");
     }
 
-    /// D3·M1: 이 OS를 지원한다고 선언하지 않은 모듈의 서버는 켜지 않는다
+    /// 이 OS를 지원한다고 선언하지 않은 모듈의 서버는 켜지 않는다
     #[tokio::test]
     async fn a_module_that_does_not_support_this_os_is_not_started() {
         let tmp = tempfile::tempdir().unwrap();
@@ -1385,7 +1382,7 @@ mod tests {
 
         let mut events = crate::events::bus().subscribe(None);
         assert_eq!(sup.move_default_rest_port_if(&old_id, reserved, reserved), Some(8252));
-        // 리뷰 289: 자동·예약 재시작은 시작 응답을 로그에만 남기므로, 옮긴 일은 이벤트로도 알린다
+        // 자동·예약 재시작은 시작 응답을 로그에만 남기므로, 옮긴 일은 이벤트로도 알린다
         let told = std::iter::from_fn(|| events.rx.try_recv().ok()).find(|e| e.kind == "instance.port_moved" && e.data["instanceId"] == old_id.as_str());
         let told = told.expect("instance.port_moved was not emitted");
         assert_eq!((told.data["field"].clone(), told.data["from"].clone(), told.data["to"].clone()), (json!("rest_port"), json!(8212), json!(8252)));
@@ -1528,7 +1525,7 @@ mod tests {
 
         // managed_store에는 없지만 tracker에 현재 프로세스 PID를 등록
         let current_pid = std::process::id();
-        supervisor.tracker.track("test-tracker-guard", current_pid).unwrap();
+        supervisor.tracker.track("test-tracker-guard", current_pid);
 
         let supervisor = tokio::sync::RwLock::new(supervisor);
         let result = Supervisor::start_managed_server(&supervisor, "test-tracker-guard", "minecraft", json!({}))
@@ -1554,7 +1551,7 @@ mod tests {
         inst.id = "test-nm-guard".into();
         supervisor.instance_store.add(inst).unwrap();
         let current_pid = std::process::id();
-        supervisor.tracker.track("test-nm-guard", current_pid).unwrap();
+        supervisor.tracker.track("test-nm-guard", current_pid);
 
         let supervisor = tokio::sync::RwLock::new(supervisor);
         let result = Supervisor::start_server(&supervisor, "test-nm-guard", "minecraft", json!({}))
@@ -1606,7 +1603,7 @@ mod tests {
         let started = starter.await.unwrap().unwrap();
         assert_eq!(started["error_code"], "start_cancelled", "{started}");
         let s = sup.read().await;
-        assert!(s.tracker.get_pid("stop-during-start").is_err(), "nothing is tracked");
+        assert!(s.tracker.get_pid("stop-during-start").is_none(), "nothing is tracked");
         assert!(s.managed_store.get("stop-during-start").await.is_none(), "no server was left running");
     }
 
@@ -1721,7 +1718,7 @@ mod tests {
         assert!(!ctx.contains("hunter2"), "secrets reached the extension: {ctx}");
     }
 
-    // 백로그 M13: 예약 범위 때문에 옮긴 REST 포트를 알리지 않고 저장값만 바꿨다
+    // 예약 범위 때문에 옮긴 REST 포트를 알리지 않고 저장값만 바꿨다
     #[test]
     fn a_start_reports_the_port_it_moved() {
         let moved = with_port_moved(json!({ "success": false, "error_code": "port_conflict" }), Some((8212, 8242)));
@@ -1730,7 +1727,7 @@ mod tests {
         assert!(with_port_moved(json!({ "success": true }), None).get("port_moved").is_none());
     }
 
-    /// 시작은 락 밖에서 진행되므로, 같은 인스턴스의 두 번째 시작은 표시로 막는다 (C12)
+    /// 시작은 락 밖에서 진행되므로, 같은 인스턴스의 두 번째 시작은 표시로 막는다
     #[test]
     fn start_guard_blocks_a_second_start_until_dropped() {
         let set = runtime::Runtimes::default();

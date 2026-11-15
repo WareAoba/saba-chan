@@ -4,7 +4,7 @@ use super::*;
 
 impl Supervisor {
     /// Run validation on an instance (via module's validate function).
-    /// 모듈 점검 결과의 `issues`에 데몬이 본 설정 값 문제(`setting_issues`)를 더한다 (사용자 지정 2026-11-08)
+    /// 모듈 점검 결과의 `issues`에 데몬이 본 설정 값 문제(`setting_issues`)를 더한다
     pub async fn validate_instance(sup: &tokio::sync::RwLock<Self>, instance_id: &str) -> Result<Value> {
         let (call, settings) = {
             let s = sup.read().await;
@@ -30,7 +30,7 @@ impl Supervisor {
                 let value = instance.module_settings.get(&f.name).filter(|v| !v.is_null())?;
                 let e = crate::validator::validate_setting_value(f, Some(value)).err()?;
                 // 비밀 칸(password 타입, 이름에 pass·token 같은 낱말)은 값도, 값이 든 원문 메시지도 싣지 않는다.
-                // 원격 웹·디스코드도 점검을 부르고 이 응답은 비밀 가리기를 거치지 않는다 (리뷰 P2)
+                // 원격 웹·디스코드도 점검을 부르고 이 응답은 비밀 가리기를 거치지 않는다
                 let secret = f.field_type == "password" || crate::audit::sensitive(&f.name);
                 let mut issue = json!({
                     "code": "setting_invalid",
@@ -47,7 +47,7 @@ impl Supervisor {
             .collect()
     }
 
-    /// 모듈 `[[queries]]` 조회 (X-2): `validate`와 같은 config에 `args`(입력 이름 → 값)를 더해 lifecycle `function`을 부른다
+    /// 모듈 `[[queries]]` 조회: `validate`와 같은 config에 `args`(입력 이름 → 값)를 더해 lifecycle `function`을 부른다
     pub async fn query_instance(sup: &tokio::sync::RwLock<Self>, instance_id: &str, function: &str, args: serde_json::Map<String, Value>) -> Result<Value> {
         let mut call = sup.read().await.instance_call(instance_id, function)?;
         if let Value::Object(cfg) = call.config_mut() {
@@ -65,7 +65,7 @@ impl Supervisor {
         let module_path = module.entry_path();
 
         let mut cfg = serde_json::Map::new();
-        // 시작 때와 같은 키와 같은 해석 (옛 module_settings 경로, 작업 폴더 + 모듈 server_executable) (D-S11)
+        // 시작 때와 같은 키와 같은 해석 (옛 module_settings 경로, 작업 폴더 + 모듈 server_executable)
         self.insert_resolved_exe(&mut cfg, instance, &instance.module_name);
         if let Some(port) = instance.port {
             cfg.insert("port".to_string(), json!(port));
@@ -75,7 +75,7 @@ impl Supervisor {
         // 시작 때와 같은 인스턴스 값 (zomboid server_name·cache_dir 등)
         Self::insert_instance_fields(&mut cfg, instance, &self.instance_store.instance_dir(instance_id));
         // 켜져 있으면 자기 포트를 "다른 프로그램이 쓰는 중"으로 보지 않게
-        let server = self.tracker.get_pid(instance_id).ok();
+        let server = self.tracker.get_pid(instance_id);
         cfg.insert("running".to_string(), json!(server.is_some()));
 
         Ok(crate::plugin::PluginCall::new(module_path, function, Value::Object(cfg)).serving(server).in_instance(self.host_context(instance_id)))

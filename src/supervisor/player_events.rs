@@ -1,4 +1,4 @@
-//! 접속·퇴장 알림 (MK8 §8.3): 데몬이 콘솔을 읽는 시작(managed)에서 모듈의 `[extensions.saba-core]`
+//! 접속·퇴장 알림: 데몬이 콘솔을 읽는 시작(managed)에서 모듈의 `[extensions.saba-core]`
 //! `player_join_patterns`·`player_leave_patterns`가 콘솔 줄에 맞으면 `instance.player {instanceId, instance, player, change}`를 낸다.
 //!
 //! - 서버가 찍은 줄(`LogSource::is_server_output`)만 본다: 시스템 줄과 보낸 명령 줄은 보지 않는다. 이름 그룹 `name`만 싣고(IP·고유 ID 없음), 64자에서 자르고 제어 문자를 뺀다.
@@ -174,7 +174,7 @@ mod tests {
     use super::*;
 
     /// 데몬을 다시 켜 도는 서버에 다시 붙으면, 붙기 전 줄은 다시 알리지 않고 지금 들어와 있는 사람만 한 번 알린 뒤
-    /// 새 줄부터 알린다 (리뷰 P1 2026-11-06: 재연결 뒤 조작 가능한 사람만 접속이 멈췄다)
+    /// 새 줄부터 알린다 (재연결 뒤 조작 가능한 사람만 접속이 멈췄다)
     #[cfg(unix)]
     #[tokio::test]
     async fn reattaching_counts_who_is_in_and_reports_only_new_lines() {
@@ -229,7 +229,7 @@ mod tests {
         assert!(!p.can_count(), "chat alone does not count players");
     }
 
-    // 리뷰(Codex #625): 한쪽 문구만 있으면 이벤트는 내되 접속자 수는 세지 않는다
+    // 한쪽 문구만 있으면 이벤트는 내되 접속자 수는 세지 않는다
     #[test]
     fn players_are_counted_only_when_both_join_and_leave_are_known() {
         let join_only = Patterns::new(&["(?P<name>\\S+) joined".to_string()], &[]).unwrap();

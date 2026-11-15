@@ -174,3 +174,65 @@ export const offsetText = (minutes: number) => {
     const m = abs % 60;
     return `UTC${sign}${h}${m ? `:${String(m).padStart(2, '0')}` : ''}`;
 };
+
+/** 데몬 `commands::find`와 같이 이름은 대소문자를 가리지 않고, 별명으로 저장한 것도 찾는다 */
+export function findCommand<T extends object>(commands: T[], name: unknown): T | undefined {
+    const want = String(name || '').toLowerCase();
+    if (!want) return undefined;
+    const named = (c: T) => c as { name?: unknown; aliases?: unknown };
+    return (
+        commands.find((c) => String(named(c).name ?? '').toLowerCase() === want) ||
+        commands.find((c) => {
+            const aliases = named(c).aliases;
+            return Array.isArray(aliases) && aliases.some((a) => String(a).toLowerCase() === want);
+        })
+    );
+}
+
+/** 키 순서와 상관없이 같은 작업인지 견줄 문자열 */
+export const taskKey = (v: unknown): string =>
+    v && typeof v === 'object'
+        ? Array.isArray(v)
+            ? `[${v.map(taskKey).join(',')}]`
+            : `{${Object.keys(v)
+                  .sort()
+                  .map((k) => `${JSON.stringify(k)}:${taskKey((v as Record<string, unknown>)[k])}`)
+                  .join(',')}}`
+        : JSON.stringify(v);
+
+/**
+ * 다음 실행: 저장된 그대로인 작업(`saved`의 `index`번)만 보인다(고친 작업은 저장해야 정해진다).
+ * 시각이 지났거나 다시 돌 일이 없는 날짜 한 번 작업은 끝났다고 보인다
+ */
+export function nextRunOf(d: TaskDraft, index: number, nextRuns: number[]): { at?: number; done?: boolean } | null {
+    if (index < 0) return null;
+    const at = nextRuns[index];
+    if (typeof at === 'number' && at > Date.now() / 1000) return { at };
+    return d.mode === 'date' ? { done: true } : null;
+}
+
+/** 다음 실행 시각 (보는 사람의 언어·시간대) */
+export const formatRunAt = (secs: number, lang: string) =>
+    new Date(secs * 1000).toLocaleString(lang, {
+        month: 'numeric',
+        day: 'numeric',
+        weekday: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+    });
+
+/** 서버 PC와 보는 곳의 시간대가 다른가 (다르면 시각이 어느 쪽 기준인지 알린다) */
+export const otherZone = (utcOffset: number | null) =>
+    utcOffset !== null && utcOffset !== -new Date().getTimezoneOffset();
+
+/** 이번에 새로 넣거나 바꾼 켜진 위험 명령이 있는가 (한 번 더 눌러 저장한다) */
+export function hasNewDanger(
+    drafts: TaskDraft[],
+    saved: string[],
+    toTask: (d: TaskDraft) => ScheduledTask,
+    riskOf: (command: string) => string | undefined,
+) {
+    return drafts.some(
+        (d) => d.enabled && d.action === COMMAND && riskOf(d.command) === 'danger' && !saved.includes(taskKey(toTask(d))),
+    );
+}

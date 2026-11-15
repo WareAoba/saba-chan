@@ -1,4 +1,4 @@
-//! 원격 데몬까지의 HTTP/2 연결: 원격 PC마다 하나를 열어 두고 요청을 모두 싣는다 (터널 T1·직접 연결 D1b가 같이 쓴다)
+//! 원격 데몬까지의 HTTP/2 연결: 원격 PC마다 하나를 열어 두고 요청을 모두 싣는다 (터널과 직접 연결이 같이 쓴다)
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};

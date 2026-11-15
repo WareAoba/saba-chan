@@ -29,7 +29,7 @@ impl Supervisor {
             let module_path = module.entry_path();
 
             // 명령어 config 구성
-            let pid = s.tracker.get_pid(&instance.id).ok();
+            let pid = s.tracker.get_pid(&instance.id);
             let instance_dir = s.instance_store.instance_dir(&instance.id);
             let working_dir = instance.working_dir.clone()
                 .unwrap_or_else(|| instance_dir.join("server").to_string_lossy().to_string());
@@ -78,7 +78,7 @@ impl Supervisor {
     }
 
     /// 명령을 RCON으로 받을 인스턴스면 그 모듈의 기본 RCON 포트: RCON만 받는 모듈, 또는 stdin·rcon을 받는 모듈인데
-    /// 관리형 시작을 꺼서 콘솔 stdin이 없는 인스턴스 (사용자 정의 2026-11-08)
+    /// 관리형 시작을 꺼서 콘솔 stdin이 없는 인스턴스
     fn rcon_port_for(&self, instance: &crate::instance::ServerInstance) -> Option<u16> {
         let meta = &self.module_loader.get_module(&instance.module_name).ok()?.metadata;
         meta.rcon_only_port().or_else(|| meta.rcon_port_without_console().filter(|_| !self.uses_managed_start(instance)))
