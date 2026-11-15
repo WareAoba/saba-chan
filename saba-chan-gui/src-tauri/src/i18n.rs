@@ -70,7 +70,7 @@ fn lookup<'a>(root: &'a Value, key: &str) -> Option<&'a str> {
     key.split('.').try_fold(root, |v, k| v.get(k))?.as_str()
 }
 
-/// `{{name}}` → vars의 값. 없거나 빈 값이면 그대로 둔다 (main.js t()와 같음)
+/// `{{name}}` → vars의 값. 없거나 빈 값이면 그대로 둔다
 pub fn interpolate(template: &str, vars: &[(&str, &str)]) -> String {
     let mut out = String::with_capacity(template.len());
     let mut rest = template;

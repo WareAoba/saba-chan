@@ -62,7 +62,7 @@ function useSpotBox(spot: string | undefined, key: string): Box | null | 'wait' 
 }
 
 /**
- * 화면 강조 (사용자 11-11): 가이드 단계의 `spot` 자리만 밝게 두고 나머지를 어둡게 덮어 말풍선으로 설명한다.
+ * 화면 강조: 가이드 단계의 `spot` 자리만 밝게 두고 나머지를 어둡게 덮어 말풍선으로 설명한다.
  * 자리가 없는 단계는 가운데 말풍선. 말풍선 밖(어두운 곳)을 누르거나 Esc·✕면 바로 닫힌다. 밝은 자리는 그대로 누를 수 있다.
  */
 export function Spotlight() {

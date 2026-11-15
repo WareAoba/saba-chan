@@ -1,4 +1,4 @@
-//! 업데이터 `--apply` 실행 표 (C13)
+//! 업데이터 `--apply` 실행 표
 //!
 //! 데몬이 `/api/updates/apply`를 받아들였을 때만 표를 하나 끊어 업데이터에 넘긴다.
 //! 업데이터는 표가 맞을 때만 적용하고, 맞든 틀리든 표를 지운다(한 번만 쓴다).
@@ -110,7 +110,7 @@ mod tests {
         assert!(!core_predates_tickets(Some("0.2.0")));
     }
 
-    // U-12: 깨진 설치 버전 기록을 "코어 버전 없음(옛 데몬)"으로 읽으면 표 없는 적용을 받아 준다
+    // 깨진 설치 버전 기록을 "코어 버전 없음(옛 데몬)"으로 읽으면 표 없는 적용을 받아 준다
     #[test]
     fn an_unreadable_installed_manifest_does_not_allow_an_apply_without_a_ticket() {
         let tmp = tempfile::tempdir().unwrap();

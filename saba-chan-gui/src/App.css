@@ -713,9 +713,7 @@ span[style*="--icon-loader"] svg {
     margin-bottom: var(--sp-3);
 }
 
-/* ═══════════════════════════════════════════════════════════
-   Console Panel
-   ═══════════════════════════════════════════════════════════ */
+/* Console Panel */
 
 .console-panel {
     display: flex;

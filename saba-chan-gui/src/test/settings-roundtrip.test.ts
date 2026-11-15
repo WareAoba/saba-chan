@@ -12,7 +12,7 @@ import { useDiscordStore } from '../stores/useDiscordStore';
 import { DEFAULT_SOUNDS, useSettingsStore } from '../stores/useSettingsStore';
 import { useUIStore } from '../stores/useUIStore';
 
-// ── Helpers ──────────────────────────────────────────────────
+// ── Helpers ──
 
 /** Minimal window.api mock — all APIs noop by default */
 function mockApi(overrides = {}) {
@@ -45,9 +45,7 @@ beforeEach(() => {
     useUIStore.getState()._resetForTest();
 });
 
-// ═══════════════════════════════════════════════════════════════
 // 1. settings.json 라운드트립 — 각 필드별 개별 검증
-// ═══════════════════════════════════════════════════════════════
 
 describe('settings.json 라운드트립 (settingsLoad ↔ settingsSave)', () => {
     // ── 저장 시 모든 7 필드가 payload에 포함되는지 검증 ──
@@ -215,9 +213,7 @@ describe('settings.json 라운드트립 (settingsLoad ↔ settingsSave)', () => 
     });
 });
 
-// ═══════════════════════════════════════════════════════════════
 // 2. bot-config.json 라운드트립 — 각 필드별 개별 검증
-// ═══════════════════════════════════════════════════════════════
 
 describe('bot-config.json 라운드트립 (botConfigLoad ↔ botConfigSave)', () => {
     // ── 저장 시 모든 10 필드가 payload에 포함되는지 검증 ──
@@ -434,12 +430,10 @@ describe('bot-config.json 라운드트립 (botConfigLoad ↔ botConfigSave)', ()
     });
 });
 
-// ═══════════════════════════════════════════════════════════════
-// 4. saveCurrentSettings (App.js와 동일한 로직)
-// ═══════════════════════════════════════════════════════════════
+// 4. saveCurrentSettings (App.tsx와 동일한 로직)
 
 describe('saveCurrentSettings 통합 (settings + botConfig 동시 저장)', () => {
-    /** App.js의 saveCurrentSettings 재현 — token/autoStart는 bot-config SSOT */
+    /** App.tsx의 saveCurrentSettings 재현 — token/autoStart는 bot-config SSOT */
     async function saveCurrentSettings() {
         await Promise.all([useSettingsStore.getState().save(), useDiscordStore.getState().saveConfig()]);
     }
@@ -530,7 +524,7 @@ describe('saveCurrentSettings 통합 (settings + botConfig 동시 저장)', () =
         useSettingsStore.getState()._resetForTest();
         useDiscordStore.getState()._resetForTest();
 
-        // Reload from captured data (simulating App.js boot sequence)
+        // Reload from captured data (simulating App.tsx boot sequence)
         mockApi({
             settingsLoad: vi.fn().mockResolvedValue(settingsCaptured),
             settingsGetPath: vi.fn().mockResolvedValue('/s.json'),
@@ -563,9 +557,7 @@ describe('saveCurrentSettings 통합 (settings + botConfig 동시 저장)', () =
     });
 });
 
-// ═══════════════════════════════════════════════════════════════
 // 5. 자동저장 감시키 완전성 검증
-// ═══════════════════════════════════════════════════════════════
 
 describe('자동저장 감시키 완전성', () => {
     it('settings auto-save: GUI 필드 변경 감시 (debounced)', async () => {
@@ -637,9 +629,7 @@ describe('자동저장 감시키 완전성', () => {
     });
 });
 
-// ═══════════════════════════════════════════════════════════════
 // 6. 에러 핸들링
-// ═══════════════════════════════════════════════════════════════
 
 describe('설정 에러 핸들링', () => {
     it('settingsLoad 실패 → settingsReady=true, 기본값 유지', async () => {

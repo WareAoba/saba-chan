@@ -392,7 +392,7 @@ fn model_lines(r: &Value) -> Vec<String> {
 mod tests {
     use super::*;
 
-    /// 모델 목록에서 지금 쓰는 모델(대신 쓰는 모델이 있으면 그것)을 표시한다 (C12)
+    /// 모델 목록에서 지금 쓰는 모델(대신 쓰는 모델이 있으면 그것)을 표시한다
     #[test]
     fn the_model_in_use_is_marked() {
         let r = json!({ "provider": "openai", "models": ["a", "b"], "selected": "gone", "effectiveModel": "b" });

@@ -570,7 +570,7 @@ const icons: Record<string, React.JSX.Element> = {
             <circle cx="15" cy="12" r="1" fill="currentColor" stroke="none" />
         </svg>
     ),
-    // 읽어주는 사바쨩: 말하는 물고기가 소리를 낸다 (2026-10-31 사용자 선택 B)
+    // 읽어주는 사바쨩: 말하는 물고기가 소리를 낸다
     sabaReading: (
         <svg
             viewBox="0 0 24 24"
@@ -697,7 +697,7 @@ const icons: Record<string, React.JSX.Element> = {
             <path d="M12 14v7" />
         </svg>
     ),
-    // 소나 (Ctrl+K): 원 안에 전파 한 줄 (사용자 11-11 시안 B)
+    // 소나 (Ctrl+K): 원 안에 전파 한 줄
     sonar: (
         <svg
             viewBox="0 0 24 24"
@@ -764,7 +764,7 @@ const icons: Record<string, React.JSX.Element> = {
             <rect x="12" y="11" width="7" height="6" rx="1.2" fill="currentColor" stroke="none" />
         </svg>
     ),
-    // 창 버튼 (최소화·최대화·복원·닫기): 끝과 모서리가 둥근 1.6px 선 (사용자 11-11 W2)
+    // 창 버튼 (최소화·최대화·복원·닫기): 끝과 모서리가 둥근 1.6px 선
     minimize: (
         <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
             <path d="M2 6h8" />
@@ -986,7 +986,7 @@ const icons: Record<string, React.JSX.Element> = {
             />
         </svg>
     ),
-    // 사바 스토리지 컴포넌트 목록 (사용자 10-26 고른 세트)
+    // 사바 스토리지 컴포넌트 목록
     componentGui: (
         <svg
             viewBox="0 0 24 24"

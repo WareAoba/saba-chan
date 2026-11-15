@@ -8,7 +8,7 @@ import { Icon } from '../Icon';
 import './CommandLine.css';
 
 /**
- * 명령 줄 입력 부품 (사용자 11-06 #4): 앱 명령 탭과 웹 명령 탭이 함께 쓴다. 화면 상태·API는 쓰지 않는다.
+ * 명령 줄 입력 부품: 앱 명령 탭과 웹 명령 탭이 함께 쓴다. 화면 상태·API는 쓰지 않는다.
  * 줄을 읽는 일은 utils/commandSyntax `readCommandLine`이 하고, 여기서는 그 결과를 그린다.
  */
 

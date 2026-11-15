@@ -4,7 +4,7 @@ import { MoreTab } from '../components/MoreTab';
 import { initI18n } from '../i18n';
 import { mockApi } from './mocks';
 
-// 사용자 요청(2026-11-06): 앱 시스템 모니터를 웹 콘솔에서도 그대로 — 같은 원, 같은 항목 고르기
+// 앱 시스템 모니터를 웹 콘솔에서도 그대로 — 같은 원, 같은 항목 고르기
 const GB = 1024 ** 3;
 const snapshot = () => ({
     cpu: { cores: 8, total_percent: 40, others_percent: 10, clock_mhz: 4800, temp_c: null },

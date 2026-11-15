@@ -24,7 +24,7 @@ describe('ConnectionRail', () => {
         expect(document.querySelector('.conn-link.link-connecting')).not.toBeNull();
     });
 
-    // 사용자 11-11: 꺼짐에서 붙는 중은 회색 깜빡, 붙어 있다가 끊겨 다시 붙는 중만 노랑 깜빡
+    // 꺼짐에서 붙는 중은 회색 깜빡, 붙어 있다가 끊겨 다시 붙는 중만 노랑 깜빡
     it('처음 붙는 중은 회색, 끊겨서 다시 붙는 중은 노랑으로 깜빡인다', () => {
         const { rerender } = render(<ConnectionRail daemonStatus="checking" />);
         expect(nodes()[0].classList.contains('tone-idle')).toBe(true);

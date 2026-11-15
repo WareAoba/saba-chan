@@ -63,7 +63,7 @@ function DaemonConsole() {
         let alive = true;
         let timer: ReturnType<typeof setTimeout> | undefined;
         let next: number | undefined; // 처음엔 최근 것부터, 그 뒤로는 받은 다음 id부터 (since는 그 id를 포함한다)
-        let epoch: number | undefined; // 데몬 로그 버퍼 세대. 데몬이 다시 켜지면 id가 1부터라 바뀌면 처음부터 다시 받는다 (L55)
+        let epoch: number | undefined; // 데몬 로그 버퍼 세대. 데몬이 다시 켜지면 id가 1부터라 바뀌면 처음부터 다시 받는다
         let closeStream: (() => void) | null = null;
         let streamRetryAt = 0;
         const add = (got: DaemonLogEntry[], replace: boolean) => {

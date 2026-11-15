@@ -40,7 +40,7 @@ describe('visible_when 숨김 (데몬 validator::hidden_fields와 같은 계산)
         expect(hiddenFields(fields, { port: '' })).toEqual(['pvp_rules', 'mode_note']);
     });
 
-    // 저장 값도 기본값도 없어 ''로 연 글자 칸은 저장 때 보내지 않는다: 데몬처럼 값이 없는 것으로 비교한다 (리뷰 598 P3-1)
+    // 저장 값도 기본값도 없어 ''로 연 글자 칸은 저장 때 보내지 않는다: 데몬처럼 값이 없는 것으로 비교한다
     it("열 때 비어 있던 글자 칸('')은 건드리기 전까지 값이 없는 것으로 비교한다", () => {
         const text = [
             { name: 'mode', field_type: 'text' },
@@ -177,7 +177,7 @@ describe('설정 저장 (list 값, restart_required)', () => {
         expect(vi.mocked(window.api.instanceUpdateSettings).mock.calls[0][1].ops).toEqual(['alice', ' bob ']);
     });
 
-    // 사용자 11-06 #5: 저장 완료는 화면을 막는 창 대신 작은 알림, 다시 시작할 설정은 저장 막대 위에 [지금 다시 시작][나중에]
+    // 저장 완료는 화면을 막는 창 대신 작은 알림, 다시 시작할 설정은 저장 막대 위에 [지금 다시 시작][나중에]
     it('다시 켜야 적용되는 설정을 바꿨으면 저장 막대 위에 알릴 것을 남기고 바로 다시 켤 수 있게 한다', async () => {
         vi.mocked(window.api.instanceUpdateSettings).mockResolvedValue({
             success: true,
@@ -264,7 +264,7 @@ describe('CLI로 보기: list·multiline 값 (CLI server set 문법)', () => {
     });
 });
 
-// 리뷰 559 P3와 Codex 지적: 데몬과 같은 기준으로 미리 막고, 값 모양을 잃지 않는다
+// 데몬과 같은 기준으로 미리 막고, 값 모양을 잃지 않는다
 describe('데몬과 같은 기준 (리뷰 후속)', () => {
     it('같은 항목이 두 번이면 칸에 오류를 단다 (데몬은 invalid_format으로 거절)', () => {
         const fields = [{ name: 'admins', field_type: 'list' }] as SettingField[];

@@ -105,7 +105,7 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
     const [daemons, setDaemons] = useState<ApiBody[]>([]);
     // 원격 데몬마다 닿는지 (`/api/remote/servers`의 ok·error_code). 아직 모르면 비어 있다
     const [reach, setReach] = useState<Record<string, string>>({});
-    // 진행 중인 동작 이름들 (`connect:<hostId>`, `save` …). 한 PC에 붙는 동안에도 다른 PC·설정은 쓸 수 있다 (사용자 11-12)
+    // 진행 중인 동작 이름들 (`connect:<hostId>`, `save` …). 한 PC에 붙는 동안에도 다른 PC·설정은 쓸 수 있다
     const [pending, setPending] = useState<string[]>([]);
     const [error, setError] = useState<string | null>(null);
     const [notice, setNotice] = useState<string | null>(null);
@@ -183,7 +183,7 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
         };
     }, []);
 
-    // 켬은 바로 저장하고, 포트는 다 친 뒤 저장 막대로 묻는다 (사용자 11-11). 저장하지 못하면 false
+    // 켬은 바로 저장하고, 포트는 다 친 뒤 저장 막대로 묻는다. 저장하지 못하면 false
     const save = async (next: { enabled: boolean; port: string }) => {
         const port = Number(next.port);
         if (!Number.isInteger(port) || port < 1 || port > 65535) {

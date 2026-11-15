@@ -7,7 +7,7 @@ import { Dialog } from '../ui/Dialog';
 
 type Tone = 'ok' | 'stop' | 'warn' | 'info';
 
-/** 확인창 머리 왼쪽의 상태 아이콘 (사용자 결정 2026-11-11: 그림 대신 아이콘) */
+/** 확인창 머리 왼쪽의 상태 아이콘 (그림 대신 아이콘) */
 export function ConfirmIcon({ icon, tone }: { icon: string; tone: Tone }) {
     return (
         <span className={`saba-confirm-icon tone-${tone}`} aria-hidden="true">

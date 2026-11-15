@@ -345,7 +345,7 @@ function Uptime({ startTime }: { startTime: number | null }) {
     return text ? <span className="pill">{t('detail.uptime', { time: text })}</span> : null;
 }
 
-/** 정보 탭 아래: 이름 바꾸기, 서버 삭제 (켜져 있으면 삭제는 막는다. 앱 정보 탭처럼, 사용자 11-12) */
+/** 정보 탭 아래: 이름 바꾸기, 서버 삭제 (켜져 있으면 삭제는 막는다. 앱 정보 탭처럼) */
 interface ManageSectionProps {
     api: WebApi;
     server: Server;
@@ -414,7 +414,7 @@ function ManageSection({ api, server, running, control }: ManageSectionProps) {
 }
 
 /**
- * 서버 탭 (사용자 11-06 #25): 앱과 같은 이름·순서. 콘솔·명령은 모듈과 실행 방식이 지원할 때만(@gui interactionOf).
+ * 서버 탭: 앱과 같은 이름·순서. 콘솔·명령은 모듈과 실행 방식이 지원할 때만(@gui interactionOf).
  * 작업 기록은 PC에만 남아 기록 탭은 없다. 접속자는 탭 대신 머리의 접속 칩이 연다
  */
 function serverTabs(server: Server, moduleData: Module | undefined) {
@@ -482,7 +482,7 @@ export function ServerDetail({ api, server }: { api: WebApi; server: Server }) {
                         {server.port ? <span className="pill">:{server.port}</span> : null}
                     </p>
                 </div>
-                {/* 앱 상세 머리처럼: 다시 시작은 아이콘, 시작·정지는 보통 크기 단추 하나 (사용자 11-12) */}
+                {/* 앱 상세 머리처럼: 다시 시작은 아이콘, 시작·정지는 보통 크기 단추 하나 */}
                 <div className="detail-actions">
                     {action === 'stop' && (
                         <button

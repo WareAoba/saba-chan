@@ -1,6 +1,4 @@
-// ═══════════════════════════════════════════════════════
 // Saba-chan Updater — 업데이트 적용 창 (설치기 --apply)
-// ═══════════════════════════════════════════════════════
 // 흐름: 그림(빛이 훑음) → 비스듬히 접히며 매트릭스(적용 중) → 성공(초/파 링, GUI 재시작)·실패(빨/보 링, 닫기)
 
 const { invoke } = window.__TAURI__.core;
@@ -15,7 +13,7 @@ function tr(key, vars = {}) {
     return SabaUI.translate(TRANSLATIONS, currentLanguage, key, vars);
 }
 
-// ─── DOM ────────────────────────────────────────────────
+// ── ─ DOM ──
 
 const $flow = document.getElementById('flow');
 const $progressMsg = document.getElementById('progress-message');
@@ -58,7 +56,7 @@ async function initLocalization() {
     applyStaticTranslations();
 }
 
-// ─── 타이틀바 버튼 ─────────────────────────────────────
+// ── ─ 타이틀바 버튼 ──
 
 (function initTitleBarButtons() {
     const appWindow = getCurrentWindow();
@@ -67,7 +65,7 @@ async function initLocalization() {
     document.getElementById('btn-close-failed')?.addEventListener('click', () => appWindow.close());
 })();
 
-// ─── 진행 줄 ───────────────────────────────────────────
+// ── ─ 진행 줄 ──
 
 function showProgress(message, percent) {
     $progressMsg.textContent = message;
@@ -76,7 +74,7 @@ function showProgress(message, percent) {
     $progressPct.textContent = `${Math.round(p)}%`;
 }
 
-// ─── 결과 ──────────────────────────────────────────────
+// ── ─ 결과 ──
 // 그림이 덮고 있는 동안 끝났으면 접히기 시작할 때 바꾼다. 무엇을 바꿨는지는 늘어놓지 않는다
 
 function showSuccess(relaunch) {
@@ -109,7 +107,7 @@ function showFailure(summary, titleKey = 'applyFailed') {
     });
 }
 
-// ─── 초기 로드 ──────────────────────────────────────────
+// ── ─ 초기 로드 ──
 
 (async function init() {
     // 테마 적용 — settings.json에서 읽어 data-theme에 반영 (실패하면 auto: 시스템 설정)
@@ -138,9 +136,7 @@ function showFailure(summary, titleKey = 'applyFailed') {
     await enterApplyMode(mode);
 })();
 
-// ═══════════════════════════════════════════════════════
 // Apply — 그림을 보이는 동안 적용을 시작하고, 진행은 아래 줄에
-// ═══════════════════════════════════════════════════════
 
 /** 손으로 되살리는 차례 (데몬이 넘긴 `Recovery` 모양: stop, exes[{from,to}], missingCore, installDir, data…) */
 function recoverySteps(leadKey, r = {}) {

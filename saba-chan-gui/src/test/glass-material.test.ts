@@ -119,7 +119,7 @@ describe('콘솔 유리', () => {
     });
 
     // 창 투명도를 낮추면 바탕이 거의 다 비친다: 상단바 오른쪽 아이콘은 유리 칸 위에 두고,
-    // 숫자 배지는 카드 색 테두리 대신 그림자로 띄운다 (사용자 11-13, 시안 B)
+    // 숫자 배지는 카드 색 테두리 대신 그림자로 띄운다
     it('반투명에서 상단바 아이콘은 유리 칸·캡슐 위에, 배지는 바탕색 테두리 없이', () => {
         const css = read('styles/backdrop.css');
         expect(bodyFor(css, ':root[data-backdrop="on"] .appbar .appbar-window')).toMatch(/var\(--inset\)/);

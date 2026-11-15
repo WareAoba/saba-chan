@@ -20,7 +20,7 @@ export function InfoPanel({ api, server, moduleData }: Omit<ServerPanelProps, 'r
         };
     }, [api, server.id]);
 
-    // 사용자 11-06 #24·#26: 모르는 값은 줄째 숨기고, 개발 용어(통신 방식)는 '자세히' 안에 (앱 정보 탭과 같다)
+    // 모르는 값은 줄째 숨기고, 개발 용어(통신 방식)는 '자세히' 안에 (앱 정보 탭과 같다)
     const rows = [
         [tg('shell.info_module'), gameNameOf(t, server.module, moduleData)],
         version && [tg('shell.info_version'), version],

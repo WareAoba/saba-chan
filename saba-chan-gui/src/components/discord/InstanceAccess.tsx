@@ -12,7 +12,7 @@ import { failed } from '../../utils/apiResult';
 import { type Access, accessOf } from '../../utils/serverView';
 
 /**
- * 디스코드 › 서버 › 인스턴스 메뉴의 사용 모드 (데몬 인스턴스 access·kick_players·controllers_only, 사용자 지정 2026-11-08).
+ * 디스코드 › 서버 › 인스턴스 메뉴의 사용 모드 (데몬 인스턴스 access·kick_players·controllers_only).
  * - 서버 공용: 길드 레벨 권한을 따른다. 자동 강퇴할 닉네임을 적는다 (모드 줄의 작은 단추 → 팝업)
  * - 전용 멤버: 길드 레벨과 따로 논다. 전용 멤버 명단(ControllersTab)에 든 사람만 모든 조작·명령을 한다.
  *   명단에 없는 사람 자동 강퇴를 켜고 끈다

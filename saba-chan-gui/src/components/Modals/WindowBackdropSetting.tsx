@@ -15,7 +15,7 @@ const WINDOWS_CHOICES = ['tabbed', 'mica', 'acrylic'];
 const MAC_CHOICES = ['regular', 'clear'];
 
 /**
- * 설정 > 외관: 창 바탕 반투명 (사용자 11-08). 켜고 끄기, 재질(Windows·macOS), 덮는 바탕의 진하기·밝기.
+ * 설정 > 외관: 창 바탕 반투명. 켜고 끄기, 재질(Windows·macOS), 덮는 바탕의 진하기·밝기.
  * 셸이 OS 효과를 깔고(backdrop.rs) 이 화면이 그 위를 테마 바탕으로 덮는다. 바꾸면 바로 저장·적용한다
  */
 export function WindowBackdropSetting() {

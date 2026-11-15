@@ -22,7 +22,7 @@ import { Card, type SettingValidationError, type SettingValues, SettingRow, Sett
 import './ServerSettings.css';
 
 /*
- * 서버 상세의 "설정"·"사바쨩" 탭 (옛 서버 설정 모달을 지금 화면 모양으로 다시 그린 것, 사용자 11-07).
+ * 서버 상세의 "설정"·"사바쨩" 탭 (옛 서버 설정 모달을 지금 화면 모양으로 다시 그린 것).
  * 묶음마다 카드(dc-card) 하나, 설정 하나가 한 줄(ss-row): 이름·설명은 왼쪽, 짧은 입력은 오른쪽 끝,
  * 긴 입력(여러 줄·목록)은 줄 아래 전체 폭. 저장 막대는 아래에 붙는다.
  */
@@ -307,7 +307,7 @@ function GeneralTab({
                 </div>
             )}
 
-            {/* 위험 구역: 초기화를 구현한 모듈만 (MK1). 무엇을 지우는지는 모듈 locales의 reset.label·description이 먼저 */}
+            {/* 위험 구역: 초기화를 구현한 모듈만. 무엇을 지우는지는 모듈 locales의 reset.label·description이 먼저 */}
             {showServer && moduleSupports(module, 'reset_server') && (
                 <Card icon="alertTriangle" title={t('server_settings.danger_zone', { defaultValue: 'Danger Zone' })} className="ss-danger">
                     <SettingRow
@@ -366,7 +366,7 @@ const OWN_LABELS: Record<string, string> = {
 };
 
 /**
- * 저장 막대의 "N개 바뀜" 칩 (사용자 11-12): 누르면 칸마다 `이전 → 새 값`과 칸 하나 되돌리기를 보인다.
+ * 저장 막대의 "N개 바뀜" 칩: 누르면 칸마다 `이전 → 새 값`과 칸 하나 되돌리기를 보인다.
  * 다시 시작해야 적용되는 칸에는 설정 줄과 같은 표시를 붙인다.
  */
 function ChangedFields({
@@ -451,7 +451,7 @@ function ChangedFields({
     );
 }
 
-/** 저장 막대 위의 다시 시작 안내 (사용자 11-06 #5): [지금 다시 시작] [나중에] */
+/** 저장 막대 위의 다시 시작 안내: [지금 다시 시작] [나중에] */
 export function RestartNotice({
     pending,
     server,

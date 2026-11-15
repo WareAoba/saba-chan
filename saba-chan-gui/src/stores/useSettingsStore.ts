@@ -45,7 +45,7 @@ export const DEFAULT_SOUNDS: Readonly<SoundSettings> = Object.freeze({
     startup: true,
 });
 
-// 앱 동작 옵션 (사용자 10-27). 기본값은 데몬 GuiSettings와 같다: 지금까지의 동작 그대로
+// 앱 동작 옵션. 기본값은 데몬 GuiSettings와 같다: 지금까지의 동작 그대로
 export const APP_OPTION_DEFAULTS: Readonly<AppOptions> = Object.freeze({
     closeAction: 'ask', // 창 닫기: ask | tray | quit
     toastDuration: 'normal', // 알림 표시 시간: short | normal | long
@@ -57,7 +57,7 @@ export const APP_OPTION_DEFAULTS: Readonly<AppOptions> = Object.freeze({
     consoleWrap: true, // 콘솔 긴 줄 접기 (끄면 가로 스크롤)
     consoleAutoScroll: true, // 맨 아래를 볼 때 새 줄 따라가기
     consoleGlass: true, // 창 반투명일 때 콘솔 바탕도 유리 (인앱·PIP)
-    consoleFonts: CONSOLE_FONT_DEFAULTS, // 콘솔 글꼴: 글자마다 하나 (utils/consoleFonts.js)
+    consoleFonts: CONSOLE_FONT_DEFAULTS, // 콘솔 글꼴: 글자마다 하나 (utils/consoleFonts.ts)
     systemMonitorNetTrace: false, // 고급: 포트·서버별 네트워크 (모니터를 펼쳐 둔 동안 데몬이 센다)
 });
 
@@ -366,7 +366,7 @@ useSettingsStore.subscribe((state, prevState) => {
     if (changed.length === 0) return;
     clearTimeout(settingsSaveTimer);
     settingsSaveTimer = setTimeout(async () => {
-        // 자동 저장 실패는 조용히 넘기지 않는다 (G-U6)
+        // 자동 저장 실패는 조용히 넘기지 않는다
         if ((await useSettingsStore.getState().save()) === false) safeShowToast(_t('settings.save_error'), 'error');
     }, 500);
 });

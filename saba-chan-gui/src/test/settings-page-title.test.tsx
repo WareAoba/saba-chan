@@ -8,7 +8,7 @@ import SettingsModalImpl from '../components/Modals/SettingsModal';
 const SettingsModal = SettingsModalImpl as ComponentType<Partial<ComponentProps<typeof SettingsModalImpl>>>;
 const SRC = path.resolve(__dirname, '..');
 
-// 설정 화면 제목은 고른 탭 이름 하나 (사용자 결정 2026-11-11: "설정" 아래 탭 이름이 또 나오던 이중 제목 정리)
+// 설정 화면 제목은 고른 탭 이름 하나 ("설정" 아래 탭 이름이 또 나오던 이중 제목 정리)
 describe('설정 화면 제목과 줄 아이콘', () => {
     it('큰 제목은 고른 탭 이름 하나만 있다', async () => {
         const { container } = render(<SettingsModal />);

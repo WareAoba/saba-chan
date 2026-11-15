@@ -1,5 +1,5 @@
 /**
- * slot 표·manifest 선언·host 통로·탭형 slot (익스텐션 slot 확장 1단계, 사용자 2026-11-09).
+ * slot 표·manifest 선언·host 통로·탭형 slot (익스텐션 slot 확장 1단계).
  */
 import { render, renderHook, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

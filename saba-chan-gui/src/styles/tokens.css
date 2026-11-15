@@ -1,6 +1,6 @@
 @import './consoleFonts.css';
 
-/* ════════════════════════════════════════════════════════════════
+/*
  * 사바쨩 GUI 디자인 토큰 — 색·입체·간격·글자의 단일 원천
  * 근거 문서: design/gui-design-reference.md (A=Applio, N=뉴모피즘, L=레이아웃)
  *
@@ -9,13 +9,13 @@
  * 하나 더 만들고 같은 이름의 변수만 채우면 된다.
  * 강조색(--accent*, --brand-*)은 themeManager.applyCustomTheme()이 사용자
  * 설정으로 덮어쓴다.
- * ════════════════════════════════════════════════════════════════ */
+ */
 
 /* ── 다크 (기본) ── */
 :root,
 [data-theme="dark"] {
     color-scheme: dark;
-    /* 회색 계단 (A1): 깊을수록 어둡다 */
+    /* 회색 계단: 깊을수록 어둡다 */
     --bg-0: #0d0e10;
     --bg-1-solid: #141518;
     --bg-2-solid: #1b1c20;
@@ -31,7 +31,7 @@
     --appbar-gradient: #111214;
     --sheen: linear-gradient(in oklab, transparent, transparent);
 
-    /* 선 (A2) */
+    /* 선 */
     --line: rgba(255, 255, 255, 0.07);
     --line-strong: rgba(255, 255, 255, 0.13);
 
@@ -53,7 +53,7 @@
     --star: #ffc531;
     --info-soft: rgba(78, 161, 255, 0.12);
 
-    /* 입체 (N1·N2) */
+    /* 입체 */
     --shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.35);
     --shadow-raised-hover: 0 2px 6px rgba(0, 0, 0, 0.4);
     --shadow-inset: inset 0 1px 2px rgba(0, 0, 0, 0.45);
@@ -88,7 +88,7 @@
     --chart-idle: #2e3036;
     /* 로딩 화면 뒤 매트릭스 진하기: 밝은 바탕에서는 같은 투명도면 글자가 묻힌다 */
     --loading-matrix-opacity: 0.28;
-    /* 사바쨩 얼굴 아이콘: 라이트는 선, 다크는 면 (Icon.js SabaFaceSvg) */
+    /* 사바쨩 얼굴 아이콘: 라이트는 선, 다크는 면 (Icon.tsx SabaFaceSvg) */
     --saba-face-line: none;
     --saba-face-solid: inline;
 }
@@ -296,13 +296,13 @@
     --tok-uuid: #74c7ec;
     --tok-path: #94e2d5;
     --tok-dim: #6c7086;
-    /* 모듈 아이콘은 칸의 이만큼 크기로 가운데에, 자르지 않고 그린다 (사용자 2026-11-12: 모든 모듈 똑같이 살짝 축소) */
+    /* 모듈 아이콘은 칸의 이만큼 크기로 가운데에, 자르지 않고 그린다 (모든 모듈 똑같이 살짝 축소) */
     --module-icon-size: 80%;
 
     /* 글자 */
     --font-sans: 'Pretendard', 'Pretendard Variable', 'Noto Sans KR', 'Noto Sans', 'Segoe UI', 'Apple SD Gothic Neo',
         'Malgun Gothic', system-ui, sans-serif;
-    /* 콘솔 글꼴: 글자마다 고른 글꼴 (utils/consoleFonts.js 가 설정대로 바꾼다). 이 값은 기본값 */
+    /* 콘솔 글꼴: 글자마다 고른 글꼴 (utils/consoleFonts.ts 가 설정대로 바꾼다). 이 값은 기본값 */
     --font-mono: 'saba-latin-cascadia-code', 'saba-ko-d2coding', 'saba-ja-hackgen', 'saba-zh-sarasa-mono-sc', monospace;
     --fs-xs: calc(12px * var(--font-scale, 1));
     --fs-sm: calc(13px * var(--font-scale, 1));
@@ -312,7 +312,7 @@
     --fs-2xl: calc(24px * var(--font-scale, 1));
 
     /* 간격 (4px 단위, 12px 아래만 반 단계). 이 파일 밖의 padding·margin·gap은
-     * 이 변수만 쓴다 (1px만 예외). test/spacing-tokens.test.js가 지킨다 */
+     * 이 변수만 쓴다 (1px만 예외). test/spacing-tokens.test.ts가 지킨다 */
     --sp-0-5: 2px;
     --sp-1: 4px;
     --sp-1-5: 6px;
@@ -346,10 +346,10 @@
     --list-w: 300px;
 }
 
-/* ════════════════════════════════════════════════════════════════
+/*
  * 옛 변수 이름 → 새 토큰 (기존 화면 CSS가 그대로 새 테마를 따르게)
  * 새 CSS에서는 위의 새 이름만 쓴다.
- * ════════════════════════════════════════════════════════════════ */
+ */
 :root,
 [data-theme] {
 

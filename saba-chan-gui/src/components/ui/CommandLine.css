@@ -1,4 +1,4 @@
-/* 명령 줄 입력 부품 (ui/CommandLine.tsx, 사용자 11-06 #4). 앱·웹이 함께 쓴다: tokens.css의 값만 쓴다 */
+/* 명령 줄 입력 부품 (ui/CommandLine.tsx). 앱·웹이 함께 쓴다: tokens.css의 값만 쓴다 */
 .cmdline-field {
     position: relative;
     flex: 1;

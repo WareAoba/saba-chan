@@ -3,7 +3,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { LadderEditor } from '../components/PermissionsTab';
 import { initI18n } from '../i18n';
 
-// 사용자 지정(2026-11-06·07, 앱 레벨 편집과 같다): 모든 레벨 이름 바꾸기, 소유자·게스트·금지는 못 지움,
+// 앱 레벨 편집과 같다: 모든 레벨 이름 바꾸기, 소유자·게스트·금지는 못 지움,
 // 카드는 끌어서 옮기고(화살표 없음) 칸에는 사바쨩 기능 칩만, 칩을 끌어 다른 레벨로, 기본값으로 초기화
 const perm = { guildId: 'g1', preset: 'default', commandLevels: {} };
 const item = (instance: string, name: string, level: number, extra = {}) => ({

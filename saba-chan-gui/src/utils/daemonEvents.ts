@@ -6,7 +6,7 @@ import { safeShowToast } from './helpers';
 
 export { sourceText };
 
-/** 데몬 이벤트 스트림 (P4: GET /api/events → Tauri 셸 → window.api.onDaemonEvent) */
+/** 데몬 이벤트 스트림 (GET /api/events → Tauri 셸 → window.api.onDaemonEvent) */
 /** 정규화한 이벤트 한 건. data의 칸은 이벤트 종류마다 다르다 */
 export interface DaemonEvent {
     id?: unknown;
@@ -280,7 +280,7 @@ export function showPortMoved({ instanceId, name, from, to }: { instanceId: stri
 }
 
 // 서버의 예기치 않은 멈춤·사바쨩 밖의 시작 하나는 이벤트(instance.exit, instance.started unexpected)와
-// 목록 폴링이 따로 알아챈다. 먼저 알린 쪽이 표시를 남기고, 다른 쪽은 그 표시를 지우며 한 번만 건너뛴다 (G-S6).
+// 목록 폴링이 따로 알아챈다. 먼저 알린 쪽이 표시를 남기고, 다른 쪽은 그 표시를 지우며 한 번만 건너뛴다.
 // 같은 쪽이 연달아 알리면(재시작 사이 크래시가 거듭되면) 모두 알린다.
 // 이벤트는 일어난 시각(`at`)으로 짝짓는다: 스트림이 끊긴 동안 폴링이 알린 일을 다시 붙은 뒤 밀려 온 이벤트가 또 알리지 않게
 const serverNotices = new Map<string, { source: string; at: number }>();

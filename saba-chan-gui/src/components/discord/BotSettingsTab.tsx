@@ -163,8 +163,8 @@ interface BotSettingsTabProps {
  * 데몬이 relay로 보낸다. 바꾸는 즉시 저장한다.
  * - section 'bot': 언어·접두사·명령 이름 번역·되묻기·사용법
  * - section 'music': 노래하는 사바쨩
- * - section 'tts': 읽어주는 사바쨩 볼륨·속도·피치와 이름 부르기 (2026-10-31 사용자 지정, 글자 제한은 고정),
- *   동작 — 음성 채널 채팅에서만·읽은 글 남기기·늘 읽을 음성 채널 (2026-11-03 사용자 지정, 판정은 릴레이)
+ * - section 'tts': 읽어주는 사바쨩 볼륨·속도·피치와 이름 부르기 (글자 제한은 고정),
+ *   동작 — 음성 채널 채팅에서만·읽은 글 남기기·늘 읽을 음성 채널 (판정은 릴레이)
  * 말하는 사바쨩의 되묻기 단계는 챗봇 설정의 이 서버 값(`guilds[guild].confirmLevel`)이다
  */
 export function BotSettingsTab({ node, section = 'bot', sampleModuleWord = '' }: BotSettingsTabProps) {

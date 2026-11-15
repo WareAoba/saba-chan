@@ -61,7 +61,7 @@ export function CommandStairs({ node, permissions, instance = L.ALL_INSTANCES }:
     const [view, setView] = useState(instance);
     const [selected, setSelected] = useState<string | null>(null); // 칩 id
     const [presetDraft, setPresetDraft] = useState<string | null>(null); // 명령별 레벨을 덮을 프리셋 (확인 전)
-    // 옮긴 레벨은 초안이다 (사용자 지정 2026-11-07): 저장 막대에서 저장한다
+    // 옮긴 레벨은 초안이다: 저장 막대에서 저장한다
     const {
         ref: stairsRef,
         dropRef,
@@ -127,7 +127,7 @@ export function CommandStairs({ node, permissions, instance = L.ALL_INSTANCES }:
     };
     const label = (chip: L.StairChip) =>
         chip.instance ? `${chip.title} · ${instanceName(chip.instance)}` : chip.title;
-    // 게임(모듈·플러그인) 명령 칩은 명령 원문, 번역 이름은 말풍선과 화면 읽기 이름으로 (사용자 지정 2026-11-07).
+    // 게임(모듈·플러그인) 명령 칩은 명령 원문, 번역 이름은 말풍선과 화면 읽기 이름으로.
     // 바닐라 게임에 없는 사바쨩 기능(시작·백업 등)과 묶음·도움말 칩은 번역 이름 그대로
     const chipText = (chip: L.StairChip) => {
         const text = chip.module && chip.name ? chip.name : chip.title;

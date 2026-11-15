@@ -12,7 +12,7 @@ use std::path::Path;
 /// 언어별로 쓴 바로가기 이름 전부 (언어를 바꿔 다시 설치해도 옛 이름을 지울 수 있게)
 pub const ALL_SHORTCUT_NAMES: &[&str] = &["Saba-chan", "사바쨩", "サバちゃん"];
 
-// ── Windows Known Folder GUIDs ──────────────────────────
+// ── Windows Known Folder GUIDs ──
 
 /// `{B4BFCC3A-DB2C-424C-B029-7FE99A87C641}` — 바탕화면
 #[cfg(target_os = "windows")]

@@ -193,7 +193,7 @@ export const useServerStore = create<ServerState>()((set, get) => ({
                 const loadAliases = async (mod: { name: string }): Promise<ModuleAliases | null> => {
                     try {
                         const metadata = await window.api.moduleGetMetadata(mod.name);
-                        // 데몬이 파싱한 메타데이터만 쓴다 (원본 toml은 응답에서 빠질 예정)
+                        // 데몬이 파싱한 메타데이터만 쓴다
                         const meta = metadata?.metadata;
                         if (!meta) return null;
                         const mergedCommands: Record<string, ModuleCommandAliases> = {};

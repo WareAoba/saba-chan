@@ -6,9 +6,7 @@
 use std::path::Path;
 use saba_chan_installer_core::uninstall;
 
-// ═══════════════════════════════════════════════════════
 // 관리자 권한 상승 (UAC) — 디렉토리 생성 전용
-// ═══════════════════════════════════════════════════════
 
 /// Windows 명령줄 인자 하나로 따옴표를 씌운다 (CommandLineToArgvW 규칙: `"` 앞과 끝의 `\`는 두 배로)
 #[cfg_attr(not(target_os = "windows"), allow(dead_code))]

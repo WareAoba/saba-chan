@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { addController, memberChoices, removeController } from '../components/servers/controllers';
 
-// 사용자 지정(2026-11-06): 인스턴스마다 "조작 가능" 명단. 한 줄은 게임 닉네임과 이을 수 있는 디스코드 멤버
+// 인스턴스마다 "조작 가능" 명단. 한 줄은 게임 닉네임과 이을 수 있는 디스코드 멤버
 describe('조작 가능 명단', () => {
     it('닉네임 앞뒤 공백을 떼고, 고른 디스코드 멤버를 잇는다', () => {
         expect(addController([], '  Steve ', '332007306403250178')).toEqual({

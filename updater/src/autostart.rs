@@ -4,7 +4,7 @@
 //! - Windows: `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`의 `Saba-chan` 값.
 //!   작업 관리자·설정 앱에서 끈 표시(`...\Explorer\StartupApproved\Run`)가 있으면 꺼진 것으로 보고, 사바쨩에서 다시 고르면 그 표시를 지운다
 //! - Linux: `$XDG_CONFIG_HOME/autostart/saba-chan.desktop` (없으면 `~/.config/autostart`).
-//!   GUI 없이 설치한 화면 없는 서버(D3)의 데몬만은 systemd 사용자 서비스
+//!   GUI 없이 설치한 화면 없는 서버의 데몬만은 systemd 사용자 서비스
 //!   `$XDG_CONFIG_HOME/systemd/user/saba-chan.service`(`default.target.wants`에 걸려 있어야 켜진 것)
 //! - macOS: LaunchAgent `~/Library/LaunchAgents/com.saba-chan.autostart.plist`. GUI 없이 설치한 맥의 데몬만은 데몬을 바로 등록한다.
 //!   시스템 설정 > 로그인 항목에서 끈 것은 읽지 못한다 (등록된 것으로 보인다)
@@ -767,7 +767,7 @@ mod tests {
         let dir = install_with(&[crate::CORE_EXE]);
         assert_eq!(entry_for(Mode::Full, dir.path()).unwrap_err().code, "gui_missing");
         if cfg!(any(target_os = "linux", target_os = "macos")) {
-            // 화면 없는 리눅스 서버 (D3)·맥: 데몬만은 데몬을 바로 서비스(systemd 사용자 서비스, LaunchAgent)로 등록한다
+            // 화면 없는 리눅스 서버·맥: 데몬만은 데몬을 바로 서비스(systemd 사용자 서비스, LaunchAgent)로 등록한다
             let daemon = entry_for(Mode::Daemon, dir.path()).unwrap().unwrap();
             assert_eq!(daemon, Entry { program: dir.path().join(crate::CORE_EXE), args: vec![] });
             assert_eq!(daemon.mode(), Mode::Daemon);

@@ -1,4 +1,4 @@
-//! `perm` — 디스코드에서 누가 어떤 명령을 쓸 수 있는지 (데몬 권한 설정, P1)
+//! `perm` — 디스코드에서 누가 어떤 명령을 쓸 수 있는지 (데몬 권한 설정)
 
 use crate::cli::{LevelCmd, PermCmd};
 use crate::ctx::Ctx;
@@ -111,7 +111,7 @@ fn edit_ladder(mut ladder: Vec<Rung>, cmd: &LevelCmd) -> Result<Vec<Rung>> {
             let at = slot_above(&ladder, above.as_deref())?;
             ladder.insert(at, Rung { id: None, name: Some(name.trim().to_string()) });
         }
-        // 모든 단계의 이름을 바꾼다. 기본 단계는 이름을 비우면 원래 이름이다 (사용자 지정 2026-11-06)
+        // 모든 단계의 이름을 바꾼다. 기본 단계는 이름을 비우면 원래 이름이다
         LevelCmd::Rename { level, name, .. } => {
             let id = parse_level(level, &ladder)?;
             let rung = ladder.iter_mut().find(|r| r.id == Some(id)).ok_or_else(|| usage(t!("perm.bad_level", level = level)))?;
@@ -230,7 +230,7 @@ pub async fn run(ctx: &Ctx, cmd: PermCmd) -> Result<()> {
     Ok(())
 }
 
-/// 릴레이에 남은 부여값을 골라 데몬에 쓴다 (C10). 데몬은 저절로 가져오지 않는다: 원본이 둘이 되지 않게 사용자가 고른다
+/// 릴레이에 남은 부여값을 골라 데몬에 쓴다. 데몬은 저절로 가져오지 않는다: 원본이 둘이 되지 않게 사용자가 고른다
 async fn import(ctx: &Ctx, guild: &str, wanted: &[String]) -> Result<()> {
     let cfg = ctx.api.bot_config().await?;
     let (perm, legacy) = tokio::try_join!(
@@ -458,13 +458,13 @@ mod tests {
         assert_eq!(parse_level("금지", &ladder).unwrap(), -1);
         assert_eq!(parse_level("0", &ladder).unwrap(), 0);
         assert!(parse_level("boss", &ladder).is_err());
-        // 레벨 0 이름이 게스트로 바뀌어도(2026-10-28) 예전 입력 낱말은 그대로 받는다
+        // 레벨 0 이름이 게스트로 바뀌어도 예전 입력 낱말은 그대로 받는다
         for name in ["guest", "게스트", "손님", "chatbot", "챗봇", "말하는 사바쨩", "Talking Saba-chan"] {
             assert_eq!(parse_level(name, &ladder).unwrap(), 0, "{name}");
         }
     }
 
-    /// 사용자 지정 2026-10-25: 디스코드 서버마다 단계를 더하고 옮기고 지운다 (GUI 단계 탭과 같은 규칙)
+    /// 디스코드 서버마다 단계를 더하고 옮기고 지운다 (GUI 단계 탭과 같은 규칙)
     #[test]
     fn added_levels_are_named_and_the_ladder_can_be_edited() {
         let ladder = vip_ladder();
@@ -495,7 +495,7 @@ mod tests {
         assert_eq!(ladder_patch(&back)[1], json!({ "id": 2 }));
     }
 
-    /// 권한 표는 디스코드 id 대신 멤버·서버 이름을 보인다 (C8). 모르는 id는 그대로
+    /// 권한 표는 디스코드 id 대신 멤버·서버 이름을 보인다. 모르는 id는 그대로
     #[test]
     fn members_and_command_servers_show_by_name() {
         let names = Names {
@@ -509,7 +509,7 @@ mod tests {
         assert_eq!(command_name(&names, "start"), "start");
     }
 
-    /// 가져오기 후보: 릴레이에 남은 부여값 중 데몬과 다른 것. 주인과 줄 수 없는 레벨은 뺀다 (C10, GUI importCandidates와 같은 규칙)
+    /// 가져오기 후보: 릴레이에 남은 부여값 중 데몬과 다른 것. 주인과 줄 수 없는 레벨은 뺀다 (GUI importCandidates와 같은 규칙)
     #[test]
     fn import_candidates_are_relay_grants_that_differ() {
         let perm = json!({ "ownerDiscordId": "9", "members": { "1": 2, "2": 1 } });

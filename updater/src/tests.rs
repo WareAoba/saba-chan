@@ -327,7 +327,7 @@ fn extract_zip_keeps_the_executable_bit() {
     assert_eq!(mode("i18n.py") & 0o111, 0);
 }
 
-// C13: 모듈 폴더 교체가 실패하면 원래 내용으로 되돌린다
+// 모듈 폴더 교체가 실패하면 원래 내용으로 되돌린다
 #[test]
 fn replace_dir_restores_backup_when_extract_fails() {
     let tmp = tempfile::tempdir().unwrap();
@@ -433,7 +433,7 @@ fn names_in(dir: &std::path::Path) -> Vec<String> {
     names
 }
 
-// 묻지 않는 교체(Codex #926 재리뷰): 원래 폴더는 옆으로 옮긴 뒤 그 순간의 지문으로 검사하고, 바꿔 넣은 뒤에도 바로 지우지 않는다.
+// 묻지 않는 교체: 원래 폴더는 옆으로 옮긴 뒤 그 순간의 지문으로 검사하고, 바꿔 넣은 뒤에도 바로 지우지 않는다.
 // 옮긴 폴더는 다음 교체 때 지문이 그대로일 때만 지운다
 #[test]
 fn an_untouched_swap_puts_the_new_version_in_and_keeps_the_old_folder_until_the_next_swap() {
@@ -497,7 +497,7 @@ fn a_file_written_after_the_move_is_never_deleted() {
 }
 
 /// 교체 전에 열어 둔 파일에 교체 뒤 저장해도(유닉스에서는 옮긴 폴더의 파일에 써진다) 지우지 않는다:
-/// 다음 교체가 옮긴 폴더의 지문이 달라진 것을 보고 남긴다 (Codex #926 5차 재리뷰)
+/// 다음 교체가 옮긴 폴더의 지문이 달라진 것을 보고 남긴다
 #[cfg(unix)]
 #[test]
 fn a_save_through_a_handle_opened_before_the_swap_is_kept() {
@@ -675,7 +675,7 @@ fn replace_dir_ignores_a_backup_that_was_cut_off_while_copying() {
     assert_eq!(std::fs::read_to_string(target.join("lifecycle.py")).unwrap(), "old");
 }
 
-// C13: 받은 뒤 바뀐 파일은 적용하지 않는다
+// 받은 뒤 바뀐 파일은 적용하지 않는다
 #[test]
 fn staged_file_is_rechecked_before_apply() {
     let tmp = tempfile::tempdir().unwrap();
@@ -767,7 +767,7 @@ fn a_renamed_gui_exe_retires_the_old_one() {
     assert!(UpdateManager::retire_other_exes(root, &[root.join("x.dll")], &names).is_empty());
 }
 
-// A5: 받아 둔 릴리즈의 버전·패치노트가 staging에 남아 업데이터가 완료 마커에 싣고, 정리하면 지워진다
+// 받아 둔 릴리즈의 버전·패치노트가 staging에 남아 업데이터가 완료 마커에 싣고, 정리하면 지워진다
 #[test]
 fn downloaded_release_notes_reach_the_completion_marker() {
     let tmp = tempfile::tempdir().unwrap();
@@ -1048,7 +1048,7 @@ fn a_failed_new_install_leaves_no_folder() {
     assert!(!target.exists());
 }
 
-// EE4: 코어를 `.exe.old`로 비켜 둔 뒤 새 exe를 두기 전에 끊기면, 다음 정리는 가장 최근 사본을 되돌린다 (그대로면 데몬이 뜨지 못한다)
+// 코어를 `.exe.old`로 비켜 둔 뒤 새 exe를 두기 전에 끊기면, 다음 정리는 가장 최근 사본을 되돌린다 (그대로면 데몬이 뜨지 못한다)
 #[test]
 fn an_exe_moved_aside_by_an_interrupted_apply_is_put_back() {
     let tmp = tempfile::tempdir().unwrap();
@@ -1142,7 +1142,7 @@ fn leftover_update_backups_are_cleaned_or_restored() {
     assert!(!tmp.path().join("WebView2Loader.dll.update-bak").exists());
 }
 
-// M4: 대상 폴더 안의 기존 링크(Windows는 정션 포함)를 따라 밖에 쓰지 않는다
+// 대상 폴더 안의 기존 링크(Windows는 정션 포함)를 따라 밖에 쓰지 않는다
 #[cfg(unix)]
 #[test]
 fn extract_zip_does_not_write_through_links_in_the_target() {
@@ -1169,7 +1169,7 @@ fn extract_zip_does_not_write_through_links_in_the_target() {
     assert_eq!(std::fs::read(outside.join("victim.txt")).unwrap(), b"keep");
 }
 
-// M4: tar의 링크 엔트리를 만들지 않고, 기존 링크를 따라 쓰지 않는다
+// tar의 링크 엔트리를 만들지 않고, 기존 링크를 따라 쓰지 않는다
 #[cfg(unix)]
 #[test]
 fn extract_tar_gz_does_not_create_or_follow_links() {
@@ -1202,7 +1202,7 @@ fn extract_tar_gz_does_not_create_or_follow_links() {
     assert!(!outside.join("new.txt").exists());
 }
 
-// M4: Windows 정션도 링크로 보고 따라 쓰지 않는다 (PC에서 실행)
+// Windows 정션도 링크로 보고 따라 쓰지 않는다 (PC에서 실행)
 #[cfg(windows)]
 #[test]
 fn extract_zip_does_not_write_through_a_junction() {
@@ -1278,14 +1278,14 @@ fn startup_cleanup_leaves_backups_of_a_running_apply_alone() {
     assert!(!tmp.path().join("resources.pak").exists());
 }
 
-// M1: manifest의 `installer`도 업데이트 대상이다. 건너뛰면 설치 폴더의 제거기가 처음 설치한 판에 남는다
+// manifest의 `installer`도 업데이트 대상이다. 건너뛰면 설치 폴더의 제거기가 처음 설치한 판에 남는다
 #[test]
 fn the_installer_manifest_key_is_a_component() {
     assert_eq!(Component::try_from_manifest_key("installer"), Some(Component::Installer));
     assert_eq!(Component::Installer.manifest_key(), "installer");
 }
 
-// M1: 릴리스의 설치기는 zip이 아닌 exe 그대로다. 설치 폴더의 사본을 바꾼다
+// 릴리스의 설치기는 zip이 아닌 exe 그대로다. 설치 폴더의 사본을 바꾼다
 #[tokio::test]
 async fn an_installer_update_replaces_the_installed_copy() {
     let tmp = tempfile::tempdir().unwrap();
@@ -1305,7 +1305,7 @@ async fn an_installer_update_replaces_the_installed_copy() {
     assert!(!staged.exists());
 }
 
-// M1: 바꾸다 실패하면 원래 설치기를 되돌린다 (제거기가 사라지면 안 된다)
+// 바꾸다 실패하면 원래 설치기를 되돌린다 (제거기가 사라지면 안 된다)
 #[tokio::test]
 async fn a_failed_installer_update_keeps_the_old_copy() {
     let tmp = tempfile::tempdir().unwrap();
@@ -1323,7 +1323,7 @@ async fn a_failed_installer_update_keeps_the_old_copy() {
     assert_eq!(left.len(), 1, "no backup left behind: {left:?}");
 }
 
-// M1: 0.1.7 이하 설치본은 설치기 버전을 기록하지 않았다. 번들 버전으로 채우면 최신으로 보여 영영 안 바뀌므로
+// 0.1.7 이하 설치본은 설치기 버전을 기록하지 않았다. 번들 버전으로 채우면 최신으로 보여 영영 안 바뀌므로
 // 기록이 없는 설치기는 버전을 모르는 채로 두고, 깔려 있으면 한 번 바꾼다
 #[test]
 fn an_unrecorded_installer_is_not_assumed_current() {
@@ -1336,7 +1336,7 @@ fn an_unrecorded_installer_is_not_assumed_current() {
     assert!(!UpdateManager::unknown_version_needs_update(&Component::CoreDaemon));
 }
 
-// L3: 개별 적용(업데이터 키별 적용, 데몬 직접 적용)도 지난 적용이 남긴 백업을 되돌린다
+// 개별 적용(업데이터 키별 적용, 데몬 직접 적용)도 지난 적용이 남긴 백업을 되돌린다
 #[tokio::test]
 async fn a_single_component_apply_restores_a_backup_left_by_an_interrupted_apply() {
     let tmp = tempfile::tempdir().unwrap();
@@ -1351,7 +1351,7 @@ async fn a_single_component_apply_restores_a_backup_left_by_an_interrupted_apply
     assert!(!tmp.path().join("resources.pak.update-bak").exists());
 }
 
-// U-10: 상태의 패치노트도 사용자 언어로 고른다 (예전에는 늘 한국어, 없으면 영어)
+// 상태의 패치노트도 사용자 언어로 고른다 (예전에는 늘 한국어, 없으면 영어)
 #[test]
 fn status_release_notes_follow_the_user_language() {
     let latest = crate::relay::LatestRelease {
@@ -1378,7 +1378,7 @@ async fn serve_once(response: Vec<u8>) -> String {
     format!("http://{}/asset.zip", addr)
 }
 
-// U-4: 여러 개를 받다 하나가 실패해도 이미 받은 것은 받은 것으로 남긴다 (그래야 pending에 실린다)
+// 여러 개를 받다 하나가 실패해도 이미 받은 것은 받은 것으로 남긴다 (그래야 pending에 실린다)
 #[tokio::test]
 async fn a_failed_download_keeps_the_ones_already_downloaded() {
     let tmp = tempfile::tempdir().unwrap();
@@ -1427,7 +1427,7 @@ fn extension_zip(dir: &std::path::Path) -> std::path::PathBuf {
     path
 }
 
-// U-3: 데몬이 정한 목록으로 적용할 때도 첫 실패에서 멈춘다 (데몬이 실패했는데 뒤의 것만 바뀌지 않게)
+// 데몬이 정한 목록으로 적용할 때도 첫 실패에서 멈춘다 (데몬이 실패했는데 뒤의 것만 바뀌지 않게)
 #[tokio::test]
 async fn target_keys_stop_at_the_first_failure() {
     let tmp = tempfile::tempdir().unwrap();
@@ -1541,7 +1541,7 @@ fn pending_keys_come_in_apply_order() {
     assert_eq!(manager.pending_keys_in_apply_order(), vec!["saba-core".to_string(), ext.manifest_key()]);
 }
 
-// U-5: locales도 모듈처럼 백업 뒤 통째로 바꾼다. 새 판에 없는 옛 파일은 남지 않고, 풀다 실패하면 되돌린다
+// locales도 모듈처럼 백업 뒤 통째로 바꾼다. 새 판에 없는 옛 파일은 남지 않고, 풀다 실패하면 되돌린다
 #[tokio::test]
 async fn locales_are_replaced_with_a_backup() {
     use std::io::Write;
@@ -2040,7 +2040,7 @@ fn test_default_update_channel_is_the_build_channel() {
     assert_eq!(saved.channel, crate::versions::bundled().channel);
 }
 
-// C(W1): 번역 묶음은 옆 폴더에 다 푼 뒤 맞바꾸고 판 번호를 `locales/version`에 적는다. 옆 폴더는 남지 않는다
+// C: 번역 묶음은 옆 폴더에 다 푼 뒤 맞바꾸고 판 번호를 `locales/version`에 적는다. 옆 폴더는 남지 않는다
 #[tokio::test]
 async fn locales_are_swapped_in_whole_with_their_version() {
     use std::io::Write;
@@ -2072,7 +2072,7 @@ async fn locales_are_swapped_in_whole_with_their_version() {
     assert_eq!(names, vec!["locales".to_string()], "no side folder is left");
 }
 
-// C(W1): 맞바꾸다 끊겨 `locales`가 없고 옛 묶음만 옆에 남았으면 다음 정리가 옛 묶음을 되돌린다
+// C: 맞바꾸다 끊겨 `locales`가 없고 옛 묶음만 옆에 남았으면 다음 정리가 옛 묶음을 되돌린다
 #[test]
 fn an_interrupted_locales_swap_is_put_back() {
     let tmp = tempfile::tempdir().unwrap();
@@ -2094,7 +2094,7 @@ fn moved_aside(name: &str) -> (String, String) {
     if cfg!(windows) { (format!("{name}.exe"), format!("{name}.exe.old")) } else { (name.to_string(), format!("{name}.old")) }
 }
 
-// Codex 4차 점검: 실행 파일을 비켜 두지 못하면 덮어쓰지 않고 실패한다 (백업 없이 덮으면 되돌릴 수 없다)
+// 실행 파일을 비켜 두지 못하면 덮어쓰지 않고 실패한다 (백업 없이 덮으면 되돌릴 수 없다)
 #[cfg(unix)]
 #[test]
 fn a_binary_that_cannot_be_moved_aside_is_not_overwritten() {
@@ -2106,7 +2106,7 @@ fn a_binary_that_cannot_be_moved_aside_is_not_overwritten() {
     assert_eq!(std::fs::read(&exe).unwrap(), b"old");
 }
 
-// C(W1): 되돌릴 때는 이번 적용이 비켜 둔 실행 파일만 모두 되돌린다. 적용 전부터 있던 백업(지난 업데이트 뒤로 도는 러너 등)은 건드리지 않는다
+// C: 되돌릴 때는 이번 적용이 비켜 둔 실행 파일만 모두 되돌린다. 적용 전부터 있던 백업(지난 업데이트 뒤로 도는 러너 등)은 건드리지 않는다
 #[test]
 fn a_rollback_restores_only_the_exes_this_apply_moved_aside() {
     let tmp = tempfile::tempdir().unwrap();
@@ -2134,7 +2134,7 @@ fn a_rollback_restores_only_the_exes_this_apply_moved_aside() {
     assert!(tmp.path().join(&cli_old).exists());
 }
 
-// Codex 4차 점검: 실행 파일을 되돌리지 못하면 성공으로 넘기지 않고 남은 것(백업 → 제자리)을 알린다.
+// 실행 파일을 되돌리지 못하면 성공으로 넘기지 않고 남은 것(백업 → 제자리)을 알린다.
 // 새 판을 먼저 지우지 않는다 (예전처럼 비키기에 실패하면 지우고 나서 백업 옮기기도 실패하면 실행 파일이 아예 없어진다)
 #[test]
 fn a_rollback_that_cannot_move_the_new_exe_aside_reports_it() {
@@ -2159,7 +2159,7 @@ fn a_rollback_that_cannot_move_the_new_exe_aside_reports_it() {
     assert_eq!(std::fs::read(tmp.path().join(&core_old)).unwrap(), b"core old");
 }
 
-// C(W1): 업데이터가 새 데몬을 지켜보는 동안에는 새 데몬이 `.old`를 지우지 않는다 (되돌림에 쓴다)
+// C: 업데이터가 새 데몬을 지켜보는 동안에는 새 데몬이 `.old`를 지우지 않는다 (되돌림에 쓴다)
 #[test]
 fn old_backups_are_kept_while_the_updater_watches_the_new_daemon() {
     let tmp = tempfile::tempdir().unwrap();

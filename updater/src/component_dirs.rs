@@ -860,7 +860,7 @@ mod tests {
         assert!(!dst2.exists() && !staging_dir(&dst2).exists());
     }
 
-    // Codex 리뷰 #544 P1: 대상 옆 복사 중 폴더 이름의 기존 폴더를 표시 없이도 통째로 지웠다
+    // 대상 옆 복사 중 폴더 이름의 기존 폴더를 표시 없이도 통째로 지웠다
     #[test]
     fn a_staging_named_folder_is_removed_only_when_it_is_a_leftover_copy() {
         let tmp = tempfile::tempdir().unwrap();
@@ -881,7 +881,7 @@ mod tests {
         assert!(dst.join("i18n.py").is_file() && !src.exists());
     }
 
-    // Codex 리뷰 #544 P2: 대상 위 정션이 원본을 가리키면 이름 비교로는 겹치지 않아 원본 안에 복사했다
+    // 대상 위 정션이 원본을 가리키면 이름 비교로는 겹치지 않아 원본 안에 복사했다
     #[cfg(windows)]
     #[test]
     fn a_target_reached_through_a_junction_into_the_source_is_refused() {

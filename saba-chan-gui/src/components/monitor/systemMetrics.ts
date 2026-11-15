@@ -199,7 +199,7 @@ export function nextPeaks(prev: Peaks, snap: MetricsSnapshot | null | undefined)
     };
 }
 
-// ── 고를 수 있는 항목 ──────────────────────────────────────────────
+// ── 고를 수 있는 항목 ──
 // 원 하나가 항목 하나다(cpu, memory, gpu, disk_io, volume:<마운트>, network, adapter:<이름>).
 // 점이 붙은 항목(cpu.clock 등)은 그 원 아래 알약 하나다.
 
@@ -341,7 +341,7 @@ export function buildRings(
     if (on.has('cpu')) {
         const cpu = snap.cpu || {};
         const pills: RingPill[] = [{ key: 'monitor.cores', vars: { count: cpu.cores } }];
-        // 모르는 값은 알약째 보이지 않는다 (사용자 11-06 #26. 온도는 Windows가 대부분 못 읽는다)
+        // 모르는 값은 알약째 보이지 않는다 (온도는 Windows가 대부분 못 읽는다)
         if (on.has('cpu.clock') && cpu.clock_mhz) pills.push({ text: formatGhz(cpu.clock_mhz) });
         if (on.has('cpu.temp') && cpu.temp_c != null) pills.push({ text: `${Math.round(cpu.temp_c)} °C` });
         rings.push({
@@ -385,7 +385,7 @@ export function buildRings(
     if (on.has('gpu')) {
         const gpus = snap.gpus || [];
         gpus.forEach((g, i) => {
-            // 사용률을 모르는 GPU는 원째 뺀다 (모르는 값은 보이지 않는다, 사용자 11-06 #26)
+            // 사용률을 모르는 GPU는 원째 뺀다 (모르는 값은 보이지 않는다)
             if (g.util_percent == null) return;
             const pills: RingPill[] = [];
             if (on.has('gpu.clock') && g.clock_mhz) pills.push({ text: formatGhz(g.clock_mhz) });
@@ -519,7 +519,7 @@ export function buildRings(
     return rings;
 }
 
-/** 디스크 종류 알약. 모르면 없다 (알 수 없는 값은 보이지 않는다, 사용자 11-06 #26) */
+/** 디스크 종류 알약. 모르면 없다 (알 수 없는 값은 보이지 않는다) */
 function kindPill(kind: string | undefined, rpm: number | null | undefined): RingPill | null {
     if (kind === 'ssd') return { text: 'SSD' };
     if (kind === 'hdd') return rpm ? { text: `HDD ${rpm}rpm` } : { text: 'HDD' };
@@ -543,7 +543,7 @@ export function portRows(snap: MetricsSnapshot | null | undefined, slots: Record
 }
 
 /**
- * GPU 이름에서 제조사·상표 낱말을 빼고 모델만 남긴다 (사용자 11-07: 이름 전체를 보이지 않는다).
+ * GPU 이름에서 제조사·상표 낱말을 빼고 모델만 남긴다 (이름 전체를 보이지 않는다).
  * "NVIDIA GeForce RTX 5090" → "RTX 5090", "AMD Radeon RX 7900 XTX" → "RX 7900 XTX", "Intel(R) UHD Graphics 770" → "UHD 770"
  */
 export function shortGpuName(name: string | null | undefined): string | null | undefined {

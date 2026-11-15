@@ -130,7 +130,7 @@ export function addLevel(ladder: LadderLevel[], name: string) {
     return [ladder[0], { key: `new-${newKey}`, name: name.trim() }, ...ladder.slice(1)];
 }
 
-/** 지울 수 있는 칸: 소유자·금지·게스트가 아닌 칸 (사용자 지정 2026-11-06) */
+/** 지울 수 있는 칸: 소유자·금지·게스트가 아닌 칸 */
 export const removable = (ladder: LadderLevel[], index: number) =>
     movable(ladder, index) && ladder[index]?.id !== GUEST;
 
@@ -167,7 +167,7 @@ export function ladderPatch(ladder: LadderLevel[]) {
 }
 
 /**
- * 아래(금지)부터 위(소유자)로 센 레벨 번호. 금지가 Lv -1, 게스트가 Lv 0이다 (사용자 지정 2026-11-07: 기본 사다리의
+ * 아래(금지)부터 위(소유자)로 센 레벨 번호. 금지가 Lv -1, 게스트가 Lv 0이다 (기본 사다리의
  * 저장값 소유자 3·관리자 2·유저 1·게스트 0·금지 -1과 같은 번호를 앱·웹이 함께 쓴다). 사다리 맨 아래는 늘 금지다
  */
 export function levelNumber(perm: GuildPermissions | null | undefined, id: number | undefined) {
@@ -257,7 +257,7 @@ export function levelPatch(items: CommandItem[], level: number) {
 }
 
 /**
- * 서버 조작 칩 (사용자 지정 2026-11-07): 조작 가능 명단이 쓰는 명령(시작·정지·재시작·백업 만들기)을 계단에서 칩 하나로 묶는다.
+ * 서버 조작 칩: 조작 가능 명단이 쓰는 명령(시작·정지·재시작·백업 만들기)을 계단에서 칩 하나로 묶는다.
  * 대표 레벨은 가장 많은 명령의 레벨이고, 칩을 옮기면 묶인 명령을 모두 그 레벨로 맞춘다
  */
 export function groupControllers(chips: StairChip[], title: string): StairChip[] {
@@ -285,7 +285,7 @@ export function groupControllers(chips: StairChip[], title: string): StairChip[]
     return [control, ...chips.filter((c) => !isControl(c))];
 }
 
-/** 조작 가능 줄 (사용자 지정 2026-11-06): 조작 가능 명단이 쓰는 명령(시작·정지·재시작·백업 만들기)의 대표 레벨.
+/** 조작 가능 줄: 조작 가능 명단이 쓰는 명령(시작·정지·재시작·백업 만들기)의 대표 레벨.
  * 사다리에서 이 레벨 칸 바로 아래에 줄을 긋는다. 줄을 따르는 명령은 대표 레벨인 것이고, 나머지(`apart`)는 따로 정한 것이다 */
 export function controllerLine(board: CommandBoard | null | undefined) {
     const items = (board?.items || []).filter((i) => i.controllers === true && !i.fixed);
@@ -330,7 +330,7 @@ export function draftLine(line: { level: number } | null | undefined, draft: Lad
 }
 
 /**
- * 권한 맞바꾸기 (사용자 지정 2026-11-07): 사람은 그대로 두고, 두 레벨이 "그 레벨부터" 가진 명령을 서로 바꾼다.
+ * 권한 맞바꾸기: 사람은 그대로 두고, 두 레벨이 "그 레벨부터" 가진 명령을 서로 바꾼다.
  * 보드 항목마다 초안 레벨을 낸다. 맞바꾸기를 차례로 적용하고(고정 항목은 그대로, 초안에서 지운 레벨이 걸린 것은 뺀다),
  * 줄을 따르는 명령은 줄 자리(`lineTarget`)에 둔다
  */
@@ -498,7 +498,7 @@ export const RISK_TONE: Record<string, string> = { safe: 'ok', caution: 'warn', 
 export const chipTone = (c: StairChip) =>
     c.kind === 'control' ? 'control' : c.kind === 'admin' ? 'info' : RISK_TONE[c.confirmRisk as string] || 'ok';
 
-/** 멤버 찾기 결과를 한 번에 보이는 수. 목록 끝까지 내리면 이만큼 더 보인다 (사용자 지정 2026-11-07) */
+/** 멤버 찾기 결과를 한 번에 보이는 수. 목록 끝까지 내리면 이만큼 더 보인다 */
 export const MEMBER_PAGE = 10;
 
 /** 디스코드 ID (snowflake) */

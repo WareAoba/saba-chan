@@ -4,7 +4,7 @@ import { LinkedText } from '../components/ScreenLink';
 import { initI18n } from '../i18n';
 import { useApp } from '../store';
 
-// 사용자 11-06 #19: 안내 문구의 탭 이름 대신 그 화면을 여는 링크 (앱과 같은 화면 주소)
+// 안내 문구의 탭 이름 대신 그 화면을 여는 링크 (앱과 같은 화면 주소)
 describe('화면 링크', () => {
     beforeAll(() => initI18n('en'));
 

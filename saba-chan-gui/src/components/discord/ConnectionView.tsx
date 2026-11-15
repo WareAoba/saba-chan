@@ -669,7 +669,7 @@ export function ConnectionView({
     );
 }
 
-// PC 주인 DM 알림 묶음 (사용자 2026-11-08). 백업은 범위(끄기·실패만·모두), 나머지는 켜고 끈다
+// PC 주인 DM 알림 묶음. 백업은 범위(끄기·실패만·모두), 나머지는 켜고 끈다
 const DM_GROUPS: { label: string; kinds: DmNoticeKind[] }[] = [
     { label: 'dm_group_server', kinds: ['crash', 'unresponsive', 'externalStart', 'schedule'] },
     { label: 'dm_group_pc', kinds: ['update', 'disk', 'offline'] },

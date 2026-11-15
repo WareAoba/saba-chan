@@ -80,7 +80,7 @@ const INIT_STALL_MS = 60_000;
 function App() {
     const { t, i18n } = useTranslation('gui');
 
-    // ── Console Popout Mode Detection ──────────────────────
+    // ── Console Popout Mode Detection ──
     const popoutParams = useMemo(() => {
         const params = new URLSearchParams(window.location.search);
         const instanceId = params.get('console-popout');
@@ -102,7 +102,7 @@ function App() {
     const consoleFonts = useSettingsStore((s) => s.consoleFonts);
     useEffect(() => applyConsoleFonts(consoleFonts, i18n.language), [consoleFonts, i18n.language]);
 
-    // ── Server Store (Zustand) ─────────────────────────────
+    // ── Server Store (Zustand) ──
     const servers = useServerStore((s) => s.servers);
     const setServers = useServerStore((s) => s.setServers);
     const modules = useServerStore((s) => s.modules);
@@ -116,7 +116,7 @@ function App() {
     const serversInitializing = useServerStore((s) => s.serversInitializing);
     const setServersInitializing = useServerStore((s) => s.setServersInitializing);
 
-    // ── UI Store (Zustand) ─────────────────────────────────
+    // ── UI Store (Zustand) ──
     const modal = useUIStore((s) => s.modal);
     // 인자 null로 모달을 닫는다 (openModal이 ModalConfig만 받게 적혀 있다)
     const setModal = useUIStore((s) => s.openModal) as (config: ModalConfig | null) => void;
@@ -142,12 +142,12 @@ function App() {
     // 마지막 업데이트 결과 (데몬 last-result): 데몬이 뜨면 한 번 묻고 알림을 남긴다. 알림을 누르면 패치노트
     useEffect(() => {
         if (daemonRunning) announceLastUpdateResult(t);
-    }, [daemonRunning]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [daemonRunning]);
     const setBackgroundDaemonStatus = useUIStore((s) => s.setBackgroundDaemonStatus);
     // 데몬이 GUI를 띄운 프로그램의 job 안에서 돈다 (그 프로그램이 꺼지면 함께 꺼질 수 있다)
     const [daemonInParentJob, setDaemonInParentJob] = useState(false);
 
-    // ── Settings Store (Zustand) ──────────────────────────
+    // ── Settings Store (Zustand) ──
     const autoRefresh = useSettingsStore((s) => s.autoRefresh);
     const refreshInterval = useSettingsStore((s) => s.refreshInterval);
     const ipcPort = useSettingsStore((s) => s.ipcPort);
@@ -157,7 +157,7 @@ function App() {
     consoleBufferRef.current = consoleBufferSize;
     const _settingsReady = useSettingsStore((s) => s.settingsReady);
 
-    // ── Discord Store (Zustand) ──────────────────────────────
+    // ── Discord Store (Zustand) ──
     const discordModuleAliases = useDiscordStore((s) => s.discordModuleAliases);
     const discordCommandAliases = useDiscordStore((s) => s.discordCommandAliases);
     const discordCloudRelayUrl = useDiscordStore((s) => s.discordCloudRelayUrl);
@@ -172,9 +172,7 @@ function App() {
     const relayChecked = useDiscordStore((s) => s.relayChecked);
     const discordConfigLoaded = useDiscordStore((s) => s._settingsReady);
 
-    // ══════════════════════════════════════════════════════════
     // ── Custom Hooks ─────────────────────────────────────────
-    // ══════════════════════════════════════════════════════════
 
     const {
         consolePopoutIds,
@@ -227,7 +225,7 @@ function App() {
     // Store-based fetchModules
     const fetchModules = useServerStore((s) => s.fetchModules);
 
-    // ── Modal Close Animations ─────────────────────────────
+    // ── Modal Close Animations ──
     // biome-ignore lint/correctness/useExhaustiveDependencies: useState setters are stable
     const closeBackgroundSection = useCallback(() => setShowBackgroundSection(false), []);
     const { isClosing: isBackgroundClosing, requestClose: requestBackgroundClose } =
@@ -236,9 +234,7 @@ function App() {
     const closeNoticeSection = useCallback(() => setShowNoticeSection(false), []);
     const { isClosing: isNoticeClosing, requestClose: requestNoticeClose } = useModalClose(closeNoticeSection);
 
-    // ══════════════════════════════════════════════════════════
     // ── Effects ──────────────────────────────────────────────
-    // ══════════════════════════════════════════════════════════
 
     useSlowProgressBubble(progressBar, t('saba.slow_progress'));
 
@@ -314,7 +310,6 @@ function App() {
             });
         }
 
-        // Update notifications
         if (window.api && window.api.onUpdatesAvailable) {
             window.api.onUpdatesAvailable((data) => {
                 syncUpdateNotice(data, t);
@@ -332,7 +327,6 @@ function App() {
             // Cleanup IPC listeners on unmount / Fast Refresh re-run
             if (typeof offStatus === 'function') offStatus();
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     // 콘솔 바탕 유리 (설정 → 콘솔 → 콘솔 반투명). 창 반투명일 때만 보인다 (styles/backdrop.css)
@@ -344,18 +338,15 @@ function App() {
     // Settings load
     // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only initialization — store.getState() is stable
     useEffect(() => {
-        // Start uptime clock
         useServerStore.getState().startUptimeClock();
 
         const loadSettings = async () => {
             await useSettingsStore.getState().load();
 
-            // Load bot config into discord store
             await useDiscordStore.getState().loadConfig();
 
             useDiscordStore.getState().update({ _settingsReady: true });
 
-            // Start relay agent status polling
             useDiscordStore.getState().startStatusPolling();
         };
         loadSettings();
@@ -382,7 +373,7 @@ function App() {
         }
     }, [serversInitializing, daemonReady]);
 
-    // 초기화가 소식 없이 멈추면(M11) 진행 화면에 묶어 두지 않고 이유와 [다시 시도]·[그대로 열기]를 보인다
+    // 초기화가 소식 없이 멈추면 진행 화면에 묶어 두지 않고 이유와 [다시 시도]·[그대로 열기]를 보인다
     // biome-ignore lint/correctness/useExhaustiveDependencies: initSeen은 단계가 올 때마다 다시 세려고 둔다
     useEffect(() => {
         if (daemonReady || initFailed || window.__sabaReadyReceived) return undefined;
@@ -414,7 +405,7 @@ function App() {
         return startPoll(checkDaemonStatus, 5000);
     }, [daemonReady]);
 
-    // ── Settings Save Functions ─────────────────────────────
+    // ── Settings Save Functions ──
 
     const saveCurrentSettings = async () => {
         try {
@@ -429,7 +420,7 @@ function App() {
         }
     };
 
-    // ── One-time module fetch (mount only) ──────────────────
+    // ── One-time module fetch (mount only) ──
     // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only — store.getState() is stable
     useEffect(() => {
         useServerStore.getState().fetchModules();
@@ -438,7 +429,7 @@ function App() {
     // 처음에 데몬이 늦었거나 꺼져 있어 모듈 목록을 못 받았으면, 데몬이 살아 있는 동안 받을 때까지 다시 받는다
     useModulesRetry(backgroundDaemonStatus);
 
-    // ── Main initialization + auto-refresh ──────────────────
+    // ── Main initialization + auto-refresh ──
     // biome-ignore lint/correctness/useExhaustiveDependencies: fetchServers/t/setModal are intentionally omitted — adding them would cause interval re-registration on every action
     useEffect(() => {
         fetchServers();
@@ -472,9 +463,7 @@ function App() {
         return startPoll(fetchServers, ms, { immediate: false });
     }, [autoRefresh, refreshInterval, daemonReady, extensionStatus, fetchServers]);
 
-    // ══════════════════════════════════════════════════════════
     // ── Render ───────────────────────────────────────────────
-    // ══════════════════════════════════════════════════════════
 
     // 종료 질문은 로딩 화면에서도 떠야 창 닫기(✕)가 먹는다
     const questionModal = modal && (modal.type === 'question' || modal.type === 'warning') && (
@@ -505,7 +494,7 @@ function App() {
         const timer = setTimeout(() => setRelayWaitOver(true), RELAY_WAIT_MS);
         return () => clearTimeout(timer);
     }, [daemonDone]);
-    // 다른 PC로 바꿔 다시 연 창이면 오프닝·기동음 없이 바로 연다 (사용자 11-12)
+    // 다른 PC로 바꿔 다시 연 창이면 오프닝·기동음 없이 바로 연다
     const [switchedDaemon] = useState(takeDaemonSwitch);
     const opening = openingGate({
         switched: switchedDaemon,

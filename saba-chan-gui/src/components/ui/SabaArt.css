@@ -238,7 +238,7 @@
     height: 100%;
     max-height: 240px;
     object-fit: contain;
-    /* 넓은 화면에서는 카드 오른쪽 끝에 붙인다 (사용자 11-07) */
+    /* 넓은 화면에서는 카드 오른쪽 끝에 붙인다 */
     object-position: right center;
     pointer-events: none;
     user-select: none;

@@ -1,5 +1,5 @@
 /**
- * 모듈 지원 OS (D3·M1): 데몬 OS에서 돌아가지 않는 모듈은 새 서버 만들기에서 고를 수 없다
+ * 모듈 지원 OS: 데몬 OS에서 돌아가지 않는 모듈은 새 서버 만들기에서 고를 수 없다
  */
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';

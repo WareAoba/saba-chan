@@ -41,7 +41,7 @@ export function serverManageActions(get: () => ServerState, fetchServers: () => 
         return false;
     };
 
-    // ── addServer ─────────────────────────────────────
+    // ── addServer ──
     const addServer = async (payload: AddServerPayload) => {
         const serverName = payload.name;
         const moduleName = payload.module_name;
@@ -246,7 +246,7 @@ export function serverManageActions(get: () => ServerState, fetchServers: () => 
         }
     };
 
-    // ── deleteServer ──────────────────────────────────
+    // ── deleteServer ──
     const deleteServer = async (server: Server) => {
         // 가져온 서버(인스턴스 폴더 밖의 서버 폴더): 연결만 끊고 폴더는 남긴다. 보관한 원래 설정으로 되돌릴지 고른다
         if (server.linked_folder) {

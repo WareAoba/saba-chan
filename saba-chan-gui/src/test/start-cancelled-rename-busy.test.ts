@@ -29,7 +29,7 @@ describe('시작 중에 사용자가 정지함 (start_cancelled)', () => {
     });
 });
 
-// 사용자 11-06 #10: 이미 켜진 서버에 시작을 보내면 "시작 완료" 대신 이미 실행 중이라고 알린다
+// 이미 켜진 서버에 시작을 보내면 "시작 완료" 대신 이미 실행 중이라고 알린다
 describe('이미 실행 중인 서버 시작 (already_running)', () => {
     beforeEach(() => {
         window.api = { serverList: vi.fn().mockResolvedValue({ servers: [] }) } as unknown as typeof window.api;

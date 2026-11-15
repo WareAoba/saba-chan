@@ -5,7 +5,7 @@ import { initI18n } from '../i18n';
 import { useApp } from '../store';
 import { mockApi, mockRelay } from './mocks';
 
-// 디스코드 서버·멤버 사진 (사용자 11-06): 이 PC 의 서버는 데몬이 준 주소를 쓴다
+// 디스코드 서버·멤버 사진: 이 PC 의 서버는 데몬이 준 주소를 쓴다
 const G = '111111111111111111';
 const G2 = '444444444444444444';
 const U = '333333333333333333';

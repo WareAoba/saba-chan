@@ -6,7 +6,7 @@ import { useApp, useData } from '../store';
 import type { Server } from '../types';
 import { asModules, asServers, mockApi, openDropdown, pickOption } from './mocks';
 
-// 웹 원격의 서버 만들기는 GUI 새 서버 화면과 같은 것을 묻는다 (사용자 지정 2026-10-28: GUI 기준)
+// 웹 원격의 서버 만들기는 GUI 새 서버 화면과 같은 것을 묻는다 (GUI 기준)
 const minecraft = {
     name: 'minecraft',
     game_name: 'Minecraft',
@@ -71,7 +71,7 @@ describe('웹 서버 만들기 — GUI와 같은 칸', () => {
         expect(create().disabled).toBe(true);
     });
 
-    // 사용자 11-06 #2: 디스코드에서 부르는 말을 쉼표로 나누므로 서버 이름에 쉼표를 받지 않는다 (띄어쓰기는 된다)
+    // 디스코드에서 부르는 말을 쉼표로 나누므로 서버 이름에 쉼표를 받지 않는다 (띄어쓰기는 된다)
     it('쉼표가 든 이름은 알리고 만들기를 막는다', async () => {
         mount();
         const name = screen.getByRole('textbox', { name: 'Name' });

@@ -1,5 +1,5 @@
 /**
- * 업데이트 적용이 일부만 되면(데몬 200 `ok:false`, `errors`) 성공 알림(updates:completed)을 보내지 않는다 (G-U9).
+ * 업데이트 적용이 일부만 되면(데몬 200 `ok:false`, `errors`) 성공 알림(updates:completed)을 보내지 않는다.
  * 실패 이유는 적용을 부른 화면(SabaStorage)이 오류로 보인다
  */
 import { describe, expect, it, vi } from 'vitest';

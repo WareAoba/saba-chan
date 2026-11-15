@@ -61,7 +61,7 @@ pub struct CallError {
 }
 
 impl CallError {
-    /// main.js errorBody: 데몬이 준 오류 본문을 살리고 extra를 덮는다
+    /// 데몬이 준 오류 본문을 살리고 extra를 덮는다
     pub fn error_body(&self, extra: Value) -> Value {
         let mut out = match &self.body {
             Some(Value::Object(m)) => m.clone(),
@@ -171,7 +171,7 @@ pub struct DaemonClient {
     base: RwLock<String>,
     token: RwLock<String>,
     token_path: PathBuf,
-    /// 고른 원격 데몬 (G1, 시작할 때 설정 `gui.mainDaemon`). 없으면 이 PC의 데몬
+    /// 고른 원격 데몬 (시작할 때 설정 `gui.mainDaemon`). 없으면 이 PC의 데몬
     target: RwLock<Option<String>>,
     /// 대상이 바뀔 때마다 오른다 (이벤트 스트림이 새 대상으로 다시 붙는다)
     target_gen: tokio::sync::watch::Sender<u64>,
@@ -691,7 +691,7 @@ mod tests {
         assert!(!local.builder(reqwest::Method::GET, "/health").build().unwrap().headers().contains_key("X-Saba-Token"));
     }
 
-    /// 고른 원격 데몬(G1)은 데몬 요청마다 `X-Saba-Target`(퍼센트 인코딩)으로 이 PC의 데몬에 알린다.
+    /// 고른 원격 데몬은 데몬 요청마다 `X-Saba-Target`(퍼센트 인코딩)으로 이 PC의 데몬에 알린다.
     /// 이 PC의 데몬이 살아 있는지 보는 `/health`에는 싣지 않는다. 바꾸면 세대가 올라 이벤트 스트림이 다시 붙는다
     #[test]
     fn a_chosen_remote_daemon_is_named_on_daemon_requests_but_not_health() {

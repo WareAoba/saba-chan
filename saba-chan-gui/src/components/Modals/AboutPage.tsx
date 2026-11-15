@@ -6,7 +6,7 @@ import { startAurora, startStars } from './aboutSky';
 import './AboutPage.css';
 
 /**
- * 설정 › 정보 페이지 본문 (2026-11-05 시안 확정).
+ * 설정 › 정보 페이지 본문.
  * 위에서부터 버전 카드 → 사바쨩 자기소개 → 제작자 카드(별밤·오로라).
  * active 일 때만 밤하늘을 움직인다 (정보 페이지는 닫혀 있어도 그려져 있다).
  */

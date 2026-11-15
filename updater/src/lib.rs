@@ -97,9 +97,7 @@ pub(crate) fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> std::res
     }
 }
 
-// ══════════════════════════════════════════════════════
 // 다운로드 진행률
-// ══════════════════════════════════════════════════════
 
 /// 다운로드 진행 상태. 받는 동안 `DownloadListener`가 듣는다
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -117,9 +115,7 @@ pub struct DownloadProgress {
 /// 받는 동안 진행을 듣는 곳 (`UpdateManager::set_download_listener`): 받기 시작, 0.2초마다 받은 크기, 끝(`active: false`)
 pub type DownloadListener = Arc<dyn Fn(&DownloadProgress) + Send + Sync>;
 
-// ══════════════════════════════════════════════════════
 // 컴포넌트 정의
-// ══════════════════════════════════════════════════════
 
 /// 업데이트 대상. 각 컴포넌트를 나타내는 열거형
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -216,7 +212,7 @@ pub struct ComponentVersion {
     pub downloaded: bool,
     /// 다운로드 완료된 파일의 경로 (적용 대기 중인 경우)
     pub downloaded_path: Option<String>,
-    /// 받은 파일의 sha256 (manifest 값). 적용 직전에 다시 대조한다 (C13)
+    /// 받은 파일의 sha256 (manifest 값). 적용 직전에 다시 대조한다
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub staged_sha256: Option<String>,
     /// manifest의 `requires` (예: `{"saba-core": ">=0.1.9"}`). pending.json에 실어 업데이터 `--apply`도 적용 전에 본다
@@ -313,9 +309,7 @@ pub fn unmet_requires(component_key: &str, requires: &HashMap<String, String>, i
         .collect()
 }
 
-// ══════════════════════════════════════════════════════
 // 업데이트 적용 관련 구조체 정의 (2-flow 아키텍처)
-// ══════════════════════════════════════════════════════
 
 /// 개별 컴포넌트 적용 결과
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -389,7 +383,7 @@ impl Default for UpdateConfig {
         Self {
             enabled: true,
             check_interval_hours: 3,
-            // 앱 업데이트는 묻지 않고 적용한다 (사용자 결정 2026-11-09)
+            // 앱 업데이트는 묻지 않고 적용한다
             auto_download: true,
             auto_apply: true,
             live_update_migrated: true,
@@ -772,9 +766,7 @@ pub(crate) fn reject_links_below(target_dir: &Path, rel: &Path) -> Result<()> {
     Ok(())
 }
 
-// ══════════════════════════════════════════════════════
 // UpdateManager
-// ══════════════════════════════════════════════════════
 
 /// 업데이트 확인/다운로드 및 적용을 관리하는 업데이트/초기 설치 매니저
 pub struct UpdateManager {
@@ -793,7 +785,7 @@ pub struct UpdateManager {
     installed_manifest_file: PathBuf,
     /// 마지막으로 받은 서명 검증된 manifest. 무결성·의존성 검사와 다운로드가 같이 쓴다
     cached_manifest: Option<ReleaseManifest>,
-    /// 마지막으로 확인한 릴리즈 (버전·패치노트). 받아 둘 때 적용 결과에 실으려고 남긴다 (A5)
+    /// 마지막으로 확인한 릴리즈 (버전·패치노트). 받아 둘 때 적용 결과에 실으려고 남긴다
     latest_release: Option<relay::LatestRelease>,
     /// 받아 둔 목록을 디스크에서 되살렸을 때 그 릴리즈 요약 (확인 전이라 `latest_release`가 없다)
     restored_release: Option<crate::marker::ReleaseSummary>,
@@ -906,7 +898,7 @@ impl UpdateManager {
         self.config = new_config;
     }
 
-    // ─── 무결성 검증 ────────────────────────────────────────────────────────
+    // ── ─ 무결성 검증 ──
 
     /// 업데이터가 설치하며 기록한 파일 해시와 지금 파일을 비교한다 (네트워크 없음).
     /// 릴리즈 manifest의 sha256은 zip의 해시라 설치된 파일과 직접 비교할 수 없다
@@ -963,7 +955,7 @@ impl UpdateManager {
         self.cached_manifest.as_ref()?.components.get("saba-core").map(relay::ManifestComponent::runner_formats)
     }
 
-    // ─── 업데이트 확인 ────────────────────────────────────────────────────────
+    // ── ─ 업데이트 확인 ──
 
     /// 릴레이의 서명된 manifest 하나로 모든 컴포넌트의 최신 버전과 R2 URL을 얻는다.
     pub async fn check_for_updates(&mut self) -> Result<UpdateStatus> {
@@ -1130,7 +1122,7 @@ impl UpdateManager {
     }
 
 
-    // ─────── 로컬 버전 수집 ────────────────────────────────────────────────────────────────────────
+    // ── ───── 로컬 버전 수집 ──
 
     /// 모든 컴포넌트의 현재 설치된 버전을 수집
     /// 설치 기록에 없는 앱 컴포넌트를 빌드에 묶인 버전으로 채운다. 설치기는 0.1.7까지 기록되지 않았고
@@ -1232,7 +1224,7 @@ impl UpdateManager {
         }
     }
 
-    // ─────── 다운로드 ────────────────────────────────────────────────────────────────────────
+    // ── ───── 다운로드 ──
 
     /// 업데이트 가능한 모든 컴포넌트를 staging 디렉터리로 다운로드
     pub async fn download_available_updates(&mut self) -> Result<Vec<String>> {
@@ -1327,7 +1319,7 @@ impl UpdateManager {
         self.cached_manifest.as_ref()?.components.get(key)
     }
 
-    // ─────── 적용 ────────────────────────────────────────────────────────────────────────
+    // ── ───── 적용 ──
 
     /// 데몬이 정한 키 목록(apply-targets)을 차례로 적용한다. 첫 실패에서 멈춘다:
     /// 데몬·업데이터가 실패했는데 인터페이스만 새것으로 바뀌면 서로 맞지 않는다.
@@ -1410,7 +1402,7 @@ impl UpdateManager {
         }
     }
 
-    /// 적용할 받은 파일. 다운로드 뒤 바뀌었으면(sha256 불일치) 적용하지 않는다 (C13)
+    /// 적용할 받은 파일. 다운로드 뒤 바뀌었으면(sha256 불일치) 적용하지 않는다
     fn verified_staged_path(comp: &ComponentVersion) -> Result<&String> {
         let path = comp.downloaded_path.as_ref()
             .ok_or_else(|| anyhow::anyhow!("No staged file for {:?}", comp.component))?;
@@ -1455,7 +1447,7 @@ impl UpdateManager {
         }
     }
 
-    // ─────── 2-flow 아키텍처: 개별 컴포넌트 적용 ────────────────────────────────────────────────────────────────────────
+    // ── ───── 2-flow 아키텍처: 개별 컴포넌트 적용 ──
 
     /// 적용 중 꺼져 남은 파일을 정리한다 (설치 폴더 바로 안만). 적용하는 프로세스만 적용 직전에 부른다:
     /// 다른 프로세스(데몬 시작 등)가 적용 도중에 부르면 비켜 둔 백업을 되돌리고 쓰는 중인 파일을 지운다

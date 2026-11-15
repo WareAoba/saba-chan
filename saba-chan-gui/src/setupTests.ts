@@ -57,7 +57,7 @@ console.warn = (...args) => {
 
 // Mock window.api globally (jsdom 환경에서만)
 if (typeof window !== 'undefined') {
-    // matchMedia mock — themeManager.js에서 사용
+    // matchMedia mock — themeManager.ts에서 사용
     // plain function (not vi.fn) so vi.clearAllMocks() won't wipe the implementation
     Object.defineProperty(window, 'matchMedia', {
         writable: true,

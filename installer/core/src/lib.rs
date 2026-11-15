@@ -26,9 +26,7 @@ use std::path::{Path, PathBuf};
 /// 설치기 버전 — 설치기 컴포넌트(`versions.toml` installer)와 같이 간다
 const INSTALLER_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-// ═══════════════════════════════════════════════════════
 // 타입
-// ═══════════════════════════════════════════════════════
 
 /// 설치 진행 상태
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -158,9 +156,7 @@ pub trait InstallHooks: Send + Sync {
     }
 }
 
-// ═══════════════════════════════════════════════════════
 // 설치
-// ═══════════════════════════════════════════════════════
 
 /// 설치 폴더 준비: 받을 수 있는 곳인지 확인하고, 만들고, 쓸 수 없으면 권한을 올려 만든다.
 /// 창 인스톨러는 설치 화면(애니메이션)으로 넘어가기 전에 이것만 먼저 불러 권한 확인을 끝낸다.
@@ -645,9 +641,7 @@ async fn prepare_python(hooks: &dyn InstallHooks, install_dir: &Path, installed:
     }
 }
 
-// ═══════════════════════════════════════════════════════
 // 맥 앱 묶음: 처음 켤 때 준비 (`--setup`)
-// ═══════════════════════════════════════════════════════
 
 /// 고른 모듈을 앱 묶음에 든 코어(`core_version`, 실행 파일은 모두 같은 판)로 돌 수 있는 것과 아닌 것으로 나눈다.
 /// 모듈·익스텐션끼리의 요구는 받는 쪽이 맞추므로 실행 파일 컴포넌트에 대한 요구만 본다
@@ -755,9 +749,7 @@ pub fn finish_setup(install_dir: &Path, installs: &Path) -> Result<(), String> {
     linked.map(|_| ())
 }
 
-// ═══════════════════════════════════════════════════════
 // 설치 폴더·언어
-// ═══════════════════════════════════════════════════════
 
 /// 설치 폴더로 쓸 수 있는가: 절대 경로이고, 드라이브 루트가 아니며, 사용자 데이터·모듈·익스텐션 폴더와 겹치지 않는다
 pub fn check_install_dir(dir: &Path, layout: &component_dirs::Layout) -> Result<(), &'static str> {
@@ -935,9 +927,7 @@ pub fn log_file_path() -> PathBuf {
     std::env::temp_dir().join("saba-chan-installer.log")
 }
 
-// ═══════════════════════════════════════════════════════
 // 헬퍼 함수
-// ═══════════════════════════════════════════════════════
 
 /// 설치 언어에 맞는 앱 표시 이름을 반환한다 (바로가기 이름, Windows 전용).
 #[cfg_attr(not(windows), allow(dead_code))]
@@ -1095,9 +1085,7 @@ fn save_channel_setting(config: &ConfigFile, channel: &str) {
     }
 }
 
-// ═══════════════════════════════════════════════════════
 // Fix 1: 버전 비교 유틸리티
-// ═══════════════════════════════════════════════════════
 
 /// semver 문자열 비교 (major.minor.patch)
 fn version_compare(a: &str, b: &str) -> std::cmp::Ordering {
@@ -1109,9 +1097,7 @@ fn version_compare(a: &str, b: &str) -> std::cmp::Ordering {
     }
 }
 
-// ═══════════════════════════════════════════════════════
 // Fix 3: 모듈 의존 익스텐션 자동 설치
-// ═══════════════════════════════════════════════════════
 
 /// 선택된 모듈의 required_extensions를 수집 (중복 제거)
 fn collect_required_extensions(selected_modules: &[String], module_metadata: &[ModuleInfo]) -> Vec<String> {
@@ -1402,7 +1388,7 @@ mod tests {
             check_components_dir(Path::new("relative"), &layout, &install).unwrap_err().code,
             "not_absolute"
         );
-        // Codex 리뷰 #544: 다 옮긴 뒤의 배치로 본다. `...\modules`를 고르면 익스텐션이 새 모듈 폴더 안에 들어간다
+        // 다 옮긴 뒤의 배치로 본다. `...\modules`를 고르면 익스텐션이 새 모듈 폴더 안에 들어간다
         assert_eq!(
             check_components_dir(&root.join("games").join("modules"), &layout, &install).unwrap_err().code,
             "overlaps_other"
@@ -1411,7 +1397,7 @@ mod tests {
         assert_eq!(check_components_dir(&install, &layout, &install).unwrap_err().code, "overlaps_install");
     }
 
-    // M1: 설치 폴더 사본이 이 설치기와 다르면(복사 실패로 옛 사본이 남음) 새 버전으로 기록하지 않는다
+    // 설치 폴더 사본이 이 설치기와 다르면(복사 실패로 옛 사본이 남음) 새 버전으로 기록하지 않는다
     #[test]
     fn only_a_matching_installer_copy_is_recorded() {
         let root = std::env::temp_dir().join(format!("saba-installer-copy-test-{}", std::process::id()));

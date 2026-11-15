@@ -319,7 +319,7 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    /// 켜져 있지만 응답이 없는 서버(H1)를 목록·상태에서도 알 수 있게 (C3)
+    /// 켜져 있지만 응답이 없는 서버를 목록·상태에서도 알 수 있게
     #[test]
     fn an_unresponsive_server_is_marked() {
         crate::i18n::init("ko");

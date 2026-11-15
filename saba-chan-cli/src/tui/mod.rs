@@ -398,7 +398,7 @@ async fn act(
             Flow::Stay
         }
         Some(Action::Run(line)) => {
-            // 셸처럼 줄마다 포트를 다시 찾는다: 설정 포트를 바꾸거나 데몬을 다시 켰을 수 있다 (L62)
+            // 셸처럼 줄마다 포트를 다시 찾는다: 설정 포트를 바꾸거나 데몬을 다시 켰을 수 있다
             ctx.follow_daemon_port();
             app.port = ctx.api.port;
             *seq += 1;

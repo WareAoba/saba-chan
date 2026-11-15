@@ -17,7 +17,7 @@ import { createRelay } from './relay';
 import { useApp, useData } from './store';
 import type { PcEvent, SessionState, WebApi, WebSession } from './types';
 
-// 휴대폰은 아래 탭, 넓은 화면은 맨 위 줄 탭 (앱 상단바와 같다, 사용자 2026-11-12. styles.css .tabs)
+// 휴대폰은 아래 탭, 넓은 화면은 맨 위 줄 탭 (앱 상단바와 같다. styles.css .tabs)
 // PC 없는 세션(hostId null)은 디스코드 탭만 열린다 — 나머지는 자물쇠를 달고 앱 설치를 안내한다
 const TABS = [
     { id: 'servers', icon: 'servers' },

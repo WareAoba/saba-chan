@@ -119,7 +119,7 @@ impl UpdateManager {
     }
 
     /// zip을 풀며 덮어쓸 파일을 비켜 두고(실행 파일은 `.old`, 나머지는 `.update-bak`), 풀다가 실패하면
-    /// 새로 생긴 파일을 지우고 비켜 둔 파일을 모두 되돌린다 (C13). 성공하면 `.update-bak`만 지운다
+    /// 새로 생긴 파일을 지우고 비켜 둔 파일을 모두 되돌린다. 성공하면 `.update-bak`만 지운다
     /// (`.old`는 아직 떠 있는 프로세스가 쥐고 있을 수 있어 `cleanup_old_files`가 지운다)
     /// tar.gz도 같은 방식으로 되돌린다 (L3 b). 그 밖의 형식은 거절한다
     fn extract_or_restore(staged: &Path, dir: &Path, what: &str) -> Result<Vec<PathBuf>> {
@@ -202,9 +202,7 @@ impl UpdateManager {
         retired
     }
 
-    // ══════════════════════════════════════════════════════
     // 초기 설치 관련 메서드
-    // ══════════════════════════════════════════════════════
 
     /// 컴포넌트가 설치되어 있는지 확인
     pub fn is_component_installed(&self, component: &Component) -> bool {
@@ -464,7 +462,7 @@ foreach ($f in 'Desktop','Programs','CommonDesktopDirectory','CommonPrograms') {
     let _ = (old, new);
 }
 
-/// `target_dir`을 받은 zip(`staged`) 내용으로 바꾸고 푼 파일을 돌려준다. 도중에 실패하면 백업으로 되돌린다 (C13).
+/// `target_dir`을 받은 zip(`staged`) 내용으로 바꾸고 푼 파일을 돌려준다. 도중에 실패하면 백업으로 되돌린다.
 /// 백업은 `staging_dir/backup_name`에 둔다. `__pycache__`와 점(.)으로 시작하는 항목은 남긴다.
 /// 새 판을 staging에 다 푼 뒤 이름 바꾸기로 맞바꾼다 (원래 폴더가 그대로 백업이 된다). 이름을 바꿀 수 없으면
 /// (staging이 다른 볼륨, 폴더가 링크, Windows에서 폴더가 잡혀 있음) 폴더를 백업에 복사하고 제자리에서 비우고 푼다

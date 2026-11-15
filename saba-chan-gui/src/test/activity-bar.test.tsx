@@ -87,7 +87,7 @@ describe('ActivityBar', () => {
         expect(window.api.daemonConsole).toHaveBeenNthCalledWith(2, { since: 8, wait: 8 });
     });
 
-    // 사용자 2026-11-12: 줄 전체를 레벨 색으로 칠하지 않는다. 레벨은 배지, 본문은 데몬이 나눈 낱말 조각(spans)으로 칠한다
+    // 줄 전체를 레벨 색으로 칠하지 않는다. 레벨은 배지, 본문은 데몬이 나눈 낱말 조각(spans)으로 칠한다
     it('데몬 로그 본문은 spans 조각대로 칠하고 레벨은 배지로만 보인다', async () => {
         window.api.auditList = vi.fn().mockResolvedValue({ entries: [] }) as never;
         window.api.daemonConsole = vi.fn().mockResolvedValue({
@@ -116,7 +116,7 @@ describe('ActivityBar', () => {
         expect(line.querySelector('.daemon-log-level')?.textContent).toBe('WARN');
     });
 
-    // L55: 데몬은 다시 켜질 때마다 로그 id를 1부터 센다. 답의 epoch가 바뀌면 since를 버리고 처음부터 받는다.
+    // 데몬은 다시 켜질 때마다 로그 id를 1부터 센다. 답의 epoch가 바뀌면 since를 버리고 처음부터 받는다.
     // 새 데몬이 이미 since보다 많은 줄을 냈어도(id 60 > since 51) 옛 줄 뒤에 섞지 않는다
     it('데몬이 다시 켜져 epoch가 바뀌면 받은 줄을 비우고 처음부터 다시 받는다', async () => {
         window.api.auditList = vi.fn().mockResolvedValue({ entries: [] }) as never;
@@ -186,7 +186,7 @@ describe('ActivityBar', () => {
     });
 });
 
-// 바에 올리면 바 전체가 물든다: 전역 button의 둥근 모서리(--btn-radius)를 물려받지 않는다 (사용자 11-13)
+// 바에 올리면 바 전체가 물든다: 전역 button의 둥근 모서리(--btn-radius)를 물려받지 않는다
 describe('활동 줄 모양', () => {
     it('펼치기 줄은 모서리를 깎지 않는다', async () => {
         const fs = await import('node:fs');

@@ -1,7 +1,7 @@
 /**
- * 구성요소 탭은 "업데이트" 단추 하나로 모두 올린다 (사용자 11-14).
+ * 구성요소 탭은 "업데이트" 단추 하나로 모두 올린다.
  * 받기·적용·카드별 단추를 따로 두면 무엇이 다운로드고 무엇이 업데이트인지 알기 어렵다.
- * 모듈·익스텐션 업데이트도 같은 요청에 들어간다 (UP1: 0.1.8→0.1.9에서 앱만 바뀌었다).
+ * 모듈·익스텐션 업데이트도 같은 요청에 들어간다 (0.1.8→0.1.9에서 앱만 바뀌었다).
  */
 import { act, fireEvent, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

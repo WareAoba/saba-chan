@@ -1,5 +1,4 @@
 /**
- * Utility functions extracted from App.js
  * Pure functions with no React hooks dependency.
  */
 

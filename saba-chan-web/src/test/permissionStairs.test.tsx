@@ -4,7 +4,7 @@ import { PermissionStairs } from '../components/PermissionStairs';
 import { initI18n } from '../i18n';
 import { mockApi } from './mocks';
 
-// 사용자 지정(2026-11-07): 웹 인스턴스 권한도 앱처럼 계단·칩으로. 금지 칸 없음, 인스턴스 화면은 그 인스턴스 명령만,
+// 웹 인스턴스 권한도 앱처럼 계단·칩으로. 금지 칸 없음, 인스턴스 화면은 그 인스턴스 명령만,
 // 시작·정지·재시작·백업은 "서버 조작" 칩 하나, 게임 명령 칩은 명령 원문(번역 이름은 말풍선)
 const perm = { guildId: 'g1', preset: 'default', commandLevels: {} };
 const item = (instance: string, name: string, title: string, level: number, extra = {}) => ({

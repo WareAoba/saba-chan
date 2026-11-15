@@ -94,7 +94,7 @@ export function ServerDetail({ server, moduleData, modules, servers, onBack, con
         status === 'missing' ? failureForModule(st.failedModules, server.module) : null,
     );
     const action = primaryAction(status);
-    // 설치 완성 카드의 '시작'은 서버가 켜지면 닫는다: 켜진 서버에 다시 시작을 보내지 않게 (사용자 11-06 #10)
+    // 설치 완성 카드의 '시작'은 서버가 켜지면 닫는다: 켜진 서버에 다시 시작을 보내지 않게
     const live = status === 'running' || status === 'starting';
     // biome-ignore lint/correctness/useExhaustiveDependencies: 켜짐·완성 표시가 바뀔 때만
     useEffect(() => {
@@ -156,10 +156,10 @@ export function ServerDetail({ server, moduleData, modules, servers, onBack, con
     const defaultTab = defaultServerTab(interaction, server.status);
     const activeTab = tabs.some((x) => x.id === tab) ? (tab as string) : defaultTab;
     const activeExtTab = extTabs.find((p) => p.id === activeTab);
-    // Ctrl+F 찾기는 칸이 많은 설정·사바쨩·디스코드 탭(사용자 11-10)과 콘솔 탭의 줄(사용자 11-12)에서
+    // Ctrl+F 찾기는 칸이 많은 설정·사바쨩·디스코드 탭과 콘솔 탭의 줄에서
     const findable = ['console', 'settings', 'saba', 'discord'].includes(activeTab);
     const poppedOut = consoleProps.consolePopoutIds.includes(server.id);
-    // 콘솔을 PIP 창으로 띄운다 (이미 떠 있으면 그 창을 앞으로). 창이 열리면 셸이 console:popoutOpened로 알려 준다. 못 열면 알린다 (G-C5)
+    // 콘솔을 PIP 창으로 띄운다 (이미 떠 있으면 그 창을 앞으로). 창이 열리면 셸이 console:popoutOpened로 알려 준다. 못 열면 알린다
     const popoutConsole = async () => {
         try {
             const res = await window.api.consolePopout(server.id, server.name);
@@ -239,7 +239,7 @@ export function ServerDetail({ server, moduleData, modules, servers, onBack, con
             className={clsx('server-detail', { 'server-detail--fit': showTabs && activeTab === 'console' })}
             aria-label={server.name}
         >
-            {/* 서버 카드부터 탭 바까지는 위에 고정하고 그 아래만 스크롤한다 (디스코드 서버 화면과 같다, 사용자 11-14) */}
+            {/* 서버 카드부터 탭 바까지는 위에 고정하고 그 아래만 스크롤한다 (디스코드 서버 화면과 같다) */}
             <div className="sticky-head" ref={topRef}>
                 <header className="detail-head">
                     {onBack && (
@@ -688,7 +688,7 @@ function InfoTab({
         server.id && [t('shell.info_id'), <code key="id">{server.id}</code>],
         ...dataStatusRows(server),
     ].filter(Boolean) as [string, ReactNode][];
-    // 사용자 11-06 #27: 개발 용어(PID·REST·통신 방식)는 '자세히' 안에
+    // 개발 용어(PID·REST·통신 방식)는 '자세히' 안에
     const moreRows = [
         server.status === 'running' && server.pid && ['PID', server.pid],
         server.rest_port && ['REST', `${server.rest_host || '127.0.0.1'}:${server.rest_port}`],

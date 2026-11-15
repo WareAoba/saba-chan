@@ -64,7 +64,7 @@ function BackgroundModal({ onClose, isClosing, ipcPort }: BackgroundModalProps) 
                 useSabaBubble.getState().markWoken(false);
                 restore();
                 console.error('Failed to restart daemon:', result?.error);
-                // 실패는 화면에도 알린다 (DaemonDown과 같은 문구, G-U7)
+                // 실패는 화면에도 알린다 (DaemonDown과 같은 문구)
                 safeShowToast(t('shell.daemon_restart_failed', { error: result?.error || '' }), 'error', 6000);
             }
         } catch (error) {
@@ -82,7 +82,7 @@ function BackgroundModal({ onClose, isClosing, ipcPort }: BackgroundModalProps) 
             ? 'ok'
             : daemonStatus === 'stopped' || daemonStatus === 'error' || daemonStatus === 'token_invalid'
               ? 'stop'
-              : // 확인 중은 꺼짐에서 출발한 진행 — 회색으로 깜빡인다 (사용자 11-11)
+              : // 확인 중은 꺼짐에서 출발한 진행 — 회색으로 깜빡인다
                 'idle';
     const port = ipcPort || DEFAULT_IPC_PORT;
     const address = `${t('background_modal.ipc_host_value')}:${port}`;

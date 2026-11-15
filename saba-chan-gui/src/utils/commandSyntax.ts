@@ -2,7 +2,7 @@ import type { CommandInput } from '../types/daemon';
 import type { CommandField } from './commandRisk';
 
 /**
- * 명령 줄 읽기 (사용자 11-06 #4): 앱·웹의 명령 입력 줄을 데몬(`crate::commands` `Request::parse`·`bind`·`check`)이
+ * 명령 줄 읽기: 앱·웹의 명령 입력 줄을 데몬(`crate::commands` `Request::parse`·`bind`·`check`)이
  * 읽는 방식 그대로 읽어 칸마다 맞았는지 표시한다. 첫 낱말은 명령 이름이나 별명(대소문자 무시), 그다음은 칸 순서이고
  * 마지막 칸이 남은 말을 모두 받는다. 모듈이 알려 준 칸 정보(type·min·max·options·required·default)만 쓴다.
  * 목록에 없는 명령은 막지 않는다: 데몬이 그 줄을 그대로 콘솔에 보낸다.

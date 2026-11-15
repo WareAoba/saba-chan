@@ -58,7 +58,7 @@ describe('정지 대기 시간 칸', () => {
     });
 });
 
-// 데몬은 정지 요청에 stop_timeout(최대 3600초)까지 기다린 뒤 답한다: 요청 시간 제한이 그보다 길어야 한다 (L74)
+// 데몬은 정지 요청에 stop_timeout(최대 3600초)까지 기다린 뒤 답한다: 요청 시간 제한이 그보다 길어야 한다
 describe('정지·재시작 요청 시간 제한', () => {
     const longest = 3600 * 1000;
     const timeoutOf = async (call: (api: Record<string, (...a: never[]) => unknown>) => unknown) => {

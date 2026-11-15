@@ -1,15 +1,11 @@
-// ═══════════════════════════════════════════════════════
 // Saba-chan Installer — 미니 GUI 설치·제거 창
-// ═══════════════════════════════════════════════════════
 // 흐름: 시작 → (시트 올라옴) 설정 → [설치]: 그림이 펼쳐졌다 접히며 매트릭스(설치 중) → 완료·실패
 
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 const { getCurrentWindow } = window.__TAURI__.window;
 
-// ═══════════════════════════════════════════════════════
 // i18n
-// ═══════════════════════════════════════════════════════
 
 // 문구는 locales/<lang>/installer.json의 `installer` (빌드 때 translations.js로 묶인다, build.rs)
 const T = Object.fromEntries(Object.entries(window.SABA_TRANSLATIONS).map(([l, v]) => [l, v.installer]));
@@ -118,9 +114,7 @@ function applyTranslations() {
     s('hint-keep-settings', 'uninstallKeepSettingsHint');
 }
 
-// ═══════════════════════════════════════════════════════
 // DOM refs
-// ═══════════════════════════════════════════════════════
 
 const $flowEl = document.getElementById('flow');
 const $statusText = document.getElementById('status-text');
@@ -146,9 +140,7 @@ let setupMode = false;
 // 디스크 이미지·임시 자리에서 열림: 준비하지 않고 응용 프로그램 폴더로 옮기라고만 알린다
 let moveFirst = false;
 
-// ═══════════════════════════════════════════════════════
 // 타이틀바
-// ═══════════════════════════════════════════════════════
 
 const appWindow = getCurrentWindow();
 document.getElementById('btn-minimize')?.addEventListener('click', () => appWindow.minimize());
@@ -162,9 +154,7 @@ function setWorking(on) {
 
 function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
-// ═══════════════════════════════════════════════════════
 // 상태 기계
-// ═══════════════════════════════════════════════════════
 // 단계는 #flow의 data-step 하나로 보인다 (common.css):
 // start(시작) → sheet(설정 시트) → expand(그림 펼침, 진행 줄) → install(접히며 매트릭스) → done(완료·실패)
 // 제거: uninstall(제거 시트) → install → done
@@ -305,15 +295,11 @@ function enterError(p, titleKey = 'installFailed', canRetry = true) {
     });
 }
 
-// ═══════════════════════════════════════════════════════
 // 이벤트: Welcome → Settings
-// ═══════════════════════════════════════════════════════
 
 document.getElementById('btn-next').addEventListener('click', () => moveFirst ? appWindow.close() : enterSettings());
 
-// ═══════════════════════════════════════════════════════
 // 이벤트: Settings 패널 내부
-// ═══════════════════════════════════════════════════════
 
 // 경로 찾기
 document.getElementById('btn-browse')?.addEventListener('click', async () => {
@@ -544,9 +530,7 @@ async function startSetup() {
     }
 }
 
-// ═══════════════════════════════════════════════════════
 // 설치 진행 이벤트
-// ═══════════════════════════════════════════════════════
 
 listen('install:progress', (ev) => {
     const p = ev.payload;
@@ -577,9 +561,7 @@ listen('install:progress', (ev) => {
     }
 });
 
-// ═══════════════════════════════════════════════════════
 // 완료 상태 버튼
-// ═══════════════════════════════════════════════════════
 
 document.getElementById('btn-close-installer')?.addEventListener('click', () => appWindow.close());
 
@@ -603,9 +585,7 @@ $btnRetry?.addEventListener('click', () => {
     enterSettings();
 });
 
-// ═══════════════════════════════════════════════════════
 // 언인스톨 모드
-// ═══════════════════════════════════════════════════════
 
 async function enterUninstallMode() {
     uninstallMode = true;
@@ -671,9 +651,7 @@ listen('uninstall:progress', (ev) => {
     setProgress(p.percent, trStep(UNINSTALL_STEP_KEYS, p.step, p.message));
 });
 
-// ═══════════════════════════════════════════════════════
 // 테마 토글
-// ═══════════════════════════════════════════════════════
 
 function toggleTheme() {
     SabaUI.setTheme(SabaUI.effectiveTheme() === 'dark' ? 'light' : 'dark');
@@ -681,9 +659,7 @@ function toggleTheme() {
 
 document.getElementById('btn-theme')?.addEventListener('click', toggleTheme);
 
-// ═══════════════════════════════════════════════════════
 // 커스텀 컨텍스트 메뉴
-// ═══════════════════════════════════════════════════════
 
 const $ctxMenu = document.getElementById('ctx-menu');
 const $ctxOverlay = document.getElementById('ctx-overlay');
@@ -715,9 +691,7 @@ document.getElementById('ctx-lang')?.addEventListener('click', () => {
     showLangPopup();
 });
 
-// ═══════════════════════════════════════════════════════
 // 언어 팝업
-// ═══════════════════════════════════════════════════════
 
 const $langPopup = document.getElementById('lang-popup');
 
@@ -767,9 +741,7 @@ document.getElementById('btn-lang')?.addEventListener('click', (e) => {
     markActiveLang();
 });
 
-// ═══════════════════════════════════════════════════════
 // 초기화
-// ═══════════════════════════════════════════════════════
 
 (async function init() {
     // CSS가 적용된 후 윈도우를 표시하여 흰 화면 방지 (tauri.conf.json: visible=false)

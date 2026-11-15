@@ -20,9 +20,7 @@ import { type AddonCard, useAddonVersions } from './AddonVersions';
 import { QuestionModal } from './Modals';
 import { useInstallingIds } from './useStoreInstall';
 
-// ─────────────────────────────────────────────────────────────
 // 모듈 탭
-// ─────────────────────────────────────────────────────────────
 export function ModulesTab() {
     const { t, i18n } = useTranslation('gui');
     const openMenu = useContextMenu();

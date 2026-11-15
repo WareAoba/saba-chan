@@ -32,7 +32,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-// ─── CLI 인자 ───────────────────────────────────────
+// ── ─ CLI 인자 ──
 const args = process.argv.slice(2);
 function getArg(name, defaultVal) {
     const idx = args.indexOf(name);
@@ -49,7 +49,7 @@ if (ZIPS_DIR && !getArg('--zips', '')) {
     process.exit(2);
 }
 
-// ─── 서명 ───────────────────────────────────────────
+// ── ─ 서명 ──
 // 공개된 시험용 seed. 운영 키가 아니다: 릴리즈 빌드는 이 키를 믿지 않는다
 const MOCK_KEY_ID = 'saba-updater-mock';
 const MOCK_SEED = Buffer.from('saba-mock-relay-not-for-release!');
@@ -73,7 +73,7 @@ function signManifest(manifest) {
     return { manifest, signature, keyId: MOCK_KEY_ID };
 }
 
-// ─── 가짜 ZIP 생성 ─────────────────────────────────
+// ── ─ 가짜 ZIP 생성 ──
 // 진짜 ZIP은 아니지만, 업데이터의 zip::ZipArchive가 파싱할 수 있어야 합니다.
 // 최소한의 유효한 ZIP 파일을 생성합니다 (PK 매직넘버 + 단일 파일).
 
@@ -150,7 +150,7 @@ function crc32(buf) {
     return (crc ^ 0xFFFFFFFF) >>> 0;
 }
 
-// ─── 에셋 ───────────────────────────────────────────
+// ── ─ 에셋 ──
 
 // manifest 컴포넌트 키 → (에셋 이름, 안에 든 파일, 설치 폴더, 실제 빌드 파일 이름)
 function componentSpecs(platform) {
@@ -224,7 +224,7 @@ function newer(a, b) {
     return false;
 }
 
-// ─── 서버 ───────────────────────────────────────────
+// ── ─ 서버 ──
 
 function send(res, status, body) {
     res.writeHead(status, { 'Content-Type': 'application/json' });

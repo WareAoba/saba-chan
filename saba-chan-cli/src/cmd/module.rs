@@ -167,7 +167,7 @@ async fn list(ctx: &Ctx) -> Result<()> {
                 {
                     ver.push_str(&console::style(" !").yellow().to_string());
                 }
-                // 이 데몬의 OS·CPU에서 돌아가지 않는 모듈 (D3·M1)
+                // 이 데몬의 OS·CPU에서 돌아가지 않는 모듈
                 if m.get("platform_supported") == Some(&Value::Bool(false)) {
                     let mark = if s(m, "unsupported_reason") == "arch" { t!("module.arch_unsupported") } else { t!("module.platform_unsupported") };
                     ver.push_str(&format!("  {}", output::dim(&mark)));
@@ -400,7 +400,7 @@ async fn versions(
     Ok(())
 }
 
-/// 모듈이 구현하지 않아도 되는 lifecycle 함수와 그 함수를 쓰는 CLI 명령 (데몬 `plugin::OPTIONAL_MODULE_FUNCTIONS`, MK1).
+/// 모듈이 구현하지 않아도 되는 lifecycle 함수와 그 함수를 쓰는 CLI 명령 (데몬 `plugin::OPTIONAL_MODULE_FUNCTIONS`).
 /// `import_settings`는 CLI 명령이 없다
 const OPTIONAL: &[(&str, &str)] = &[
     ("reset_server", "server reset"),
@@ -529,7 +529,7 @@ mod tests {
         assert_eq!(extension_notes(&json!({ "success": true, "extensions": { "installed": [], "enabled": [], "failed": [] } })), (None, vec![]));
             }
 
-    /// 모듈이 밝힌 함수 목록(MK1)에 없는 선택 함수의 명령만 지원하지 않음으로 보인다. 목록을 모르면(null·없음) 아무것도 숨기지 않는다
+    /// 모듈이 밝힌 함수 목록에 없는 선택 함수의 명령만 지원하지 않음으로 보인다. 목록을 모르면(null·없음) 아무것도 숨기지 않는다
     #[test]
     fn only_commands_of_unlisted_optional_functions_are_unsupported() {
         assert!(unsupported(&json!({ "functions": null })).is_empty());
@@ -540,7 +540,7 @@ mod tests {
         assert!(supported(&json!({ "functions": null }), "reset_server"));
     }
 
-    /// 받을 실행 파일 이름은 게임 중립적인 `--executable`로 받아 `server_executable`로 보낸다(MK7). 예전 `--jar`도 받는다
+    /// 받을 실행 파일 이름은 게임 중립적인 `--executable`로 받아 `server_executable`로 보낸다. 예전 `--jar`도 받는다
     #[test]
     fn install_files_sends_the_executable_name_as_server_executable() {
         for flag in ["--executable", "--jar"] {

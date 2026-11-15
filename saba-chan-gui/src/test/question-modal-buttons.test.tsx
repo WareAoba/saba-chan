@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { FailureModal, NotificationModal, QuestionModal, SuccessModal } from '../components/Modals/Modals';
 
-// 확인창은 공통 Dialog 위에 상태 아이콘 + 앱 공통 단추로 그린다 (사용자 결정 2026-11-11: B안)
+// 확인창은 공통 Dialog 위에 상태 아이콘 + 앱 공통 단추로 그린다 (B안)
 describe('확인창', () => {
     it('버튼이 셋 이상이면 세로로 쌓고 주 버튼(첫 버튼)을 위에 둔다', () => {
         const buttons = ['a', 'b', 'c'].map((label) => ({ label, action: vi.fn() }));

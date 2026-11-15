@@ -213,7 +213,7 @@ export function ConfirmHost() {
     const confirm = useApp((s) => s.confirm);
     useEscape(confirm ? () => confirm.done(false) : null);
     if (!confirm) return null;
-    // 겹치는 창은 body 바로 아래에 그린다: 움직이는 화면 상자 안이면 fixed가 그 상자를 기준으로 놓인다 (사용자 11-06 #1)
+    // 겹치는 창은 body 바로 아래에 그린다: 움직이는 화면 상자 안이면 fixed가 그 상자를 기준으로 놓인다
     return createPortal(
         // biome-ignore lint/a11y/noStaticElementInteractions: 바깥을 눌러 닫는 보조 동작 (키보드는 Esc)
         <div className="scrim" role="presentation" onClick={(e) => e.target === e.currentTarget && confirm.done(false)}>

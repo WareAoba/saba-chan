@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AccessMode, KickButton, MembersKick } from '../components/discord/InstanceAccess';
 import { type Server, useServerStore } from '../stores/useServerStore';
 
-// 사용자 지정(2026-11-08): 인스턴스 사용 모드 — 서버 공용(레벨 권한 + 자동 강퇴 닉네임) / 전용 멤버(명단만, 자동 강퇴 스위치)
+// 인스턴스 사용 모드 — 서버 공용(레벨 권한 + 자동 강퇴 닉네임) / 전용 멤버(명단만, 자동 강퇴 스위치)
 const server = (over: Partial<Server> = {}) =>
     ({ id: 'mc-1', name: 'Survival', module: 'minecraft', controllers_only_supported: true, ...over }) as Server;
 

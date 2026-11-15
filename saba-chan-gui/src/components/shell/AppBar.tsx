@@ -19,7 +19,7 @@ import { wordmarkFor } from '../../utils/wordmark';
 
 const WORDMARKS = { ko: './logo-kr.png', ja: './logo-jp.png', en: './logo-en.png' };
 
-/** 상단 탭 = 큰 기능 한 개 = 한 페이지 (A7). 새 페이지는 여기에 한 줄 추가한다(익스텐션 화면은 `App.page` slot, ExtensionPageTabs). available이 있으면 그 IPC가 있을 때만 보인다 */
+/** 상단 탭 = 큰 기능 한 개 = 한 페이지. 새 페이지는 여기에 한 줄 추가한다(익스텐션 화면은 `App.page` slot, ExtensionPageTabs). available이 있으면 그 IPC가 있을 때만 보인다 */
 export const APP_PAGES = [
     { id: 'servers', icon: 'server', labelKey: 'shell.nav_servers' },
     { id: 'discord', icon: 'discord', labelKey: 'shell.nav_discord' },

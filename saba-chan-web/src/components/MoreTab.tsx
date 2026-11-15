@@ -82,7 +82,7 @@ function Metrics({ api }: { api: WebApi }) {
             </Button>
         </div>
     );
-    // 시안 (사용자 2026-11-12): 원·서버별 사용량을 한 카드에, 원마다 칸, 긴 안내는 ⓘ를 눌러 본다
+    // 시안: 원·서버별 사용량을 한 카드에, 원마다 칸, 긴 안내는 ⓘ를 눌러 본다
     return (
         <Card icon="monitor" tone="3" title={t('more.metrics')} action={action}>
             {picking && (

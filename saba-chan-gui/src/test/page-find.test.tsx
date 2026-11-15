@@ -6,7 +6,7 @@ import { InstanceDiscordTab } from '../components/discord/InstanceWordsTab';
 import { PageFind } from '../components/servers/PageFind';
 import type { Server } from '../stores/useServerStore';
 
-// 서버 상세 설정·사바쨩·디스코드 탭의 Ctrl+F 찾기 (사용자 11-10 시안 승인):
+// 서버 상세 설정·사바쨩·디스코드 탭의 Ctrl+F 찾기:
 // 오른쪽 위 작은 찾기 창, 지금 탭의 칸 이름·입력된 값·원문 키에서 찾아 그 자리에서 칠한다
 const modules = [
     {

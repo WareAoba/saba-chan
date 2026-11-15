@@ -13,7 +13,7 @@ export interface DaemonLogEntry {
 }
 
 /**
- * 데몬 로그 한 줄: 시각 · 레벨 배지 · 본문 (사용자 2026-11-12 시안 A).
+ * 데몬 로그 한 줄: 시각 · 레벨 배지 · 본문.
  * 레벨 색은 배지와 왼쪽 띠에만 쓰고, 본문은 데몬 spans(highlight.rs DAEMON_LOG_RULES)로 낱말마다 칠한다. 앱 작업 막대와 웹 PC 탭이 같이 쓴다
  */
 export function DaemonLogLine({ line, locale }: { line: DaemonLogEntry; locale?: string }) {

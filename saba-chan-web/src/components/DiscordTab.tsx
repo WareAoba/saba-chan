@@ -100,9 +100,9 @@ const isFailed = (x: unknown): x is Failed => !!x && !!(x as Failed).failed;
 const ready = <T,>(x: T | Failed | undefined): x is T => !!x && !isFailed(x);
 
 /**
- * 디스코드 탭 (2026-10-31 사용자 지정 시안). 이 PC 에 붙은 서버는 권한·보일 서버를 PC 를 거쳐 바꾸고, 설정은
- * 데몬이 원본인 값(언어·코코낸내·노래·읽어주기·말하는 사바쨩·API 키)을 데몬 경로로, 배정·기억은 릴레이로 바꾼다 (`hereStore`, 2026-11-03).
- * PC 없는 서버는 릴레이 API(src/relay.js)로 바로 바꾼다. 다른 PC 에 붙은 서버는 그 PC 의 링크에서 바꾼다.
+ * 디스코드 탭. 이 PC 에 붙은 서버는 권한·보일 서버를 PC 를 거쳐 바꾸고, 설정은
+ * 데몬이 원본인 값(언어·코코낸내·노래·읽어주기·말하는 사바쨩·API 키)을 데몬 경로로, 배정·기억은 릴레이로 바꾼다 (`hereStore`).
+ * PC 없는 서버는 릴레이 API(src/relay.ts)로 바로 바꾼다. 다른 PC 에 붙은 서버는 그 PC 의 링크에서 바꾼다.
  * 보이는 칸은 요청한 사람의 디스코드 권한(can)을 따른다: 설정은 manage, 서버 관리는 channels·messages·members.
  */
 
@@ -527,7 +527,7 @@ function TalkingSection({ relay, g, chatbot, busy, write, here }: SectionProps &
     );
 }
 
-/** 여러 채널을 고르는 일 (말하는 사바쨩·게임 채팅·상황판, 사용자 2026-11-04) — 누른 채널을 더하거나 뺀다 */
+/** 여러 채널을 고르는 일 (말하는 사바쨩·게임 채팅·상황판) — 누른 채널을 더하거나 뺀다 */
 interface ChannelChipsProps {
     label: string;
     list: { id: string; name: string }[];
@@ -1277,7 +1277,7 @@ function ModerationSection({ relay, g, can, moderation, busy, write, refresh }: 
 
 /**
  * 코코낸내 (GUI 봇 설정의 코코낸내 칸과 같은 값): 지금 재우기, 잠든 동안 끌 기능, 착한 어린이 시각.
- * PC 없는 서버도 릴레이 기능(음악·읽어주기·말하는 사바쨩)을 재우므로 보인다 — 서버 조작·알림만 PC 가 있어야 한다 (사용자 11-12)
+ * PC 없는 서버도 릴레이 기능(음악·읽어주기·말하는 사바쨩)을 재우므로 보인다 — 서버 조작·알림만 PC 가 있어야 한다
  */
 function SleepSection({ relay, g, settings, busy, write, here }: SectionProps & { settings: GuildSettings }) {
     const { t } = useTranslation();

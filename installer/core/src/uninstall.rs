@@ -350,9 +350,7 @@ pub async fn do_silent_uninstall(keep: Keep) -> i32 {
     i32::from(!left.is_empty())
 }
 
-// ═══════════════════════════════════════════════════════
 // 내부 헬퍼
-// ═══════════════════════════════════════════════════════
 
 /// 제거할 설치 폴더: 제거기 자신이 든 폴더가 사바쨩 설치 폴더일 때만. 화면에 보이는 경로도 이것이다
 pub fn target_dir() -> Option<PathBuf> {
@@ -1703,7 +1701,7 @@ mod tests {
         let staging = saba_chan_updater_lib::component_dirs::staging_dir(&extensions);
         std::fs::create_dir_all(&staging).unwrap();
         std::fs::write(staging.join(".saba-chan-moving"), "").unwrap();
-        // Codex 리뷰 #544 P1: 표시 없는 같은 이름 폴더는 사용자 것일 수 있어 남긴다
+        // 표시 없는 같은 이름 폴더는 사용자 것일 수 있어 남긴다
         let unmarked = saba_chan_updater_lib::component_dirs::staging_dir(&foreign);
         std::fs::create_dir_all(&unmarked).unwrap();
         std::fs::write(unmarked.join("mine.txt"), "user").unwrap();
@@ -1724,7 +1722,7 @@ mod tests {
         assert!(default.is_dir(), "the data folder entries are left to remove_appdata_entries");
     }
 
-    // M15: 끈 프로세스가 실제로 끝날 때까지 기다린다. 끝나기 전에 사용자 데이터를 지우면
+    // 끈 프로세스가 실제로 끝날 때까지 기다린다. 끝나기 전에 사용자 데이터를 지우면
     // 아직 살아 있던 데몬이 설정·토큰 파일을 다시 쓴다
     #[test]
     fn sandbox_reset_failures_are_reported_as_left_items() {
@@ -1733,7 +1731,7 @@ mod tests {
         assert!(sandbox_failures(out, true, core).is_empty());
         let out = "FAIL  D:\\Games\\pal: write ACL of D:\\Games\\pal: Access is denied.\nFAIL  saba-chan.untrusted.x: gone\n";
         assert_eq!(sandbox_failures(out, false, core).len(), 2);
-        // Codex 리뷰 #539: 실패로 끝났는데 실패 줄이 없으면(명령을 모르는 옛 코어 등) 성공으로 보았다
+        // 실패로 끝났는데 실패 줄이 없으면(명령을 모르는 옛 코어 등) 성공으로 보았다
         assert_eq!(sandbox_failures("usage: saba-core ...\n", false, core).len(), 1);
     }
 
@@ -1808,13 +1806,13 @@ mod tests {
         let left = wait_for_exit(&procs, || Some(parse_all("20|1|5|saba-runner.exe|C:/x/saba-runner.exe")), Duration::from_millis(50), Duration::from_millis(5)).await;
         assert_eq!(left, vec![procs[1].clone()], "one still running until the deadline");
 
-        // 리뷰 288: 기다리는 사이 PID가 다른 프로그램에 다시 쓰였으면 끝난 것으로 본다 (다시 끊지 않는다)
+        // 기다리는 사이 PID가 다른 프로그램에 다시 쓰였으면 끝난 것으로 본다 (다시 끊지 않는다)
         let reused = wait_for_exit(&procs[1..], || Some(parse_all("20|1|9|explorer.exe|C:/Windows/explorer.exe")), Duration::from_secs(5), Duration::ZERO).await;
         assert!(reused.is_empty());
         assert!(started.elapsed() < Duration::from_secs(2));
     }
 
-    // 리뷰 288: 프로세스 목록을 못 읽은 회차는 끝났다고 보지 않는다 (그러면 살아 있는 데몬 옆에서 데이터를 지운다)
+    // 프로세스 목록을 못 읽은 회차는 끝났다고 보지 않는다 (그러면 살아 있는 데몬 옆에서 데이터를 지운다)
     #[tokio::test]
     async fn a_round_without_a_process_list_counts_as_still_running() {
         let procs = [(10, "saba-core.exe".to_string(), 5)];
@@ -1822,7 +1820,7 @@ mod tests {
         assert_eq!(left, procs.to_vec());
     }
 
-    // 리뷰 288: 목록 조회(PowerShell)·taskkill이 멈춰도 제거기가 함께 멈추지 않는다
+    // 목록 조회(PowerShell)·taskkill이 멈춰도 제거기가 함께 멈추지 않는다
     #[cfg(not(target_os = "windows"))]
     #[test]
     fn a_command_that_hangs_is_given_up_on() {
@@ -1833,7 +1831,7 @@ mod tests {
         assert_eq!(String::from_utf8_lossy(&out.stdout), "hi\n");
     }
 
-    // 리뷰 288: 러너 없이 띄운 서버는 데몬의 자식이다. 데몬이 정상 종료하면 트리 종료가 닿지 않으므로
+    // 러너 없이 띄운 서버는 데몬의 자식이다. 데몬이 정상 종료하면 트리 종료가 닿지 않으므로
     // 끄기 전에 데몬 아래를 찾아 둔다. 제거기 자신과 그 위(제거기를 띄운 GUI)는 뺀다
     #[test]
     fn the_daemons_children_are_found_before_it_shuts_down() {
@@ -1956,7 +1954,7 @@ mod tests {
         assert!(wait < del && del < bin && bin < root, "{s}");
     }
 
-    // M10: 스크립트는 UTF-8로 쓴다. cmd가 경로를 읽기 전에 코드 페이지를 UTF-8로 바꿔야 한글 경로가 맞고,
+    // 스크립트는 UTF-8로 쓴다. cmd가 경로를 읽기 전에 코드 페이지를 UTF-8로 바꿔야 한글 경로가 맞고,
     // 지연 확장을 꺼야 경로의 `!`가 펼쳐지지 않는다
     #[test]
     fn the_cleanup_script_reads_non_ascii_paths_as_utf8_without_delayed_expansion() {
@@ -1969,7 +1967,7 @@ mod tests {
         assert!(CLEANUP_CMD_ARGS.contains(&"/V:OFF") && CLEANUP_CMD_ARGS.contains(&"/D"));
     }
 
-    // M10: 실제 cmd로 돌려 한글과 `!`가 든 폴더가 지워지는지 본다 (PC에서 실행)
+    // 실제 cmd로 돌려 한글과 `!`가 든 폴더가 지워지는지 본다 (PC에서 실행)
     #[cfg(target_os = "windows")]
     #[test]
     fn the_cleanup_script_removes_a_non_ascii_folder() {

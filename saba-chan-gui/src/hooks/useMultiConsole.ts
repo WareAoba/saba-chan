@@ -31,7 +31,7 @@ const FEED_RULES: FeedRules = {
 type ConsolesOrUpdater = Consoles | ((prev: Consoles) => Consoles);
 const setConsoles = (consolesOrUpdater: ConsolesOrUpdater) => useConsoleStore.getState().setConsoles(consolesOrUpdater);
 
-// 줄마다 GUI가 매기는 key. 데몬 id는 프로세스·디스크 읽기마다 0부터 다시 세서 겹친다 (G-C1)
+// 줄마다 GUI가 매기는 key. 데몬 id는 프로세스·디스크 읽기마다 0부터 다시 세서 겹친다
 let lineSeq = 0;
 
 /** 읽기 루프 하나의 ref (닫을 때 멈춘다) */
@@ -74,7 +74,7 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
     // 화면에 떠 있는 콘솔 (instanceId → 그리고 있는 곳 수)
     const watching = useRef<Record<string, number>>({});
 
-    // ── Close a single console ──────────────────────────────
+    // ── Close a single console ──
 
     const closeConsole = useCallback((instanceId: string) => {
         const ref = pollingRefs.current[instanceId];
@@ -91,7 +91,7 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
         });
     }, []);
 
-    // ── Open a console ──────────────────────────────────────
+    // ── Open a console ──
 
     const openConsole = useCallback((instanceId: string, serverName: string) => {
         setConsoles((prev) => {
@@ -277,7 +277,7 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
         }
     }, [consoleBufferRef, closeConsole]);
 
-    // ── 화면에 보이는 동안만 빠르게 읽는다 ──────────────────
+    // ── 화면에 보이는 동안만 빠르게 읽는다 ──
 
     const watchConsole = useCallback((instanceId: string) => {
         watching.current[instanceId] = (watching.current[instanceId] ?? 0) + 1;
@@ -298,7 +298,7 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
         return () => document.removeEventListener('visibilitychange', onVisible);
     }, []);
 
-    // ── Popin (bring PiP back into app) ─────────────────────
+    // ── Popin (bring PiP back into app) ──
 
     const popinConsole = useCallback(async (instanceId: string) => {
         try {
@@ -309,7 +309,7 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
         }
     }, []);
 
-    // ── Update input ────────────────────────────────────────
+    // ── Update input ──
 
     const setConsoleInput = useCallback((instanceId: string, value: string) => {
         setConsoles((prev) => {
@@ -321,7 +321,7 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
         });
     }, []);
 
-    // ── Send command ────────────────────────────────────────
+    // ── Send command ──
 
     const sendConsoleCommand = useCallback(async (instanceId: string) => {
         const state = useConsoleStore.getState().consoles[instanceId];
@@ -334,7 +334,7 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
         try {
             const result = await window.api.managedStdin(instanceId, cmd);
             if (result?.error_code === 'ETIMEDOUT' || result?.error_code === 'EOTHER') {
-                // 답을 못 받았다(시간 초과·연결 끊김): 데몬이 이미 보냈을 수 있어 명령 API로 다시 보내면 두 번 실행된다 (G-C4)
+                // 답을 못 받았다(시간 초과·연결 끊김): 데몬이 이미 보냈을 수 있어 명령 API로 다시 보내면 두 번 실행된다
                 safeShowToast(t('servers.stdin_unconfirmed'), 'warning', 5000);
                 return;
             }
@@ -379,7 +379,7 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
         }
     }, [setConsoleInput, translateError, t]);
 
-    // ── Cleanup on unmount ──────────────────────────────────
+    // ── Cleanup on unmount ──
 
     useEffect(() => {
         return () => {
@@ -391,7 +391,7 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
         };
     }, []);
 
-    // ── Popout mode: auto-start on mount ────────────────────
+    // ── Popout mode: auto-start on mount ──
 
     useEffect(() => {
         if (popoutParams) {
@@ -417,7 +417,7 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
         };
     }, [isPopoutMode, closeConsole]);
 
-    // ── Popout open/close events ────────────────────────────
+    // ── Popout open/close events ──
 
     useEffect(() => {
         if (isPopoutMode) return;

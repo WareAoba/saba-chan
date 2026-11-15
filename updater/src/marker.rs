@@ -13,7 +13,7 @@ pub struct UpdateCompletionMarker {
     /// 적용하지 못한 컴포넌트와 이유 (`"gui: ..."`)
     #[serde(default)]
     pub failed: Vec<String>,
-    /// 적용한 릴리즈의 버전과 패치노트 (A5). 예전 업데이터가 남긴 마커에는 없다
+    /// 적용한 릴리즈의 버전과 패치노트. 예전 업데이터가 남긴 마커에는 없다
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub release: Option<ReleaseSummary>,
     /// 클라이언트가 결과를 확인했다. 확인해도 지우지 않아 패치노트를 다시 볼 수 있다

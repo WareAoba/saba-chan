@@ -26,7 +26,7 @@ function moduleErrorBody(body: ApiBody): ApiBody {
 }
 
 /**
- * 데몬 HTTP 요청 (Rust `daemon_request` 명령). main.js가 쓰던 axios 의미를 그대로 흉내 낸다:
+ * 데몬 HTTP 요청 (Rust `daemon_request` 명령). axios와 같은 모양으로 답한다:
  * 2xx면 {status, data}를 돌려주고, 그 밖의 HTTP 상태면 err.response = {status, data}인 오류를,
  * 연결 실패면 err.code(ECONNREFUSED·ETIMEDOUT·…)가 있는 오류를 던진다.
  */

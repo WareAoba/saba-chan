@@ -43,7 +43,7 @@ describe('새 디스코드 서버에 서버 열기', () => {
         await waitFor(() => expect(window.api.botConfigSave).toHaveBeenCalledWith({ newGuildInstances: 'auto' }));
     });
 
-    // 사용자 11-08: DM 알림 종류별 켜고 끄기 (PC마다, 데몬 봇 설정 backupNotice·dmNotice)
+    // DM 알림 종류별 켜고 끄기 (PC마다, 데몬 봇 설정 backupNotice·dmNotice)
     it('백업 DM 범위를 고르면 backupNotice 만 저장한다', async () => {
         await act(() => useDiscordStore.getState().loadConfig());
         useDiscordStore.setState({ _settingsReady: true });
@@ -80,7 +80,7 @@ describe('새 디스코드 서버에 서버 열기', () => {
         expect(screen.getByRole('tab', { name: 'Failures' })).toHaveAttribute('aria-selected', 'true');
     });
 
-    // 사용자 11-12: PC 연결 끊김 알림은 옵션이고 기본은 꺼짐
+    // PC 연결 끊김 알림은 옵션이고 기본은 꺼짐
     it('PC 연결 끊김 알림은 꺼진 채로 보이고, 켜면 dmNotice 의 그 칸만 저장한다', async () => {
         await act(() => useDiscordStore.getState().loadConfig());
         useDiscordStore.setState({ _settingsReady: true });

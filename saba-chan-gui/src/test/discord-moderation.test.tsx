@@ -65,7 +65,7 @@ describe('배정 바꾸기', () => {
         expect(assignPatch(saved, '111', null)).toEqual({ chatbot: [] });
     });
 
-    it('게임 채팅·상황판은 여러 채널 — 고르면 더하고, 다른 채널의 배정은 그대로 (사용자 11-04)', () => {
+    it('게임 채팅·상황판은 여러 채널 — 고르면 더하고, 다른 채널의 배정은 그대로', () => {
         const two = { ...saved, gameChat: ['444'] };
         expect(kindOf(two, '444')).toBe('gameChat');
         expect(assignPatch(two, '333', 'gameChat')).toEqual({ gameChat: ['444', '333'] });

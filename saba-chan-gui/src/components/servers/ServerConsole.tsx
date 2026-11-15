@@ -62,7 +62,7 @@ const ConsoleLine = memo(function ConsoleLine({ line, syntaxEnabled, compiledRul
     );
 });
 
-/** 보낸 명령 한 줄: 옅은 띠에 "› list", 오른쪽 끝에 보낸 곳 "디스코드 · jace" (#18, 사용자 11-13 시안 B) */
+/** 보낸 명령 한 줄: 옅은 띠에 "› list", 오른쪽 끝에 보낸 곳 "디스코드 · jace" (#18) */
 function InputEcho({ line }: { line: ConsoleLineData }) {
     const { t } = useTranslation('gui');
     const by = line.by?.source ? sourceText({ source: line.by.source, userName: line.by.userName }, t) : '';

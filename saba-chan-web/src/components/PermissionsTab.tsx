@@ -58,7 +58,7 @@ function LevelSelect({ value, perm, onChange, withDefault, t, disabled, label }:
     );
 }
 
-/** 레벨 편집 (위가 높은 레벨, 앱 LadderTab 과 같은 규칙, 사용자 지정 2026-11-07). 카드를 끌어 순서를 바꾸고(들어갈 자리에 선),
+/** 레벨 편집 (위가 높은 레벨, 앱 LadderTab 과 같은 규칙). 카드를 끌어 순서를 바꾸고(들어갈 자리에 선),
  * 이름을 누르면 고친다. 소유자·금지는 고정이고 소유자·게스트·금지는 지울 수 없다. 칸에는 사바쨩 기능 칩만 보이고(게임 명령·조작 가능은
  * 인스턴스 권한 화면에서 정한다) 칩을 끌어 다른 레벨로 옮긴다. 노란 테두리는 저장하지 않은 변경이다 */
 interface LadderEditorProps {
@@ -277,7 +277,7 @@ export function noticeRows(servers: Pick<Server, 'id' | 'name'>[], notice: Notic
 }
 
 /**
- * 이 디스코드 서버에서 보일 서버 (2026-11-03 사용자 지정 시안, GUI 노드의 인스턴스 탭과 같은 규칙):
+ * 이 디스코드 서버에서 보일 서버 (GUI 노드의 인스턴스 탭과 같은 규칙):
  * 모두 보이기(제한 없음, 새 서버도 바로 보인다) 또는 고른 것만. 서버 하나는 디스코드 서버 하나만 고를 수 있다.
  * `allowed`: 이 길드의 allowedInstances (null 이면 제한 없음), `others`: 이 PC 의 다른 길드 {guildId: allowedInstances}
  */
@@ -497,7 +497,7 @@ function useGuildPermissions(api: WebApi, guildId: string) {
     return { perm, board, members, busy, write, reload };
 }
 
-/** 멤버별 레벨 (앱 `PeopleView`와 같다, 사용자 지정 2026-11-07): 레벨 칸마다 사람 칩. 윗줄은 기본 레벨 · 멤버 찾기 · 새로고침.
+/** 멤버별 레벨 (앱 `PeopleView`와 같다): 레벨 칸마다 사람 칩. 윗줄은 기본 레벨 · 멤버 찾기 · 새로고침.
  * 칩을 끌어 다른 레벨 칸에 놓거나 눌러 레벨을 고른다. 찾기 결과도 레벨 칸으로 끈다. 사람 추가는 닉네임으로 찾는다 (길드 전체에 적용) */
 interface MemberLevelsProps {
     api: WebApi;
@@ -591,7 +591,7 @@ function MemberLevels({ api, guildId, perm, board, members, busy, write, reload 
 
     return (
         <>
-            {/* 윗줄 (사용자 지정 2026-11-07): 기본 레벨 · 멤버 찾기 · 새로고침(아이콘) */}
+            {/* 윗줄: 기본 레벨 · 멤버 찾기 · 새로고침(아이콘) */}
             <div className="people-bar">
                 <span className="people-default" title={tg('discord.perm_default_level_hint')}>
                     <strong>{tg('discord.perm_default_level_label')}</strong>

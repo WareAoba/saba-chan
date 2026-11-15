@@ -17,9 +17,9 @@ interface LadderTabProps {
 }
 
 // ── 레벨 편집: 블록을 끌어 순서를 정한다 (위가 높은 레벨). 소유자·금지는 고정, 나머지는 옮긴다.
-// 모든 레벨은 이름을 바꾸고(비우면 로케일 이름), 소유자·게스트·금지가 아니면 지운다 (사용자 지정 2026-11-06).
+// 모든 레벨은 이름을 바꾸고(비우면 로케일 이름), 소유자·게스트·금지가 아니면 지운다.
 // 조작 가능 줄: 시작·정지·재시작·백업 만들기를 쓸 수 있는 가장 낮은 레벨 바로 아래에 긋고, 끌어서 옮긴다.
-// 권한 맞바꾸기 (사용자 지정 2026-11-07): 아래 버튼을 누르고 칸 두 개를 고르면 두 레벨의 명령 칩이 서로 자리를 바꾼다 ──
+// 권한 맞바꾸기: 아래 버튼을 누르고 칸 두 개를 고르면 두 레벨의 명령 칩이 서로 자리를 바꾼다 ──
 export function LadderTab({ node, permissions, onClose }: LadderTabProps) {
     const { t } = useTranslation('gui');
     const { busy, write, board } = permissions;
@@ -69,7 +69,7 @@ export function LadderTab({ node, permissions, onClose }: LadderTabProps) {
                                 className={clsx('dc-ladder-block', `level-${L.levelKey(level.id)}`, {
                                     'is-fixed': fixed,
                                     'is-dragging': dragging === i,
-                                    // 카드 끌기: 들어갈 자리(이 카드 위 또는 아래)에 선 (사용자 지정 2026-11-07)
+                                    // 카드 끌기: 들어갈 자리(이 카드 위 또는 아래)에 선
                                     'is-insert-before': dragging !== null && over === i && i < dragging && !fixed,
                                     'is-insert-after': dragging !== null && over === i && i > dragging && !fixed,
                                     // 칩 끌기: 놓을 칸
@@ -232,7 +232,7 @@ export function LadderTab({ node, permissions, onClose }: LadderTabProps) {
                 </div>
                 {removed && <p className="dc-hint">{t('discord.perm_ladder_removed')}</p>}
                 {!valid && <p className="dc-field-error">{t('discord.perm_err_invalid_ladder')}</p>}
-                {/* 다른 설정 화면과 같은 화면 아래 저장 막대 (사용자 11-06 #9) */}
+                {/* 다른 설정 화면과 같은 화면 아래 저장 막대 */}
                 <SaveBar dirty={changed} saving={busy} blocked={!valid} onRevert={ladder.revert} onSave={save} />
             </section>
         </div>

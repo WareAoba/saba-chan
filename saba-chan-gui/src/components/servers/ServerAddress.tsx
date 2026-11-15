@@ -17,7 +17,7 @@ interface AddressPort {
     port: number;
 }
 
-/** 서버 상세 머리 아래: 친구가 접속할 주소(PC의 공개 주소 + 밖에 여는 포트)를 크게 보이고 복사한다 (사용자 결정 2026-11-10) */
+/** 서버 상세 머리 아래: 친구가 접속할 주소(PC의 공개 주소 + 밖에 여는 포트)를 크게 보이고 복사한다 */
 export function ServerAddress({ server }: { server: Server }) {
     const { t, i18n } = useTranslation('gui');
     const [info, setInfo] = useState<ApiBody | null>(null);
@@ -76,7 +76,7 @@ export function ServerAddress({ server }: { server: Server }) {
                     );
                 })}
             <div className="server-address-sub">
-                {/* 포트포워딩 결과는 이 알약 하나로 알린다. 손볼 것이 있으면 고칠 방법을 알약에 띄우고 바로 다시 확인한다 (사용자 11-12) */}
+                {/* 포트포워딩 결과는 이 알약 하나로 알린다. 손볼 것이 있으면 고칠 방법을 알약에 띄우고 바로 다시 확인한다 */}
                 {report && portCheckShown(report) && (
                     <span
                         className={clsx('server-address-check', `verdict-${report.verdict}`)}

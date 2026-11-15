@@ -5,7 +5,7 @@ import { initI18n } from '../i18n';
 import { useApp } from '../store';
 import { mockApi, mockRelay } from './mocks';
 
-// 이 PC 에 붙은 서버 (사용자 결정 2026-11-03): 데몬이 원본인 값은 데몬 경로, 배정·기억은 릴레이
+// 이 PC 에 붙은 서버: 데몬이 원본인 값은 데몬 경로, 배정·기억은 릴레이
 const G = '111111111111111111';
 const flush = () => act(async () => {});
 const GUARD = 'Block messages while chat link is off';
@@ -74,7 +74,7 @@ describe('이 PC 의 디스코드 서버 설정', () => {
         expect(relay.saveSettings).not.toHaveBeenCalled();
     });
 
-    it('게임 채팅·상황판은 여러 채널을 고른다 — 누른 채널을 더하거나 뺀다 (사용자 11-04)', async () => {
+    it('게임 채팅·상황판은 여러 채널을 고른다 — 누른 채널을 더하거나 뺀다', async () => {
         const { relay } = setup();
         const C1 = '222222222222222222';
         const C2 = '333333333333333333';
@@ -135,7 +135,7 @@ describe('이 PC 의 디스코드 서버 설정', () => {
         expect(screen.getByRole('heading', { name: 'Server management' })).toBeTruthy();
     });
 
-    it('인스턴스·알림도 설정 카드로 묶고 두 줄 격자에 놓는다 (사용자 11-06)', async () => {
+    it('인스턴스·알림도 설정 카드로 묶고 두 줄 격자에 놓는다', async () => {
         setup();
         await flush();
         await flush();

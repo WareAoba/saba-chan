@@ -15,7 +15,7 @@ const TITLES: Record<RemotePathRequest['kind'], string> = {
 };
 
 /**
- * 원격 데몬 쪽 경로 고르기 (D2). 원격 데몬을 다루는 동안 대화상자를 여는 브리지 메서드
+ * 원격 데몬 쪽 경로 고르기. 원격 데몬을 다루는 동안 대화상자를 여는 브리지 메서드
  * (openFileDialog·openFolderDialog·dataExport 등)가 이 창을 띄운다. 폴더 목록은 그 데몬이 읽는다 (GET /api/system/browse)
  */
 /** 열려 있는 요청 하나: 고른 경로(또는 취소 null)로 resolve한다 */

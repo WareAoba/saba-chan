@@ -21,10 +21,10 @@ export function updateResultMessage(res: ApiBody | null | undefined, t: TFunctio
     return t('patch_notes.notice_failed', { count: (r.failed || []).length || 1 });
 }
 
-// ─── localStorage 키 ───────────────────────────────────
+// ── ─ localStorage 키 ──
 const STORAGE_KEY = 'saba-chan-notices';
 
-// ─── 알림 유틸 ───────────────────────────────────────────
+// ── ─ 알림 유틸 ──
 
 /** localStorage에서 알림 목록 불러오기 */
 function loadNotices(): Notice[] {
@@ -154,7 +154,7 @@ window.__sabaNotice = {
     markAllRead,
 };
 
-// ─── 알림 카드 ─────────────────────────────────────────
+// ── ─ 알림 카드 ──
 
 interface NoticeCardProps {
     notice: Notice;
@@ -252,7 +252,7 @@ function formatTime(isoString: string, t: TFunction) {
     );
 }
 
-// ─── 알림 모달 본체 ─────────────────────────────────────
+// ── ─ 알림 모달 본체 ──
 
 interface NoticeModalProps {
     isOpen: boolean;

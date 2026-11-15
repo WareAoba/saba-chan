@@ -4,7 +4,7 @@ import { DEFAULT_MONITOR_FLOAT, floatFromPoint, placeFloat } from '../components
 const area = { width: 1000, height: 600 };
 const box = { width: 200, height: 100 };
 
-describe('떠 있는 시스템 모니터 자리 (사용자 11-11: 아무 데나 놓되 모서리 가까이면 붙고, 밖으로 밀리면 돌아온다)', () => {
+describe('떠 있는 시스템 모니터 자리 (아무 데나 놓되 모서리 가까이면 붙고, 밖으로 밀리면 돌아온다)', () => {
     it('기본은 오른쪽 위 12px', () => {
         expect(placeFloat(DEFAULT_MONITOR_FLOAT, area, box)).toEqual({ left: 788, top: 12 });
     });
