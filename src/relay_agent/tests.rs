@@ -1390,7 +1390,7 @@ fn dm_notice_is_sent_only_when_something_is_off() {
     use crate::config_store::{BackupNotice, BotConfig};
     let mut meta = json!({});
     dm_notice_meta(&mut meta, &BotConfig::default());
-    assert_eq!(meta, json!({}));
+    assert_eq!(meta, json!({ "backupNotice": "failures" }), "옛 릴레이는 값이 없으면 성공한 백업도 보내므로 기본값도 싣는다");
 
     let mut bot: BotConfig = serde_json::from_value(json!({ "backupNotice": "off", "dmNotice": { "crash": false, "unresponsive": false, "chatbotUsage": false } })).unwrap();
     assert_eq!(bot.backup_notice, BackupNotice::Off);
@@ -1398,7 +1398,7 @@ fn dm_notice_is_sent_only_when_something_is_off() {
     dm_notice_meta(&mut meta, &bot);
     assert_eq!(meta, json!({ "backupNotice": "off", "dmOff": ["crash", "unresponsive", "chatbotUsage"] }));
 
-    // 기본(실패만)은 싣지 않는다. 릴레이도 없으면 실패만 보낸다 (사용자 2026-11-15)
+    // 모두 받기 (사용자 2026-11-15: 기본은 실패만)
     bot.backup_notice = BackupNotice::All;
     let mut meta = json!({});
     dm_notice_meta(&mut meta, &bot);
@@ -1408,14 +1408,14 @@ fn dm_notice_is_sent_only_when_something_is_off() {
     let bot: BotConfig = serde_json::from_value(json!({ "dmNotice": { "offline": true } })).unwrap();
     let mut meta = json!({});
     dm_notice_meta(&mut meta, &bot);
-    assert_eq!(meta, json!({ "dmOn": ["offline"] }));
+    assert_eq!(meta, json!({ "backupNotice": "failures", "dmOn": ["offline"] }));
 
     // DM 알림 전체 스위치는 기본 꺼짐, 켜면 `dmOn`의 `all` (사용자 2026-11-15)
     assert!(!BotConfig::default().dm_notice.enabled);
     let bot: BotConfig = serde_json::from_value(json!({ "dmNotice": { "enabled": true, "offline": true } })).unwrap();
     let mut meta = json!({});
     dm_notice_meta(&mut meta, &bot);
-    assert_eq!(meta, json!({ "dmOn": ["all", "offline"] }));
+    assert_eq!(meta, json!({ "backupNotice": "failures", "dmOn": ["all", "offline"] }));
 }
 
 // 켜짐 알림을 켠 서버는 길드마다 싣는다. 켠 서버가 없는 길드는 싣지 않는다 (릴레이는 없으면 알리지 않는다)
