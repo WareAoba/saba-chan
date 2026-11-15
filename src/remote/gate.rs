@@ -236,6 +236,11 @@ pub static ROUTES: &[Route] = &[
     deny("POST", "/api/system/net-trace/revoke"),
     deny("GET", "/api/system/paths"),
     deny("POST", "/api/system/paths/move"),
+    // 디스크·저장 공간과 파일 이동은 이 PC의 폴더다
+    deny("GET", "/api/system/storage"),
+    deny("GET", "/api/system/storage/move"),
+    deny("POST", "/api/system/storage/move"),
+    deny("POST", "/api/system/storage/move/cancel"),
     // 이 PC에서 사바쨩 지우기: 짝 맺은 PC의 앱 카드가 부른다 (웹은 아니다)
     not_on_web("POST", "/api/system/uninstall"),
     // 이 PC에 로그인할 때 무엇을 띄울지는 PC에서만 정한다

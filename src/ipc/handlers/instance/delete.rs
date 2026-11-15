@@ -185,7 +185,21 @@ async fn delete_instance_held(state: IPCServer, id: String, keep_settings: bool)
             tracing::warn!("{:#}", e);
         }
     }
+    // 사바쨩이 다른 드라이브로 옮긴 서버 폴더는 인스턴스 폴더처럼 함께 지운다 (가져온 서버·직접 고른 폴더는 남긴다)
+    let moved_out = {
+        let instance_dir = state.supervisor.read().await.instance_store.instance_dir(&id);
+        crate::instance::migration::moved_out_folder(instance.working_dir.as_deref(), &instance_dir)
+    };
     let removed = state.supervisor.write().await.remove_instance(&id);
+    if let Some(dir) = moved_out.filter(|_| removed.is_ok()) {
+        let name = instance.name.clone();
+        let _ = tokio::task::spawn_blocking(move || {
+            if let Err(e) = std::fs::remove_dir_all(&dir) {
+                tracing::warn!("Could not remove the moved server folder {} of deleted instance '{}': {}", dir.display(), name, e);
+            }
+        })
+        .await;
+    }
     if let Some(dir) = detached.filter(|_| !keep_folder) {
         let name = instance.name.clone();
         let _ = tokio::task::spawn_blocking(move || {

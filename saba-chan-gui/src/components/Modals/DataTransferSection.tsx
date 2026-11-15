@@ -3,6 +3,7 @@ import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import type { ApiBody } from '../../types/daemon';
 import { Icon } from '../Icon';
+import { Disclosure } from '../ui/Disclosure';
 import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { failed } from '../../utils/apiResult';
 
@@ -24,7 +25,7 @@ const names = (list?: ApiBody[]) => (list || []).map((i) => i.name || i.id).join
  * 설정 > 저장 공간: 데이터 내보내기·가져오기 (데몬 POST /api/migration/export·import).
  * 가져오기는 미리보기(dryRun) 뒤에 같은 파일로 한 번 더 부른다.
  */
-export function DataTransferSection() {
+export function DataTransferSection({ defaultOpen = true }: { defaultOpen?: boolean }) {
     const { t } = useTranslation('gui');
     const [secrets, setSecrets] = useState(false);
     const [overwrite, setOverwrite] = useState(false);
@@ -91,140 +92,149 @@ export function DataTransferSection() {
 
     return (
         <section className="saba-card">
-            <h4 className="saba-card-title">
-                <Icon name="package" size="sm" /> {t('data_transfer.title')}
-            </h4>
-            <p className="setting-description">{t('data_transfer.description')}</p>
-
-            <div className="setting-item">
-                <label className="setting-label">
-                    <span className="setting-title">{t('data_transfer.secrets_label')}</span>
-                    <span className="setting-description">{t('data_transfer.secrets_description')}</span>
-                </label>
-                <SabaToggle checked={secrets} onChange={setSecrets} aria-label={t('data_transfer.secrets_label')} />
-            </div>
-
-            <div className="saba-card-actions">
-                <button type="button" className="btn btn-primary" onClick={doExport} disabled={busy !== null}>
-                    {busy === 'export' ? <SabaSpinner size="xs" /> : <Icon name="download" size="sm" />}{' '}
-                    {t('data_transfer.export')}
-                </button>
-                <button type="button" className="btn btn-ghost" onClick={pickFile} disabled={busy !== null}>
-                    {busy === 'preview' && !preview ? <SabaSpinner size="xs" /> : <Icon name="folder" size="sm" />}{' '}
-                    {t('data_transfer.import_pick')}
-                </button>
-            </div>
-
-            {exported && (
-                <div className="notice tone-ok" role="status">
-                    <Icon name="checkCircle" size="sm" />
-                    <span>
-                        {t('data_transfer.exported', { count: exported.instances?.length || 0, path: exported.path })}
-                        {exported.secrets && <> {t('data_transfer.exported_secrets')}</>}
+            <Disclosure
+                defaultOpen={defaultOpen}
+                summary={
+                    <span className="saba-card-title">
+                        <Icon name="download" size="sm" /> {t('data_transfer.title')}
                     </span>
-                </div>
-            )}
+                }
+            >
+                <p className="setting-description">{t('data_transfer.description')}</p>
 
-            {summary && (
-                <div className="data-transfer-summary">
-                    <div className="data-transfer-head">
-                        {preview ? t('data_transfer.preview_title') : t('data_transfer.imported_title')}
-                        {summary.appVersion && (
-                            <span className="muted">
-                                {' '}
-                                · {t('data_transfer.from_version', { version: summary.appVersion })}
-                            </span>
+                <div className="setting-item">
+                    <label className="setting-label">
+                        <span className="setting-title">{t('data_transfer.secrets_label')}</span>
+                        <span className="setting-description">{t('data_transfer.secrets_description')}</span>
+                    </label>
+                    <SabaToggle checked={secrets} onChange={setSecrets} aria-label={t('data_transfer.secrets_label')} />
+                </div>
+
+                {/* 미리보기 중에는 그 아래 가져오기·취소만 (같은 이름의 단추가 둘 보이지 않게) */}
+                {!preview && (
+                    <div className="saba-card-actions">
+                        <button type="button" className="btn btn-primary" onClick={doExport} disabled={busy !== null}>
+                            {busy === 'export' ? <SabaSpinner size="xs" /> : <Icon name="download" size="sm" />}{' '}
+                            {t('data_transfer.export')}
+                        </button>
+                        <button type="button" className="btn btn-ghost" onClick={pickFile} disabled={busy !== null}>
+                            {busy === 'preview' && !preview ? <SabaSpinner size="xs" /> : <Icon name="folder" size="sm" />}{' '}
+                            {t('data_transfer.import_pick')}
+                        </button>
+                    </div>
+                )}
+
+                {exported && (
+                    <div className="notice tone-ok" role="status">
+                        <Icon name="checkCircle" size="sm" />
+                        <span>
+                            {t('data_transfer.exported', { count: exported.instances?.length || 0, path: exported.path })}
+                            {exported.secrets && <> {t('data_transfer.exported_secrets')}</>}
+                        </span>
+                    </div>
+                )}
+
+                {summary && (
+                    <div className="data-transfer-summary">
+                        <div className="data-transfer-head">
+                            {preview ? t('data_transfer.preview_title') : t('data_transfer.imported_title')}
+                            {summary.appVersion && (
+                                <span className="muted">
+                                    {' '}
+                                    · {t('data_transfer.from_version', { version: summary.appVersion })}
+                                </span>
+                            )}
+                        </div>
+                        <ul>
+                            {inst.added?.length > 0 && (
+                                <li>{t('data_transfer.added', { count: inst.added.length, names: names(inst.added) })}</li>
+                            )}
+                            {inst.replaced?.length > 0 && (
+                                <li>
+                                    {t('data_transfer.replaced', {
+                                        count: inst.replaced.length,
+                                        names: names(inst.replaced),
+                                    })}
+                                </li>
+                            )}
+                            {(inst.skipped || []).map((s: ApiBody) => (
+                                <li key={s.id} className="data-transfer-skip">
+                                    {t('data_transfer.skipped', {
+                                        name: s.name || s.id,
+                                        reason: t(
+                                            `data_transfer.reason_${SKIP_REASONS.includes(s.reason) ? s.reason : 'other'}`,
+                                        ),
+                                    })}
+                                </li>
+                            ))}
+                            {!inst.added?.length && !inst.replaced?.length && !inst.skipped?.length && (
+                                <li>{t('data_transfer.no_servers')}</li>
+                            )}
+                            {summary.config?.length > 0 && (
+                                <li>{t('data_transfer.config', { sections: summary.config.join(', ') })}</li>
+                            )}
+                            {['imported', 'kept'].includes(summary.nodeToken) && (
+                                <li>{t(`data_transfer.node_token_${summary.nodeToken}`)}</li>
+                            )}
+                            {summary.secrets && <li>{t('data_transfer.includes_secrets')}</li>}
+                        </ul>
+                        {imported?.config?.includes('gui') && (
+                            <p className="setting-description">{t('data_transfer.restart_hint')}</p>
+                        )}
+                        {summary.missingModules?.length > 0 && (
+                            <div className="notice tone-warn" role="status">
+                                <Icon name="alertTriangle" size="sm" />
+                                <span>
+                                    {t('data_transfer.missing_modules', { modules: summary.missingModules.join(', ') })}
+                                </span>
+                            </div>
+                        )}
+                        {preview && (
+                            <>
+                                <div className="setting-item">
+                                    <label className="setting-label">
+                                        <span className="setting-title">{t('data_transfer.overwrite_label')}</span>
+                                        <span className="setting-description">
+                                            {t('data_transfer.overwrite_description')}
+                                        </span>
+                                    </label>
+                                    <SabaToggle
+                                        checked={overwrite}
+                                        onChange={changeOverwrite}
+                                        disabled={busy !== null}
+                                        aria-label={t('data_transfer.overwrite_label')}
+                                    />
+                                </div>
+                                <div className="saba-card-actions">
+                                    <button
+                                        type="button"
+                                        className="btn btn-ghost"
+                                        onClick={() => setPreview(null)}
+                                        disabled={busy !== null}
+                                    >
+                                        {t('data_transfer.cancel')}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="btn btn-primary"
+                                        onClick={doImport}
+                                        disabled={busy !== null}
+                                    >
+                                        {busy === 'import' ? <SabaSpinner size="xs" /> : <Icon name="check" size="sm" />}{' '}
+                                        {t('data_transfer.import_confirm')}
+                                    </button>
+                                </div>
+                            </>
                         )}
                     </div>
-                    <ul>
-                        {inst.added?.length > 0 && (
-                            <li>{t('data_transfer.added', { count: inst.added.length, names: names(inst.added) })}</li>
-                        )}
-                        {inst.replaced?.length > 0 && (
-                            <li>
-                                {t('data_transfer.replaced', {
-                                    count: inst.replaced.length,
-                                    names: names(inst.replaced),
-                                })}
-                            </li>
-                        )}
-                        {(inst.skipped || []).map((s: ApiBody) => (
-                            <li key={s.id} className="data-transfer-skip">
-                                {t('data_transfer.skipped', {
-                                    name: s.name || s.id,
-                                    reason: t(
-                                        `data_transfer.reason_${SKIP_REASONS.includes(s.reason) ? s.reason : 'other'}`,
-                                    ),
-                                })}
-                            </li>
-                        ))}
-                        {!inst.added?.length && !inst.replaced?.length && !inst.skipped?.length && (
-                            <li>{t('data_transfer.no_servers')}</li>
-                        )}
-                        {summary.config?.length > 0 && (
-                            <li>{t('data_transfer.config', { sections: summary.config.join(', ') })}</li>
-                        )}
-                        {['imported', 'kept'].includes(summary.nodeToken) && (
-                            <li>{t(`data_transfer.node_token_${summary.nodeToken}`)}</li>
-                        )}
-                        {summary.secrets && <li>{t('data_transfer.includes_secrets')}</li>}
-                    </ul>
-                    {imported?.config?.includes('gui') && (
-                        <p className="setting-description">{t('data_transfer.restart_hint')}</p>
-                    )}
-                    {summary.missingModules?.length > 0 && (
-                        <div className="notice tone-warn" role="status">
-                            <Icon name="alertTriangle" size="sm" />
-                            <span>
-                                {t('data_transfer.missing_modules', { modules: summary.missingModules.join(', ') })}
-                            </span>
-                        </div>
-                    )}
-                    {preview && (
-                        <>
-                            <div className="setting-item">
-                                <label className="setting-label">
-                                    <span className="setting-title">{t('data_transfer.overwrite_label')}</span>
-                                    <span className="setting-description">
-                                        {t('data_transfer.overwrite_description')}
-                                    </span>
-                                </label>
-                                <SabaToggle
-                                    checked={overwrite}
-                                    onChange={changeOverwrite}
-                                    disabled={busy !== null}
-                                    aria-label={t('data_transfer.overwrite_label')}
-                                />
-                            </div>
-                            <div className="saba-card-actions">
-                                <button
-                                    type="button"
-                                    className="btn btn-ghost"
-                                    onClick={() => setPreview(null)}
-                                    disabled={busy !== null}
-                                >
-                                    {t('data_transfer.cancel')}
-                                </button>
-                                <button
-                                    type="button"
-                                    className="btn btn-primary"
-                                    onClick={doImport}
-                                    disabled={busy !== null}
-                                >
-                                    {busy === 'import' ? <SabaSpinner size="xs" /> : <Icon name="check" size="sm" />}{' '}
-                                    {t('data_transfer.import_confirm')}
-                                </button>
-                            </div>
-                        </>
-                    )}
-                </div>
-            )}
+                )}
 
-            {error && (
-                <div className="setting-validation-error" role="alert">
-                    <Icon name="alertCircle" size="sm" /> {error}
-                </div>
-            )}
+                {error && (
+                    <div className="setting-validation-error" role="alert">
+                        <Icon name="alertCircle" size="sm" /> {error}
+                    </div>
+                )}
+            </Disclosure>
         </section>
     );
 }

@@ -79,7 +79,7 @@ pub async fn move_dir(State(state): State<IPCServer>, Json(req): Json<MoveReques
 }
 
 /// 옮기기 본체. 무엇도 돌지 않을 때만, 폴더를 쓰는 모든 것을 잠근 채 옮기고 새 폴더를 다시 읽는다
-async fn move_component_dir(
+pub(crate) async fn move_component_dir(
     state: &IPCServer,
     kind: Kind,
     chosen: &Path,

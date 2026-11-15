@@ -197,8 +197,6 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
     const relayQs = (relayUrl: string) => (relayUrl ? `?relayUrl=${encodeURIComponent(relayUrl)}` : '');
     // 큰 월드는 묶고 푸는 데 몇 분 걸린다
     const BACKUP_TIMEOUT = 10 * 60 * 1000;
-    // 모듈·익스텐션 폴더 옮기기: 다른 드라이브면 복사와 검증까지 한다
-    const PATHS_MOVE_TIMEOUT = 30 * 60 * 1000;
     // 네트워크 권한: 관리자 확인 창을 사용자가 누를 때까지 데몬이 기다린다
     const NET_TRACE_TIMEOUT = 3 * 60 * 1000;
 
@@ -1177,9 +1175,13 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         // 고른 데몬 PC의 폴더 보기 (원격 경로 고르기, D2): path가 비면 드라이브·루트. extensions 없으면 폴더만, ['*']면 모든 파일
         systemBrowse: (path: string, extensions?: string[] | null) =>
             call('get', `/api/system/browse${queryString({ path: path || undefined, files: extensions?.length ? extensions.join(',') : undefined })}`),
-        // 모듈·익스텐션 폴더 옮기기: 데몬이 복사·검증 뒤 옮긴다 (큰 폴더는 오래 걸린다)
-        systemPathsMove: (kind: string, target: string) =>
-            call('post', '/api/system/paths/move', { kind, target }, PATHS_MOVE_TIMEOUT),
+        // 저장 공간: 내장 디스크와 사바쨩 파일 크기 (데몬이 백그라운드에서 잰다. refresh면 바로 다시 잰다)
+        systemStorage: (refresh = false) => call('get', `/api/system/storage${queryString({ refresh: refresh || undefined })}`),
+        // 파일 이동: 서버 폴더·모듈·익스텐션을 다른 드라이브로. mount(드라이브)나 target(폴더). dryRun은 자리·크기만, 아니면 작업을 건다
+        systemStorageMove: (body: { kind: string; id?: string; mount?: string; target?: string; dryRun?: boolean }) =>
+            call('post', '/api/system/storage/move', body),
+        systemStorageMoveStatus: () => call('get', '/api/system/storage/move'),
+        systemStorageMoveCancel: () => call('post', '/api/system/storage/move/cancel'),
         // 원격 데몬 (01 §1.4.2): 고른 데몬과 상관없이 이 PC의 데몬이 답한다. 지우기는 204라 본문이 없다
         remoteSettings: () => call('get', '/api/remote/settings'),
         remoteSettingsSet: (patch: ApiBody) => call('put', '/api/remote/settings', patch),

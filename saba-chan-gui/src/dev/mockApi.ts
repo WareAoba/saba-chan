@@ -3,6 +3,7 @@
  * index.js가 DEV 빌드이고 window.api가 없을 때만 설치한다. 프로덕션 번들에는 들어가지 않는다.
  */
 import type { SabaApi } from '../api/createApi';
+import { mockStorage } from './mockStorage';
 
 const mockChannels = {
     chatbot: ['111'],
@@ -675,6 +676,7 @@ const impl: Record<string, MockFn> = {
             { guildId: 'guild-1', guildName: '사바 마을' },
             { guildId: 'guild-2', guildName: '주말 게임방' },
         ]),
+    ...mockStorage,
     dataExport: ({ secrets } = {}) =>
         ok({
             success: true,
