@@ -89,11 +89,10 @@ describe('응답 없음 감시 설정', () => {
 });
 
 describe('응답 없음 알림', () => {
-    it('판정되면 경고 토스트와 서버 알림을 남기고, 다시 시작할 때는 그렇게 알린다', () => {
+    it('판정되면 경고 토스트를 띄우고, 다시 시작할 때는 그렇게 알린다', () => {
         const data = { at: 1700000000, instanceId: 'srv-1', instance: 'Survival', minutes: 10, restarting: false };
         const toast = eventToast({ type: 'instance.unresponsive', data }, tr);
         expect(toast).toMatchObject({ type: 'warning', message: tr('events.instance_unresponsive', { name: 'Survival', minutes: 10 }) });
-        expect(toast?.notice).toMatchObject({ instanceId: 'srv-1', type: 'error' });
         const restarting = eventToast({ type: 'instance.unresponsive', data: { ...data, restarting: true } }, tr);
         expect(restarting?.message).toBe(tr('events.instance_unresponsive_restart', { name: 'Survival', minutes: 10 }));
     });

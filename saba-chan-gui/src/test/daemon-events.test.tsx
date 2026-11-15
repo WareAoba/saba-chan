@@ -55,17 +55,15 @@ describe('데몬 이벤트 스트림', () => {
         expect(normalizeEvent({ data: {} })).toBeNull();
     });
 
-    it('토스트: 디스코드에서 한 명령·크래시·자동 백업·예약 예고. 알림 모음에는 시작·정지·복원·크래시만', () => {
+    it('토스트: 디스코드에서 한 명령·크래시·자동 백업·예약 예고 (알림함은 데몬이 정한다)', () => {
         // 디스코드에서 켜고 끈 것은 instance.started·stopped가 알린다
         expect(eventToast({ type: 'action.run', data: discordStop }, t)).toBeNull();
         // 켜고 끄기에 실패했으면 이벤트가 없으니 실패 이유와 함께 토스트로
         const failedStop = eventToast({ type: 'action.run', data: { ...discordStop, ok: false, status: 409, code: 'server_not_running' } }, t);
         expect(failedStop).toMatchObject({ message: 'Run from Discord: Kimchi · Survival · Stop · Failed · Server stopped', type: 'warning' });
-        expect(failedStop?.notice).toBeUndefined();
         // 게임 명령은 토스트로만 알리고, 빈 인자 {}는 보이지 않는다
         const say = { ...discordStop, action: 'command', command: 'say', args: '{"message":"hi"}' };
         expect(eventToast({ type: 'action.run', data: say }, t)).toMatchObject({ message: 'Run from Discord: Kimchi · Survival · Command · say “hi”' });
-        expect(eventToast({ type: 'action.run', data: say }, t)?.notice).toBeUndefined();
         expect(eventToast({ type: 'action.run', data: { ...say, command: 'save-on', args: '{}' } }, t)?.message).toBe(
             'Run from Discord: Kimchi · Survival · Command · save-on',
         );
@@ -78,7 +76,7 @@ describe('데몬 이벤트 스트림', () => {
         expect(eventToast({ type: 'action.run', data: guildSetting }, t)).toBeNull();
         expect(eventToast({ type: 'action.run', data: { ...guildSetting, ok: false, status: 403 } }, t)).toBeNull();
 
-        // 크래시: 토스트에는 서버 이름, 알림에는 서버별로 묶을 짧은 줄과 번역한 이유
+        // 크래시: 토스트에는 서버 이름과 번역한 이유
         const crash = eventToast(
             {
                 type: 'instance.exit',
@@ -87,22 +85,6 @@ describe('데몬 이벤트 스트림', () => {
             t,
         );
         expect(crash?.message).toBe("'Survival' stopped (Crash) Memory limit reached (4096 MiB). Restarting in 5s");
-        expect(crash?.notice).toEqual({
-            message: 'Exited by crash',
-            detail: 'Memory limit reached (4096 MiB) · Restarting in 5s',
-            type: 'error',
-            source: 'Survival',
-            instanceId: 'srv-1',
-        });
-        const failed = eventToast(
-            { type: 'instance.exit', data: { instanceId: 'srv-1', instance: 'Survival', kind: 'start_failed', evidenceCode: 'ended_early', evidenceArgs: { secs: 4 } } },
-            t,
-        );
-        expect(failed?.notice).toMatchObject({ message: 'Start failed', detail: 'Exited 4s after start' });
-        // 콘솔 줄이 근거인 것은 이유를 따로 적지 않는다
-        const quiet = eventToast({ type: 'instance.exit', data: { instance: 'Survival', kind: 'unknown_exit', evidenceCode: 'console' } }, t)?.notice;
-        expect(quiet?.message).toBe('Stopped unexpectedly');
-        expect(quiet?.detail).toBeUndefined();
         expect(eventToast({ type: 'instance.exit', data: { instance: 'Survival', kind: 'user_stop' } }, t)).toBeNull();
 
         // 자동 백업·예약 예고는 토스트로만
@@ -110,31 +92,27 @@ describe('데몬 이벤트 스트림', () => {
         expect(eventToast({ type: 'backup.done', data: { kind: 'manual', ok: true } }, t, nameOf)).toBeNull();
         const scheduled = eventToast({ type: 'backup.done', data: { kind: 'scheduled', ok: true } }, t, nameOf);
         expect(scheduled?.message).toBe('Survival backup complete (Scheduled)');
-        expect(scheduled?.notice).toBeUndefined();
         expect(
             eventToast({ type: 'backup.done', data: { kind: 'scheduled', ok: false, error: 'disk full' } }, t, nameOf)
                 ?.type,
         ).toBe('error');
         const warn = eventToast({ type: 'schedule.warn', data: { instance: 'Survival', action: 'restart', minutesLeft: 5 } }, t);
         expect(warn?.message).toBe("'Survival' restarts as scheduled in 5 min.");
-        expect(warn?.notice).toBeUndefined();
         expect(eventToast({ type: 'mystery', data: {} }, t)).toBeNull();
     });
 
-    it('복원은 어디서 했든 알림에 남기고, 앱에서 한 것은 토스트를 다시 띄우지 않는다', () => {
+    it('복원 토스트: 앱에서 한 것은 다시 띄우지 않는다', () => {
         const restore = { at: 1700000000, source: 'web', action: 'restore', instanceId: 'srv-1', instance: 'Survival', ok: true, status: 200 };
         expect(eventToast({ type: 'action.run', data: restore }, t)).toMatchObject({
             message: "'Survival' restored (Saba-chan web)",
             type: 'success',
-            notice: { message: 'Restored · Saba-chan web', type: 'success', source: 'Survival', instanceId: 'srv-1' },
         });
-        const mine = eventToast({ type: 'action.run', data: { ...restore, source: 'gui' } }, t);
-        expect(mine).toMatchObject({ silent: true, notice: { message: 'Restored · App', read: true } });
+        expect(eventToast({ type: 'action.run', data: { ...restore, source: 'gui' } }, t)).toMatchObject({ silent: true });
         const broken = eventToast({ type: 'action.run', data: { ...restore, source: 'discord', ok: false, status: 409, code: 'server_running' } }, t);
-        expect(broken?.notice).toMatchObject({ message: 'Restore failed', detail: 'Not possible while the server is running', type: 'error' });
+        expect(broken).toMatchObject({ type: 'error' });
     });
 
-    it('켜고 끈 출처를 토스트에 싣고, 알림함에는 단순히 켜고 끈 것을 남기지 않는다 (사바쨩 밖에서 켠 것만 경고로)', () => {
+    it('켜고 끈 출처를 토스트에 싣는다 (사바쨩 밖에서 켠 것만 경고로)', () => {
         const started = (data: Record<string, unknown>) => eventToast({ type: 'instance.started', data: { instanceId: 'srv-1', instance: 'Survival', ...data } }, t);
         const stopped = (data: Record<string, unknown>) => eventToast({ type: 'instance.stopped', data: { instanceId: 'srv-1', instance: 'Survival', ...data } }, t);
         // 앱에서 한 일은 그 자리에서 토스트를 띄웠다
@@ -154,26 +132,22 @@ describe('데몬 이벤트 스트림', () => {
         for (const [source, label] of table) {
             const on = started({ source, unexpected: false });
             expect(on).toMatchObject({ message: `'Survival' started (${label})`, type: 'info' });
-            expect(on?.notice, source).toBeUndefined();
             const off = stopped({ source, kind: 'user_stop' });
             expect(off).toMatchObject({ message: `'Survival' stopped (${label})`, type: 'info' });
-            expect(off?.notice, source).toBeUndefined();
         }
         for (const [source] of table.slice(1)) expect(started({ source, unexpected: false })?.silent).toBeFalsy();
         const inGame = stopped({ source: 'game', kind: 'in_game_stop' });
         expect(inGame).toMatchObject({ message: "'Survival' stopped from inside the game", type: 'info' });
-        expect(inGame?.notice).toBeUndefined();
         expect(started({ source: 'external', unexpected: true })).toMatchObject({
             message: "'Survival' started outside Saba-chan. Saba-chan did not start this process.",
             type: 'warning',
-            notice: { message: 'Started outside Saba-chan' },
         });
     });
 
-    it('토스트를 띄우고 알림은 서버별 한 줄로 남기며, 서버가 바뀌는 이벤트는 한 번만 목록을 다시 읽는다', async () => {
+    it('토스트를 띄우고, 서버가 바뀌는 이벤트는 한 번만 목록을 다시 읽으며, 알림함은 데몬이 바뀌었다고 할 때 다시 읽는다', async () => {
         vi.useFakeTimers();
         window.showToast = vi.fn();
-        window.__sabaNotice = { addNotice: vi.fn() } as unknown as typeof window.__sabaNotice;
+        window.api.noticesList = vi.fn().mockResolvedValue({ success: true, notices: [], unread: 0 }) as never;
         const stream = fakeStream();
         const refetch = vi.fn();
         const { unmount } = render(<DaemonEvents onServersChanged={refetch} />);
@@ -184,120 +158,23 @@ describe('데몬 이벤트 스트림', () => {
         expect(refetch).toHaveBeenCalledTimes(1);
         expect(window.showToast).toHaveBeenCalledTimes(1);
         expect(window.showToast).toHaveBeenCalledWith("'Survival' stopped (Discord · Kimchi)", 'info', 4000, undefined);
-        // 단순히 끈 것은 알림함에 남기지 않는다
-        expect(window.__sabaNotice?.addNotice).not.toHaveBeenCalled();
-        await stream.emit({ id: 4, type: 'instance.exit', data: { instanceId: 'srv-1', instance: 'Survival', kind: 'crash' } });
-        expect(window.__sabaNotice?.addNotice).toHaveBeenCalledTimes(1);
-        expect(window.__sabaNotice?.addNotice).toHaveBeenCalledWith(expect.objectContaining({ source: 'Survival', instanceId: 'srv-1', type: 'error' }));
-        // 새 판은 상단 바 업데이트 알약이 보인다: "N개 발견" 알림은 만들지 않는다
-        await stream.emit({ id: 5, type: 'update.available', data: { components: [{ name: 'saba-core' }, 'gui'] } });
-        expect(window.__sabaNotice?.addNotice).toHaveBeenCalledTimes(1);
-        delete window.__sabaNotice;
+        // 처음 붙을 때 한 번 읽고, 데몬이 알림함이 바뀌었다고 하면 다시 읽는다
+        expect(window.api.noticesList).toHaveBeenCalledTimes(1);
+        await stream.emit({ type: 'notices.changed', data: { unread: 1 } });
+        expect(window.api.noticesList).toHaveBeenCalledTimes(2);
+        delete (window.api as Partial<typeof window.api>).noticesList;
         unmount();
         expect(stream.subs.size).toBe(0);
     });
 
-    // 인터페이스만 종료한 동안(창이 없던 동안)의 일도 평소처럼 알림함에 (사용자 11-15)
-    it('창이 없던 동안 셸이 모아 둔 이벤트를 화면이 뜰 때 알림함에 넣는다 (토스트 없이, 일어난 시각으로)', async () => {
-        window.showToast = vi.fn();
-        window.__sabaNotice = { addNotice: vi.fn() } as unknown as typeof window.__sabaNotice;
-        const stream = fakeStream();
-        const crash = { id: 7, type: 'instance.exit', data: { instanceId: 'srv-1', instance: 'Survival', kind: 'crash', at: 1700000000 } };
-        const started = { id: 8, type: 'instance.started', data: { instanceId: 'srv-1', instance: 'Survival', source: 'external', unexpected: true, at: 1700000100 } };
-        let answer: (v: unknown[]) => void = () => {};
-        (window.api as Partial<typeof window.api>).eventsBacklog = vi.fn(() => new Promise<unknown[]>((r) => (answer = r))) as never;
-        const { unmount } = render(<DaemonEvents onServersChanged={vi.fn()} />);
-        // 가져오는 사이 바로 받은 것(같은 번호)은 두 번 넣지 않는다
-        await stream.emit(started);
-        await act(async () => answer([crash, started]));
-        const add = vi.mocked(window.__sabaNotice!.addNotice);
-        expect(add).toHaveBeenCalledTimes(2);
-        expect(add.mock.calls[0][0]).toMatchObject({
-            source: 'Survival',
-            type: 'info',
-            message: 'Started outside Saba-chan',
-        });
-        expect(add.mock.calls[1][0]).toMatchObject({
-            source: 'Survival',
-            type: 'error',
-            timestamp: new Date(1700000000 * 1000).toISOString(),
-        });
-        // 바로 받은 것만 토스트, 모아 둔 것은 알림함에만
-        expect(window.showToast).toHaveBeenCalledTimes(1);
-        delete window.__sabaNotice;
-        delete (window.api as Partial<typeof window.api>).eventsBacklog;
-        unmount();
-    });
-
-    it('켠 서버의 모듈·게임 서버에 새 버전이 있으면 알림을 남긴다 (모듈은 업데이트 화면으로)', async () => {
-        const stream = fakeStream();
-        window.__sabaNotice = { addNotice: vi.fn() } as unknown as typeof window.__sabaNotice;
-        const { unmount } = render(<DaemonEvents onServersChanged={vi.fn()} />);
-        await stream.emit({
-            id: 1,
-            type: 'instance.update_notice',
-            data: { instanceId: 'i', instance: 'Pal', kind: 'module', module: 'palworld', latest: '1.1.0' },
-        });
-        expect(window.__sabaNotice?.addNotice).toHaveBeenLastCalledWith(
-            expect.objectContaining({
-                message: 'Pal: new palworld module version 1.1.0 released',
-                action: 'openUpdateModal',
-            }),
-        );
-        await stream.emit({
-            id: 2,
-            type: 'instance.update_notice',
-            data: { instanceId: 'i', instance: 'Pal', kind: 'server' },
-        });
-        expect(window.__sabaNotice?.addNotice).toHaveBeenLastCalledWith(
-            expect.objectContaining({
-                message: 'Pal: new game server version released. Update the server if players cannot join.',
-            }),
-        );
-        delete window.__sabaNotice;
-        unmount();
-    });
-
-    it('게임 서버 새 빌드·자동 업데이트 대기 알림은 누르면 업데이트하고, 실패도 알림으로 남긴다', async () => {
-        const stream = fakeStream();
-        window.__sabaNotice = { addNotice: vi.fn() } as unknown as typeof window.__sabaNotice;
-        const { unmount } = render(<DaemonEvents onServersChanged={vi.fn()} />);
-        await stream.emit({ id: 1, type: 'instance.update_notice', data: { instanceId: 'i', instance: 'Pal', kind: 'server' } });
-        expect(window.__sabaNotice?.addNotice).toHaveBeenLastCalledWith(
-            expect.objectContaining({ action: SERVER_UPDATE_ACTION, source: 'Pal', data: { instanceId: 'i', name: 'Pal' } }),
-        );
-        await stream.emit({ id: 2, type: 'instance.update_waiting', data: { instanceId: 'i', instance: 'Pal', players: 2 } });
-        expect(window.__sabaNotice?.addNotice).toHaveBeenLastCalledWith(
-            expect.objectContaining({
-                message: 'Pal: new game server version released. 2 player(s) online, auto update waiting',
-                action: SERVER_UPDATE_ACTION,
-                dedup: true,
-            }),
-        );
-        // 접속자를 셀 수 없으면(players: null) 수 없이
-        await stream.emit({ id: 4, type: 'instance.update_waiting', data: { instanceId: 'i', instance: 'Pal', players: null } });
-        expect(window.__sabaNotice?.addNotice).toHaveBeenLastCalledWith(
-            expect.objectContaining({
-                message: 'Pal: new game server version released. Players online, auto update waiting',
-            }),
-        );
-        await stream.emit({ id: 3, type: 'instance.update_failed', data: { instanceId: 'i', instance: 'Pal', error: 'disk full' } });
-        expect(window.__sabaNotice?.addNotice).toHaveBeenLastCalledWith(
-            expect.objectContaining({ message: 'Pal: game server update failed. disk full', type: 'error' }),
-        );
-        delete window.__sabaNotice;
-        unmount();
-    });
-
     it('업데이트 알림을 누르면 데몬에 업데이트를 시키고 결과를 토스트로 알린다', async () => {
-        const removeNotice = vi.fn();
-        window.__sabaNotice = { addNotice: vi.fn(), removeNotice } as unknown as typeof window.__sabaNotice;
+        window.api.noticeRemove = vi.fn().mockResolvedValue({ success: true }) as never;
         window.showToast = vi.fn() as never;
         window.api.instanceApplyUpdate = vi.fn().mockResolvedValue({ success: true, scheduled: true, warn_minutes: 5, players: 2 }) as never;
         const notice = { id: 7, action: SERVER_UPDATE_ACTION, data: { instanceId: 'i', name: 'Pal' } } as never;
         await applyServerUpdateFromNotice(notice, t);
         expect(window.api.instanceApplyUpdate).toHaveBeenCalledWith('i');
-        expect(removeNotice).toHaveBeenCalledWith(7);
+        expect(window.api.noticeRemove).toHaveBeenCalledWith(7);
         expect(window.showToast).toHaveBeenLastCalledWith(
             'Pal: warned in game. Update in 5 min.',
             'info',
@@ -307,7 +184,7 @@ describe('데몬 이벤트 스트림', () => {
         window.api.instanceApplyUpdate = vi.fn().mockResolvedValue({ success: false, error: 'already updating' }) as never;
         await applyServerUpdateFromNotice(notice, t);
         expect(window.showToast).toHaveBeenLastCalledWith('Pal: update start failed. already updating', 'error', 5000, undefined);
-        delete window.__sabaNotice;
+        delete (window.api as Partial<typeof window.api>).noticeRemove;
     });
 
     it('활동 줄은 action.run을 받으면 폴링을 기다리지 않고 바뀐다', async () => {

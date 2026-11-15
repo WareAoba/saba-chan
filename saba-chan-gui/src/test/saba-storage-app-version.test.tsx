@@ -357,37 +357,20 @@ describe('되돌린 뒤 다시 켜졌을 때', () => {
 
     beforeEach(() => {
         localStorage.clear();
-        window.__sabaNotice!.clearAllNotices();
+        useUIStore.setState({ revertResult: null });
     });
 
-    it('한 번만 알리고, 업데이트했다고 하지 않는다', async () => {
+    // 알림함 알림은 데몬이 넣는다 (notices.rs `an_update_result_is_noted_once`). 앱은 컴포넌트 탭 위 표시만
+    it('한 번만 보이고, 업데이트했다고 하지 않는다', async () => {
         fakeApi({ updaterLastResult: vi.fn().mockResolvedValue(REVERTED) });
-        const t = i18n.getFixedT(i18n.language, 'gui');
-        await announceLastUpdateResult(t);
-        const list = window.__sabaNotice!.loadNotices();
-        expect(list.map((n) => n.message)).toEqual([ss('app_version_reverted', { from: '0.1.14', version: '0.1.13' })]);
-        expect(list[0].type).toBe('success');
+        expect(await announceLastUpdateResult()).toMatchObject({ result: { result: 'reverted' } });
+        expect(useUIStore.getState().revertResult).toMatchObject({ version: '0.1.13', replaced_by: '0.1.14' });
         expect(window.api.updaterLastResult).toHaveBeenCalledWith(expect.objectContaining({ includeSeen: true }));
 
-        // 같은 결과로 다시 켜도 더하지 않는다
+        // 같은 결과로 다시 켜도 다시 띄우지 않는다
         useUIStore.setState({ revertResult: null });
-        await announceLastUpdateResult(t);
-        expect(window.__sabaNotice!.loadNotices()).toHaveLength(1);
+        await announceLastUpdateResult();
         expect(useUIStore.getState().revertResult).toBeNull();
-    });
-
-    it('다 되돌리지 못했으면 실패로 알린다', async () => {
-        fakeApi({
-            updaterLastResult: vi
-                .fn()
-                .mockResolvedValue({ ...REVERTED, result: { ...REVERTED.result, success: false } }),
-        });
-        await announceLastUpdateResult(i18n.getFixedT(i18n.language, 'gui'));
-        const list = window.__sabaNotice!.loadNotices();
-        expect(list.map((n) => n.message)).toEqual([
-            ss('app_version_revert_incomplete', { from: '0.1.14', version: '0.1.13' }),
-        ]);
-        expect(list[0].type).toBe('error');
     });
 
     it('컴포넌트 탭 위에 같은 문장을 띄우고, 되돌린 버전인 구성요소에는 전 버전을 지워 보인다', async () => {
@@ -395,7 +378,7 @@ describe('되돌린 뒤 다시 켜졌을 때', () => {
             updaterLastResult: vi.fn().mockResolvedValue(REVERTED),
             updaterVersions: vi.fn().mockResolvedValue(HELD),
         });
-        await announceLastUpdateResult(i18n.getFixedT(i18n.language, 'gui'));
+        await announceLastUpdateResult();
         await openTab();
         await screen.findByText(ss('app_version_reverted', { from: '0.1.14', version: '0.1.13' }));
         const core = [...document.querySelectorAll('.ss-card')].find((c) => c.textContent?.includes('Saba-Core'))!;
@@ -403,7 +386,7 @@ describe('되돌린 뒤 다시 켜졌을 때', () => {
         expect(core.querySelector('.ss-card-version')!.textContent).toContain('v0.1.13');
     });
 
-    it('이미 본 다른 결과는 다시 알리지 않는다', async () => {
+    it('이미 본 다른 결과는 알리지 않는다', async () => {
         fakeApi({
             updaterLastResult: vi.fn().mockResolvedValue({
                 success: true,
@@ -412,7 +395,7 @@ describe('되돌린 뒤 다시 켜졌을 때', () => {
                 result: { success: true, updated_components: ['gui'], failed: [], acknowledged: true },
             }),
         });
-        await announceLastUpdateResult(i18n.getFixedT(i18n.language, 'gui'));
-        expect(window.__sabaNotice!.loadNotices()).toHaveLength(0);
+        expect(await announceLastUpdateResult()).toBeNull();
+        expect(useUIStore.getState().revertResult).toBeNull();
     });
 });

@@ -72,6 +72,11 @@ pub static ROUTES: &[Route] = &[
     deny("POST", "/api/audit/export"),
     // 이벤트는 원격 연결이 따로 밀어 준다 (SSE는 요청·응답 한 번으로 끝나지 않는다)
     not_on_web("GET", "/api/events"),
+    // 알림함 (`crate::notices`): 짝 맺은 PC의 앱·원격 MCP가 쓴다. 웹 콘솔 화면은 아직 없다
+    not_on_web("GET", "/api/notices"),
+    not_on_web("DELETE", "/api/notices"),
+    not_on_web("POST", "/api/notices/read"),
+    not_on_web("DELETE", "/api/notices/{id}"),
     // ── 서버 ──
     allow("GET", "/api/servers"),
     allow("GET", "/api/instance/{id}/status"),

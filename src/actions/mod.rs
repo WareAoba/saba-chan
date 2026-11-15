@@ -313,6 +313,9 @@ pub static ACTIONS: &[Def] = &[
         fields: &[Field { options_from: Some(OptionsFrom { action: "backup.list", list: "backups", value: "name", label: "label" }), ..path_field("name") }],
         ..def("backup.delete", Kind::Admin, "danger", LOCAL, true, "DELETE", "/api/instance/:id/backups/:name")
     },
+    // 알림함 (`crate::notices`): 앱·CLI와 같은 목록. 원격 MCP도 앱 표면으로 닿는다. 디스코드·챗봇에는 열지 않는다
+    def("notice.list", Kind::Query, "safe", LOCAL, false, "GET", "/api/notices"),
+    def("notice.clear", Kind::Admin, "safe", LOCAL, false, "DELETE", "/api/notices"),
     def("update.check", Kind::Query, "safe", LOCAL_AND_DISCORD, false, "POST", "/api/updates/check"),
     // 원격(디스코드)에서도 끝까지 가도록 받기·적용·업데이터 띄우기를 한 번에 한다 (`/api/updates/install`)
     Def { discord_level: Some(crate::chat::permissions::OWNER), ..def("update.apply", Kind::Admin, "danger", LOCAL_AND_DISCORD, false, "POST", "/api/updates/install") },

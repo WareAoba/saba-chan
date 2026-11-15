@@ -854,6 +854,9 @@ impl IPCServer {
             .route("/api/audit", get(handlers::diagnostics::audit))
             .route("/api/audit/export", post(handlers::diagnostics::audit_export))
             .route("/api/events", get(handlers::events::stream))
+            .route("/api/notices", get(handlers::notices::list).delete(handlers::notices::clear))
+            .route("/api/notices/read", post(handlers::notices::read_all))
+            .route("/api/notices/{id}", delete(handlers::notices::remove))
             // ── Server query/control ──
             .route("/api/servers", get(handlers::server::list_servers))
             .route("/api/instance/{id}/status", get(handlers::server::get_instance_status))

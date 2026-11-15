@@ -315,6 +315,59 @@
       "apiKey": "API 密钥",
       "command": "命令",
       "settings": "设置"
+    },
+    "notice": {
+      "list": {
+        "title": "查看通知",
+        "description": "查看守护进程保存的通知箱（崩溃、启动失败、更新结果）"
+      },
+      "clear": {
+        "title": "删除所有通知",
+        "description": "清空通知箱"
+      }
     }
+  },
+  "notices": {
+    "main": "Saba-chan",
+    "exit_crash": "因崩溃退出",
+    "exit_start_failed": "启动失败",
+    "exit_unknown_exit": "意外退出",
+    "started_external": "在 Saba-chan 之外启动",
+    "unresponsive": "{{minutes}} 分钟无响应",
+    "restored": "恢复 · {{source}}",
+    "restore_failed": "恢复失败",
+    "port_conflict": "端口 {{port}} 与 {{existing}} 冲突，已停止",
+    "reason_memory_limit": "达到内存上限（{{mb}} MiB）",
+    "reason_exit_code": "退出代码 {{code}}",
+    "reason_signal": "因信号 {{signal}} 退出",
+    "reason_crash_file": "生成新的崩溃报告",
+    "reason_ended_early": "启动 {{secs}} 秒后退出",
+    "restart_in": "{{secs}} 秒后重启",
+    "note_auto_off": "自动重启已关闭",
+    "note_gave_up": "10 分钟内重启 {{count}} 次后放弃",
+    "module_update": "{{name}}：{{module}} 模块发布新版本 {{version}}",
+    "server_update": "{{name}}：游戏服务器发布新版本。如果无法连接，请更新服务器。",
+    "server_update_waiting": "{{name}}：游戏服务器发布新版本。{{count}} 人在线，等待自动更新",
+    "server_update_waiting_unknown": "{{name}}：游戏服务器发布新版本。有人在线，等待自动更新",
+    "server_update_failed": "{{name}}：游戏服务器更新失败。{{error}}",
+    "update_done": "Saba-chan 已更新到 {{version}}",
+    "update_failed": "{{count}} 个项目更新失败",
+    "unknown_version": "新版本",
+    "reverted": "已从 {{from}} 回退到 {{version}}",
+    "revert_incomplete": "从 {{from}} 回退到 {{version}} 部分失败",
+    "source_gui": "应用",
+    "source_cli": "CLI",
+    "source_api": "API",
+    "source_discord": "Discord",
+    "source_chatbot": "会说话的 Saba-chan",
+    "source_schedule": "计划任务",
+    "source_daemon": "守护进程",
+    "source_web": "Saba-chan 网页",
+    "source_remote": "远程电脑",
+    "source_mcp": "AI 智能体",
+    "source_agent": "此电脑上的 AI 代理",
+    "source_restart": "自动重启",
+    "source_idle": "无人在线自动停止",
+    "source_watchdog": "无响应监视"
   }
 }

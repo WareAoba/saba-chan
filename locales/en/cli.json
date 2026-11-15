@@ -1804,5 +1804,13 @@
     "none": "No one",
     "not_listed": "{{name}} is not on the list",
     "saved": "Saved usage mode of {{server}}"
+  },
+  "notice": {
+    "col": "Notice",
+    "none": "No notices",
+    "unread": "{{count}} unread notice(s)",
+    "read_done": "Marked all as read",
+    "removed": "Notice {{id}} deleted",
+    "cleared": "{{count}} notice(s) deleted"
   }
 }

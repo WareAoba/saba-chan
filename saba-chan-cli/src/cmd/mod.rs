@@ -18,6 +18,7 @@ pub mod install;
 pub mod mcp;
 pub mod module;
 pub mod monitor;
+pub mod notice;
 pub mod perm;
 pub mod remote;
 pub mod sandbox;
@@ -69,6 +70,7 @@ pub async fn dispatch(ctx: &Ctx, cmd: Cmd) -> Result<()> {
         Cmd::Bot(c) => bot::run(ctx, c).await,
         Cmd::Backup(c) => backup::run(ctx, c).await,
         Cmd::Schedule(c) => schedule::run(ctx, c).await,
+        Cmd::Notice { action } => notice::run(ctx, action).await,
         Cmd::Chatbot(c) => chatbot::run(ctx, c).await,
         Cmd::Update(c) => update::run(ctx, c).await,
         Cmd::Config(c) => config::run(ctx, c).await,

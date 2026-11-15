@@ -1110,7 +1110,11 @@
       "remote.remove": "移除一台電腦：在這裡忘記它，可選在那台電腦上解除安裝 Saba-chan 並從 Server-chan 清單中移除",
       "remote.update": "立即更新遠端常駐程式，或開關自動更新（`--auto on|off`）",
       "config.public-address": "這台電腦的公開位址（遊戲伺服器位址與遠端常駐程式連線共用）：不帶值顯示目前值，給網域或 IP 則儲存，auto 使用 Server-chan 看到的公用 IP",
-      "server.access": "誰能在 Discord 中使用此伺服器: 伺服器共用、僅限成員、成員名單、自動踢出的暱稱。不帶選項則檢視"
+      "server.access": "誰能在 Discord 中使用此伺服器: 伺服器共用、僅限成員、成員名單、自動踢出的暱稱。不帶選項則檢視",
+      "notice": "守護程式保存的通知匣（當機、啟動失敗、更新結果），與應用程式中的清單相同",
+      "notice.read": "將所有通知標為已讀",
+      "notice.remove": "刪除一則通知",
+      "notice.clear": "刪除所有通知"
     },
     "arg": {
       "module.maker.game": "第一個請求中的遊戲名稱",
@@ -1373,7 +1377,8 @@
       "server.access.kick_others": "僅限成員: 自動踢出名單外的暱稱",
       "server.access.kick": "伺服器共用: 此暱稱進入時自動踢出 (可多次指定)",
       "server.access.unkick": "從自動踢出名單中移除 (可多次指定)",
-      "schedule.show.hours": "未指定伺服器時: 檢視未來幾小時 (預設 24，最大 720)"
+      "schedule.show.hours": "未指定伺服器時: 檢視未來幾小時 (預設 24，最大 720)",
+      "notice.remove.id": "`notice` 第一欄的編號"
     },
     "after": "名稱可只寫一部分（例：start pal）。在終端機不帶參數執行會開啟全螢幕選單（SABA_NO_TUI=1 時為互動式 shell）。\n指令碼請用 --json 和 --yes。結束代碼：0 成功 · 1 失敗 · 2 用法 · 3 常駐程式連線失敗 · 4 找不到 · 130 已取消"
   },
@@ -2124,5 +2129,13 @@
     "none": "無",
     "not_listed": "{{name}} 不在名單中",
     "saved": "已儲存 {{server}} 的使用模式"
+  },
+  "notice": {
+    "col": "通知",
+    "none": "沒有通知",
+    "unread": "{{count}} 則未讀通知",
+    "read_done": "已將全部標為已讀",
+    "removed": "已刪除通知 {{id}}",
+    "cleared": "已刪除 {{count}} 則通知"
   }
 }

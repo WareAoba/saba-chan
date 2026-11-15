@@ -315,6 +315,59 @@
       "apiKey": "APIキー",
       "command": "コマンド",
       "settings": "設定"
+    },
+    "notice": {
+      "list": {
+        "title": "通知を表示",
+        "description": "デーモンが保管する通知ボックス (クラッシュ・起動失敗・アップデート結果) を表示します"
+      },
+      "clear": {
+        "title": "通知をすべて削除",
+        "description": "通知ボックスを空にします"
+      }
     }
+  },
+  "notices": {
+    "main": "さばちゃん",
+    "exit_crash": "クラッシュで終了",
+    "exit_start_failed": "起動失敗",
+    "exit_unknown_exit": "予期せず終了",
+    "started_external": "サバちゃん の外で起動",
+    "unresponsive": "{{minutes}}分間応答なし",
+    "restored": "復元 · {{source}}",
+    "restore_failed": "復元失敗",
+    "port_conflict": "ポート {{port}} が {{existing}} と重複したため停止",
+    "reason_memory_limit": "メモリ上限（{{mb}} MiB）に到達",
+    "reason_exit_code": "終了コード {{code}}",
+    "reason_signal": "シグナル {{signal}} で終了",
+    "reason_crash_file": "新しいクラッシュレポートを作成",
+    "reason_ended_early": "起動から {{secs}} 秒で終了",
+    "restart_in": "{{secs}}秒後に再起動",
+    "note_auto_off": "自動再起動はオフ",
+    "note_gave_up": "10分以内に{{count}}回再起動したため中止",
+    "module_update": "{{name}}: {{module}} モジュールの新バージョン {{version}} を公開",
+    "server_update": "{{name}}: ゲームサーバーの新バージョンを公開。接続できない場合はサーバーをアップデートしてください。",
+    "server_update_waiting": "{{name}}: ゲームサーバーの新バージョンを公開。{{count}} 人が接続中のため自動更新を待機中",
+    "server_update_waiting_unknown": "{{name}}: ゲームサーバーの新バージョンを公開。接続者がいるため自動更新を待機中",
+    "server_update_failed": "{{name}}: ゲームサーバーの更新失敗。{{error}}",
+    "update_done": "サバちゃん {{version}} に更新しました",
+    "update_failed": "更新失敗の項目 {{count}} 件",
+    "unknown_version": "新しいバージョン",
+    "reverted": "{{from}} から {{version}} に戻しました",
+    "revert_incomplete": "{{from}} から {{version}} への復元が一部失敗",
+    "source_gui": "アプリ",
+    "source_cli": "CLI",
+    "source_api": "API",
+    "source_discord": "Discord",
+    "source_chatbot": "おしゃべりサバちゃん",
+    "source_schedule": "スケジュール",
+    "source_daemon": "デーモン",
+    "source_web": "サバちゃんウェブ",
+    "source_remote": "リモートPC",
+    "source_mcp": "AIエージェント",
+    "source_agent": "このPCのAIエージェント",
+    "source_restart": "自動再起動",
+    "source_idle": "接続者なしの自動停止",
+    "source_watchdog": "応答なしの監視"
   }
 }

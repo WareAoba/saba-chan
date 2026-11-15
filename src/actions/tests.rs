@@ -1610,6 +1610,18 @@ async fn an_mcp_owner_sets_the_access_lists_but_discord_cannot() {
     assert_eq!(err.data["field"].as_str(), Some("working_dir"), "{err:?}");
 }
 
+/// 원격 MCP(폰 에이전트)는 알림함을 보고 비운다. 디스코드에는 열지 않는다
+#[tokio::test]
+async fn an_mcp_owner_reads_and_clears_the_inbox_but_discord_cannot() {
+    let (state, _id, _tmp) = server().await;
+    let owner = Caller::mcp("owner".into(), "owner".into(), None, None, "en".into());
+    for action in ["notice.list", "notice.clear"] {
+        let made = plan(&state, action, None, &json!({}), &owner).await;
+        assert!(made.is_ok(), "{action}: {made:?}");
+        assert!(plan(&state, action, None, &json!({}), &relay("owner", false)).await.is_err(), "{action} from Discord");
+    }
+}
+
 /// 길드가 명령별로 정한 위험 단계(`discord.commandRisks["<서버>/<액션>"]`)로 디스코드 되묻기를 정한다. 앱은 고정 규칙 그대로
 #[tokio::test]
 async fn a_guild_can_retier_one_command_for_discord_confirms() {

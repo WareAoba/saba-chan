@@ -315,6 +315,59 @@
       "apiKey": "API key",
       "command": "Command",
       "settings": "Settings"
+    },
+    "notice": {
+      "list": {
+        "title": "List notices",
+        "description": "Shows the notification inbox the daemon keeps (crashes, failed starts, update results)"
+      },
+      "clear": {
+        "title": "Clear notices",
+        "description": "Deletes every notice in the inbox"
+      }
     }
+  },
+  "notices": {
+    "main": "Saba-chan",
+    "exit_crash": "Exited by crash",
+    "exit_start_failed": "Start failed",
+    "exit_unknown_exit": "Stopped unexpectedly",
+    "started_external": "Started outside Saba-chan",
+    "unresponsive": "No response for {{minutes}} min",
+    "restored": "Restored · {{source}}",
+    "restore_failed": "Restore failed",
+    "port_conflict": "Stopped: port {{port}} clashes with {{existing}}",
+    "reason_memory_limit": "Memory limit reached ({{mb}} MiB)",
+    "reason_exit_code": "Exit code {{code}}",
+    "reason_signal": "Exited by signal {{signal}}",
+    "reason_crash_file": "New crash report created",
+    "reason_ended_early": "Exited {{secs}}s after start",
+    "restart_in": "Restarting in {{secs}}s",
+    "note_auto_off": "Auto restart is off",
+    "note_gave_up": "Gave up after {{count}} restarts in 10 minutes",
+    "module_update": "{{name}}: new {{module}} module version {{version}} released",
+    "server_update": "{{name}}: new game server version released. Update the server if players cannot join.",
+    "server_update_waiting": "{{name}}: new game server version released. {{count}} player(s) online, auto update waiting",
+    "server_update_waiting_unknown": "{{name}}: new game server version released. Players online, auto update waiting",
+    "server_update_failed": "{{name}}: game server update failed. {{error}}",
+    "update_done": "Updated to Saba-chan {{version}}",
+    "update_failed": "{{count}} update failure(s)",
+    "unknown_version": "the new version",
+    "reverted": "Rolled back from {{from}} to {{version}}",
+    "revert_incomplete": "Rollback from {{from}} to {{version}} partially failed",
+    "source_gui": "App",
+    "source_cli": "CLI",
+    "source_api": "API",
+    "source_discord": "Discord",
+    "source_chatbot": "Talking Saba-chan",
+    "source_schedule": "Schedule",
+    "source_daemon": "Daemon",
+    "source_web": "Saba-chan web",
+    "source_remote": "Remote PC",
+    "source_mcp": "AI agent",
+    "source_agent": "AI agent on this PC",
+    "source_restart": "Auto restart",
+    "source_idle": "Auto stop, nobody online",
+    "source_watchdog": "Unresponsive server watch"
   }
 }

@@ -315,6 +315,59 @@
       "apiKey": "API-ключ",
       "command": "Команда",
       "settings": "Настройки"
+    },
+    "notice": {
+      "list": {
+        "title": "Показать уведомления",
+        "description": "Показывает ящик уведомлений, который хранит демон (сбои, ошибки запуска, результаты обновления)"
+      },
+      "clear": {
+        "title": "Удалить все уведомления",
+        "description": "Очищает ящик уведомлений"
+      }
     }
+  },
+  "notices": {
+    "main": "Saba-chan",
+    "exit_crash": "Завершён из-за сбоя",
+    "exit_start_failed": "Ошибка запуска",
+    "exit_unknown_exit": "Неожиданно остановлен",
+    "started_external": "Запущен вне Saba-chan",
+    "unresponsive": "Нет ответа {{minutes}} мин",
+    "restored": "Восстановление · {{source}}",
+    "restore_failed": "Ошибка восстановления",
+    "port_conflict": "Остановлен: порт {{port}} конфликтует с {{existing}}",
+    "reason_memory_limit": "Достигнут лимит памяти ({{mb}} МиБ)",
+    "reason_exit_code": "Код выхода {{code}}",
+    "reason_signal": "Завершён сигналом {{signal}}",
+    "reason_crash_file": "Создан новый отчёт о сбое",
+    "reason_ended_early": "Завершён через {{secs}} с после запуска",
+    "restart_in": "Перезапуск через {{secs}} с",
+    "note_auto_off": "Автоперезапуск выключен",
+    "note_gave_up": "Остановлено после {{count}} перезапусков за 10 минут",
+    "module_update": "{{name}}: вышла новая версия {{version}} модуля {{module}}",
+    "server_update": "{{name}}: вышла новая версия игрового сервера. Если не удаётся подключиться, обновите сервер.",
+    "server_update_waiting": "{{name}}: вышла новая версия игрового сервера. В сети игроков: {{count}}, автообновление ожидает",
+    "server_update_waiting_unknown": "{{name}}: вышла новая версия игрового сервера. Есть игроки, автообновление ожидает",
+    "server_update_failed": "{{name}}: не удалось обновить игровой сервер. {{error}}",
+    "update_done": "Saba-chan обновлена до {{version}}",
+    "update_failed": "Не удалось обновить элементов: {{count}}",
+    "unknown_version": "новой версии",
+    "reverted": "Откат с {{from}} на {{version}} выполнен",
+    "revert_incomplete": "Откат с {{from}} на {{version}} выполнен частично",
+    "source_gui": "Приложение",
+    "source_cli": "CLI",
+    "source_api": "API",
+    "source_discord": "Discord",
+    "source_chatbot": "Говорящая Saba-chan",
+    "source_schedule": "Расписание",
+    "source_daemon": "Демон",
+    "source_web": "Saba-chan веб",
+    "source_remote": "Удалённый ПК",
+    "source_mcp": "ИИ-агент",
+    "source_agent": "ИИ-агент на этом ПК",
+    "source_restart": "Автоперезапуск",
+    "source_idle": "Автоостановка: никого в сети",
+    "source_watchdog": "Контроль зависания"
   }
 }

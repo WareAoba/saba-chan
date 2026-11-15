@@ -38,10 +38,10 @@ export const revertMessage = (r: RevertResult, t: TFunction) =>
 const REVERT_SEEN_KEY = 'saba-chan-revert-announced';
 
 /**
- * 시작할 때 읽은 마지막 결과가 사용자 되돌리기면 한 번만 알린다. 데몬은 이 결과를 확인한 것으로 남기므로(acknowledged)
- * 업데이트 결과 알림과 따로 센다. 알린 결과는 이번 실행 동안 컴포넌트 탭 위에도 보인다
+ * 시작할 때 읽은 마지막 결과가 사용자 되돌리기면 이번 실행 동안 컴포넌트 탭 위에 보인다. 같은 결과는 한 번만
+ * (알림함 알림은 데몬이 넣는다)
  */
-export function announceRevert(r: RevertResult, t: TFunction) {
+export function announceRevert(r: RevertResult) {
     let seen: string | null = null;
     try {
         seen = localStorage.getItem(REVERT_SEEN_KEY);
@@ -54,11 +54,6 @@ export function announceRevert(r: RevertResult, t: TFunction) {
     } catch {
         /* quota exceeded 등 무시 */
     }
-    window.__sabaNotice?.addNotice({
-        message: revertMessage(r, t),
-        type: r.success ? 'success' : 'error',
-        source: 'Updater',
-    });
     useUIStore.getState().setRevertResult(r);
 }
 

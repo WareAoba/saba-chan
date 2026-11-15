@@ -1110,7 +1110,11 @@
       "remote.remove": "Einen deiner PCs entfernen: hier vergessen und optional Saba-chan dort deinstallieren und aus der Server-chan-Liste nehmen",
       "remote.update": "Einen Remote-Daemon jetzt aktualisieren oder automatische Updates ein-/ausschalten (`--auto on|off`)",
       "config.public-address": "Öffentliche Adresse dieses PCs (für Spielserver-Adressen und Remote-Daemon-Verbindungen): ohne Wert anzeigen, Domain oder IP speichern, auto nutzt die von Server-chan gesehene öffentliche IP",
-      "server.access": "Wer diesen Server in Discord nutzen darf: serverweit oder nur Mitglieder, Mitgliederliste, Auto-Kick-Spitznamen. Ohne Optionen: anzeigen"
+      "server.access": "Wer diesen Server in Discord nutzen darf: serverweit oder nur Mitglieder, Mitgliederliste, Auto-Kick-Spitznamen. Ohne Optionen: anzeigen",
+      "notice": "Hinweisfach, das der Daemon führt (Abstürze, Startfehler, Update-Ergebnisse). Dieselbe Liste wie in der App",
+      "notice.read": "Alle Hinweise als gelesen markieren",
+      "notice.remove": "Einen Hinweis löschen",
+      "notice.clear": "Alle Hinweise löschen"
     },
     "arg": {
       "module.maker.game": "Spiel für die erste Anfrage",
@@ -1373,7 +1377,8 @@
       "server.access.kick_others": "Nur Mitglieder: Spitznamen außerhalb der Liste automatisch kicken",
       "server.access.kick": "Serverweit: Wer mit diesem Spitznamen beitritt, wird automatisch gekickt (mehrfach möglich)",
       "server.access.unkick": "Von der Auto-Kick-Liste entfernen (mehrfach möglich)",
-      "schedule.show.hours": "Ohne Server: wie viele Stunden im Voraus anzeigen (Standard 24, max. 720)"
+      "schedule.show.hours": "Ohne Server: wie viele Stunden im Voraus anzeigen (Standard 24, max. 720)",
+      "notice.remove.id": "Nummer aus der ersten Spalte von `notice`"
     },
     "after": "Namen können abgekürzt werden (z. B. start pal). Ohne Argumente öffnet das Terminal das Vollbildmenü (SABA_NO_TUI=1: interaktive Shell).\nIn Skripten --json und --yes verwenden. Exit-Codes: 0 Erfolg · 1 Fehler · 2 Verwendung · 3 Daemon nicht erreichbar · 4 nicht gefunden · 130 abgebrochen"
   },
@@ -2124,5 +2129,13 @@
     "none": "Niemand",
     "not_listed": "{{name}} steht nicht auf der Liste",
     "saved": "Nutzungsmodus von {{server}} gespeichert"
+  },
+  "notice": {
+    "col": "Hinweis",
+    "none": "Keine Hinweise",
+    "unread": "{{count}} ungelesene(r) Hinweis(e)",
+    "read_done": "Alle als gelesen markiert",
+    "removed": "Hinweis {{id}} gelöscht",
+    "cleared": "{{count}} Hinweis(e) gelöscht"
   }
 }
