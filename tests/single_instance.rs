@@ -1,5 +1,7 @@
 //! 데몬 단일 인스턴스 보장 (instance_lock) — 실제 바이너리 두 개를 띄워 확인한다.
 
+mod common;
+
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
@@ -18,17 +20,13 @@ fn spawn_daemon(data_dir: &std::path::Path, port: u16, stderr: Stdio) -> std::pr
         .expect("spawn saba-core")
 }
 
-fn free_port() -> u16 {
-    std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port()
-}
-
 #[test]
 fn second_daemon_exits_without_touching_running_one() {
     let data_dir = tempfile::tempdir().unwrap();
     let lock_path = data_dir.path().join("daemon.lock");
 
     // 읽지 않는 파이프는 로그가 쌓이면 데몬을 멈추게 하므로 첫 데몬의 stderr는 버린다
-    let mut first = spawn_daemon(data_dir.path(), free_port(), Stdio::null());
+    let mut first = spawn_daemon(data_dir.path(), common::free_port(), Stdio::null());
 
     // 첫 데몬이 잠금과 토큰을 모두 기록할 때까지 대기
     let token_path = data_dir.path().join(".ipc_token");
@@ -40,7 +38,7 @@ fn second_daemon_exits_without_touching_running_one() {
     }
     let token_before = std::fs::read_to_string(&token_path).unwrap();
 
-    let second = spawn_daemon(data_dir.path(), free_port(), Stdio::piped())
+    let second = spawn_daemon(data_dir.path(), common::free_port(), Stdio::piped())
         .wait_with_output()
         .expect("wait second daemon");
     assert_eq!(second.status.code(), Some(2), "second daemon must exit with code 2");

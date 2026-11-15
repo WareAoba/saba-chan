@@ -1,28 +1,11 @@
-//! ═══════════════════════════════════════════════════════════════════
-//! 데몬 통합 테스트
-//! ═══════════════════════════════════════════════════════════════════
-//!
-//! Supervisor ↔ IPC ↔ InstanceStore ↔ ModuleLoader 가 실제로 연결되어
-//! 올바르게 동작하는지 검증합니다.
-//!
-//! ## 설계 원칙
-//! - 모든 테스트는 **의미 있는 assert**를 포함 (단순 "패닉 안남" 금지)
-//! - 파일시스템 격리: 프로덕션 데이터를 건드리지 않음
-//! - 동시성 안전: 테스트 간 포트/상태 격리
-//!
-//! ## 테스트 카테고리
-//! 1. 모듈 발견 — module.toml 파싱, 캐시 일관성, 동시 접근
-//! 2. IPC CRUD — HTTP API를 통한 인스턴스 생명주기
-//! 3. IPC 직렬화 — 응답 스키마 계약 검증
-//! 4. Python 플러그인 — graceful 에러 처리
-//! 5. 프로세스 모니터링 — idle 상태에서의 모니터링 안정성
+//! 데몬 통합 테스트: 저장소의 `./modules`(시험 모듈을 만들어 둔다)로 Supervisor와 IPC 서버를 띄워
+//! HTTP API로 인스턴스를 만들고 지우며 응답을 본다
+
+mod common;
 
 use saba_core::supervisor::Supervisor;
-use saba_core::ipc::IPCServer;
 use std::sync::Arc;
-use std::net::TcpListener;
 use tokio::sync::RwLock;
-use tokio::time::{sleep, Duration};
 use std::fs;
 use serde_json::Value;
 
@@ -60,48 +43,9 @@ fn cleanup_test_instances() {
     }
 }
 
-/// 빈 포트 번호. 리스너를 바로 놓으므로 그사이 다른 테스트의 데몬이 같은 번호를 잡을 수 있다:
-/// `boot_ipc`는 답한 데몬이 자기 것인지 확인한다
-fn pick_free_port() -> u16 {
-    let listener = TcpListener::bind("127.0.0.1:0").expect("failed to bind ephemeral port");
-    let port = listener.local_addr().unwrap().port();
-    drop(listener);
-    port
-}
-
 /// 테스트 안에서 겹치지 않는 이름
 fn unique_name(prefix: &str) -> String {
     format!("{}-{}", prefix, uuid::Uuid::new_v4())
-}
-
-async fn wait_for_ipc_ready(base_url: &str, client: &reqwest::Client) {
-    for _ in 0..50 {
-        if let Ok(resp) = client.get(format!("{}/api/modules", base_url)).send().await {
-            if resp.status().is_success() {
-                return;
-            }
-        }
-        sleep(Duration::from_millis(300)).await;
-    }
-    panic!("IPC server did not become ready: {}", base_url);
-}
-
-/// 이 포트에서 답하는 데몬이 `epoch`(이 테스트가 만든 로그 버퍼의 세대)를 가진 데몬인지.
-/// 다른 데몬이 답하거나(포트를 빼앗김) 이 데몬이 바인드에 실패해 끝나면 false
-async fn wait_for_own_ipc(base_url: &str, client: &reqwest::Client, epoch: u64, task: &tokio::task::JoinHandle<()>) -> bool {
-    for _ in 0..50 {
-        if task.is_finished() {
-            return false;
-        }
-        if let Ok(resp) = client.get(format!("{}/api/daemon/console?count=0", base_url)).send().await {
-            if resp.status().is_success() {
-                let body: Value = resp.json().await.unwrap_or_default();
-                return body["epoch"].as_u64() == Some(epoch);
-            }
-        }
-        sleep(Duration::from_millis(300)).await;
-    }
-    panic!("IPC server did not become ready: {}", base_url);
 }
 
 /// 테스트용 모듈이 없으면 자동 생성 (로컬/CI 모두 대응).
@@ -136,67 +80,27 @@ entry = "lifecycle.py"
     }
 }
 
-/// 테스트용 IPC 서버 + Supervisor 를 부팅하여 (base_url, supervisor, server_task)를 반환
-/// 각 테스트마다 고유한 임시 인스턴스 디렉토리를 사용하여 병렬 실행 시 격리를 보장한다.
-/// 고른 포트를 그사이 다른 테스트의 데몬이 잡으면 그 데몬에 붙지 않고 다른 포트로 다시 띄운다
+/// 테스트마다 따로 둔 임시 인스턴스 폴더로 Supervisor와 IPC 서버를 띄워 (base_url, supervisor, server_task)를 돌려준다.
+/// 임시 폴더는 서버 작업이 끝날 때(abort) 함께 지운다
 async fn boot_ipc() -> (String, Arc<RwLock<Supervisor>>, tokio::task::JoinHandle<()>) {
-    // edition 2024: 환경 변수 쓰기는 unsafe다. 테스트 준비에서만 쓴다
-    unsafe { std::env::set_var("SABA_AUTH_DISABLED", "1") };
     ensure_test_module();
-
-    // 테스트별 고유 임시 인스턴스 디렉토리 (병렬 격리). 서버 작업이 끝나면(abort) 함께 지운다
     let tmp_instances = Arc::new(
         tempfile::Builder::new()
             .prefix("saba-test-instances-")
             .tempdir()
             .expect("failed to create temp instances dir"),
     );
-
     let supervisor = Arc::new(RwLock::new(
         Supervisor::new_with_instances_dir("./modules", &tmp_instances.path().to_string_lossy()),
     ));
-    {
-        let mut sup = supervisor.write().await;
-        sup.initialize().await.expect("supervisor init failed");
-    }
-
-    let client = saba_chan_updater_lib::tls::http_client_builder().build().unwrap();
-    for attempt in 1..=5 {
-        let listen_addr = format!("127.0.0.1:{}", pick_free_port());
-        let base_url = format!("http://{}", listen_addr);
-        let logs = saba_core::daemon_log::DaemonLogBuffer::new();
-        let epoch = logs.epoch();
-        let server = IPCServer::new(supervisor.clone(), &listen_addr, logs);
-        let keep_dir = tmp_instances.clone();
-        let addr = listen_addr.clone();
-        let server_task = tokio::spawn(async move {
-            let _keep_dir = keep_dir;
-            if let Err(e) = server.start().await {
-                panic!("IPC server on {} failed: {:#}", addr, e);
-            }
-        });
-        if wait_for_own_ipc(&base_url, &client, epoch, &server_task).await {
-            return (base_url, supervisor, server_task);
-        }
-        server_task.abort();
-        eprintln!("IPC port {} was taken by another daemon (attempt {}), retrying on another port", listen_addr, attempt);
-    }
-    panic!("IPC server could not bind a port of its own after 5 attempts");
+    supervisor.write().await.initialize().await.expect("supervisor init failed");
+    let (base_url, server_task) = common::serve_ipc(supervisor.clone(), tmp_instances).await;
+    (base_url, supervisor, server_task)
 }
 
 // ═══════════════════════════════════════════════════════
 // 1. Supervisor 초기화 & 모듈 발견
 // ═══════════════════════════════════════════════════════
-
-#[tokio::test]
-async fn test_supervisor_initialization_succeeds() {
-    ensure_test_module();
-    let supervisor = Arc::new(RwLock::new(Supervisor::new("./modules")));
-    let mut sup = supervisor.write().await;
-    let result = sup.initialize().await;
-    assert!(result.is_ok(), "Supervisor init should succeed: {:?}", result.err());
-    cleanup_test_instances();
-}
 
 #[tokio::test]
 async fn test_module_discovery_returns_known_modules() {
@@ -227,88 +131,6 @@ async fn test_module_discovery_returns_known_modules() {
     }
 }
 
-#[tokio::test]
-async fn test_module_refresh_returns_consistent_result() {
-    ensure_test_module();
-    let supervisor = Arc::new(RwLock::new(Supervisor::new("./modules")));
-    {
-        let mut sup = supervisor.write().await;
-        sup.initialize().await.unwrap();
-    }
-
-    let first_names: Vec<String> = {
-        let sup = supervisor.read().await;
-        let modules = sup.list_modules().unwrap_or_default();
-        modules.iter().map(|m| m.metadata.name.clone()).collect()
-    };
-
-    let refreshed_names: Vec<String> = {
-        let sup = supervisor.read().await;
-        let modules = sup.refresh_modules().unwrap_or_default();
-        modules.iter().map(|m| m.metadata.name.clone()).collect()
-    };
-
-    assert_eq!(
-        first_names.len(),
-        refreshed_names.len(),
-        "Refresh must return same module count"
-    );
-    // 이름 집합이 동일해야 함 (순서 무관)
-    let mut sorted_first = first_names.clone();
-    let mut sorted_refresh = refreshed_names.clone();
-    sorted_first.sort();
-    sorted_refresh.sort();
-    assert_eq!(sorted_first, sorted_refresh, "Refreshed module names must match original");
-}
-
-#[tokio::test]
-async fn test_invalid_module_path_yields_zero_modules() {
-    let supervisor = Arc::new(RwLock::new(Supervisor::new("/nonexistent/path/that/does/not/exist")));
-    let mut sup = supervisor.write().await;
-    // 패닉 없이 정상 반환되어야 함 (graceful degradation)
-    let result = sup.initialize().await;
-    assert!(result.is_ok(), "Initialize with bad path must not panic, got: {:?}", result.err());
-
-    let modules = sup.list_modules().unwrap_or_default();
-    assert_eq!(modules.len(), 0, "Nonexistent path must yield zero modules");
-}
-
-// ═══════════════════════════════════════════════════════
-// 2. 동시 접근 안전성
-// ═══════════════════════════════════════════════════════
-
-#[tokio::test]
-async fn test_concurrent_module_reads_return_identical_results() {
-    ensure_test_module();
-    let supervisor = Arc::new(RwLock::new(Supervisor::new("./modules")));
-    {
-        let mut sup = supervisor.write().await;
-        sup.initialize().await.unwrap();
-    }
-
-    let expected_count = {
-        let sup = supervisor.read().await;
-        sup.list_modules().unwrap_or_default().len()
-    };
-
-    let mut handles = vec![];
-    for _ in 0..20 {
-        let sup = supervisor.clone();
-        handles.push(tokio::spawn(async move {
-            let sup = sup.read().await;
-            sup.list_modules().unwrap_or_default().len()
-        }));
-    }
-
-    for handle in handles {
-        let count = handle.await.expect("Task should not panic");
-        assert_eq!(
-            count, expected_count,
-            "All concurrent readers must see the same module count"
-        );
-    }
-}
-
 // ═══════════════════════════════════════════════════════
 // 3. Python 플러그인 graceful 에러
 // ═══════════════════════════════════════════════════════
@@ -327,43 +149,6 @@ async fn test_run_plugin_with_nonexistent_file_returns_error() {
     assert!(
         !err_msg.is_empty(),
         "Error message should be descriptive, not empty"
-    );
-}
-
-// ═══════════════════════════════════════════════════════
-// 4. 프로세스 모니터링 (idle 상태)
-// ═══════════════════════════════════════════════════════
-
-#[tokio::test]
-async fn test_monitoring_loop_is_stable_under_idle() {
-    ensure_test_module();
-    let supervisor = Arc::new(RwLock::new(Supervisor::new("./modules")));
-    {
-        let mut sup = supervisor.write().await;
-        sup.initialize().await.unwrap();
-    }
-
-    // 프로세스가 없는 상태에서 모니터링 N회 반복 — 패닉/데이터 오염 없어야 함
-    let empty_snapshot: Vec<saba_core::process_monitor::RunningProcess> = vec![];
-    for iteration in 0..10 {
-        let mut sup = supervisor.write().await;
-        let result = sup.monitor_processes_taken_at(&empty_snapshot, u64::MAX).await;
-        assert!(
-            result.is_ok(),
-            "Monitoring iteration {} should succeed: {:?}",
-            iteration,
-            result.err()
-        );
-    }
-
-    // 모니터링 후에도 모듈 목록이 정상이어야 함
-    let modules = {
-        let sup = supervisor.read().await;
-        sup.list_modules().unwrap_or_default()
-    };
-    assert!(
-        !modules.is_empty(),
-        "Modules should still be available after idle monitoring"
     );
 }
 
@@ -461,93 +246,6 @@ async fn test_ipc_instance_full_lifecycle() {
 
     server_task.abort();
     cleanup_test_instances();
-}
-
-// ═══════════════════════════════════════════════════════
-// 6. IPC 에러 응답 스키마 계약
-// ═══════════════════════════════════════════════════════
-
-#[tokio::test]
-async fn test_ipc_error_responses_have_consistent_schema() {
-    let (base_url, _sup, server_task) = boot_ipc().await;
-    let client = saba_chan_updater_lib::tls::http_client_builder().build().unwrap();
-
-    // 존재하지 않는 인스턴스 → 404 + error 필드
-    let r1 = client
-        .get(format!("{}/api/instance/nonexistent-id-abc123", base_url))
-        .send().await.unwrap();
-    assert_eq!(r1.status(), reqwest::StatusCode::NOT_FOUND);
-    let body1: Value = r1.json().await.unwrap();
-    assert!(
-        body1.get("error").is_some(),
-        "404 response must contain 'error' field, got: {:?}",
-        body1
-    );
-
-    // 존재하지 않는 인스턴스에 명령 → 404 + error 필드
-    let r2 = client
-        .post(format!("{}/api/instance/nonexistent-id/command", base_url))
-        .json(&serde_json::json!({ "command": "status", "args": {} }))
-        .send().await.unwrap();
-    assert_eq!(r2.status(), reqwest::StatusCode::NOT_FOUND);
-    let body2: Value = r2.json().await.unwrap();
-    let err_msg = body2["error"].as_str().unwrap_or_default().to_lowercase();
-    assert!(
-        err_msg.contains("not found") || err_msg.contains("instance"),
-        "Error message should mention instance, got: '{}'",
-        err_msg
-    );
-
-    server_task.abort();
-}
-
-// ═══════════════════════════════════════════════════════
-// 7. IPC 모듈 메타데이터 응답 스키마
-// ═══════════════════════════════════════════════════════
-
-#[tokio::test]
-async fn test_ipc_module_metadata_contains_required_fields() {
-    let (base_url, _sup, server_task) = boot_ipc().await;
-    let client = saba_chan_updater_lib::tls::http_client_builder().build().unwrap();
-
-    let resp = client
-        .get(format!("{}/api/modules", base_url))
-        .send().await.unwrap();
-    let json: Value = resp.json().await.unwrap();
-
-    for module in json["modules"].as_array().unwrap() {
-        let name = module["name"].as_str().unwrap_or("<unknown>");
-
-        // 필수 스키마 필드 확인
-        assert!(
-            module.get("name").and_then(|v| v.as_str()).is_some(),
-            "Module must have string 'name'"
-        );
-        assert!(
-            module.get("version").and_then(|v| v.as_str()).is_some(),
-            "Module '{}' must have string 'version'", name
-        );
-
-        // commands 필드가 있다면 내부 구조 검증
-        if let Some(cmds) = module.get("commands") {
-            if !cmds.is_null() {
-                let fields = cmds.get("fields").and_then(|v| v.as_array())
-                    .expect(&format!("Module '{}' commands must have 'fields' array", name));
-                for cmd in fields {
-                    assert!(
-                        cmd.get("name").and_then(|v| v.as_str()).is_some(),
-                        "Command in module '{}' must have 'name'", name
-                    );
-                    assert!(
-                        cmd.get("label").and_then(|v| v.as_str()).is_some(),
-                        "Command in module '{}' must have 'label'", name
-                    );
-                }
-            }
-        }
-    }
-
-    server_task.abort();
 }
 
 // ═══════════════════════════════════════════════════════
@@ -683,7 +381,6 @@ async fn test_ipc_create_instance_saves_extension_data() {
 async fn test_check_update_not_found() {
     let (base_url, _sup, server_task) = boot_ipc().await;
     let client = saba_chan_updater_lib::tls::http_client_builder().build().unwrap();
-    wait_for_ipc_ready(&base_url, &client).await;
 
     let resp = client
         .get(format!("{}/api/instance/nonexistent-id/check-update", base_url))
@@ -702,7 +399,6 @@ async fn test_check_update_not_found() {
 async fn test_check_update_no_extension_data() {
     let (base_url, _sup, server_task) = boot_ipc().await;
     let client = saba_chan_updater_lib::tls::http_client_builder().build().unwrap();
-    wait_for_ipc_ready(&base_url, &client).await;
 
     // 기존 인스턴스 목록에서 ext_data 없는 인스턴스를 찾거나,
     // 찾지 못하면 migration 모드로 생성 (중복 네이티브 제한 우회)

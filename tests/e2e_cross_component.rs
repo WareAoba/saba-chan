@@ -1,25 +1,10 @@
-//! ═══════════════════════════════════════════════════════════════════
-//! 컴포넌트 간 완전형 E2E 테스트
-//! ═══════════════════════════════════════════════════════════════════
-//!
-//! 데몬 ↔ 모듈(Python lifecycle) ↔ API 전체를
-//! 하나의 파이프라인으로 검증합니다.
-//!
-//! ## 테스트 범위
-//! 1. 데몬 부팅 → 모듈 발견 → 모듈 메타데이터 스키마 계약
-//! 2. 인스턴스 생성 → 설정 적용 (Python configure) → validate 호출
-//! 4. 설정 CRUD: GUI 설정 저장/로드, 봇 설정 저장/로드
-//! 5. 클라이언트 등록/하트비트 프로토콜
-//! 6. 크로스 컴포넌트: 인스턴스 운영 중 상태 조회 일관성
-//!
-//! ## 필수 조건
-//! - Python 3.x 시스템에 설치 (또는 saba-chan venv 존재)
-//! - 테스트 fixture: tests/fixtures/e2e-mock-module/
+//! 컴포넌트 간 E2E 테스트: `tests/fixtures/e2e-mock-module`(Python lifecycle)과 시험 모듈을 임시 폴더에 두고
+//! 데몬을 띄워 API로 모듈 호출·설정·이벤트까지 본다. Python 3이 있어야 한다
+
+mod common;
 
 use saba_core::supervisor::Supervisor;
-use saba_core::ipc::IPCServer;
 use std::sync::Arc;
-use std::net::TcpListener;
 use tokio::sync::RwLock;
 use tokio::time::{sleep, Duration};
 use std::fs;
@@ -28,25 +13,6 @@ use serde_json::{json, Value};
 // ═══════════════════════════════════════════════════════
 // 테스트 인프라
 // ═══════════════════════════════════════════════════════
-
-fn pick_free_port() -> u16 {
-    let listener = TcpListener::bind("127.0.0.1:0").expect("ephemeral port");
-    let port = listener.local_addr().unwrap().port();
-    drop(listener);
-    port
-}
-
-async fn wait_for_ipc_ready(base_url: &str, client: &reqwest::Client) {
-    for _ in 0..50 {
-        if let Ok(resp) = client.get(format!("{}/api/modules", base_url)).send().await {
-            if resp.status().is_success() {
-                return;
-            }
-        }
-        sleep(Duration::from_millis(300)).await;
-    }
-    panic!("IPC server did not become ready: {}", base_url);
-}
 
 /// E2E 테스트 전용 fixture 모듈 디렉토리를 임시 위치에 세팅합니다.
 /// 기존 test-module 외에 e2e-mock-module도 복사합니다.
@@ -171,9 +137,6 @@ async fn boot_e2e_ipc() -> (
     std::path::PathBuf, // instances_dir (cleanup용)
     std::path::PathBuf, // data_dir (cleanup용 — SABA_DATA_DIR 격리)
 ) {
-    // edition 2024: 환경 변수 쓰기는 unsafe다. 테스트 준비에서만 쓴다
-    unsafe { std::env::set_var("SABA_AUTH_DISABLED", "1") };
-
     // 테스트용 데이터 디렉토리 격리 — 실제 AppData 오염 방지.
     // SABA_DATA_DIR은 프로세스 전역이라 테스트마다 바꾸면 병렬 테스트끼리 서로의
     // 폴더를 가리키고 지운다. 프로세스당 하나만 만들고 지우지 않는다.
@@ -191,7 +154,7 @@ async fn boot_e2e_ipc() -> (
 
     let modules_dir = setup_e2e_modules_dir();
     let instances_dir = std::env::temp_dir()
-        .join(format!("saba-e2e-instances-{}", pick_free_port()));
+        .join(format!("saba-e2e-instances-{}", common::free_port()));
     fs::create_dir_all(&instances_dir).expect("create instances dir");
 
     let supervisor = Arc::new(RwLock::new(
@@ -205,18 +168,7 @@ async fn boot_e2e_ipc() -> (
         sup.initialize().await.expect("supervisor init failed");
     }
 
-    let port = pick_free_port();
-    let listen_addr = format!("127.0.0.1:{}", port);
-    let base_url = format!("http://{}", listen_addr);
-
-    let sup_clone = supervisor.clone();
-    let server = IPCServer::new(sup_clone, &listen_addr, saba_core::daemon_log::DaemonLogBuffer::new());
-    let server_task = tokio::spawn(async move {
-        let _ = server.start().await;
-    });
-
-    let client = saba_chan_updater_lib::tls::http_client_builder().build().unwrap();
-    wait_for_ipc_ready(&base_url, &client).await;
+    let (base_url, server_task) = common::serve_ipc(supervisor.clone(), Arc::new(())).await;
 
     (base_url, supervisor, server_task, modules_dir, instances_dir, data_dir)
 }
@@ -292,6 +244,14 @@ async fn e2e_module_discovery_and_metadata_schema() {
         modules.len()
     );
 
+    for module in modules {
+        let name = module["name"].as_str().expect("module must have a string 'name'");
+        assert!(module["version"].as_str().is_some(), "module '{name}' must have a string 'version'");
+        for cmd in module["commands"]["fields"].as_array().into_iter().flatten() {
+            assert!(cmd["name"].as_str().is_some() && cmd["label"].as_str().is_some(), "command in '{name}' must have 'name' and 'label': {cmd}");
+        }
+    }
+
     // e2e-mock 모듈 존재 및 스키마 검증
     let mock_module = modules
         .iter()
@@ -352,7 +312,7 @@ async fn e2e_instance_lifecycle_with_python_module() {
     let client = saba_chan_updater_lib::tls::http_client_builder().build().unwrap();
 
     // ── 1) 인스턴스 생성
-    let instance_name = format!("test-e2e-{}", pick_free_port());
+    let instance_name = format!("test-e2e-{}", common::free_port());
     let create_resp = client
         .post(format!("{}/api/instances", base_url))
         .json(&json!({
@@ -528,7 +488,7 @@ async fn e2e_config_roundtrip() {
 async fn e2e_launch_preview_binds_typed_args_and_saves_extra_args() {
     let (base_url, _sup, task, m_dir, i_dir, d_dir) = boot_e2e_ipc().await;
     let client = saba_chan_updater_lib::tls::http_client_builder().build().unwrap();
-    let name = format!("preview-{}", pick_free_port());
+    let name = format!("preview-{}", common::free_port());
     let created: Value = client
         .post(format!("{}/api/instances", base_url))
         .json(&json!({ "name": name, "module_name": "e2e-mock" }))
@@ -649,7 +609,7 @@ async fn e2e_cross_component_simultaneous_operation() {
     let client = saba_chan_updater_lib::tls::http_client_builder().build().unwrap();
 
     // ── A) 인스턴스 생성 (모듈 사이드)
-    let inst_name = format!("test-cross-{}", pick_free_port());
+    let inst_name = format!("test-cross-{}", common::free_port());
     let create_resp = client
         .post(format!("{}/api/instances", base_url))
         .json(&json!({
@@ -869,36 +829,22 @@ async fn e2e_python_lifecycle_direct_call() {
 // 8. API 스키마 계약: 에러 응답 일관성
 // ═══════════════════════════════════════════════════════
 
+/// 없는 인스턴스에 대한 요청은 404와 `error` 칸으로 답한다
 #[tokio::test]
 async fn e2e_api_error_schema_consistency() {
     let (base_url, _sup, task, m_dir, i_dir, d_dir) = boot_e2e_ipc().await;
     let client = saba_chan_updater_lib::tls::http_client_builder().build().unwrap();
 
-    // 존재하지 않는 리소스들에 대한 에러 응답 스키마가 일관되는지 검증
-
-    let error_cases = vec![
-        ("GET", "/api/instance/nonexistent-id"),
-    ];
-
-    for (method, path) in error_cases {
-        let url = format!("{}{}", base_url, path);
-        let resp = match method {
-            "GET" => client.get(&url).send().await.unwrap(),
-            "POST" => client.post(&url).json(&json!({})).send().await.unwrap(),
-            "DELETE" => client.delete(&url).send().await.unwrap(),
-            _ => unreachable!(),
-        };
-
-        let status = resp.status();
-        // 에러 응답은 JSON body에 "error" 필드를 포함해야 함
-        if status.is_client_error() || status.is_server_error() {
-            let body: Value = resp.json().await.unwrap_or(json!({}));
-            assert!(
-                body.get("error").is_some() || body.get("message").is_some(),
-                "Error response for {} {} (status {}) must have 'error' or 'message' field, got: {:?}",
-                method, path, status, body
-            );
-        }
+    let get = client.get(format!("{}/api/instance/nonexistent-id", base_url)).send().await.unwrap();
+    let command = client
+        .post(format!("{}/api/instance/nonexistent-id/command", base_url))
+        .json(&json!({ "command": "status", "args": {} }))
+        .send().await.unwrap();
+    for resp in [get, command] {
+        let (url, status) = (resp.url().clone(), resp.status());
+        let body: Value = resp.json().await.unwrap_or(json!({}));
+        assert_eq!(status, reqwest::StatusCode::NOT_FOUND, "{url}: {body}");
+        assert!(body["error"].as_str().is_some_and(|e| !e.is_empty()), "{url} must have an 'error' field, got: {body}");
     }
 
     task.abort();
@@ -1103,7 +1049,7 @@ async fn e2e_version_auto_detect_and_persist() {
         fs::create_dir_all(&wd).unwrap();
         wd
     } else {
-        let wd = std::env::temp_dir().join(format!("saba-e2e-version-{}", pick_free_port()));
+        let wd = std::env::temp_dir().join(format!("saba-e2e-version-{}", common::free_port()));
         fs::create_dir_all(&wd).unwrap();
         // module_settings에 working_dir 추가
         let _ = client
@@ -1155,7 +1101,7 @@ async fn e2e_install_server_backup_and_restore() {
     let client = saba_chan_updater_lib::tls::http_client_builder().build().unwrap();
 
     // install_dir에 기존 server.jar 생성
-    let install_dir = std::env::temp_dir().join(format!("saba-e2e-backup-{}", pick_free_port()));
+    let install_dir = std::env::temp_dir().join(format!("saba-e2e-backup-{}", common::free_port()));
     fs::create_dir_all(&install_dir).unwrap();
     fs::write(install_dir.join("server.jar"), "OLD_VERSION_CONTENT").unwrap();
 
@@ -1200,7 +1146,7 @@ async fn e2e_version_backfill_on_startup() {
     let client = saba_chan_updater_lib::tls::http_client_builder().build().unwrap();
 
     // 가져온 서버는 설치 때 적어 둔 버전이 없다 (새로 설치한 서버는 설치한 버전을 그때 적는다)
-    let work_dir = std::env::temp_dir().join(format!("saba-e2e-backfill-{}", pick_free_port()));
+    let work_dir = std::env::temp_dir().join(format!("saba-e2e-backfill-{}", common::free_port()));
     fs::create_dir_all(&work_dir).unwrap();
     fs::write(work_dir.join("version.txt"), "1.20.4").unwrap();
     let create_resp = client
@@ -1246,7 +1192,7 @@ async fn e2e_version_backfill_on_startup() {
 async fn rest_connection_values_come_from_the_settings_the_module_declares() {
     let (base_url, _sup, task, m_dir, i_dir, d_dir) = boot_e2e_ipc().await;
     let client = saba_chan_updater_lib::tls::http_client_builder().build().unwrap();
-    let name = format!("rest-e2e-{}", pick_free_port());
+    let name = format!("rest-e2e-{}", common::free_port());
     let created: Value = client.post(format!("{}/api/instances", base_url))
         .json(&json!({ "name": name, "module_name": "rest-module" }))
         .send().await.unwrap().json().await.unwrap();
