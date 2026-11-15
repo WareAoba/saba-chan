@@ -2,7 +2,7 @@ use super::{ProtocolError, ServerResponse};
 use serde_json::{json, Value};
 use std::time::Duration;
 
-/// REST API 클라이언트 (Palworld, 기타 게임)
+/// 게임 서버 REST API 클라이언트
 #[derive(Debug, Clone)]
 pub struct RestClient {
     host: String,
@@ -25,7 +25,7 @@ impl RestClient {
         }
     }
 
-    /// Basic Auth 설정 (가변 참조 버전)
+    /// Basic Auth 설정
     pub fn set_basic_auth(&mut self, username: String, password: String) {
         self.username = Some(username);
         self.password = Some(password);

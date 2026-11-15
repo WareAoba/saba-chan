@@ -247,7 +247,7 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    // 백로그 L8: 감시는 프로세스 목록을 락 밖에서 먼저 찍는다. 그 사이에 막 시작해 추적한 PID는 목록에 없어
+    // 감시는 프로세스 목록을 락 밖에서 먼저 찍는다. 그 사이에 막 시작해 추적한 PID는 목록에 없어
     // "끝났다"며 추적에서 풀렸다. 목록을 찍은 뒤에 추적한 PID는 다음 목록까지 기다린다
     #[tokio::test]
     async fn a_pid_tracked_after_the_snapshot_is_not_dropped() {

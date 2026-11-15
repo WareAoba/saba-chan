@@ -217,7 +217,7 @@ pub(super) fn relay_command_entry(c: &crate::module_loader::CommandField, aliase
 const STATUS_LINE_MAX: usize = 100;
 
 /// 하트비트의 서버 한 줄: relay가 읽는 필드만 싣는다. 설정값·경로·비밀번호는 PC 밖으로 나가지 않는다.
-/// 실행 중이면 `usage{cpu, memMb}`, `players{online, max?}`(Q-5), 켜진 시각 `startedAt`(Unix 초), 익스텐션이 `server.list_enrich`에서 `status_line`을 주면 `statusLine`(X-1)
+/// 실행 중이면 `usage{cpu, memMb}`, `players{online, max?}`, 켜진 시각 `startedAt`(Unix 초), 익스텐션이 `server.list_enrich`에서 `status_line`을 주면 `statusLine`
 pub(super) fn relay_server_entry(server: &Value, usage: Option<&crate::system_monitor::InstanceMetrics>) -> Value {
     let mut entry = serde_json::Map::new();
     for key in ["id", "name", "module", "status"] {

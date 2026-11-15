@@ -41,7 +41,7 @@ const STOP_COOLDOWN_SECS: u64 = 30;
 /// 포트 충돌로 인한 강제 정지 이벤트
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PortConflictStopEvent {
-    /// 알림 번호 (데몬이 켜진 뒤 1부터 늘어난다). 클라이언트는 본 번호를 기억해 `notices_after`로 그 뒤만 받는다 (L50)
+    /// 알림 번호 (데몬이 켜진 뒤 1부터 늘어난다). 클라이언트는 본 번호를 기억해 `notices_after`로 그 뒤만 받는다
     #[serde(default)]
     pub id: u64,
     /// 강제 정지된 인스턴스 이름
@@ -60,7 +60,7 @@ pub struct PortConflictStopEvent {
 
 /// 포트 충돌 강제 정지 알림을 몇 개까지 두는가 (헤드리스 데몬에서 끝없이 쌓이지 않게)
 pub const PORT_CONFLICT_STOPS_KEPT: usize = 20;
-/// 포트 충돌 강제 정지 알림을 얼마나 두는가. 그사이 여러 클라이언트가 각자 읽는다 (L50)
+/// 포트 충돌 강제 정지 알림을 얼마나 두는가. 그사이 여러 클라이언트가 각자 읽는다
 pub const PORT_CONFLICT_STOPS_TTL_MS: u64 = 10 * 60 * 1000;
 
 /// 포트 충돌 강제 정지 알림. 읽어도 지우지 않고 `PORT_CONFLICT_STOPS_TTL_MS`·`PORT_CONFLICT_STOPS_KEPT`까지 둔다
@@ -112,7 +112,7 @@ tokio::task_local! {
     /// 점검 중에 들어온 정지도 잡도록 그 전에 잡은 세대를 `StartGuard`의 기준으로 쓴다
     pub static START_SINCE: u64;
 
-    /// 이 작업 안에서 부른 정지가 올린 뒤의 실행 세대. 재시작이 자기 정지 뒤의 기준으로 쓴다 (D-S10)
+    /// 이 작업 안에서 부른 정지가 올린 뒤의 실행 세대. 재시작이 자기 정지 뒤의 기준으로 쓴다
     pub static STOPPED_AT: std::cell::Cell<Option<u64>>;
 }
 
@@ -340,7 +340,7 @@ impl Supervisor {
             Some(Value::Bool(b)) => *b,
             Some(Value::String(s)) if s == "true" => true,
             Some(Value::String(s)) if s == "false" => false,
-            // C8b: 모든 서버가 기본 managed (saba-runner가 PID·로그·종료 코드를 쥔다).
+            // 모든 서버가 기본 managed (saba-runner가 PID·로그·종료 코드를 쥔다).
             // stdin이 없는 게임은 명령을 REST로, 정지를 모듈 stop()으로 처리한다.
             _ => true,
         }
@@ -351,7 +351,7 @@ impl Supervisor {
         self.addon_swap_gate.clone()
     }
 
-    /// 인스턴스가 쓰는 익스텐션: 지금 모듈의 `[install] requires_extensions`와 인스턴스가 더한 것 (D2).
+    /// 인스턴스가 쓰는 익스텐션: 지금 모듈의 `[install] requires_extensions`와 인스턴스가 더한 것.
     /// 모듈을 업데이트해 요구가 바뀌면 기존 인스턴스에도 바로 맞는다. 예전에 만들 때 복사해 둔 모듈 목록은 그대로 읽는다
     pub fn effective_required_extensions(&self, instance: &crate::instance::ServerInstance) -> Vec<String> {
         let mut required = self
@@ -470,7 +470,7 @@ impl Supervisor {
     }
 }
 
-/// 저장 후 종료를 기다리는 시간(초): 인스턴스 설정 `stop_timeout`(큰 월드는 저장이 길다, MK14), 모듈 `stop_timeout`, 기본 30.
+/// 저장 후 종료를 기다리는 시간(초): 인스턴스 설정 `stop_timeout`(큰 월드는 저장이 길다), 모듈 `stop_timeout`, 기본 30.
 /// 인스턴스 값은 1~3600초로 맞춘다
 pub(crate) fn stop_timeout_of(instance: &crate::instance::ServerInstance, module_value: Option<u64>) -> u64 {
     instance.module_settings.get("stop_timeout")

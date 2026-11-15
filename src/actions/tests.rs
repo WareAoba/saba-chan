@@ -103,7 +103,7 @@ async fn the_chatbot_cannot_reach_forbidden_actions_whatever_the_levels() {
         assert_eq!((err.code, err.data["field"].as_str()), ("invalid_input", Some(key)), "{:?}", err);
     }
     assert!(plan(&state, "instance.settings.set", Some(&id), &json!({ "admin_pass": "x" }), &gui()).await.is_ok());
-    // 사용 모드와 그 명단·자동 강퇴는 PC 앱·웹에서만 바꾼다 (디스코드·말하는 사바쨩 불가, 사용자 지정 2026-11-08)
+    // 사용 모드와 그 명단·자동 강퇴는 PC 앱·웹에서만 바꾼다 (디스코드·말하는 사바쨩 불가)
     for (key, value) in [
         ("access", json!("shared")),
         ("controllers_only", json!(false)),
@@ -285,7 +285,7 @@ fn heartbeat_actions_mark_the_controlled_actions() {
     }
 }
 
-// 사용자 요청(2026-10-24): 서버 슬래시 루트 아래 이름은 "서버-상태"가 아니라 "상태"처럼 짧게. 제목은 그대로 두고
+// 서버 슬래시 루트 아래 이름은 "서버-상태"가 아니라 "상태"처럼 짧게. 제목은 그대로 두고
 // 짧은 이름(`actions.<id>.name`)을 따로 싣는다. 이름이 없는 액션은 `name` 키가 없다
 #[test]
 fn heartbeat_actions_carry_short_names_for_the_server_root() {
@@ -316,7 +316,7 @@ fn the_remote_menu_has_no_guild_settings_and_no_guild_input() {
     }
 }
 
-// 사용자 디스코드 검수(2026-10-20): 시작·정지 기록(3)은 디스코드에서 빼고, 백업 목록(4)은 디스코드 메뉴에서만 뺀다
+// 시작·정지 기록(3)은 디스코드에서 빼고, 백업 목록(4)은 디스코드 메뉴에서만 뺀다
 // (챗봇 복원이 목록을 보고, 디스코드에서 부르는 것은 계속 받는다). 쓰는 곳 없는 길드 설정 조회(12)는 없앤다.
 // 백업 만들기(5)의 이름은 "백업"
 #[test]
@@ -341,7 +341,7 @@ fn remote_menu_items_carry_their_fixed_level() {
     assert!(item("server.start").get("level").is_none());
 }
 
-// 조회 나만 보기는 부른 사람만 볼 진단·관리 조회만 숨긴다 — 서버 상태·접속자는 다 같이 본다 (2026-10-31 사용자 결정)
+// 조회 나만 보기는 부른 사람만 볼 진단·관리 조회만 숨긴다 — 서버 상태·접속자는 다 같이 본다
 #[test]
 fn only_diagnostic_queries_are_marked_private() {
     let (actions, _) = heartbeat_actions(&crate::chat::i18n::languages(), &[]);
@@ -456,7 +456,7 @@ fn summaries_read_like_sentences() {
     let game = summary_of("backup.list", json!({ "backups": [{ "name": "game-snapshot:S1", "kind": "game-snapshot", "created": 1_700_000_000 }] })).unwrap();
     assert!(game.contains("backup_item_unsized") && !game.contains("size="), "{game}");
 
-    // 열지 못하는 백업은 복원할 수 없다고 함께 알린다 (603 P3-8)
+    // 열지 못하는 백업은 복원할 수 없다고 함께 알린다
     let mut broken = json!({ "backups": [{ "name": "bad", "kind": "manual", "created": 1_700_000_000, "size": 9, "readable": false }, { "name": "ok", "kind": "manual", "created": 1_699_000_000, "size": 9, "readable": true }] });
     let text = summary_of("backup.list", broken.clone()).unwrap();
     assert!(text.lines().nth(1).unwrap().contains("열 수 없음") && !text.lines().nth(2).unwrap().contains("열 수 없음"), "{text}");
@@ -479,7 +479,7 @@ fn chatbot_never_lists_deletion_shutdown_update_or_permissions() {
     }
 }
 
-/// 모듈의 위험 명령도 챗봇이 고를 수 있다. 물을지는 계획의 `needs_confirm`이 길드 챗봇 `confirmLevel`로 정한다 (사용자 결정 2026-10-28).
+/// 모듈의 위험 명령도 챗봇이 고를 수 있다. 물을지는 계획의 `needs_confirm`이 길드 챗봇 `confirmLevel`로 정한다.
 /// 결과는 콘솔·조회처럼 IP·비밀처럼 보이는 값을 가려 보낸다
 #[test]
 fn danger_module_commands_reach_the_chatbot_only_through_a_confirmation() {
@@ -576,7 +576,7 @@ async fn discord_settings_stay_in_the_guild_that_asked_and_need_its_owner() {
     assert!(plan(&state, "discord.settings.set", None, &json!({ "tts": { "volume": 80 } }), &owner).await.is_ok());
 }
 
-/// 원격 데몬 R2b: 디스코드 서버 주인(릴레이 `guildOwnerDiscordId`)도 길드 공통 설정은 주인으로 본다. 다른 주인 액션은 아니다
+/// 원격 데몬: 디스코드 서버 주인(릴레이 `guildOwnerDiscordId`)도 길드 공통 설정은 주인으로 본다. 다른 주인 액션은 아니다
 #[tokio::test]
 async fn the_discord_server_owner_may_change_guild_settings_only() {
     let (state, _id, _tmp) = server().await;
@@ -719,7 +719,7 @@ async fn finished(mut done: Value, caller: &Caller) -> Value {
     done
 }
 
-/// 같은 길드에서 여러 단계 계획 둘을 동시에 눌러도, 409를 받은 계획은 쓰이지 않고 남아 다시 누를 수 있다 (D-F6)
+/// 같은 길드에서 여러 단계 계획 둘을 동시에 눌러도, 409를 받은 계획은 쓰이지 않고 남아 다시 누를 수 있다
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_plan_refused_because_another_runs_can_be_pressed_again() {
     let (state, id, _tmp) = server().await;
@@ -1011,7 +1011,7 @@ async fn built_in_server_actions_use_the_levels_set_for_their_commands() {
     assert!(plan(&state, "server.stop", Some(&id), &json!({}), &relay("owner", false)).await.is_ok());
 }
 
-/// 예전 사람별 금지 목록(`memberPermissions`)은 판정에 쓰지 않는다: 레벨은 누적이다 (사용자 지정 2026-10-28)
+/// 예전 사람별 금지 목록(`memberPermissions`)은 판정에 쓰지 않는다: 레벨은 누적이다
 #[tokio::test]
 async fn old_per_member_deny_lists_no_longer_block_actions() {
     let (state, id, _tmp) = server().await;
@@ -1321,7 +1321,7 @@ fn a_command_kept_off_remote_surfaces_is_not_a_remote_action() {
     assert_eq!(shown["surfaces"], json!(["gui", "cli", "discord", "chatbot"]));
 }
 
-/// 모듈 명령 이름·설명은 요청 언어의 모듈 locales가 먼저다 (권한 계단에 module.toml 영어 이름이 뜨던 문제, 2026-11-07)
+/// 모듈 명령 이름·설명은 요청 언어의 모듈 locales가 먼저다 (권한 계단에 module.toml 영어 이름이 뜨던 문제)
 #[test]
 fn module_command_titles_come_from_the_module_locales_first() {
     let cmd = json!({ "name": "say", "risk": "safe", "label": "Send Chat Message", "description": "Broadcast" });
@@ -1333,7 +1333,7 @@ fn module_command_titles_come_from_the_module_locales_first() {
     assert_eq!(command_view(&json!({ "name": "x" }), &ko).unwrap()["title"], "x");
 }
 
-// 사용자 요청(2026-10-26): 켜짐 알림은 디스코드 `/<서버> 켜짐-알림`으로도 바꾼다. 관리자 이상, 요청이 온 길드만, 말하는 사바쨩은 아니다
+// 켜짐 알림은 디스코드 `/<서버> 켜짐-알림`으로도 바꾼다. 관리자 이상, 요청이 온 길드만, 말하는 사바쨩은 아니다
 #[tokio::test]
 async fn start_notice_is_set_from_discord_by_admins_for_their_own_guild() {
     let (state, id, _tmp) = server().await;
@@ -1358,7 +1358,7 @@ async fn start_notice_is_set_from_discord_by_admins_for_their_own_guild() {
     assert_eq!(item["name"]["en"], "Start alert");
 }
 
-// 사용자 11-04: 자리 꽉 참 알림도 서버마다 켠다. 켜짐 알림처럼 관리자 이상, 요청이 온 길드만
+// 자리 꽉 참 알림도 서버마다 켠다. 켜짐 알림처럼 관리자 이상, 요청이 온 길드만
 #[tokio::test]
 async fn full_notice_is_set_from_discord_by_admins() {
     let (state, id, _tmp) = server().await;
@@ -1568,7 +1568,7 @@ async fn an_mcp_owner_reaches_app_actions_but_not_pc_only_ones() {
     assert_eq!(owner.origin.source, "mcp");
     let enable = plan(&state, "extension.enable", None, &json!({ "extension": "x" }), &owner).await.unwrap();
     assert_eq!(enable["needsConfirm"], false);
-    // 앱 업데이트는 개인 에이전트에 연다 (사용자 결정 2026-11-05). 위험이라 늘 묻는다
+    // 앱 업데이트는 개인 에이전트에 연다. 위험이라 늘 묻는다
     let update = plan(&state, "update.apply", None, &json!({}), &owner).await.unwrap();
     assert_eq!(update["needsConfirm"], true);
     // 디스코드에서 온 원격은 그대로 PC 전용이다
@@ -1644,8 +1644,8 @@ async fn an_mcp_owner_reaches_what_the_app_screens_do() {
         "backup.delete",
     ] {
         assert!(ids.contains(&want), "{want} missing from the app catalog");
-        // 디스코드·챗봇 표면은 넓히지 않는다. 게임 서버 업데이트만 디스코드에도 연다 (사용자 결정 2026-11-10, 챗봇은 아니다).
-        // 예약 읽기는 말하는 사바쨩에도 연다 (사용자 결정 2026-11-13)
+        // 디스코드·챗봇 표면은 넓히지 않는다. 게임 서버 업데이트만 디스코드에도 연다 (챗봇은 아니다).
+        // 예약 읽기는 말하는 사바쨩에도 연다
         let discord_ok = want.starts_with("server.update.");
         let chatbot_ok = want == "instance.schedule.get";
         assert!(!find(want).unwrap().surfaces.iter().any(|s| (matches!(s, Chatbot) && !chatbot_ok) || (matches!(s, Discord) && !discord_ok)), "{want}");
@@ -1674,7 +1674,7 @@ async fn an_mcp_owner_reaches_what_the_app_screens_do() {
     assert_eq!(delete["properties"]["name"]["optionsFrom"]["action"], "backup.list");
 }
 
-/// 원격 MCP는 게임 설정 원문을 비밀값째 읽고 쓰며, 예약은 늘 주인에게 묻고 저장한다 (사용자 결정 2026-11-05)
+/// 원격 MCP는 게임 설정 원문을 비밀값째 읽고 쓰며, 예약은 늘 주인에게 묻고 저장한다
 #[tokio::test]
 async fn an_mcp_owner_reads_raw_game_settings_and_schedules_with_confirmation() {
     let (state, id, _tmp) = server().await;
@@ -1732,7 +1732,7 @@ async fn a_check_judges_permission_without_leaving_a_plan() {
 
 const MODULE_WITH_PORT: &str = "[module]\nschema_version = 1\nname = \"plain\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[[settings.fields]]\nname = \"port\"\ntype = \"number\"\nlabel = \"Game port\"\nport = true\npublic = \"both\"\ndefault = 8211\n\n[[settings.fields]]\nname = \"query_port\"\ntype = \"number\"\nlabel = \"Query port\"\nport = true\npublic = \"udp\"\ndefault = 27015\n";
 
-/// 서버 주소 (사용자 요청 2026-11-05): `/<서버> 주소`는 데몬이 릴레이에 접속한 주소와 그 서버가 밖에 여는 포트를
+/// 서버 주소: `/<서버> 주소`는 데몬이 릴레이에 접속한 주소와 그 서버가 밖에 여는 포트를
 /// 부른 사람에게만 보인다. 길드의 "조회 결과 나만 보기"와 상관없이 늘 숨기고(`secret`), 챗봇과 문장 명령(채널에 그대로 보인다)에는 열지 않는다
 #[tokio::test]
 async fn server_address_is_offered_only_where_the_reply_stays_with_the_caller() {
@@ -1740,7 +1740,7 @@ async fn server_address_is_offered_only_where_the_reply_stays_with_the_caller() 
     assert_eq!(def.surfaces, &[Gui, Cli, Discord]);
     assert!(def.secret);
     assert!(find("server.port_check").is_some_and(|d| !d.secret));
-    // 공인 IP가 보이므로 기본은 유저(Lv1) 이상, 길드가 명령별로 옮길 수 있다 (사용자 결정 2026-11-07)
+    // 공인 IP가 보이므로 기본은 유저(Lv1) 이상, 길드가 명령별로 옮길 수 있다
     assert_eq!((def.discord_level, def.level_movable), (Some(crate::chat::permissions::USER), true));
 
     let (state, _id, _tmp) = server_with(MODULE_WITH_PORT).await;
@@ -1754,7 +1754,7 @@ async fn server_address_is_offered_only_where_the_reply_stays_with_the_caller() 
     assert_eq!((item["modules"].clone(), item["surfaces"].clone()), (json!(["plain"]), json!(["discord"])));
     assert!(actions.iter().filter(|a| a["id"] != "server.address").all(|a| a.get("secret").is_none()));
 
-    // 문장 명령의 답은 채널에 보이므로 실행하지 않고, 슬래시 명령으로 다시 부르라고 안내한다 (사용자 지정 2026-11-06)
+    // 문장 명령의 답은 채널에 보이므로 실행하지 않고, 슬래시 명령으로 다시 부르라고 안내한다
     open_everything(&state).await;
     for text in ["srv 주소", "srv address"] {
         let hint = plan_text(&state, text, &relay("owner", false)).await.unwrap();
@@ -1783,7 +1783,7 @@ async fn server_address_joins_the_relay_address_with_the_public_ports() {
     assert!(text.contains("address=203.0.113.5:8211") && text.contains("address=203.0.113.5:27015"), "{text}");
 }
 
-/// 공개 주소를 정했으면 그 도메인으로, 디스코드에 알려 주지 않게 했으면 디스코드에만 주소·포트를 빼고 알린다 (사용자 결정 2026-11-10)
+/// 공개 주소를 정했으면 그 도메인으로, 디스코드에 알려 주지 않게 했으면 디스코드에만 주소·포트를 빼고 알린다
 #[test]
 fn server_address_uses_the_public_name_and_hides_it_from_discord_when_turned_off() {
     let ports = json!([{ "field": "port", "label": "Port", "port": 25565, "protocols": ["tcp"] }]);
@@ -1827,7 +1827,7 @@ fn server_address_reads_as_address_and_port() {
     assert_eq!(no_ports, "[actions.summary.address.no_ports]");
 }
 
-/// 사용 모드 (사용자 지정 2026-11-08): 서버 공용은 레벨만 따르고(시작·정지·재시작·백업은 기본 유저), 전용 멤버는
+/// 사용 모드: 서버 공용은 레벨만 따르고(시작·정지·재시작·백업은 기본 유저), 전용 멤버는
 /// 명단에 있는 사람만 한다. 명단 밖은 관리자도 거절되고 거절에 `members_only`가 실린다
 #[tokio::test]
 async fn members_servers_listen_only_to_their_members_and_shared_servers_follow_levels() {
@@ -1871,7 +1871,7 @@ async fn members_servers_listen_only_to_their_members_and_shared_servers_follow_
     assert_eq!((&start["level"], &start["controllers"]), (&json!(1), &json!(true)));
 }
 
-/// 저장 후 정지를 요청할 길이 없는 서버(MK10)도 정지를 부르면 묻지 않고 바로 강제 정지한다: 이 PC 화면도 디스코드도 (사용자 2026-11-13)
+/// 저장 후 정지를 요청할 길이 없는 서버도 정지를 부르면 묻지 않고 바로 강제 정지한다: 이 PC 화면도 디스코드도
 #[cfg(unix)]
 #[tokio::test]
 async fn a_stop_of_a_server_that_cannot_save_stops_it_anyway() {
@@ -1945,7 +1945,7 @@ fn the_required_snapshot_carries_the_levels_authorize_would_ask() {
     assert!(unlisted["servers"].get("i1").is_none(), "servers the guild cannot see are left out");
 }
 
-/// 말하는 사바쨩의 예약 편집 (사용자 결정 2026-11-13): 목록을 읽을 수 있고, 읽은 판(`revision`)을 실어야 바꾼다.
+/// 말하는 사바쨩의 예약 편집: 목록을 읽을 수 있고, 읽은 판(`revision`)을 실어야 바꾼다.
 /// 확인 글은 달라지는 작업만 적고, 확인을 기다리는 사이 다른 곳에서 바뀐 일정은 덮어쓰지 않는다
 #[tokio::test]
 async fn the_chatbot_reads_the_schedule_and_changes_it_only_from_what_it_read() {
@@ -2009,7 +2009,7 @@ fn the_schedule_item_schema_names_the_fields_of_a_task() {
     assert!(items["properties"]["action"]["enum"].as_array().unwrap().contains(&serde_json::to_value(all).unwrap()));
 }
 
-/// 실패한 요청은 어느 라우트든 2xx가 아닌 상태와 `{success:false, error, error_code}`로 답한다 (D7)
+/// 실패한 요청은 어느 라우트든 2xx가 아닌 상태와 `{success:false, error, error_code}`로 답한다
 #[tokio::test]
 async fn failures_share_one_shape() {
     let (state, _, tmp) = server().await;

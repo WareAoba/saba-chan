@@ -5,7 +5,7 @@
 //!
 //! 실행 디렉터리(`<instance>/run/`)에 남기는 파일:
 //! - `runner.json` (`RunnerInfo`): 러너가 살아 있는 동안. 자식 PID, stdin 포트, 로그 파일.
-//! - `exit.json` (`ExitInfo`): 자식이 끝나면. 종료 코드. 크래시 판별(A1)이 읽는다.
+//! - `exit.json` (`ExitInfo`): 자식이 끝나면. 종료 코드. 크래시 판별이 읽는다.
 //!
 //! stdin: 러너가 127.0.0.1 임의 포트를 연다. 연결의 첫 줄은 토큰(환경 변수
 //! `SABA_RUNNER_TOKEN`으로 받은 값), 이후 한 줄이 명령 하나다.
@@ -165,7 +165,7 @@ fn decode_as(bytes: &[u8], utf16: bool) -> String {
 pub const MAX_LINE: usize = 64 * 1024;
 
 /// 자식 출력 한 갈래를 줄로 자른다. UTF-16LE 출력은 `\n` 바이트만 보고 자르면 0A·00이 낀 글자(上, 一 등)에서 줄이
-/// 어긋난다 (D-S13). 줄마다 UTF-16LE인지 정한다. NUL이 적은 한자 줄이나 빈 앞부분처럼 바이트만으로 정하기 어려우면 뒤따르는 바이트와 앞 줄의 판단을 보되,
+/// 어긋난다. 줄마다 UTF-16LE인지 정한다. NUL이 적은 한자 줄이나 빈 앞부분처럼 바이트만으로 정하기 어려우면 뒤따르는 바이트와 앞 줄의 판단을 보되,
 /// NUL이 하나도 없으면 UTF-8(또는 ANSI 코드 페이지)로 본다: 첫 줄만 UTF-16LE로 쓰고 이후는 다른 인코딩으로 쓰는 서버가 있다.
 /// UTF-16 줄 끝(0A 00)은 스트림 처음부터 센 짝수 자리에만 온다. 한 번 잘못 잘라도 다음 줄에서 다시 맞춘다
 #[derive(Debug, Default)]
@@ -419,7 +419,7 @@ mod tests {
         out
     }
 
-    /// UTF-16LE 줄은 0A·00이 낀 글자(上 = 0A 4E, 一 = 00 4E)에서 끊기지 않는다. 첫 줄만 UTF-16LE인 출력도 그대로 읽는다 (D-S13)
+    /// UTF-16LE 줄은 0A·00이 낀 글자(上 = 0A 4E, 一 = 00 4E)에서 끊기지 않는다. 첫 줄만 UTF-16LE인 출력도 그대로 읽는다
     #[test]
     fn utf16_lines_split_only_at_their_own_line_ends() {
         let utf16 = |s: &str| -> Vec<u8> { s.encode_utf16().flat_map(|u| u.to_le_bytes()).collect() };

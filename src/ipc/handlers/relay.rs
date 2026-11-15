@@ -513,7 +513,7 @@ fn pairing_body(payload: &Value, base: &str, configured: &str, token: Option<&st
     Value::Object(body)
 }
 
-/// 새 PC 의 이름 (릴레이에서 새 PC 의 이름): OS 이름 (사용자 2026-11-12). 내 PC 카드·디스코드에서 바꾼다
+/// 새 PC 의 이름 (릴레이에서 새 PC 의 이름): OS 이름. 내 PC 카드·디스코드에서 바꾼다
 fn device_name() -> Option<String> {
     Some(os_name(std::env::consts::OS, crate::relay_agent::platform()["distro"]["name"].as_str()))
 }
@@ -705,7 +705,7 @@ mod tests {
         assert_eq!(signed_delete(&base, "/api/mcp/grant").await.status(), StatusCode::NO_CONTENT);
         assert_eq!(body(signed_delete(&base, "/api/mcp/gone").await).await, (StatusCode::NOT_FOUND, json!({ "success": false, "error": "HOST_NOT_FOUND", "error_code": "HOST_NOT_FOUND" })));
         assert_eq!(signed_delete("http://127.0.0.1:9", "/api/mcp/grant").await.status(), StatusCode::BAD_GATEWAY);
-        // 한 연결만 끊을 때는 릴레이가 준 16진수 id만 넘긴다 (사용자 요청 2026-11-08: 여러 에이전트)
+        // 한 연결만 끊을 때는 릴레이가 준 16진수 id만 넘긴다 (여러 에이전트)
         assert!(grant_id_ok("0123456789abcdef"));
         assert!(!grant_id_ok(""));
         assert!(!grant_id_ok("abc&id=x"));

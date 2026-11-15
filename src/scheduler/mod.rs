@@ -1,4 +1,4 @@
-//! 인스턴스 예약 작업 (A3): 시작·정지·재시작·저장·백업·공지·업데이트·모듈 명령
+//! 인스턴스 예약 작업: 시작·정지·재시작·저장·백업·공지·업데이트·모듈 명령
 //!
 //! 언제: N분마다(`every_minutes`) 또는 `at`(HH:MM) 시각에 매일, N일마다(`every_days`, `start_date`부터),
 //! 정한 요일마다(`weekdays`), 정한 날 한 번(`date`). 시각은 데몬 PC의 시간대로 본다.
@@ -580,7 +580,7 @@ mod tests {
         assert_eq!(c.due("d", &daily, start, t("2026-10-21 12:01")), None);
     }
 
-    /// 리뷰 594: 손으로 고친 파일의 `every_minutes: 0` 같은 틀린 작업은 건너뛴다(실행기가 멈추지 않게).
+    /// 손으로 고친 파일의 `every_minutes: 0` 같은 틀린 작업은 건너뛴다(실행기가 멈추지 않게).
     /// 밀린 차례를 따라잡을 때 다음 차례의 예고가 이미 시작됐으면 밀린 것은 건너뛰고 다음 차례만 한다
     #[test]
     fn bad_tasks_are_skipped_and_a_catch_up_inside_the_next_warning_waits_for_it() {

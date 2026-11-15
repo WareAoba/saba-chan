@@ -1,4 +1,4 @@
-//! GET /api/events — 데몬 이벤트 스트림 (P4, SSE). 버스는 `crate::events`
+//! GET /api/events — 데몬 이벤트 스트림 (SSE). 버스는 `crate::events`
 
 use axum::{
     extract::{Query, State},

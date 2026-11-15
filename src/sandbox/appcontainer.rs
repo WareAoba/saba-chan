@@ -1086,7 +1086,7 @@ mod imp {
     }
 
     /// 띄울 파일 하나에 걸린 낮은 수준 표시를 덮는다. 확장자가 `.exe`·`.com`이 아닌 PE도 Windows가 그대로 띄우므로,
-    /// 폴더 걷기가 보지 않는 실행 대상 자체를 따로 덮는다 (L38). 덮었으면 true
+    /// 폴더 걷기가 보지 않는 실행 대상 자체를 따로 덮는다. 덮었으면 true
     pub fn clear_low_label_of(path: &Path) -> Result<bool, Vec<(PathBuf, String)>> {
         let _guard = acl_lock();
         let path = std::fs::canonicalize(path).map_err(|e| vec![(path.to_path_buf(), format!("resolve: {e}"))])?;
@@ -1109,7 +1109,7 @@ mod imp {
     }
 
     /// 재분석 지점이 동기화 폴더의 클라우드 파일·폴더(또는 링크)면 막는 까닭. 실행 파일이 아니어도 막는다
-    /// (사용자 결정: 동기화 폴더 아래 서버는 지원하지 않는다). 압축(WOF) 같은 다른 재분석 지점은 막지 않고 보통처럼
+    /// (동기화 폴더 아래 서버는 지원하지 않는다). 압축(WOF) 같은 다른 재분석 지점은 막지 않고 보통처럼
     /// 다룬다. 목록의 속성으로 거르므로 다른 파일은 열지 않는다. 그 사이 지워졌으면 막지 않는다
     fn reparse_refusal(path: &Path, attributes: u32) -> Option<String> {
         if attributes & FILE_ATTRIBUTE_REPARSE_POINT == 0 {
@@ -1418,7 +1418,7 @@ mod imp {
             assert_eq!(super::low_label(&exe).unwrap(), None, "the medium label still decides the level");
         }
 
-        /// L38: 확장자가 `.exe`가 아닌 실행 대상(PE)은 폴더 걷기가 보지 않는다. 그 파일을 띄우기 전에 따로 덮는다
+        /// 확장자가 `.exe`가 아닌 실행 대상(PE)은 폴더 걷기가 보지 않는다. 그 파일을 띄우기 전에 따로 덮는다
         #[test]
         fn a_launch_target_without_an_exe_extension_also_runs_at_medium_integrity() {
             let tmp = tempfile::tempdir().unwrap();

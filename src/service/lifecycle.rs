@@ -141,7 +141,7 @@ pub(crate) async fn user_restart(state: &IPCServer, id: &str, force: bool) -> Ou
     audited_result(state, "restart", id, None, None, result).await
 }
 
-/// 정지 방식. 저장 후 종료를 요청할 길이 없는 서버(MK10)를 사람이 부른 정지는 강제 정지로 잇고(`SaveIfPossible`),
+/// 정지 방식. 저장 후 종료를 요청할 길이 없는 서버를 사람이 부른 정지는 강제 정지로 잇고(`SaveIfPossible`),
 /// 예약·유휴·업데이트 정지(`Graceful`)는 끄지 않고 그만둔다
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum StopMode {
@@ -174,8 +174,8 @@ async fn restart_unrecorded(state: &IPCServer, id: &str, mode: StopMode) -> Outc
     let Some((inst_id, stop_timeout, old_pid)) = picked else {
         return Err(instance_not_found(id));
     };
-    // 이 재시작의 정지가 올린 세대보다 더 올랐으면 그사이 다른 정지·시작이 들어온 것이다 (D-S8).
-    // 기준은 정지가 알려 준 값이다: 정지 전에 따로 읽으면 그 틈에 끼어든 자동 재시작 시작까지 세어 스스로 취소한다 (D-S10)
+    // 이 재시작의 정지가 올린 세대보다 더 올랐으면 그사이 다른 정지·시작이 들어온 것이다.
+    // 기준은 정지가 알려 준 값이다: 정지 전에 따로 읽으면 그 틈에 끼어든 자동 재시작 시작까지 세어 스스로 취소한다
     let before_stop = state.supervisor.read().await.run_generation_of(&inst_id);
     let running;
     let stopped_at;
@@ -269,7 +269,7 @@ where
 /// 재시작이 작업 잠금이 풀리기를 기다리는 가장 긴 시간 (큰 월드의 백업·업데이트)
 const START_WAIT_LIMIT: std::time::Duration = std::time::Duration::from_secs(30 * 60);
 
-/// 크래시 뒤 자동 재시작 (A1). 대기하는 동안 사용자가 정지·시작했으면 그만둔다.
+/// 크래시 뒤 자동 재시작. 대기하는 동안 사용자가 정지·시작했으면 그만둔다.
 pub async fn auto_restart(state: IPCServer, instance_id: String, delay: std::time::Duration, generation: u64) {
     tokio::time::sleep(delay).await;
     if !state.supervisor.read().await.restart_still_wanted(&instance_id, generation).await {
@@ -298,7 +298,7 @@ pub async fn auto_restart(state: IPCServer, instance_id: String, delay: std::tim
 }
 
 /// 시작 준비와 띄우기 (`start_checked`가 id로 부른다). 관리형·비관리형이 같은 준비를 거치고,
-/// 시작 전 검사는 감독자(`Supervisor::plan_start`)가 두 방식에 같게 한다 (D2). 작업 기록은 `start`가 남긴다
+/// 시작 전 검사는 감독자(`Supervisor::plan_start`)가 두 방식에 같게 한다. 작업 기록은 `start`가 남긴다
 pub(crate) async fn launch(state: &IPCServer, id: &str, module: &str, managed: bool) -> Outcome {
     // 백업·복원·업데이트가 서버 파일을 다루는 동안에는 켜지 않는다 (시작을 마칠 때까지 잡는다)
     let Some(_guard) = crate::instance::lock::InstanceLock::take_for_writes(id).await else {
@@ -312,7 +312,7 @@ pub(crate) async fn launch(state: &IPCServer, id: &str, module: &str, managed: b
     // 익스텐션 상태 캐시 무효화 — 시작 직후 fresh 상태 반영
     state.extension_status_cache.invalidate(id);
 
-    // 락은 감독자의 시작이 단계마다 짧게 잡는다 (C12)
+    // 락은 감독자의 시작이 단계마다 짧게 잡는다
     if managed {
         match crate::supervisor::Supervisor::start_managed_server(&state.supervisor, id, module, json!({})).await {
             Ok(result) => start_settled(result),
@@ -493,8 +493,8 @@ pub(crate) async fn stop(state: &IPCServer, key: &str, force: bool) -> Outcome {
     stop_recorded(state, key, StopMode::of(force, false)).await
 }
 
-/// 사람이 부른 정지 (정지 라우트: 앱·웹·CLI·디스코드·챗봇). 저장 후 종료를 요청할 길이 없는 서버(MK10)도 묻지 않고
-/// 바로 강제 정지한다 (사용자 2026-11-13). 챗봇은 실행 전 되묻기(`actions::needs_confirm`)를 거친다
+/// 사람이 부른 정지 (정지 라우트: 앱·웹·CLI·디스코드·챗봇). 저장 후 종료를 요청할 길이 없는 서버도 묻지 않고
+/// 바로 강제 정지한다. 챗봇은 실행 전 되묻기(`actions::needs_confirm`)를 거친다
 pub(crate) async fn user_stop(state: &IPCServer, key: &str, force: bool) -> Outcome {
     stop_recorded(state, key, StopMode::of(force, true)).await
 }
@@ -536,7 +536,7 @@ async fn stop_unrecorded(state: &IPCServer, key: &str, force: bool) -> Outcome {
     };
 
     if let Some(inst) = instance {
-        // 락은 stop_server가 단계마다 짧게 잡는다 (C12)
+        // 락은 stop_server가 단계마다 짧게 잡는다
         match crate::supervisor::Supervisor::stop_server(&state.supervisor, &inst.id, &inst.module_name, force).await {
             Ok(result) => {
                 // 실제 종료 성공 시에만 tracker에서 제거
@@ -674,7 +674,7 @@ mod tests {
         assert_eq!(rest(plain_id).await, None, "a module without REST gets no REST password");
     }
 
-    /// 재시작의 정지 단계(서버가 끝나기를 기다리는 동안)에 들어온 정지도 재시작을 취소한다 (D-S8)
+    /// 재시작의 정지 단계(서버가 끝나기를 기다리는 동안)에 들어온 정지도 재시작을 취소한다
     #[cfg(unix)]
     #[tokio::test]
     async fn a_stop_during_a_restart_keeps_the_server_down() {
@@ -847,7 +847,7 @@ mod tests {
         assert!(s.managed_store.get("stop-after-check").await.is_none(), "no server was left running");
     }
 
-    /// 정지 대기 시간은 인스턴스 설정 `stop_timeout`(초)이 모듈 값보다 앞선다: 큰 월드는 늘리고, 여기서는 줄여 바로 끝나는지 본다 (MK14)
+    /// 정지 대기 시간은 인스턴스 설정 `stop_timeout`(초)이 모듈 값보다 앞선다: 큰 월드는 늘리고, 여기서는 줄여 바로 끝나는지 본다
     #[cfg(unix)]
     #[tokio::test]
     async fn an_instance_stop_timeout_overrides_the_module_one() {
@@ -887,7 +887,7 @@ mod tests {
     }
 
     /// 콘솔이 없어 저장 후 종료를 요청할 길이 없으면 모듈 `stop()`은 `graceful_stop_unavailable`로 답한다. 데몬은 그때
-    /// 서버를 죽이지 않고 그 코드를 돌려준다: 강제 종료(저장 없음)는 사용자가 `force`로 고른다 (MK10)
+    /// 서버를 죽이지 않고 그 코드를 돌려준다: 강제 종료(저장 없음)는 사용자가 `force`로 고른다
     #[cfg(unix)]
     #[tokio::test]
     async fn a_server_that_cannot_save_and_exit_is_not_killed_by_a_plain_stop() {
@@ -944,7 +944,7 @@ mod tests {
         assert_eq!(stop("no-console-native", true).await["success"], true);
         assert!(child.wait().is_ok());
 
-        // 사람이 부른 정지(정지·재시작 라우트, 디스코드)는 묻지 않고 바로 강제 정지한다 (사용자 2026-11-13). 작업 기록은 정지 한 줄
+        // 사람이 부른 정지(정지·재시작 라우트, 디스코드)는 묻지 않고 바로 강제 정지한다. 작업 기록은 정지 한 줄
         let started = crate::ipc::internal::InternalResponse::from(start_unrecorded(&state, "no-console-managed").await).body;
         assert_eq!(started["success"], true, "{started}");
         let stopped = crate::ipc::internal::InternalResponse::from(user_stop(&state, "no-console-managed", false).await).body;
@@ -1046,7 +1046,7 @@ mod tests {
         }
     }
 
-    /// 시작 한 번은 작업 기록에 `start` 한 줄이다 (비관리 시작이 안에서 또 남기지 않는다, D2)
+    /// 시작 한 번은 작업 기록에 `start` 한 줄이다 (비관리 시작이 안에서 또 남기지 않는다)
     #[tokio::test]
     async fn an_unmanaged_start_is_one_audit_record() {
         use crate::service::backup::tests::{server_with, NO_BACKUP};
@@ -1067,7 +1067,7 @@ mod tests {
         assert_eq!(starts, 1, "{entries:?}");
     }
 
-    /// 관리형 시작도 모듈 `[install] requires_extensions`가 꺼져 있으면 `extension_required`로 거절한다 (D2)
+    /// 관리형 시작도 모듈 `[install] requires_extensions`가 꺼져 있으면 `extension_required`로 거절한다
     #[tokio::test]
     async fn a_managed_start_needs_the_module_required_extensions() {
         use crate::service::backup::tests::{server_with, NO_BACKUP};

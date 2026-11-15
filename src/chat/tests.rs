@@ -269,7 +269,7 @@ async fn start_waiting_on_an_agreement_carries_the_list_for_the_relay() {
     assert!(r.text.plain().contains("Accept Minecraft EULA first"), "{}", r.text.plain());
 }
 
-/// 시작 전에 예약 범위를 피해 옮긴 포트는 디스코드 답에도 알린다 (M13. 저장값만 조용히 바뀌지 않게)
+/// 시작 전에 예약 범위를 피해 옮긴 포트는 디스코드 답에도 알린다 (저장값만 조용히 바뀌지 않게)
 #[tokio::test]
 async fn a_start_says_which_port_it_moved() {
     let mut api = fixture();
@@ -755,7 +755,7 @@ async fn a_rest_query_reply_shows_the_returned_values() {
     assert!(out.contains("• **serverfps**: 59") && out.contains("***") && !out.contains("hunter2"), "{out}");
 }
 
-/// 띄어 쓴 서버 이름·낱말·명령 낱말도 부른다: 앞에서부터 가장 길게 맞는 말을 고른다 (사용자 지정 2026-11-06).
+/// 띄어 쓴 서버 이름·낱말·명령 낱말도 부른다: 앞에서부터 가장 길게 맞는 말을 고른다.
 /// 공백이 여러 칸이어도 한 칸으로 본다
 #[tokio::test]
 async fn spaced_server_names_and_words_are_matched_longest_first() {
@@ -835,7 +835,7 @@ async fn help_lists_servers_and_the_words_that_call_them() {
     assert!(out.contains("**pal1** (팰월드, palworld)"), "{out}");
 }
 
-/// 상태 답에는 PID 대신 접속자와 켜진 시간 (사용자 지정 2026-11-06)
+/// 상태 답에는 PID 대신 접속자와 켜진 시간
 #[tokio::test]
 async fn status_shows_players_and_uptime_not_the_pid() {
     let mut api = fixture();

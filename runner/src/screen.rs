@@ -203,7 +203,7 @@ mod tests {
     #[test]
     fn far_cursor_moves_stay_bounded() {
         assert_eq!(super::render("x\x1b[999999999Cy"), ["x", "y"]);
-        // 폭보다 긴 출력은 다음 줄로 넘어갈 뿐 잃지 않는다 (리뷰 #605)
+        // 폭보다 긴 출력은 다음 줄로 넘어갈 뿐 잃지 않는다
         let long = format!("{}END", "a".repeat(5000));
         assert_eq!(super::render(&long).concat(), long);
         assert_eq!(render("\x1b[999999999;1Hok"), "ok");

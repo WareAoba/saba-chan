@@ -281,10 +281,10 @@ pub struct ServerInfo {
     /// 꺼져 있고 마지막 정지가 접속자 없음 자동 정지였을 때 `{at, minutes}` (`supervisor::idle`)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub idle_stopped: Option<crate::supervisor::idle::Stopped>,
-    /// 익스텐션 데이터 slot (Q-7): 데몬이 조건을 판정하고 값을 찾아 둔 것 (`ExtensionManager::server_slots`)
+    /// 익스텐션 데이터 slot: 데몬이 조건을 판정하고 값을 찾아 둔 것 (`ExtensionManager::server_slots`)
     #[serde(default, skip_serializing_if = "serde_json::Map::is_empty")]
     pub slots: serde_json::Map<String, serde_json::Value>,
-    /// 접속자 수 (Q-5): 켜진 서버이고 모듈이 `[status] players`로 알려 줄 때만 (`supervisor::players`)
+    /// 접속자 수: 켜진 서버이고 모듈이 `[status] players`로 알려 줄 때만 (`supervisor::players`)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub players: Option<crate::supervisor::players::PlayerCount>,
     /// 켜져 있지만 상태 질문(접속자 수)에 인스턴스 설정 `unresponsive_minutes`(기본 10분) 넘게 답하지 않을 때 마지막 실패 이유.
@@ -346,7 +346,7 @@ fn yes() -> bool {
 pub struct ModuleInfo {
     pub name: String,
     pub version: String,
-    /// 신뢰 표시: verified(서명된 카탈로그에서 받았고 그대로) · modified · unverified (M12)
+    /// 신뢰 표시: verified(서명된 카탈로그에서 받았고 그대로) · modified · unverified
     pub trust: saba_chan_updater_lib::integrity::Trust,
     pub description: Option<String>,
     /// module.toml schema_version (0 = 스키마 이전 모듈)
@@ -361,10 +361,10 @@ pub struct ModuleInfo {
     /// 로드는 됐지만 모듈 작성자가 고쳐야 할 점
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<String>,
-    /// `[module.dependencies]` 중 지금 설치된 버전이 못 맞추는 것 (M9). saba-core 미달은 아예 로드하지 않는다
+    /// `[module.dependencies]` 중 지금 설치된 버전이 못 맞추는 것. saba-core 미달은 아예 로드하지 않는다
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub unmet_dependencies: Vec<UnmetDependency>,
-    /// `[extensions.saba-core] platforms`: 이 모듈이 돌아가는 OS. 없으면 선언하지 않음 (D3·M1)
+    /// `[extensions.saba-core] platforms`: 이 모듈이 돌아가는 OS. 없으면 선언하지 않음
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub platforms: Option<Vec<String>>,
     /// `[extensions.saba-core] architectures`: 이 모듈이 돌아가는 CPU. 없으면 선언하지 않음
@@ -411,7 +411,7 @@ pub struct ModuleInfo {
     /// `[[lists]]` 플레이어 목록 선언 (있으면 클라이언트가 목록 화면을 보인다. 이름과 지금 명단은 `GET /api/instance/:id/lists`)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub lists: Vec<crate::module_loader::ModuleList>,
-    /// 모듈이 `functions`로 밝힌 lifecycle 함수 (MK1). null이면 모름: 클라이언트는 아무 기능도 숨기지 않는다
+    /// 모듈이 `functions`로 밝힌 lifecycle 함수. null이면 모름: 클라이언트는 아무 기능도 숨기지 않는다
     #[serde(default)]
     pub functions: Option<Vec<String>>,
     /// 사용자가 고른 판: `pinned {version, until_newer_than}`, 바꾸기가 켜진 서버를 기다리면 `pending_version` (없으면 둘 다 빠진다)
@@ -834,7 +834,7 @@ impl IPCServer {
     /// 데몬 HTTP 라우터 전체 (인증·감사 미들웨어 포함). 액션 카탈로그도 이것을 안에서 부른다
     pub fn router(&self) -> Router {
         self.routes()
-            // 고른 원격 데몬으로 중계 (G1, `X-Saba-Target`). 로컬 IPC에만: 원격 포트는 `routes`를 따로 씌운다
+            // 고른 원격 데몬으로 중계 (`X-Saba-Target`). 로컬 IPC에만: 원격 포트는 `routes`를 따로 씌운다
             .layer(axum::middleware::from_fn_with_state(self.clone(), crate::remote_daemon::target::layer))
             .layer(axum::middleware::from_fn(auth::auth_middleware))
     }
@@ -907,7 +907,7 @@ impl IPCServer {
             .route("/api/instance/{id}/diagnose", post(handlers::managed::diagnose_handler))
             .route("/api/instance/{id}/port-check", get(handlers::port_check::last).post(handlers::port_check::check))
             .route("/api/instance/{id}/address", get(handlers::port_check::address))
-            // 백업 (A2)·예약 작업 (A3)
+            // 백업·예약 작업
             .route("/api/instance/{id}/backups", get(handlers::backup::list_backups).post(handlers::backup::create_backup))
             .route("/api/instance/{id}/backups/{name}", delete(handlers::backup::delete_backup))
             .route("/api/instance/{id}/backups/{name}/restore", post(handlers::backup::restore_backup))
@@ -927,7 +927,7 @@ impl IPCServer {
             .route("/api/config/client/{kind}", get(handlers::config::get_client_config).put(handlers::config::save_client_config))
             .route("/api/config/{kind}/defaults", get(handlers::config::get_config_defaults))
             .route("/api/config/{kind}/reset", post(handlers::config::reset_config))
-            // ── 설정·인스턴스 내보내기/가져오기 (A9) ──
+            // ── 설정·인스턴스 내보내기/가져오기 ──
             .route("/api/migration/export", post(handlers::migration::export))
             .route("/api/migration/import", post(handlers::migration::import))
             // ── Node token (cloud relay auth) ──
@@ -949,7 +949,7 @@ impl IPCServer {
             .route("/api/client/register", post(handlers::client::client_register))
             .route("/api/clients", get(handlers::client::client_list))
             .route("/api/clients/launch", get(handlers::client::client_launchable).post(handlers::client::client_launch))
-            // ── 디스코드 명령 권한 (P1) ──
+            // ── 디스코드 명령 권한 ──
             .route(
                 "/api/permissions/{guild_id}",
                 get(handlers::permissions::get_permissions).patch(handlers::permissions::update_permissions),
@@ -962,7 +962,7 @@ impl IPCServer {
                 "/api/permissions/{guild_id}/members/{discord_id}",
                 axum::routing::put(handlers::permissions::set_member).delete(handlers::permissions::remove_member),
             )
-            // ── 디스코드 길드 설정 (I2) ──
+            // ── 디스코드 길드 설정 ──
             .route(
                 "/api/discord/{guild_id}/settings",
                 get(handlers::discord::get_settings).patch(handlers::discord::patch_settings),
@@ -978,7 +978,7 @@ impl IPCServer {
                 "/api/sandbox/extension-gui/{component}",
                 post(handlers::sandbox::allow_extension_gui).delete(handlers::sandbox::revoke_extension_gui),
             )
-            // ── 액션 카탈로그 (P2) ──
+            // ── 액션 카탈로그 ──
             .route("/api/actions", get(handlers::actions::list_actions))
             .route("/api/actions/plan", post(handlers::actions::plan_steps))
             .route("/api/actions/runs/{run_id}", get(handlers::actions::run_status))
@@ -1064,7 +1064,7 @@ impl IPCServer {
             .route("/api/guilds/{guild}/full-notice", get(handlers::start_notice::full_get))
             .route("/api/instance/{id}/full-notice/{guild}", put(handlers::start_notice::full_put))
             .route("/api/chatbot/guilds/{guild}", get(handlers::chatbot::get_guild).patch(handlers::chatbot::patch_guild))
-            // ── 원격 데몬 (D1): 원격 포트 설정과 짝 맺은 PC (로컬 전용, 원격 포트에서는 막는다) ──
+            // ── 원격 데몬: 원격 포트 설정과 짝 맺은 PC (로컬 전용, 원격 포트에서는 막는다) ──
             .route("/api/remote/settings", get(handlers::remote_daemon::get_settings).put(handlers::remote_daemon::put_settings))
             .route("/api/public-address", get(handlers::remote_daemon::get_public_address).put(handlers::remote_daemon::put_public_address))
             .route("/api/remote/clients", get(handlers::remote_daemon::list_clients))
@@ -1084,9 +1084,9 @@ impl IPCServer {
             .merge(updates::updates_router(self.update_state.clone()))
             // 디스코드 탭의 릴레이 읽기를 잠깐 기억하고, 쓰는 요청이 끝나면 잊는다 (`relay_cache.rs`)
             .layer(axum::middleware::from_fn(handlers::relay_cache::layer))
-            // 감사 로그 출처 (A10): 요청마다 X-Saba-Client로 정한다. 인증층은 이 바깥에 씌운다 (업데이트 라우터까지)
+            // 감사 로그 출처: 요청마다 X-Saba-Client로 정한다. 인증층은 이 바깥에 씌운다 (업데이트 라우터까지)
             .layer(axum::middleware::from_fn(crate::audit::layer))
-            // 짝 맺은 PC(출처 `remote`)의 PC 전용 경로·칸 (D1). 원격 포트와 안에서 다시 부르는 라우터(`actions::call_as`)가 모두 지난다
+            // 짝 맺은 PC(출처 `remote`)의 PC 전용 경로·칸. 원격 포트와 안에서 다시 부르는 라우터(`actions::call_as`)가 모두 지난다
             .layer(axum::middleware::from_fn_with_state(self.clone(), crate::remote_daemon::server::rules))
     }
 
@@ -1155,7 +1155,7 @@ impl IPCServer {
                     });
                     // 익스텐션 `event:<종류>` hook: 이벤트 버스를 따라 부른다
                     crate::extension::event_hooks::spawn(self.extension_manager.clone());
-                    // 원격 포트 (D1): 켜져 있으면 열고 릴레이에 주소를 올린다
+                    // 원격 포트: 켜져 있으면 열고 릴레이에 주소를 올린다
                     let remote_server = self.clone();
                     tokio::spawn(async move { crate::remote_daemon::apply(&remote_server).await });
                     // 서버쨩의 내 PC 목록에 맞춘다 (빠진 PC의 짝 풀기, 원격 데몬의 바뀐 주소)
@@ -1201,7 +1201,7 @@ mod tests {
     use serde_json::json;
 
     /// 데몬 시작 때 다른 작업(data_roots 보충)이 감독자 잠금을 쥐고 있어도 모듈의 HOST 통로(REST·콘솔 중계)가 붙는다.
-    /// 빠지면 감독자가 부르는 모듈(정지·접속자)이 내내 `no_instance`로 실패해, 팰월드가 일반 정지를 거절했다 (test-pal 실측 2026-10-26)
+    /// 빠지면 감독자가 부르는 모듈(정지·접속자)이 내내 `no_instance`로 실패해, 팰월드가 일반 정지를 거절했다 (test-pal 실측)
     #[tokio::test]
     async fn the_module_host_channel_is_attached_even_when_startup_work_holds_the_lock() {
         let tmp = tempfile::tempdir().unwrap();
@@ -1321,7 +1321,7 @@ mod tests {
         assert!(!tracker.take_creating("existing"));
     }
 
-    // 리뷰 289 P3-2: 지운 인스턴스의 옛 오류 배너가 남았다 (이름이 바뀌어도 진행 표시는 id를 따라가므로 따로 옮기지 않는다)
+    // 지운 인스턴스의 옛 오류 배너가 남았다 (이름이 바뀌어도 진행 표시는 id를 따라가므로 따로 옮기지 않는다)
     #[test]
     fn a_deleted_instance_leaves_no_progress() {
         let failed = || ProvisionProgress {

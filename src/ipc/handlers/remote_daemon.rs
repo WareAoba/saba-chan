@@ -1,4 +1,4 @@
-//! 원격 데몬 설정과 짝 맺은 PC (D1, `crate::remote_daemon`). 로컬 전용: 원격 포트에서는 막는다
+//! 원격 데몬 설정과 짝 맺은 PC (`crate::remote_daemon`). 로컬 전용: 원격 포트에서는 막는다
 //!
 //!   GET    /api/remote/settings            {enabled, port, address, transport, status, hostId, thisPc} hostId = 이 PC의 릴레이 PC id (없으면 "")
 //!                                          thisPc = {platform, agentVersion, publicIp} 이 PC 카드 (publicIp: 릴레이가 본 공인 IP, 모르면 null)
@@ -9,7 +9,7 @@
 //!   GET    /api/remote/clients             {clients:[{hostId, name, ownerName, label, pairedAt}]}
 //!   DELETE /api/remote/clients/:hostId     짝을 푼다 (그 PC의 토큰이 더는 통하지 않는다)
 //!
-//! 붙는 쪽 (D1b, `remote_daemon::peer`):
+//! 붙는 쪽 (`remote_daemon::peer`):
 //!   GET    /api/remote/peers                         {self:{hostId, name}|null, peers:[{hostId, name, ownerName, label, status, hasEndpoint, saved, platform, agentVersion,
 //!                                                     createdAt, lastSeenAt, publicIp, route}]} 같은 주인의 다른 PC (릴레이). 읽을 때 릴레이 목록에 맞춘다
 //!                                                     (`RemoteDaemon::sync_with_relay`). route = 저장한 PC에 지금 붙는 길 `direct`|`relay` (저장 안 했으면 null)
@@ -29,7 +29,7 @@
 //!   POST   /api/remote/install/:id/input {text}      ssh·sudo 물음에 답한다 (남기지 않는다)
 //!   DELETE /api/remote/install/:id                   그만두거나(진행 중) 끝난 설치를 치운다
 //!   ANY    /api/remote/daemons/:hostId/proxy/*path   원격 데몬의 `/path`(`api/…`·`health`)에 그대로 보낸다
-//!   GET    /api/remote/servers                       {daemons:[{hostId, name, label, ok, error_code?, servers}]} 이 PC(hostId null)와 원격 데몬마다의 서버 (G1c 합쳐 보기)
+//!   GET    /api/remote/servers                       {daemons:[{hostId, name, label, ok, error_code?, servers}]} 이 PC(hostId null)와 원격 데몬마다의 서버 (합쳐 보기)
 
 use axum::{
     body::Body,
@@ -234,7 +234,7 @@ pub struct RenameBody {
     name: String,
 }
 
-/// 내 PC 하나(이 PC 포함)의 이름을 바꾼다. 원본은 릴레이 PC 이름이라 어느 PC에서 바꿔도 모두에 보인다 (사용자 11-12)
+/// 내 PC 하나(이 PC 포함)의 이름을 바꾼다. 원본은 릴레이 PC 이름이라 어느 PC에서 바꿔도 모두에 보인다
 pub async fn rename_peer(State(state): State<IPCServer>, Path(host_id): Path<String>, Json(body): Json<RenameBody>) -> Response {
     let name = body.name.split_whitespace().collect::<Vec<_>>().join(" ");
     if name.is_empty() || name.chars().count() > MAX_PC_NAME {
@@ -588,7 +588,7 @@ mod tests {
         }
     }
 
-    /// 합쳐 보기 (G1c): 이 PC 서버와 저장한 원격 데몬마다의 서버. 닿지 않는 데몬은 ok:false와 오류 코드로 남는다
+    /// 합쳐 보기: 이 PC 서버와 저장한 원격 데몬마다의 서버. 닿지 않는 데몬은 ok:false와 오류 코드로 남는다
     #[tokio::test]
     async fn every_daemons_servers_come_in_one_list_and_an_unreachable_one_says_why() {
         use crate::remote_daemon::config;

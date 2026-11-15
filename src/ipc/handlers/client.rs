@@ -225,7 +225,7 @@ fn launch_args(body: &serde_json::Value) -> Result<LaunchLine, (&'static str, &'
         None | Some(serde_json::Value::Null) => None,
         Some(v) => Some(v.as_str().filter(|s| !s.is_empty()).ok_or(("instance", "must be an instance id"))?.to_string()),
     };
-    // GUI가 고른 원격 데몬 (G1, CLI 전역 `--daemon`). GUI를 띄울 때는 받지 않는다: GUI는 메인 데몬(`gui.mainDaemon`)부터 연다
+    // GUI가 고른 원격 데몬 (CLI 전역 `--daemon`). GUI를 띄울 때는 받지 않는다: GUI는 메인 데몬(`gui.mainDaemon`)부터 연다
     let daemon = match body.get("daemon") {
         None | Some(serde_json::Value::Null) => None,
         Some(_) if kind == Interface::Gui => return Err(("daemon", "only for the cli")),
@@ -428,7 +428,7 @@ mod launch_tests {
         assert_eq!(field(json!({ "kind": "cli", "instance": 5 })), "instance");
         assert_eq!(field(json!({ "kind": "gui", "instance": "" })), "instance");
 
-        // GUI에서 고른 원격 데몬(G1)은 CLI에도 넘긴다: 한 칸 `--daemon=값`
+        // GUI에서 고른 원격 데몬은 CLI에도 넘긴다: 한 칸 `--daemon=값`
         assert_eq!(
             line(json!({ "kind": "cli", "instance": "abc", "daemon": "host-b" })).1,
             vec!["tui".to_string(), "--server=abc".to_string(), "--daemon=host-b".to_string()]
@@ -453,7 +453,7 @@ mod console_tests {
     use super::*;
 
     /// 데몬 로그 번호는 데몬을 켤 때마다 1부터 다시 센다: 답에 버퍼 세대 `epoch`를 실어,
-    /// 이어 읽던 클라이언트가 바뀐 것을 알고 번호를 버리게 한다 (L55)
+    /// 이어 읽던 클라이언트가 바뀐 것을 알고 번호를 버리게 한다
     #[tokio::test]
     async fn the_daemon_console_carries_an_epoch_that_changes_with_the_buffer() {
         let tmp = tempfile::tempdir().unwrap();

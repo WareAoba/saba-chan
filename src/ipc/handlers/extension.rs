@@ -316,7 +316,7 @@ pub async fn fetch_manifest(
     State(state): State<IPCServer>,
     axum::extract::Query(query): axum::extract::Query<crate::ipc::store_cache::RefreshQuery>,
 ) -> Response {
-    // 데몬이 받아 둔 목록으로 바로 답한다 (`?refresh=true`면 새로). 네트워크 요청은 매니저 락 밖에서 (C12)
+    // 데몬이 받아 둔 목록으로 바로 답한다 (`?refresh=true`면 새로). 네트워크 요청은 매니저 락 밖에서
     match ExtensionManager::cached_remote(query.refresh).await {
         Ok(remote) => {
             // 설치된 익스텐션 중 업데이트 가능한 항목 계산
@@ -530,7 +530,7 @@ mod tests {
         assert_eq!(crate::service::extensions::install_source("nope", None, None, &remote).map_err(|(_, c)| c), Err("not_in_manifest"));
     }
 
-    // GUI #282 리뷰: 설치되지 않은 id로 설정을 저장하면 받아서 남겼다 (다른 익스텐션 경로처럼 없다고 답한다)
+    // 설치되지 않은 id로 설정을 저장하면 받아서 남겼다 (다른 익스텐션 경로처럼 없다고 답한다)
     #[tokio::test]
     async fn config_for_an_extension_that_is_not_installed_is_refused() {
         let tmp = tempfile::tempdir().unwrap();

@@ -339,7 +339,7 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
-    // 표를 끊는 데몬이라는 기록. 업데이터는 이게 없으면 옛 데몬으로 본다 (C13 전환 경로)
+    // 표를 끊는 데몬이라는 기록. 업데이터는 이게 없으면 옛 데몬으로 본다 (전환 경로)
     saba_chan_updater_lib::launch_ticket::record_core_version(env!("CARGO_PKG_VERSION"));
     // Python을 첫 모듈 호출 전에 미리 준비한다 (GUI는 /api/runtime/preflight로 진행을 본다)
     tokio::spawn(async {
@@ -591,7 +591,7 @@ fn spawn_background_tasks(
                     }
                 }
             }
-            // 크래시로 끝난 서버 다시 띄우기 (A1). 대기는 락 밖에서.
+            // 크래시로 끝난 서버 다시 띄우기. 대기는 락 밖에서.
             let restarts = sup.take_pending_restarts();
             drop(sup);
             for (instance_id, delay, generation) in restarts {
@@ -600,7 +600,7 @@ fn spawn_background_tasks(
         }
     });
 
-    // 업데이트 주기 확인 — GUI가 꺼져 있어도 데몬이 확인한다 (U6)
+    // 업데이트 주기 확인 — GUI가 꺼져 있어도 데몬이 확인한다
     ipc::updates::spawn_update_scheduler(ipc_server.update_state.clone(), shutdown_token.clone());
     // 업데이트 상태가 바뀌면 클라이언트에 알린다 (`update.status`). 클라이언트는 상태를 주기로 묻지 않는다
     ipc::updates::spawn_status_events(ipc_server.update_state.clone(), shutdown_token.clone());
@@ -608,7 +608,7 @@ fn spawn_background_tasks(
     ipc::updates::spawn_deferred_apply(ipc_server.update_state.clone());
     // 작업 기록 보관 기간 (앱 설정 auditKeepDays)
     audit::spawn_retention(ipc_server.config_store.clone(), shutdown_token.clone());
-    // 인스턴스 예약 작업: 백업·재시작·공지·업데이트 (A3)
+    // 인스턴스 예약 작업: 백업·재시작·공지·업데이트
     saba_core::scheduler::runner::spawn_scheduler(ipc_server.clone());
     // 인스턴스별 게임 서버 자동 업데이트 (auto_update)
     service::server_update::spawn_auto_updater(ipc_server.clone());
@@ -616,7 +616,7 @@ fn spawn_background_tasks(
     service::server_update::spawn_update_checks(ipc_server.clone());
     controllers::spawn_gate(ipc_server.clone());
 
-    // 접속자 수 (Q-5): 모듈이 `[status] players`를 선언한 켜진 서버만 1분마다 묻는다
+    // 접속자 수: 모듈이 `[status] players`를 선언한 켜진 서버만 1분마다 묻는다
     let players_sup = supervisor.clone();
     let players_cancel = shutdown_token.clone();
     let idle_state = ipc_server.clone();
@@ -650,7 +650,7 @@ fn spawn_background_tasks(
         }
     });
 
-    // 인터페이스가 모두 떠나도 데몬은 남는다 (데몬이 서비스의 주체, C14). 스스로 끝내지 않고, 다음에 켠 GUI·CLI가
+    // 인터페이스가 모두 떠나도 데몬은 남는다 (데몬이 서비스의 주체). 스스로 끝내지 않고, 다음에 켠 GUI·CLI가
     // 다시 붙는다. 끄는 것은 /api/daemon/shutdown 또는 Ctrl+C·SIGTERM뿐이다. 다시 띄우는 것은 트레이를 든 상주 GUI뿐이다.
     if daemon_only {
         // 데몬 온리 모드: 터미널 폴링 루프 시작 — 데몬 로그 + 프로세스 콘솔을 stderr에 표시

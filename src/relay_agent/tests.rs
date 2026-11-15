@@ -2,7 +2,7 @@ use super::*;
 use super::heartbeat::*;
 
 /// 서버 주소(`server.address`)는 릴레이가 하트비트 답에 실어 준 접속 주소를 쓴다. IP가 아닌 값·없는 값은 모른다로 둔다
-/// F8: 화면이 보일 상태 하나를 데몬이 정한다 (클라이언트가 오류 코드를 따로 해석하지 않는다)
+/// 화면이 보일 상태 하나를 데몬이 정한다 (클라이언트가 오류 코드를 따로 해석하지 않는다)
 #[test]
 fn agent_state_is_one_value_for_every_client() {
     let state = |s: AgentStatus| agent_state(&s);
@@ -335,7 +335,7 @@ async fn a_result_the_relay_did_not_take_is_sent_again() {
     assert!(session.agent.unsent.lock().unwrap().is_empty(), "a refused result is not kept");
 }
 
-/// 사용자 11-02: 게임 채팅이 디스코드에 늦게 올라간다. 이벤트는 모으지 않고 곧 보낸다.
+/// 게임 채팅이 디스코드에 늦게 올라간다. 이벤트는 모으지 않고 곧 보낸다.
 /// 이어서 오면 relay 한도(노드당 초당 5건) 안의 간격으로 묶어 보낸다
 #[tokio::test]
 async fn a_game_chat_line_is_sent_soon_and_following_lines_keep_under_the_relay_limit() {
@@ -472,7 +472,7 @@ async fn a_result_kept_after_every_retry_failed_is_sent_once_the_relay_recovers(
     assert_eq!(serde_json::from_str::<Value>(&BODY.lock().unwrap()).unwrap(), json!({ "success": true, "n": 1 }));
 }
 
-/// Codex 리뷰 #553: 원격 업데이트 뒤 데몬이 0.5초 만에 꺼져, 첫 전송이 실패한 결과(재시작 안내)를 다시 보내기 전에 잃었다.
+/// 원격 업데이트 뒤 데몬이 0.5초 만에 꺼져, 첫 전송이 실패한 결과(재시작 안내)를 다시 보내기 전에 잃었다.
 /// 종료 전에 보내는 중인 결과가 끝나기를 기다린다
 #[tokio::test]
 async fn shutdown_waits_for_a_result_still_being_sent() {
@@ -502,7 +502,7 @@ async fn shutdown_waits_for_a_result_still_being_sent() {
     task.await.unwrap();
 }
 
-/// Codex 리뷰 #549: 대기열 맨 앞 결과만 계속 5xx를 받으면 매 회차 거기서 멈춰 뒤 결과를 보내지 않았다
+/// 대기열 맨 앞 결과만 계속 5xx를 받으면 매 회차 거기서 멈춰 뒤 결과를 보내지 않았다
 #[tokio::test]
 async fn one_result_the_relay_keeps_refusing_does_not_block_the_others() {
     use axum::routing::post;
@@ -1384,7 +1384,7 @@ fn allowed_instances_are_sent_only_for_guilds_that_list_them() {
     assert_eq!(allowed_instances_by_guild(&json!(null)), None);
 }
 
-// PC 주인 DM 알림: 백업 범위와 끈 종류 (사용자 2026-11-08)
+// PC 주인 DM 알림: 백업 범위와 끈 종류
 #[test]
 fn dm_notice_is_sent_only_when_something_is_off() {
     use crate::config_store::{BackupNotice, BotConfig};
@@ -1485,7 +1485,7 @@ fn only_notifications_go_to_the_relay_without_paths_or_console_lines() {
     assert!(relay_event(&ev("provision.progress", json!({}))).is_none());
     let silent = ev("instance.unresponsive", json!({"at": 1, "instanceId": "i", "instance": "mc1", "minutes": 10, "restarting": false, "reason": "connection refused"}));
     assert_eq!(relay_event(&silent).unwrap()["data"], json!({"at": 1, "instanceId": "i", "instance": "mc1", "minutes": 10, "restarting": false}));
-    // R39 준비 알림은 계약 필드만 (디스코드 "다 켜졌어요")
+    // 준비 알림은 계약 필드만 (디스코드 "다 켜졌어요")
     let ready = ev("instance.ready", json!({"at": 1, "instanceId": "i", "instance": "mc1", "ok": false, "code": "start_failed", "line": "C:\\x"}));
     assert_eq!(relay_event(&ready).unwrap()["data"], json!({"at": 1, "instanceId": "i", "instance": "mc1", "ok": false, "code": "start_failed"}));
     // 켠 서버의 업데이트 알림은 종류·모듈·새 버전만

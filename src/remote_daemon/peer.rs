@@ -1,9 +1,9 @@
-//! 붙는 쪽 (D1b): 이 PC의 데몬이 같은 주인의 원격 데몬에 짝을 맺고, GUI·CLI의 요청을 그 데몬에 중계한다.
+//! 붙는 쪽: 이 PC의 데몬이 같은 주인의 원격 데몬에 짝을 맺고, GUI·CLI의 요청을 그 데몬에 중계한다.
 //!
 //!   connect   릴레이에서 그 PC 앞 연결표를 받아, 받은 지문을 고정하고 TLS로 붙어 `/remote/pair`로 토큰을 받는다
 //!   forward   저장한 원격 데몬에 요청 하나를 그대로 보낸다. 닿지 못하면 릴레이에서 새 주소·지문을 받아 한 번 더 해 본다
 //!
-//! 직접 붙지 못하거나 주소가 없는 PC(NAT 뒤)는 릴레이 터널로 붙는다 (T1, `tunnel.rs`)
+//! 직접 붙지 못하거나 주소가 없는 PC(NAT 뒤)는 릴레이 터널로 붙는다 (`tunnel.rs`)
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -550,7 +550,7 @@ impl Pool {
         if endpoint.address.is_empty() || self.direct_failed().contains_key(&idle_key(&endpoint)) { "relay" } else { "direct" }
     }
 
-    /// 직접 붙어 보고, 주소가 없거나 붙지 못하면 릴레이 터널로 (사용자 결정 2026-10-25: 릴레이는 연결될 때까지만 거든다).
+    /// 직접 붙어 보고, 주소가 없거나 붙지 못하면 릴레이 터널로 (릴레이는 연결될 때까지만 거든다).
     /// 직접 답을 받으면 열어 둔 터널을 놓는다 (그 위에서 받던 이벤트 스트림은 끝날 때까지 간다). 못 붙은 주소는 한동안 터널로만 보낸다(`try_direct`).
     /// 원격 데몬이 자리가 없어 끊은 것은 그 요청만 터널로 보내고 주소는 그대로 믿는다 (잇달아 `FULL_LIMIT`번이면 못 붙은 주소로 적는다). `request`는 보낼 때마다 새로 만든다
     async fn send_to(&self, relay: Option<&Target>, host_id: &str, endpoint: &Endpoint, request: &(dyn Fn() -> Option<Request<Body>> + Sync)) -> Sent {
@@ -1403,7 +1403,7 @@ mod tests {
     }
 
     /// 주소가 말없이 붙잡히면(방화벽이 버림) 직접 연결이 포기할 때(10초)까지 기다리지 않는다.
-    /// 잠깐 기다려도 안 열리면 터널도 같이 열고 먼저 열린 쪽으로 보낸다 (사용자 11-12: 연결을 누르면 결과까지 멈춤)
+    /// 잠깐 기다려도 안 열리면 터널도 같이 열고 먼저 열린 쪽으로 보낸다 (연결을 누르면 결과까지 멈춤)
     #[tokio::test]
     async fn a_silent_address_does_not_hold_the_request_until_the_direct_timeout() {
         let state = Relay::default();

@@ -245,7 +245,7 @@ mod tests {
         for ok in ["minecraft", "ko", "zh-TW", "a1b2-c3", "my.server"] {
             assert!(is_single_path_component(ok), "{ok}");
         }
-        // Windows는 끝의 `.`·공백을 버려 `x.`와 `x `가 `x` 폴더를 가리킨다 (백로그 L17c)
+        // Windows는 끝의 `.`·공백을 버려 `x.`와 `x `가 `x` 폴더를 가리킨다
         for bad in ["", ".", "..", "../x", "a/b", "a\\b", "C:", "C:x", "a\0b", "x.", "x ", "x. "] {
             assert!(!is_single_path_component(bad), "{bad:?}");
         }

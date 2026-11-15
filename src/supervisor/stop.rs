@@ -6,7 +6,7 @@ impl Supervisor {
     /// 인스턴스 id로 서버를 정지한다 (이름은 겹칠 수 있다)
     ///
     /// 데몬 락은 준비와 정리 때만 잡는다. 익스텐션 hook, 모듈 `stop()`, 종료 대기(최대
-    /// `stop_timeout`초)는 락 밖에서 한다 (C12).
+    /// `stop_timeout`초)는 락 밖에서 한다.
     pub async fn stop_server(sup: &tokio::sync::RwLock<Self>, instance_id: &str, module_name: &str, force: bool) -> Result<Value> {
         let result = Self::stop_server_inner(sup, instance_id, module_name, force).await;
         // 정지가 실패하면 정지 표시를 지운다: 남겨 두면 뒤에 오는 진짜 크래시를 "사용자가 멈춤"으로 판정한다
@@ -183,7 +183,7 @@ impl Supervisor {
             config_obj.insert("force".to_string(), json!(false));
             config_obj.insert("stop_call_limit".to_string(), json!(crate::plugin::DEFAULT_PLUGIN_TIMEOUT_SECS));
             match crate::plugin::PluginCall::new(module_path.clone(), "stop", Value::Object(config_obj)).serving(Some(managed.pid)).in_instance(host_context.clone()).run().await {
-                // 저장 후 종료를 요청할 길이 없다: 기다렸다 강제 종료하지 않고 사용자가 고르게 돌려준다 (MK10)
+                // 저장 후 종료를 요청할 길이 없다: 기다렸다 강제 종료하지 않고 사용자가 고르게 돌려준다
                 Ok(result) if is_graceful_stop_unavailable(&result) => return Ok(graceful_stop_unavailable(server_name, &result)),
                 Ok(_) => {}
                 Err(e) => tracing::warn!("Module stop for '{}' failed: {} (will force kill on timeout)", server_name, e),
@@ -227,7 +227,6 @@ impl Supervisor {
             }
         }
 
-        // Clean up managed.pid
         let pid_file = s.instance_store.managed_pid_file(&instance.id);
         let _ = std::fs::remove_file(&pid_file);
 
@@ -253,7 +252,7 @@ impl Supervisor {
         let mut s = sup.write().await;
         // 이미 스스로 끝났다: 정지 요청 때문이 아니므로 표시를 지우고 기록한다
         s.runtime.existing(&instance.id, |r| r.stop_requested = None);
-        // 크래시였어도 다시 켜지 않는다: 사용자가 정지를 눌렀다 (D-S6)
+        // 크래시였어도 다시 켜지 않는다: 사용자가 정지를 눌렀다
         if let Some(proc) = s.managed_store.remove(&instance.id).await {
             s.judge_exit(&instance.id, &proc, false).await;
         }
@@ -297,7 +296,7 @@ impl Supervisor {
             }));
         };
         let mut config_obj = stop_config;
-        // Pass PID from tracker so the module can kill the actual process
+        // 모듈이 실제 프로세스를 끝낼 수 있게 추적한 PID를 넘긴다
         config_obj.insert("pid".to_string(), json!(pid));
         config_obj.insert("force".to_string(), json!(force));
         // managed 서버는 위에서 데몬이 직접 멈춘다. 여기까지 오면 항상 non-managed.
@@ -307,10 +306,8 @@ impl Supervisor {
         config_obj.insert("stop_call_limit".to_string(), json!(limit));
         let config = Value::Object(config_obj);
 
-        // Execute stop function
         let result = crate::plugin::PluginCall::new(module_path.clone(), "stop", config).serving(Some(pid)).in_instance(host_context).timeout(limit).run().await?;
 
-        // Check if the module actually succeeded
         let plugin_success = result.get("success").and_then(|s| s.as_bool()).unwrap_or(false);
         let plugin_message = result.get("message")
             .and_then(|m| m.as_str())
@@ -383,7 +380,7 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    /// D-S10: 정지는 자기가 올린 세대를 알려 준다. 재시작이 정지 전에 따로 읽은 세대를 기준으로 삼으면,
+    /// 정지는 자기가 올린 세대를 알려 준다. 재시작이 정지 전에 따로 읽은 세대를 기준으로 삼으면,
     /// 그 틈에 끼어든 자동 재시작 시작을 "다른 정지·시작"으로 보고 스스로 취소해 서버가 꺼진 채 남았다
     #[tokio::test]
     async fn a_stop_reports_the_generation_it_set() {

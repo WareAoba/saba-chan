@@ -189,7 +189,7 @@ pub struct CliManifest {
     pub slots: HashMap<String, Value>,
 }
 
-/// 데이터 slot 이름 (Q-7). GUI 어휘로 통일했고, 옛 CLI 이름은 [`SLOT_ALIASES`]로 받는다
+/// 데이터 slot 이름. GUI 어휘로 통일했고, 옛 CLI 이름은 [`SLOT_ALIASES`]로 받는다
 pub const SLOT_BADGE: &str = "ServerCard.badge";
 
 pub const SLOT_STATUS: &str = "ServerDetail.status";

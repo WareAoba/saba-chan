@@ -1,4 +1,4 @@
-//! 가이드 (사용자 2026-11-11): 기능 하나를 화면에서 짚어 가며 알려 주는 짧은 안내.
+//! 가이드: 기능 하나를 화면에서 짚어 가며 알려 주는 짧은 안내.
 //!
 //! 가이드 하나 = 폴더 하나: `guide.toml`(무리·아이콘·완료 조건·단계)과 `locales/<언어>.json`(제목·요약·단계별 문구).
 //! 앱에 함께 싣는 것은 저장소 `guides/`를 빌드 때 넣고(`build.rs`), 따로 받은 것은 데이터 폴더 `guides/`에 둔다.
@@ -520,7 +520,7 @@ spot = "backup.create"
         assert_eq!(v["guides"][0]["done"], true);
     }
 
-    /// 가이드 진행도는 내 PC 모두가 함께 본다 (사용자 11-12): 한 PC에서 실제로 해낸 가이드는 끝낸 것으로 남겨 다른 PC에도 끝난 것으로 보인다
+    /// 가이드 진행도는 내 PC 모두가 함께 본다: 한 PC에서 실제로 해낸 가이드는 끝낸 것으로 남겨 다른 PC에도 끝난 것으로 보인다
     #[test]
     fn a_guide_done_on_one_pc_stays_done_on_the_others() {
         let facts = Facts { backup_any: true, ..Default::default() };

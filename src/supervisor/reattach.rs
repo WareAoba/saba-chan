@@ -3,14 +3,9 @@
 use super::*;
 
 impl Supervisor {
-    /// Detect orphaned managed processes from a previous daemon run and restore
-    /// their console log history from disk.
-    ///
-    /// For each instance that has a `managed.pid` file:
-    /// 1. Read the PID and check if it's still alive
-    /// 2. If alive: re-register in tracker + create a stub ManagedProcess with
-    ///    console history loaded from `logs/console.log`
-    /// 3. If dead: clean up the stale PID file
+    /// 앞 실행이 띄운 managed 서버에 다시 붙는다. 옛 기록을 먼저 옮겨 받고(`adopt_legacy_records`), 인스턴스마다
+    /// saba-runner에 다시 붙어 콘솔·stdin을 잇는다. 러너가 없으면 `managed.pid`의 서버가 아직 같은 프로세스일 때만
+    /// 디스크의 콘솔 기록으로 붙고, 아니면 그 PID 파일을 지운다
     pub(super) async fn reattach_orphaned_managed(&mut self) {
         self.adopt_legacy_records();
         let instances: Vec<_> = self.instance_store.list().to_vec();
@@ -20,7 +15,7 @@ impl Supervisor {
             let inst_dir = self.instance_store.instance_dir(&instance.id);
             let pid_file = self.instance_store.managed_pid_file(&instance.id);
 
-            // saba-runner가 쥔 서버면 콘솔·stdin까지 그대로 다시 붙는다 (C8b)
+            // saba-runner가 쥔 서버면 콘솔·stdin까지 그대로 다시 붙는다
             let log_pattern = self.module_loader.get_module(&instance.module_name)
                 .ok()
                 .and_then(|m| m.metadata.log_pattern.clone());
@@ -53,7 +48,7 @@ impl Supervisor {
 
             let pid_str = match std::fs::read_to_string(&pid_file) {
                 Ok(s) => s.trim().to_string(),
-                Err(_) => continue, // no managed.pid → not a managed instance
+                Err(_) => continue, // managed.pid가 없으면 managed 서버가 아니다
             };
 
             let pid: u32 = match pid_str.parse() {
@@ -75,10 +70,8 @@ impl Supervisor {
                 None => process::is_process_alive(pid),
             };
             if same {
-                // Process is still running — re-register it
                 self.tracker.track(&instance.id, pid);
 
-                // Create a stub ManagedProcess with history from disk
                 let stub = managed_process::ManagedProcess::create_reattached_stub(
                     pid,
                     &inst_dir,
@@ -91,7 +84,6 @@ impl Supervisor {
                     instance.name, pid
                 );
             } else {
-                // Process is dead (or the PID now belongs to another process) — clean up stale PID file
                 tracing::info!(
                     "Cleaning up stale managed.pid for '{}' (PID {} is no longer the server)",
                     instance.name, pid

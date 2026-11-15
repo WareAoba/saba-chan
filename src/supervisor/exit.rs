@@ -9,7 +9,7 @@ impl Supervisor {
     /// `process_snapshot`은 write lock 획득 전에 미리 스캔한 프로세스 목록입니다.
     /// 이를 통해 비용이 큰 시스템 콜(sysinfo)이 write lock 밖에서 실행되어
     /// GUI read 요청에 대한 블로킹을 최소화합니다.
-    /// 끝난 managed 프로세스가 왜 끝났는지 가르고, 크래시면 재시작을 예약한다 (A1). `may_restart`가 false면 예약하지 않는다
+    /// 끝난 managed 프로세스가 왜 끝났는지 가르고, 크래시면 재시작을 예약한다. `may_restart`가 false면 예약하지 않는다
     pub(super) async fn judge_exit(&mut self, instance_id: &str, proc: &ManagedProcess, may_restart: bool) {
         use managed_process::LogLevel;
         if proc.log_follower {
@@ -22,7 +22,7 @@ impl Supervisor {
         let stop_origin = self.runtime.existing(instance_id, |r| r.stop_requested.take()).flatten();
         let stop_requested = stop_origin.is_some();
         let Some(instance) = self.instance_store.get(instance_id).cloned() else { return };
-        // 준비되기 전에 끝났으면 그 시작의 준비 알림을 닫는다 (R39)
+        // 준비되기 전에 끝났으면 그 시작의 준비 알림을 닫는다
         ready::exited(&self.runtime, instance_id, &instance.name, stop_requested);
         let became_ready = ready::take_ready(&self.runtime, instance_id);
         let (graceful, artifacts, ready_patterns) = self
@@ -285,7 +285,7 @@ mod tests {
         assert_eq!((exit.data["kind"].clone(), exit.data["source"].clone(), exit.data["userName"].clone()), (json!("start_failed"), json!("discord"), json!("주인님")));
     }
 
-    /// 끝난 managed 서버를 크래시·정상 종료·사용자 정지·강제 종료로 가르고 크래시만 재시작한다 (A1)
+    /// 끝난 managed 서버를 크래시·정상 종료·사용자 정지·강제 종료로 가르고 크래시만 재시작한다
     #[cfg(unix)]
     #[tokio::test]
     async fn exits_are_judged_and_only_crashes_restart() {

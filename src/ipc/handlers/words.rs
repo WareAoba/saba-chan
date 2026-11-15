@@ -217,7 +217,7 @@ mod tests {
         assert_eq!(rows.len(), BUILTIN_COMMANDS.len());
     }
 
-    /// 옛 전역 별명 옮기기가 그사이 바뀐 길드 권한을 덮어쓰지 않는다: 옮길 값은 저장 잠금 안에서 지금 설정으로 만든다 (D-F5)
+    /// 옛 전역 별명 옮기기가 그사이 바뀐 길드 권한을 덮어쓰지 않는다: 옮길 값은 저장 잠금 안에서 지금 설정으로 만든다
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn moving_old_aliases_keeps_a_concurrent_permission_change() {
         use std::sync::Arc;

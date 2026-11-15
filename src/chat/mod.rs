@@ -307,7 +307,7 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
             }
         };
 
-        // 서버를 부르는 말은 띄어 쓸 수 있다: 앞에서부터 가장 길게 맞는 말, 없으면 첫 낱말 (사용자 지정 2026-11-06)
+        // 서버를 부르는 말은 띄어 쓸 수 있다: 앞에서부터 가장 길게 맞는 말, 없으면 첫 낱말
         let (alias, alias_end) = longest_phrase(text, self.server_phrases(&servers).into_iter().map(|p| (p, ())))
             .map_or((first, first_end), |(p, end, ())| (p, end));
         let rest = text[alias_end..].trim_start();
@@ -783,7 +783,7 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
         Done::new(Text::seq([format!("**{}**\n", server.name).into(), summary]), true)
     }
 
-    /// 상태 한 줄: 실행 여부, 켜져 있으면 접속자와 켜진 시간 (PID는 보이지 않는다, 사용자 지정 2026-11-06)
+    /// 상태 한 줄: 실행 여부, 켜져 있으면 접속자와 켜진 시간 (PID는 보이지 않는다)
     async fn status(&self, server: &ServerView) -> Text {
         let state = match (server.is_running(), server.starting) {
             (true, true) => self.t("status.starting", &[]),

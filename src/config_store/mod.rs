@@ -111,7 +111,7 @@ pub struct GuiSettings {
     /// 앱을 열면 먼저 볼 원격 데몬 hostId (메인 데몬, 01 §1.4.2 7). 없으면 이 PC. 상단 바에서 고른 데몬은 저장하지 않는다
     #[serde(skip_serializing_if = "Option::is_none")]
     pub main_daemon: Option<String>,
-    /// 서버 목록 보기 (G1c): "switch"(고른 데몬만) | "unified"(다른 데몬의 서버도 데몬별로). 없으면 switch
+    /// 서버 목록 보기: "switch"(고른 데몬만) | "unified"(다른 데몬의 서버도 데몬별로). 없으면 switch
     #[serde(skip_serializing_if = "Option::is_none")]
     pub daemon_view: Option<String>,
 }
@@ -452,7 +452,7 @@ pub struct BotConfig {
     pub new_guild_instances: NewGuildInstances,
     /// 백업 결과를 PC 주인에게 DM으로 알리는 범위 (`failures`면 실패만). 릴레이가 하트비트 `backupNotice`로 거른다
     pub backup_notice: BackupNotice,
-    /// PC 주인 DM 알림을 종류별로 켜고 끈다 (사용자 2026-11-08). 백업은 `backup_notice`가 맡는다.
+    /// PC 주인 DM 알림을 종류별로 켜고 끈다. 백업은 `backup_notice`가 맡는다.
     /// 릴레이가 하트비트 `dmOff`(끈 종류)·`dmOn`(켜야 보내는 종류 중 켠 것)으로 거른다
     pub dm_notice: DmNotice,
 }
@@ -477,7 +477,7 @@ pub struct DmNotice {
     pub chatbot_usage: bool,
     /// AI 모더레이션 신고 (릴레이 `moderation`)
     pub moderation: bool,
-    /// PC 연결 끊김: 서버가 켜진 채로 이 PC가 릴레이에 닿지 않을 때 (릴레이 `offlineNotice`). 켜야 보낸다 (사용자 2026-11-12)
+    /// PC 연결 끊김: 서버가 켜진 채로 이 PC가 릴레이에 닿지 않을 때 (릴레이 `offlineNotice`). 켜야 보낸다
     pub offline: bool,
 }
 
@@ -688,7 +688,7 @@ const LOCAL_SECTIONS: &[&str] = &["schemaVersion", "updates", "boot", "extension
 /// 클라이언트 네임스페이스로 쓸 수 없는 키 (각자 전용 API가 있다)
 const RESERVED_SECTIONS: &[&str] = &["schemaVersion", "gui", "relay", "updates", "boot", "extensions", "chatbot", "sandbox", "node", "paths", "remote"];
 
-/// `nodeSettings[guild]`에서 전용 API만 바꾸는 키: 권한 API(P1), 디스코드 설정 API(I2, `discord`),
+/// `nodeSettings[guild]`에서 전용 API만 바꾸는 키: 권한 API, 디스코드 설정 API(`discord`),
 /// 0.1.10까지의 길드·인스턴스 낱말(`instances`, 시작할 때 `serverWords`로 옮긴다), 길드가 쓸 서버 API(`allowedInstances`),
 /// 켜짐·꺼짐 알림·자리 꽉 참 알림 API(`startNotice`·`fullNotice`)
 pub const PERMISSION_KEYS: &[&str] = &[
@@ -867,7 +867,7 @@ impl ConfigStore {
         patch::revision(&serde_json::to_value(&*self.bot_config.read().await).unwrap_or_default())
     }
 
-    /// 봇 설정 저장. 권한 키라 바꾸지 않고 둔 경로(`nodeSettings.<길드>.<키>`, L61)와 새 revision도 돌려준다.
+    /// 봇 설정 저장. 권한 키라 바꾸지 않고 둔 경로(`nodeSettings.<길드>.<키>`)와 새 revision도 돌려준다.
     /// `revision`을 주면 그사이 바뀌었을 때 `RevisionConflict`로 거절한다
     pub async fn write_bot(&self, json: Value, how: Apply, revision: Option<&str>) -> Result<(BotConfig, Vec<String>, String), ConfigStoreError> {
         self.merge_bot_config(json, how, revision, true).await
@@ -948,7 +948,7 @@ impl ConfigStore {
     }
 
     /// 예전 낱말을 인스턴스 낱말로 옮긴 결과를 저장한다: `nodeSettings`·`serverWords`를 바꾸고 옛 세 키를 비운다
-    /// `migrate`는 쓰기 잠금 안에서 지금 설정으로 옮긴 값을 만든다: 그사이 바뀐 길드 권한을 덮지 않게 (D-F5).
+    /// `migrate`는 쓰기 잠금 안에서 지금 설정으로 옮긴 값을 만든다: 그사이 바뀐 길드 권한을 덮지 않게.
     /// 옮길 것이 없으면(None) 아무것도 바꾸지 않는다
     pub async fn finish_words_migration<T>(&self, migrate: impl FnOnce(&BotConfig) -> Option<(crate::chat::words::Migrated, T)>) -> Result<Option<T>, ConfigStoreError> {
         let mut config = self.bot_config.write().await;
@@ -989,7 +989,7 @@ impl ConfigStore {
         let defaults = Self::defaults_json(kind)
             .and_then(|d| d.as_object().cloned())
             .ok_or_else(|| ConfigStoreError::InvalidData(format!("Unknown config: {}", kind)))?;
-        // 읽기부터 저장까지 쓰기 잠금을 잡는다: 그사이 저장된 다른 키를 되돌리지 않게 (D-F4)
+        // 읽기부터 저장까지 쓰기 잠금을 잡는다: 그사이 저장된 다른 키를 되돌리지 않게
         let mut gui = if kind == "gui" { Some(self.gui_settings.write().await) } else { None };
         let mut bot = if kind == "gui" { None } else { Some(self.bot_config.write().await) };
         let full = match keys {
@@ -1040,7 +1040,7 @@ impl ConfigStore {
         }
     }
 
-    // ── 내보내기·가져오기 (A9) ──
+    // ── 내보내기·가져오기 ──
 
     /// 다른 PC로 옮길 설정 네임스페이스. 이 PC에만 맞는 것(업데이트 채널·부트·익스텐션 켜짐)은 뺀다.
     /// `secrets`가 false면 챗봇 API 키를 뺀다.
@@ -1182,7 +1182,7 @@ pub enum ConfigStoreError {
 pub enum Apply {
     Overlay,
     MergePatch,
-    /// 설정 가져오기: `Overlay`와 같되 `nodeSettings`는 길드마다 키별로 얹는다 (zip에 없는 길드·키는 남긴다, EE8)
+    /// 설정 가져오기: `Overlay`와 같되 `nodeSettings`는 길드마다 키별로 얹는다 (zip에 없는 길드·키는 남긴다)
     Import,
 }
 
@@ -1302,7 +1302,7 @@ mod tests {
         store.file.set_section("remote", serde_json::json!({"enabled": true, "clients": []})).unwrap();
         assert!(!store.portable_sections(true).contains_key("remote"));
         assert!(!ConfigStore::is_client_section("remote"));
-        // Codex 리뷰 #544: 모듈·익스텐션 폴더(PC마다 다른 절대 경로)는 옮기기 API로만 바뀌고 내보내지 않는다
+        // 모듈·익스텐션 폴더(PC마다 다른 절대 경로)는 옮기기 API로만 바뀌고 내보내지 않는다
         store.file.set_section("paths", serde_json::json!({"modules": "D:\\Games\\modules"})).unwrap();
         assert!(!store.portable_sections(true).contains_key("paths"));
         assert!(!ConfigStore::is_client_section("paths"));
@@ -1438,7 +1438,7 @@ mod tests {
         assert!(saved.system_monitor_expanded);
     }
 
-    /// 사용자 11-11: 시스템 모니터는 끔·고정·떠 있는 창 중 하나(기본 고정 = 지금 모습). 떠 있는 창 자리는 모서리와 그 모서리에서의 거리
+    /// 시스템 모니터는 끔·고정·떠 있는 창 중 하나(기본 고정 = 지금 모습). 떠 있는 창 자리는 모서리와 그 모서리에서의 거리
     #[test]
     fn system_monitor_mode_and_float_are_validated() {
         let d = GuiSettings::default();
@@ -1463,7 +1463,7 @@ mod tests {
         }
     }
 
-    /// 사용자 11-08: 창 바탕 반투명은 기본으로 켜져 있고, 고를 수 없는 재질은 거절한 뒤 파일에서는 기본값으로 읽는다
+    /// 창 바탕 반투명은 기본으로 켜져 있고, 고를 수 없는 재질은 거절한 뒤 파일에서는 기본값으로 읽는다
     #[test]
     fn window_backdrop_is_validated_and_sanitized() {
         assert!(GuiSettings::default().window_backdrop.enabled);
@@ -1696,7 +1696,7 @@ mod tests {
         assert_eq!(store.get_bot_config().await.node_settings["h"]["defaultLevel"], -1);
     }
 
-    /// 가져오기는 zip에 있는 길드만 길드 안에서 키별로 얹는다: zip에 없는 길드와 키는 이 PC 것이 남는다 (EE8)
+    /// 가져오기는 zip에 있는 길드만 길드 안에서 키별로 얹는다: zip에 없는 길드와 키는 이 PC 것이 남는다
     #[tokio::test]
     async fn importing_node_settings_merges_guild_by_guild() {
         use serde_json::json;
@@ -1716,7 +1716,7 @@ mod tests {
         );
     }
 
-    /// PATCH는 보낸 칸만 바꾸고(`null`은 지우기), 읽은 뒤 바뀐 설정에는 쓰지 않는다 (0.1.10 결정 1)
+    /// PATCH는 보낸 칸만 바꾸고(`null`은 지우기), 읽은 뒤 바뀐 설정에는 쓰지 않는다
     #[tokio::test]
     async fn a_patch_changes_only_what_it_names_and_refuses_a_stale_revision() {
         use serde_json::json;
@@ -1735,7 +1735,7 @@ mod tests {
         assert!(matches!(stale, Err(ConfigStoreError::RevisionConflict(now)) if now == revision));
         assert_eq!(store.get_bot_config_json().await["nodeSettings"]["g2"]["memo"], "b");
 
-        // 권한 키는 PATCH로도 바뀌지 않는다 (L61)
+        // 권한 키는 PATCH로도 바뀌지 않는다
         let (_, ignored, _) = store.write_bot(json!({"nodeSettings": {"g2": {"defaultLevel": 3}}}), Apply::MergePatch, None).await.unwrap();
         assert_eq!(ignored, ["nodeSettings.g2.defaultLevel"]);
 
@@ -1756,7 +1756,7 @@ mod tests {
         assert!(saved.contains("\"mainDaemon\": \"host-b\"") || saved.contains("\"mainDaemon\":\"host-b\""), "{saved}");
         store.write_gui(serde_json::json!({"mainDaemon": null}), Apply::Overlay, None).await.unwrap();
         assert_eq!(store.get_gui_settings().await.main_daemon, None);
-        // 서버 목록 보기 (G1c): 없으면 고른 데몬만
+        // 서버 목록 보기: 없으면 고른 데몬만
         store.write_gui(serde_json::json!({"daemonView": "unified"}), Apply::Overlay, None).await.unwrap();
         assert_eq!(store.get_gui_settings().await.daemon_view.as_deref(), Some("unified"));
     }
@@ -1777,7 +1777,7 @@ mod tests {
         }
     }
 
-    /// 봇 설정 키 일부 초기화가 그사이 저장된 다른 키를 되돌리지 않는다: 지금 값은 쓰기 잠금 안에서 읽는다 (D-F4)
+    /// 봇 설정 키 일부 초기화가 그사이 저장된 다른 키를 되돌리지 않는다: 지금 값은 쓰기 잠금 안에서 읽는다
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn resetting_some_bot_keys_keeps_a_concurrent_save() {
         let tmp = TempDir::new().unwrap();
@@ -1970,7 +1970,7 @@ mod tests {
         assert!(gui.enable_transitions);
     }
 
-    /// 사용자 10-27: 창 닫기·새 서버 기본값·알림 시간·작업 기록 보관·콘솔 시각. 기본은 지금 동작 그대로, 모르는 선택지는 거절
+    /// 창 닫기·새 서버 기본값·알림 시간·작업 기록 보관·콘솔 시각. 기본은 지금 동작 그대로, 모르는 선택지는 거절
     #[tokio::test]
     async fn app_options_default_to_todays_behaviour_and_refuse_unknown_choices() {
         let tmp = TempDir::new().unwrap();
@@ -1995,7 +1995,7 @@ mod tests {
         assert_eq!((saved.close_action.as_str(), saved.console_timestamps.as_str(), saved.audit_keep_days), ("tray", "12h", 30));
     }
 
-    /// 사용자 11-06: 시스템 모니터에 띄울 항목을 고른다. 없으면 기본, null로 되돌리고, 너무 많거나 긴 id는 거절
+    /// 시스템 모니터에 띄울 항목을 고른다. 없으면 기본, null로 되돌리고, 너무 많거나 긴 id는 거절
     #[tokio::test]
     async fn monitor_items_are_saved_and_reset_with_null() {
         let tmp = TempDir::new().unwrap();
@@ -2012,7 +2012,7 @@ mod tests {
         assert!(ConfigStore::new(tmp.path()).get_gui_settings().await.monitor_items.is_none());
     }
 
-    /// 사용자 11-09: 닫은 가이드는 앱을 다시 켜도 닫힌 채로 있고, 비우면 다시 보인다
+    /// 닫은 가이드는 앱을 다시 켜도 닫힌 채로 있고, 비우면 다시 보인다
     #[tokio::test]
     async fn closed_guides_are_remembered_and_can_be_reopened() {
         let tmp = TempDir::new().unwrap();
@@ -2025,7 +2025,7 @@ mod tests {
         assert!(ConfigStore::new(tmp.path()).get_gui_settings().await.closed_guides.is_empty());
     }
 
-    /// 사용자 11-02: 콘솔 글꼴을 글자(영문·한글·일본어·중국어)마다 고른다. 기본 Cascadia·D2Coding·HackGen·Sarasa SC, 그 글자의 후보 밖은 거절
+    /// 콘솔 글꼴을 글자(영문·한글·일본어·중국어)마다 고른다. 기본 Cascadia·D2Coding·HackGen·Sarasa SC, 그 글자의 후보 밖은 거절
     #[tokio::test]
     async fn console_fonts_are_chosen_per_script() {
         let tmp = TempDir::new().unwrap();
@@ -2180,7 +2180,7 @@ mod tests {
             "g": { "ownerDiscordId": "evil", "members": { "evil": 2 }, "allowedInstances": ["y"], "preset": "loose" },
             "k": {}
         } }));
-        // 되돌린 키는 알린다: 저장이 성공해도 그 값은 바뀌지 않았다 (L61)
+        // 되돌린 키는 알린다: 저장이 성공해도 그 값은 바뀌지 않았다
         let ignored = keep_permission_keys(&mut merged, &current);
         assert_eq!(ignored, ["nodeSettings.g.allowedInstances", "nodeSettings.g.members", "nodeSettings.g.ownerDiscordId", "nodeSettings.g.preset"]);
         assert_eq!(merged["nodeSettings"], serde_json::json!({

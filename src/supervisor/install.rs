@@ -31,7 +31,7 @@ impl InstanceInstall {
     }
 }
 
-/// 모듈 `install_server` 호출 하나 (D5). 설치 API·새 인스턴스 설치·서버 업데이트가 같은 키를 싣고 같은 한도로 부른다
+/// 모듈 `install_server` 호출 하나. 설치 API·새 인스턴스 설치·서버 업데이트가 같은 키를 싣고 같은 한도로 부른다
 pub(crate) struct InstallCall {
     module_name: String,
     entry: String,
@@ -162,7 +162,7 @@ fn same_file_path(a: &std::path::Path, b: &std::path::Path) -> bool {
 }
 
 impl Supervisor {
-    /// List available server versions (delegates to module lifecycle)
+    /// 받을 수 있는 서버 버전 (모듈 lifecycle)
     pub async fn list_versions(
         sup: &tokio::sync::RwLock<Self>,
         module_name: &str,
@@ -192,7 +192,6 @@ impl Supervisor {
         Ok(result)
     }
 
-    /// Get detailed info for a specific version
     pub async fn get_version_details(
         sup: &tokio::sync::RwLock<Self>,
         module_name: &str,
@@ -228,7 +227,7 @@ impl Supervisor {
         }
     }
 
-    /// Install a server: download binary, setup directory, optional initial settings.
+    /// 서버를 설치한다: 실행 파일을 받고 폴더를 만들고, 주면 처음 설정을 쓴다.
     /// 기존 실행 파일이 존재하면 `.bak`으로 백업하고, 실패 시 복원합니다.
     /// `instance`: 그 인스턴스의 설정과 격리 실행이 쓸 데이터 폴더 (처음 설치와 같은 값을 받는다)
     /// `keep_executable`: 그 인스턴스가 실제로 띄우는 파일 (모듈 실행 파일과 다르면 함께 백업한다)
@@ -381,8 +380,7 @@ impl Supervisor {
         }
     }
 
-    /// Detect the installed server version by inspecting the server binary (e.g. parsing server.jar).
-    /// Delegates to the module's `get_installed_version` lifecycle function.
+    /// 설치된 서버 버전 (모듈 `get_installed_version`이 server.jar 등을 읽는다)
     pub async fn get_installed_version(
         sup: &tokio::sync::RwLock<Self>,
         module_name: &str,
@@ -401,7 +399,7 @@ impl Supervisor {
         call.run().await
     }
 
-    /// 감지한 서버 버전을 저장한다. 감지를 시작할 때 본 값(`seen`)에서 그사이 바뀌었으면 더 새 값이므로 두고 false (D-S12)
+    /// 감지한 서버 버전을 저장한다. 감지를 시작할 때 본 값(`seen`)에서 그사이 바뀌었으면 더 새 값이므로 두고 false
     pub fn save_detected_version(&mut self, instance_id: &str, seen: Option<&str>, version: &str) -> Result<bool> {
         let Some(mut instance) = self.instance_store.get(instance_id).cloned() else { return Ok(false) };
         if instance.server_version.as_deref() != seen || seen == Some(version) {

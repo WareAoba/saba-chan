@@ -274,7 +274,7 @@ mod tests {
         assert!(!dir.path().parent().unwrap().join("escape.json").exists());
     }
 
-    /// Codex 리뷰 #550 P1: HOST REST가 인스턴스만 보고 잇던 탓에, 꺼진 서버의 rest_port가 같은 PC의 다른 서비스를 가리키면
+    /// HOST REST가 인스턴스만 보고 잇던 탓에, 꺼진 서버의 rest_port가 같은 PC의 다른 서비스를 가리키면
     /// 데몬 권한으로 그 서비스에 요청할 수 있었다. 그 포트를 인스턴스 서버가 들을 때만 잇는다
     #[tokio::test]
     async fn host_rest_refuses_a_port_the_instance_server_does_not_hold() {
@@ -298,7 +298,7 @@ mod tests {
         serve(&proxy, &json!({"id":"r1","op":"instance.rest","args":{"method":"GET","path":"/x"}}).to_string()).await;
         let reply: serde_json::Value = serde_json::from_slice(&std::fs::read(dir.path().join("r1.json")).unwrap()).unwrap();
         assert_eq!(reply["error_code"], "port_not_served", "{reply}");
-        // Codex 재검증 #550: PID 없이 온 호출(익스텐션 명령)도 데몬이 추적하는 서버가 그 포트를 들으면 잇는다
+        // PID 없이 온 호출(익스텐션 명령)도 데몬이 추적하는 서버가 그 포트를 들으면 잇는다
         supervisor.read().await.tracker.track(&id, std::process::id());
         serve(&proxy, &json!({"id":"r2","op":"instance.rest","args":{"method":"GET","path":"/x"}}).to_string()).await;
         let reply: serde_json::Value = serde_json::from_slice(&std::fs::read(dir.path().join("r2.json")).unwrap()).unwrap();

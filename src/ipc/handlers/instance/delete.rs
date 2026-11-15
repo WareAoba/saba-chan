@@ -95,7 +95,7 @@ async fn delete_instance_held(state: IPCServer, id: String, keep_settings: bool)
     };
 
     // ── 실행 중이면 먼저 정지 ──
-    // 저장소에서 떼어 내는 것만 락 안에서, 강제 종료 대기는 락 밖에서 (C12)
+    // 저장소에서 떼어 내는 것만 락 안에서, 강제 종료 대기는 락 밖에서
     let running_pid = supervisor.tracker.get_pid(&id);
     let started = supervisor.tracker.get_start_time(&id);
     let managed = supervisor.managed_store.remove(&id).await;

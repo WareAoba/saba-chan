@@ -44,7 +44,7 @@ pub struct ExtensionListItem {
     pub dependencies: HashMap<String, String>,
     pub gui: Option<GuiManifest>,
     pub cli: Option<CliManifest>,
-    /// 데이터 slot (`cli.slots`를 통일 이름으로, 값은 늘 배열). 인터페이스는 이것만 읽는다 (Q-7)
+    /// 데이터 slot (`cli.slots`를 통일 이름으로, 값은 늘 배열). 인터페이스는 이것만 읽는다
     #[serde(default)]
     pub slots: serde_json::Map<String, Value>,
     pub instance_fields: HashMap<String, FieldDef>,
@@ -61,7 +61,7 @@ pub struct ExtensionListItem {
     pub incompatible: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<String>,
-    /// 신뢰 표시: verified(서명된 카탈로그에서 받았고 그대로) · modified · unverified (M12)
+    /// 신뢰 표시: verified(서명된 카탈로그에서 받았고 그대로) · modified · unverified
     pub trust: saba_chan_updater_lib::integrity::Trust,
     /// GUI 번들이 있을 때만: 데몬이 번들을 서빙하는가 (`gui_allowed`). false면 GUI가 사용자에게 묻고
     /// `POST /api/sandbox/extension-gui/ext-<id>`로 기록한다

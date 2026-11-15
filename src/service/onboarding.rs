@@ -1,4 +1,4 @@
-//! 처음 쓰는 사람의 다음 할 일 (J1-a): 단계 계산과 첫 시작 기록
+//! 처음 쓰는 사람의 다음 할 일: 단계 계산과 첫 시작 기록
 
 use serde_json::json;
 
@@ -34,7 +34,7 @@ struct Progress {
 }
 
 /// `{steps:[{id, done, optional}], next}`: `next`는 아직 안 한 첫 필수 단계 (다 했으면 null).
-/// 디스코드 연결이 먼저다 (사용자 결정 2026-11-09): 연결하면 친구 접속 주소·포트 확인도 바로 쓴다
+/// 디스코드 연결이 먼저다: 연결하면 친구 접속 주소·포트 확인도 바로 쓴다
 fn onboarding_steps(p: &Progress) -> serde_json::Value {
     let steps = [
         ("discord", p.paired, false),

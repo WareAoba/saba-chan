@@ -82,7 +82,7 @@ pub struct ServerInstance {
     /// 여기에 선언된 익스텐션이 활성화되어 있지 않으면 시작이 차단됩니다.
     #[serde(default)]
     pub required_extensions: Vec<String>,
-    /// 예약 작업 (A3): 백업·재시작·공지·업데이트
+    /// 예약 작업: 백업·재시작·공지·업데이트
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub schedule: Vec<crate::scheduler::ScheduledTask>,
     /// 자동 백업(예약·업데이트 전·복원 전)을 몇 개 남길지. 수동 백업은 세지 않는다. 기본 10
@@ -721,7 +721,7 @@ impl InstanceStore {
             .and_then(|v| v.as_object().map(|o| LEGACY_RCON_KEYS.iter().any(|k| o.contains_key(*k))))
             .unwrap_or(false);
         // 사용 모드 전(2026-11-08)에 "조작 가능한 사람만 접속"을 켠 서버: access가 없어 서버 공용으로 읽히면 자동 강퇴가 꺼진다.
-        // 전용 멤버로 옮겨 한 번 저장한다. 서버 공용으로 바꾸면 controllers_only를 끄므로(PATCH) 이 조건은 예전 파일뿐이다 (리뷰 P1)
+        // 전용 멤버로 옮겨 한 번 저장한다. 서버 공용으로 바꾸면 controllers_only를 끄므로(PATCH) 이 조건은 예전 파일뿐이다
         let legacy_gate = instance.controllers_only
             && instance.access.is_shared()
             && raw.as_ref().and_then(|v| v.as_object()).is_some_and(|o| !o.contains_key("access"));
@@ -942,7 +942,7 @@ mod tests {
         assert_eq!(inst.module_settings.get("Other"), Some(&serde_json::json!(1)));
     }
 
-    /// D3: REST 접속값은 `module_settings`에만 둔다. 0.1.14-beta.1까지의 instance.json이 인스턴스 칸으로 저장한 값은
+    /// REST 접속값은 `module_settings`에만 둔다. 0.1.14-beta.1까지의 instance.json이 인스턴스 칸으로 저장한 값은
     /// 모듈이 선언한 설정(`[protocols.rest]`)으로 한 번 옮기고, 다시 저장한 파일에는 옛 칸이 없다.
     /// 인스턴스 칸이 데몬이 접속하던 값이라 같은 설정의 옛 값을 덮는다. REST를 받지 않는 모듈이면 버린다
     #[test]
@@ -974,7 +974,7 @@ mod tests {
         assert!(serde_json::to_value(&plain).unwrap().get("rest_port").is_none());
     }
 
-    /// 리뷰 P1 (2026-11-08): 사용 모드 전에 "조작 가능한 사람만 접속"을 켜 둔 서버는 access가 없어 서버 공용으로 읽혀
+    /// 사용 모드 전에 "조작 가능한 사람만 접속"을 켜 둔 서버는 access가 없어 서버 공용으로 읽혀
     /// 자동 강퇴가 꺼졌다. 읽을 때 전용 멤버로 옮겨 저장한다 (명단 밖 자동 강퇴가 그대로 이어진다)
     #[test]
     fn a_server_that_kicked_people_off_the_list_before_usage_modes_becomes_members_only() {
@@ -1031,7 +1031,7 @@ mod tests {
         );
     }
 
-    // 백로그 L17d: 인스턴스 폴더 자리에 놓인 링크를 따라가 다른 곳의 폴더를 인스턴스로 불러왔다.
+    // 인스턴스 폴더 자리에 놓인 링크를 따라가 다른 곳의 폴더를 인스턴스로 불러왔다.
     // 저장·삭제가 그 폴더를 건드린다
     #[cfg(unix)]
     #[test]
@@ -1235,7 +1235,7 @@ mod tests {
         assert!(temps.is_empty(), "no temp file left: {temps:?}");
     }
 
-    /// 손으로 고치다 깨진 settings.json은 다음 저장이 덮기 전에 사본으로 남긴다 (D-S5)
+    /// 손으로 고치다 깨진 settings.json은 다음 저장이 덮기 전에 사본으로 남긴다
     #[test]
     fn a_broken_settings_file_is_kept_before_anything_overwrites_it() {
         let tmp = TempDir::new().unwrap();

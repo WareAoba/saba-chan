@@ -267,7 +267,7 @@ async fn find_base_python(data_dir: &Path) -> Result<String> {
     Ok(exe.to_string_lossy().into_owned())
 }
 
-/// 포터블 Python 받기 → 추출 → 검증 (`python_runtime::install_portable`). 고정 해시와 다르면 풀지 않는다 (C6)
+/// 포터블 Python 받기 → 추출 → 검증 (`python_runtime::install_portable`). 고정 해시와 다르면 풀지 않는다
 async fn download_portable_python(data_dir: &Path) -> Result<PathBuf> {
     runtime::install_portable(&Preparing, data_dir, &|_, _| {}).await.with_context(|| {
         format!(

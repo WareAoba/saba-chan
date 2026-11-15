@@ -3,7 +3,7 @@
 //! - `GET /api/system/paths` — 데이터·설치·인스턴스·모듈·익스텐션 폴더의 지금 값과 기본값, 모듈·익스텐션 폴더의 출처
 //! - `POST /api/system/paths/move` `{kind: "modules"|"extensions", target}` — 고른 폴더 아래로 옮긴다
 //!   (`saba_chan_updater_lib::component_dirs`). 실패는 HTTP 200 `{ok: false, error_code: "paths_<PathError 코드>", error}`
-//! - `GET /api/system/browse?path=&files=` — 이 PC의 폴더 안(폴더와 `files` 확장자의 파일). 원격 데몬을 다룰 때 GUI가 그 PC의 경로를 고른다(D2)
+//! - `GET /api/system/browse?path=&files=` — 이 PC의 폴더 안(폴더와 `files` 확장자의 파일). 원격 데몬을 다룰 때 GUI가 그 PC의 경로를 고른다
 
 use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use saba_chan_updater_lib::component_dirs::{self, Kind, Layout, PathError};
@@ -271,7 +271,7 @@ mod tests {
     use std::sync::Arc;
     use tokio::sync::RwLock;
 
-    /// 원격 데몬을 다룰 때 GUI가 그 PC의 폴더·파일을 고른다 (D2): 폴더는 늘, 파일은 고른 확장자만
+    /// 원격 데몬을 다룰 때 GUI가 그 PC의 폴더·파일을 고른다: 폴더는 늘, 파일은 고른 확장자만
     #[test]
     fn browsing_lists_folders_and_only_the_asked_files() {
         let dir = tempfile::tempdir().unwrap();
@@ -387,7 +387,7 @@ mod tests {
                 .unwrap_err();
             assert_eq!((err.code, err.detail.as_str()), ("busy", "update"));
         }
-        // Codex 리뷰 #544: 설치 폴더(데몬 실행 파일 폴더) 안은 설치기처럼 거절한다
+        // 설치 폴더(데몬 실행 파일 폴더) 안은 설치기처럼 거절한다
         let install = std::env::current_exe().unwrap().parent().unwrap().join("games");
         let err = move_component_dir(&state, Kind::Modules, &install, layout.clone(), config.clone()).await.unwrap_err();
         assert_eq!(err.code, "overlaps_install");

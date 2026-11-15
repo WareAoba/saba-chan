@@ -1,8 +1,8 @@
-//! 원격 데몬 (D1, 05 §4.4 (j)): 같은 주인의 다른 PC가 이 데몬에 TLS로 직접 붙는 원격 포트.
+//! 원격 데몬 (05 §4.4 (j)): 같은 주인의 다른 PC가 이 데몬에 TLS로 직접 붙는 원격 포트.
 //!
 //! 설정(config.json `remote`)이 켜져 있으면 자체 서명 인증서로 원격 포트를 열고, 공인 주소와 인증서 지문을 릴레이에 올린다.
 //! 붙는 PC는 릴레이에서 받은 연결표로 한 번 짝을 맺고(`/remote/pair`), 그 뒤로는 받은 토큰으로 데몬 API를 부른다.
-//! 공인 주소가 없으면 주소 없이 올리고, 붙는 PC는 릴레이 터널로 붙는다 (T1, `tunnel.rs`)
+//! 공인 주소가 없으면 주소 없이 올리고, 붙는 PC는 릴레이 터널로 붙는다 (`tunnel.rs`)
 
 pub mod config;
 mod h2;
@@ -57,14 +57,14 @@ struct Port {
 }
 
 /// 릴레이에 올릴 직접 연결 주소. 설정한 주소가 먼저이고, 비었으면 릴레이가 하트비트 답으로 알려 준 이 PC의 공인 IP다
-/// (사용자 결정 2026-10-25·2026-11-08: 릴레이 터널은 처음 짝 맺을 때와 직접 닿지 않을 때만 쓴다).
+/// (릴레이 터널은 처음 짝 맺을 때와 직접 닿지 않을 때만 쓴다).
 /// 직접 닿는지는 붙는 PC가 붙어 보고 정한다 (`peer::Pool::send_to`)
 fn published_address(settings: &config::Settings, server: &IPCServer) -> Option<String> {
     public_address(settings, server.relay_agent.seen_address()).0
 }
 
 /// 이 PC의 공개 주소: 정한 주소(도메인·IP)가 먼저이고, 비었으면 `seen`(릴레이가 본 공인 IP). 둘째 값은 정한 주소인가.
-/// 원격 데몬 직접 연결과 게임 서버 주소(`/api/instance/:id/address`, 포트 확인)가 함께 쓴다 (사용자 결정 2026-11-10)
+/// 원격 데몬 직접 연결과 게임 서버 주소(`/api/instance/:id/address`, 포트 확인)가 함께 쓴다
 pub fn public_address(settings: &config::Settings, seen: Option<String>) -> (Option<String>, bool) {
     match configured_address(settings) {
         Some(a) => (Some(a), true),
@@ -93,7 +93,7 @@ impl RemoteDaemon {
 
     /// 릴레이의 내 PC 목록에 맞춘다 (`GET /api/remote/peers`를 읽을 때와 10분마다):
     /// - 저장한 이름·주인 이름을 릴레이 것으로
-    /// - 서버쨩에서 빠진 PC(디스코드에서 지웠거나 개인정보를 지운 PC)는 짝을 푼다. 그 PC가 가진 토큰은 더는 통하지 않는다 (사용자 결정 2026-11-08)
+    /// - 서버쨩에서 빠진 PC(디스코드에서 지웠거나 개인정보를 지운 PC)는 짝을 푼다. 그 PC가 가진 토큰은 더는 통하지 않는다
     /// - 저장한 원격 데몬의 주소·지문이 바뀌었으면 따른다 (터널로 짝 맺은 PC가 공인 주소를 올린 뒤 직접 붙게)
     /// - 이 PC 이름을 받아 둔다 (`config::this_name_in`, 옛 릴레이는 주지 않는다)
     pub async fn sync_with_relay(&self, file: &ConfigFile, target: &relay::Target) -> Result<relay::PeerList, relay::Failure> {

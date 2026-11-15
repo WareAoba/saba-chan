@@ -15,7 +15,7 @@ use super::super::{ModuleInfo, ModuleListResponse, IPCServer, ProtocolsInfo, Ser
 ///
 /// supervisor lock이나 디스크 I/O 없이 즉시 응답합니다.
 /// `daemon:status` 폴링 및 데몬 ready 체크에 사용됩니다.
-/// 토큰 없이 부를 수 있다(A6). `token`은 보낸 토큰이 맞는지(`valid`·`invalid`·`missing`)
+/// 토큰 없이 부를 수 있다. `token`은 보낸 토큰이 맞는지(`valid`·`invalid`·`missing`)
 pub async fn health_check(headers: axum::http::HeaderMap) -> impl IntoResponse {
     let version = env!("CARGO_PKG_VERSION");
     let token = super::super::auth::token_status(&headers);
@@ -24,7 +24,7 @@ pub async fn health_check(headers: axum::http::HeaderMap) -> impl IntoResponse {
     (StatusCode::OK, Json(json!({ "ok": true, "version": version, "pid": std::process::id(), "started_at_ms": *crate::ipc::STARTED_AT_MS, "token": token, "proof": proof, "stops_with_launcher": stops_with_launcher() })))
 }
 
-/// 데몬이 닫히면 함께 끝내는 job 안에 있는가 (L46). GUI가 job breakaway를 거절당해 그대로 띄우면, GUI를 띄운 프로그램이
+/// 데몬이 닫히면 함께 끝내는 job 안에 있는가. GUI가 job breakaway를 거절당해 그대로 띄우면, GUI를 띄운 프로그램이
 /// 끝날 때 데몬도 끝날 수 있다. 시작 뒤 바뀌지 않으므로 한 번만 본다. 바로 위 job만 본다 (중첩 job의 바깥 job은 알 수 없다)
 pub fn stops_with_launcher() -> bool {
     static FOUND: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
@@ -60,7 +60,7 @@ fn job_stops_with_it(in_job: bool, limit_flags: u32) -> bool {
 
 #[derive(serde::Deserialize, Default)]
 pub struct ListServersQuery {
-    /// 이 번호 뒤의 포트 충돌 강제 정지 알림만 받는다. 읽어도 다른 클라이언트 몫을 지우지 않는다 (L50)
+    /// 이 번호 뒤의 포트 충돌 강제 정지 알림만 받는다. 읽어도 다른 클라이언트 몫을 지우지 않는다
     pub notices_after: Option<u64>,
 }
 
@@ -73,7 +73,7 @@ pub async fn list_servers(State(state): State<IPCServer>, Query(q): Query<ListSe
 /// GET /api/modules - 모든 모듈 목록
 /// 모듈 하나를 API 응답 모양으로 (아이콘은 base64 data URL로)
 /// 지금 설치된 컴포넌트 버전 (`versions.toml`과 같은 키: saba-core, module-<이름>, ext-<id>, gui, cli ...).
-/// 업데이터가 기록한 installed-manifest를 바탕으로, 데몬이 직접 아는 값(코어, 로드된 모듈, 발견된 익스텐션)으로 덮는다 (U11, M9).
+/// 업데이터가 기록한 installed-manifest를 바탕으로, 데몬이 직접 아는 값(코어, 로드된 모듈, 발견된 익스텐션)으로 덮는다.
 pub async fn component_versions(state: &IPCServer) -> std::collections::BTreeMap<String, String> {
     let mut versions: std::collections::BTreeMap<String, String> =
         saba_chan_updater_lib::UpdateManager::load_installed_manifest().into_iter().collect();
@@ -175,7 +175,7 @@ async fn module_list_response(
 ) -> axum::response::Response {
     match modules {
         Ok(modules) => {
-            // 구현한 함수 목록 (MK1): 캐시에 없으면 짧게만 기다린다(느린 모듈은 null, 묻기는 뒤에서 마저). 데몬 락 밖에서, 모듈끼리 동시에
+            // 구현한 함수 목록: 캐시에 없으면 짧게만 기다린다(느린 모듈은 null, 묻기는 뒤에서 마저). 데몬 락 밖에서, 모듈끼리 동시에
             let asks: Vec<_> = modules.iter().map(|m| tokio::spawn(crate::plugin::module_functions_for_list(m.entry_path()))).collect();
             let mut modules: Vec<ModuleInfo> = modules.into_iter().map(|m| module_info(m, versions, lang)).collect();
             for (info, ask) in modules.iter_mut().zip(asks) {
@@ -251,7 +251,7 @@ pub async fn detect_module_dir(
 }
 
 /// GET /api/module/:name - 모듈 메타데이터 조회 (별명 포함)
-/// GET /api/module/:name/audit — 모듈 Python 코드 검사 (M12): `{declared, findings, undeclared}`.
+/// GET /api/module/:name/audit — 모듈 Python 코드 검사: `{declared, findings, undeclared}`.
 /// `undeclared`가 비어 있지 않으면 모듈이 선언하지 않은 능력을 쓴다 (사용자에게 보여 줄 것)
 pub async fn audit_module(Path(name): Path<String>, State(state): State<IPCServer>) -> impl IntoResponse {
     let module = state.supervisor.read().await.module_loader.get_module(&name).ok();
@@ -295,7 +295,7 @@ pub async fn get_module_metadata(
     }
 }
 
-/// GET /api/modules/manifest - 설치할 수 있는 모듈 목록 (최신 릴리즈의 서명된 manifest, U9e)
+/// GET /api/modules/manifest - 설치할 수 있는 모듈 목록 (최신 릴리즈의 서명된 manifest)
 ///
 /// `{success, manifest: {modules: {<이름>: {version, display_name, description, ...}}}}`
 /// 데몬이 받아 둔 목록으로 바로 답한다(`store_cache`). `?refresh=true`면 새로 받는다
@@ -489,7 +489,7 @@ pub async fn remove_module(
     let _dirs = crate::component_lock::in_use().await;
     let modules_dir = {
         let supervisor = state.supervisor.read().await;
-        // 켜진 서버가 쓰는 모듈을 지우면 그 서버를 정지할 수 없다 (EE9). Windows 경로는 대소문자를 가리지 않는다
+        // 켜진 서버가 쓰는 모듈을 지우면 그 서버를 정지할 수 없다. Windows 경로는 대소문자를 가리지 않는다
         for instance in supervisor.instance_store.list() {
             if instance.module_name.eq_ignore_ascii_case(&module_id) && supervisor.is_running(&instance.id).await {
                 let error = format!("Module '{}' is used by a running server; stop it first", module_id);
@@ -601,7 +601,7 @@ mod tests {
     use std::sync::Arc;
     use tokio::sync::RwLock;
 
-    /// L46: 데몬이 자기를 띄운 프로그램과 함께 끝나는 job 안에 있는지 /health에 싣는다 (GUI·CLI가 알린다)
+    /// 데몬이 자기를 띄운 프로그램과 함께 끝나는 job 안에 있는지 /health에 싣는다 (GUI·CLI가 알린다)
     /// 받기 전 목록도 이 OS·CPU에서 도는지 싣는다 (맥에서 x86_64 전용 모듈을 받은 뒤에야 막히지 않게)
     #[test]
     fn catalog_modules_say_whether_they_run_here() {
@@ -825,7 +825,7 @@ mod tests {
         assert_eq!(managed("direct"), json!(false));
     }
 
-    /// 설정 칸마다 저장된 값(`stored`)은 데몬이 고른다: 공통 칸(port)은 인스턴스 칸, 나머지는 module_settings (F12)
+    /// 설정 칸마다 저장된 값(`stored`)은 데몬이 고른다: 공통 칸(port)은 인스턴스 칸, 나머지는 module_settings
     #[tokio::test]
     async fn server_list_and_instance_carry_the_stored_value_of_each_setting() {
         let tmp = tempfile::tempdir().unwrap();
@@ -937,7 +937,7 @@ mod tests {
     }
 
     /// 강제 정지 알림은 한 클라이언트가 읽어도 사라지지 않는다: 알림마다 id가 있고 `notices_after`로 본 것 뒤만 받는다.
-    /// 매개변수 없이 읽으면(데몬 안의 액션 `instance.list` 등) 남은 것을 모두 보고 아무것도 본 것으로 적지 않는다 (D12). 오래된 알림은 지운다 (L50)
+    /// 매개변수 없이 읽으면(데몬 안의 액션 `instance.list` 등) 남은 것을 모두 보고 아무것도 본 것으로 적지 않는다. 오래된 알림은 지운다
     #[tokio::test]
     async fn every_client_sees_forced_stop_notices_by_id() {
         let tmp = tempfile::tempdir().unwrap();
@@ -1023,7 +1023,7 @@ mod tests {
         assert_eq!(unmet_requires_body("future", &missing)["missing_dependencies"], json!(["saba-core >=99.0.0 (not installed)"]));
     }
 
-    /// 켜진 서버가 쓰는 모듈은 지우지 않는다: 지우면 그 서버를 정지할 수 없게 된다 (EE9)
+    /// 켜진 서버가 쓰는 모듈은 지우지 않는다: 지우면 그 서버를 정지할 수 없게 된다
     #[tokio::test]
     async fn a_module_used_by_a_running_server_is_not_removed() {
         let tmp = tempfile::tempdir().unwrap();
@@ -1078,7 +1078,7 @@ mod tests {
         assert!(state.supervisor.read().await.module_loader.get_module("zip-mod").is_err());
     }
 
-    /// 같은 모듈을 동시에 두 번 설치하지 않고, 설치마다 다른 임시 경로를 쓴다 (D-S2)
+    /// 같은 모듈을 동시에 두 번 설치하지 않고, 설치마다 다른 임시 경로를 쓴다
     #[tokio::test]
     async fn a_module_is_installed_by_one_request_at_a_time() {
         let tmp = tempfile::tempdir().unwrap();

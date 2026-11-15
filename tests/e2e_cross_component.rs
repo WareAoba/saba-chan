@@ -1164,9 +1164,9 @@ async fn e2e_version_backfill_on_startup() {
     cleanup_dirs(&m_dir, &i_dir, &d_dir);
 }
 
-// ── 게임 명령 단일 경로 (C7) ──
+// ── 게임 명령 단일 경로 ──
 
-/// D3: REST 접속값은 모듈이 `[protocols.rest]`로 가리킨 설정(`module_settings`)에만 있다. 데몬은 그 선언으로 서버 목록의
+/// REST 접속값은 모듈이 `[protocols.rest]`로 가리킨 설정(`module_settings`)에만 있다. 데몬은 그 선언으로 서버 목록의
 /// 접속값을 만들고, 인스턴스 최상위에는 `rest_*` 칸을 두지 않는다
 #[tokio::test]
 async fn rest_connection_values_come_from_the_settings_the_module_declares() {

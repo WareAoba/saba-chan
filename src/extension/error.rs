@@ -25,7 +25,7 @@ impl std::fmt::Display for ExtensionError {
 impl std::error::Error for ExtensionError {}
 
 impl ExtensionError {
-    /// 사바쨩(saba-core)이 모자라 거절했으면 요구 버전 (`>=0.1.10` → `0.1.10`). 응답의 `required_core`로 싣는다 (F8)
+    /// 사바쨩(saba-core)이 모자라 거절했으면 요구 버전 (`>=0.1.10` → `0.1.10`). 응답의 `required_core`로 싣는다
     pub fn required_core(&self) -> Option<String> {
         let required = match self.error_code.as_str() {
             "app_version_unsatisfied" => self.related.first(),

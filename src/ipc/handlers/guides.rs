@@ -1,5 +1,5 @@
 //! 가이드 (`crate::guides`): 목록·완료·new!·보던 단계. 화면 강조는 GUI가 한다.
-//! 진행도는 내 PC 모두가 함께 본다 (사용자 11-12): 바뀌면 릴레이(`/api/remote/guides`)에 합치고, 목록을 볼 때 1분에 한 번 받아 합친다
+//! 진행도는 내 PC 모두가 함께 본다: 바뀌면 릴레이(`/api/remote/guides`)에 합치고, 목록을 볼 때 1분에 한 번 받아 합친다
 
 use super::super::IPCServer;
 use super::LooseJson;

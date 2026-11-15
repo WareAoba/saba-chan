@@ -1,4 +1,4 @@
-//! 개인정보 모두 지우기 (사용자 결정 2026-10-26)
+//! 개인정보 모두 지우기
 //!
 //!   POST /api/relay/privacy/erase   `{locale?}` → `{url, expiresAt}`  릴레이에서 삭제표를 받아 웹사이트 주소를 준다
 //!   GET  /api/relay/privacy/erase   → `{status}`  none | pending | done | expired | failed

@@ -351,7 +351,7 @@ mod tests {
         assert!(started.elapsed() < Duration::from_secs(3));
     }
 
-    /// 리뷰 310: 허용 포트는 모듈이 고칠 수 있는 config에서 온다. 그 포트에서 듣는 프로세스가 이 인스턴스의
+    /// 허용 포트는 모듈이 고칠 수 있는 config에서 온다. 그 포트에서 듣는 프로세스가 이 인스턴스의
     /// 서버(또는 그 자식)가 아니면 연결하지 않는다 (PC의 다른 로컬 서비스에 대신 닿지 않게)
     #[tokio::test]
     async fn a_port_another_process_listens_on_is_refused() {

@@ -1,4 +1,4 @@
-//! saba-runner로 띄운 서버에 붙기 (C8b)
+//! saba-runner로 띄운 서버에 붙기
 //!
 //! 러너(`runner/` 크레이트)가 서버를 자식으로 쥐고 로그 파일·stdin 포트·`exit.json`을 남긴다.
 //! 데몬은 그 파일과 포트에 붙을 뿐이라, 데몬이 재시작해도 `attach_runner`로 콘솔 기록,
@@ -690,7 +690,7 @@ mod tests {
         assert!(proc.interrupt().await.is_err());
     }
 
-    /// 시간 안에 서버를 띄우지 못한 러너는 그 자식까지 끝낸다: 늦게 뜬 서버 옆에 두 번째 서버가 뜨지 않게 (D-S4)
+    /// 시간 안에 서버를 띄우지 못한 러너는 그 자식까지 끝낸다: 늦게 뜬 서버 옆에 두 번째 서버가 뜨지 않게
     #[tokio::test]
     async fn a_runner_that_never_reports_is_stopped_with_its_server() {
         let tmp = tempfile::tempdir().unwrap();

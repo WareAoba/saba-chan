@@ -185,7 +185,7 @@ async fn plan(state: &IPCServer, payload: Value, dry_run: bool) -> Result<Plan<'
         copy_saba_settings(&mut instance, parent);
     }
 
-    // ── 익스텐션이 만들 때 물은 칸 (`AddServer.options` → `extension_data`, Q-7). 설치 방식 값은 뒤에서 덮는다 ──
+    // ── 익스텐션이 만들 때 물은 칸 (`AddServer.options` → `extension_data`). 설치 방식 값은 뒤에서 덮는다 ──
     match payload.get("extension_data") {
         None | Some(Value::Null) => {}
         Some(Value::Object(given)) => {
@@ -196,7 +196,7 @@ async fn plan(state: &IPCServer, payload: Value, dry_run: bool) -> Result<Plan<'
         Some(_) => return Err(invalid_field("extension_data", "extension_data must be an object")),
     }
 
-    // ── 필수 익스텐션 활성화 검증: 모듈 `[install] requires_extensions`는 인스턴스에 복사하지 않고 시작 때마다 모듈에서 읽는다 (D2) ──
+    // ── 필수 익스텐션 활성화 검증: 모듈 `[install] requires_extensions`는 인스턴스에 복사하지 않고 시작 때마다 모듈에서 읽는다 ──
     let required = supervisor.effective_required_extensions(&instance);
     if !required.is_empty() {
         let found = state.extension_manager.read().await.missing_required(&required);
@@ -464,7 +464,7 @@ async fn import_existing(
     }
 
     // ── 기존 INI 설정 import ──
-    // 모듈 호출은 데몬 락 밖에서 (C12). 필요한 값만 챙기고 락을 놓는다.
+    // 모듈 호출은 데몬 락 밖에서. 필요한 값만 챙기고 락을 놓는다.
     let metadata = supervisor.module_loader.get_module(module).ok().map(|m| m.metadata);
     drop(supervisor);
     let mut detected: Option<Value> = None;
@@ -529,7 +529,7 @@ async fn import_existing(
     if !notices.is_empty() {
         response["notices"] = json!(notices);
     }
-    // 가져온 시점을 백업으로 남긴다 (사용자 결정 2026-11-08): 어긋나면 이때로 되돌린다.
+    // 가져온 시점을 백업으로 남긴다: 어긋나면 이때로 되돌린다.
     // 수동 백업이라 정리에서 빠진다. 기다리지 않고, 실패해도 가져오기는 그대로다.
     // 사바쨩 밖에서 켜 둔 서버는 쓰는 중인 월드를 반쯤 베낄 수 있어 건너뛴다 (끈 뒤 직접 백업한다)
     if notices.contains(&"server_running") {

@@ -1,4 +1,4 @@
-//! API 계약 테스트 (C3)
+//! API 계약 테스트
 //!
 //! 1. GUI(`saba-chan-gui/src/api/createApi.ts`)와 CLI(`saba-chan-cli/src`)가 부르는 데몬 API가
 //!    라우트 표(`src/ipc/mod.rs`, `src/ipc/updates.rs`)에 있고 메서드도 맞는지
@@ -209,7 +209,7 @@ async fn every_route_is_registered_and_requires_the_token() {
                 _ => client.delete(&url),
             };
             let status = req.json(&serde_json::json!({})).send().await.unwrap().status();
-            // `/health`만 토큰 없이 답한다 (A6)
+            // `/health`만 토큰 없이 답한다
             let expected = if route.path == "/health" { reqwest::StatusCode::OK } else { reqwest::StatusCode::UNAUTHORIZED };
             if status != expected {
                 problems.push(format!("{} {} without token -> {}", method.to_uppercase(), route.path, status));

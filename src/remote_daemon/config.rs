@@ -1,12 +1,12 @@
 //! 원격 데몬 설정과 짝 맺은 PC (config.json `remote` 한 곳).
 //!
 //!   port                             원격 포트 번호
-//!   address                          이 PC의 공개 주소(도메인·IP) 한 칸: 원격 데몬 직접 연결과 게임 서버 주소가 함께 쓴다 (사용자 결정 2026-11-10).
+//!   address                          이 PC의 공개 주소(도메인·IP) 한 칸: 원격 데몬 직접 연결과 게임 서버 주소가 함께 쓴다.
 //!                                    비면 릴레이가 본 공인 IP
-//!   shareAddress 기본 켬              디스코드 `/<서버> 주소`로 이 PC 서버의 주소를 알려 줄지 (사용자 결정 2026-11-10)
-//!   enabled 기본 켬                   디스코드 계정과 PC를 함께 빼앗기지 않는 한 짝을 맺을 수 없다 (사용자 확정 2026-10-30)
+//!   shareAddress 기본 켬              디스코드 `/<서버> 주소`로 이 PC 서버의 주소를 알려 줄지
+//!   enabled 기본 켬                   디스코드 계정과 PC를 함께 빼앗기지 않는 한 짝을 맺을 수 없다
 //!   clients[]                        이 PC에 붙도록 짝 맺은 같은 주인의 PC. 토큰은 SHA-256만 둔다
-//!   daemons[]                        이 PC가 붙는 원격 데몬(D1b): 주소·고정한 지문·받은 토큰
+//!   daemons[]                        이 PC가 붙는 원격 데몬: 주소·고정한 지문·받은 토큰
 //!   thisName                         이 PC 이름의 사본 (원본은 릴레이 PC 이름, `sync_with_relay`가 맞춘다)
 
 use saba_chan_updater_lib::config_file::ConfigFile;

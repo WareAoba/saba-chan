@@ -219,7 +219,7 @@ pub(crate) async fn begin_server_update_holding(
 
     let text = crate::chat::i18n::Catalog::for_language(&state.config_store.ui_language().await);
     let module = supervisor.module_loader.get_module(&instance.module_name).ok();
-    // 처음 설치와 같은 인스턴스 설정·데이터 폴더·HOST 문맥 (D5)
+    // 처음 설치와 같은 인스턴스 설정·데이터 폴더·HOST 문맥
     let target = crate::supervisor::InstanceInstall::of(&instance, &instance_dir, module.as_ref().map(|m| &m.metadata), state.host_context(id));
     let job = UpdateJob {
         state: state.clone(),
@@ -272,7 +272,7 @@ struct UpdateJob {
 impl UpdateJob {
     /// 업데이트 전 백업 → 모듈 호출 → 결과 기록. 성공 여부를 돌려준다
     async fn run(&self, target: crate::supervisor::InstanceInstall, guard: &crate::instance::lock::InstanceLock) -> bool {
-        // ── Phase 0: 업데이트 전 백업 (A2). 백업할 것이 없으면 그냥 진행, 실패하면 업데이트하지 않는다 ──
+        // ── Phase 0: 업데이트 전 백업. 백업할 것이 없으면 그냥 진행, 실패하면 업데이트하지 않는다 ──
         if let Err(r) = crate::service::backup::take_backup_held(&self.state, &self.id, crate::backup::BackupKind::PreUpdate, guard).await {
             let reason = r.reason().unwrap_or("backup failed").to_string();
             tracing::error!("Pre-update backup failed for '{}': {}", self.name, reason);
@@ -421,7 +421,7 @@ mod tests {
         assert!(crate::instance::lock::InstanceLock::take(&ids[0]).is_some(), "a refused update must not keep its own lock");
     }
 
-    /// 업데이트의 `install_server`도 처음 설치와 같이 인스턴스의 데이터 폴더(`instance_data_dirs`)를 받는다 (D5).
+    /// 업데이트의 `install_server`도 처음 설치와 같이 인스턴스의 데이터 폴더(`instance_data_dirs`)를 받는다.
     /// 빠지면 확인되지 않은 모듈이 서버 폴더 밖 데이터 폴더(좀보이드 `cache_dir` 등)에 쓰지 못한다
     #[tokio::test]
     async fn an_update_gets_the_instance_data_folders_like_the_first_install() {
@@ -465,13 +465,13 @@ mod tests {
         let error = state.provision_tracker.get(&id).and_then(|p| p.error).expect("the failure reason");
         let data_dirs: serde_json::Value = serde_json::from_str(&error).unwrap_or_else(|_| panic!("{error}"));
         assert_eq!(data_dirs, json!([cache.to_string_lossy()]), "{error}");
-        // 실패 진행 표시의 나머지 칸 (D9 고정: 본체를 나눠도 같다)
+        // 실패 진행 표시의 나머지 칸 (고정: 본체를 나눠도 같다)
         let mut shown = serde_json::to_value(state.provision_tracker.get(&id).unwrap()).unwrap();
         shown.as_object_mut().unwrap().remove("error");
         assert_eq!(shown, json!({ "step": 0, "total": 1, "label": "done", "message": "Update failed", "done": true, "percent": 100, "success": false, "function": "install_server", "module": "game" }));
     }
 
-    /// A-09: 업데이트 확인은 모듈 `[install]`을 그대로 받는다. 인스턴스에 남은 옛 사본(`steamcmd_app_id`)을 쓰지 않는다
+    /// 업데이트 확인은 모듈 `[install]`을 그대로 받는다. 인스턴스에 남은 옛 사본(`steamcmd_app_id`)을 쓰지 않는다
     #[test]
     fn an_update_check_gets_the_install_values_from_the_module_not_from_instance_copies() {
         let install: crate::module_loader::ModuleInstallConfig =

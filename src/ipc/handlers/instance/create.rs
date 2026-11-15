@@ -404,7 +404,7 @@ mod tests {
         assert!(boundary.resolve(&data.join("deleted/Saves")).is_some());
     }
 
-    /// D3·M1: 이 OS를 지원하지 않는 모듈로는 서버를 만들지 않는다
+    /// 이 OS를 지원하지 않는 모듈로는 서버를 만들지 않는다
     #[tokio::test]
     async fn create_refuses_a_module_that_does_not_support_this_os() {
         use axum::extract::State;
@@ -672,7 +672,7 @@ mod tests {
         assert_eq!(branch.module_settings["data_home"], json!(""), "the parent's old data folder is not the branch's");
     }
 
-    /// 서버 이름의 쉼표는 받지 않는다: 문장 명령이 부르는 말을 쉼표로 나눈다 (사용자 지정 2026-11-06)
+    /// 서버 이름의 쉼표는 받지 않는다: 문장 명령이 부르는 말을 쉼표로 나눈다
     #[tokio::test]
     async fn a_server_name_with_a_comma_is_refused() {
         use axum::extract::{Path, State};

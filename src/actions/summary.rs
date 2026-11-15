@@ -422,7 +422,7 @@ mod tests {
         assert!(started.contains("server_update.started"), "{started}");
     }
 
-    /// 예약 바꾸기의 확인 글: 더해지고 바뀌고 지워지는 작업만 한 줄씩. 그대로인 작업은 적지 않는다 (사용자 시안 2026-11-13)
+    /// 예약 바꾸기의 확인 글: 더해지고 바뀌고 지워지는 작업만 한 줄씩. 그대로인 작업은 적지 않는다
     #[test]
     fn a_schedule_change_lists_only_what_is_added_changed_and_removed() {
         let tasks = |v: Value| serde_json::from_value::<Vec<crate::scheduler::ScheduledTask>>(v).unwrap();

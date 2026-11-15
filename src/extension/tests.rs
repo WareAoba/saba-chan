@@ -1,4 +1,4 @@
-/// 익스텐션 hook에 넘기는 인스턴스는 REST 비밀번호와 비밀스러운 설정 값을 가리고, 나머지는 그대로 둔다 (D-E2)
+/// 익스텐션 hook에 넘기는 인스턴스는 REST 비밀번호와 비밀스러운 설정 값을 가리고, 나머지는 그대로 둔다
 #[test]
 fn hooks_get_the_instance_without_its_secrets() {
     let mut inst = crate::instance::ServerInstance::new("srv", "game");
@@ -543,7 +543,7 @@ fn package_needing_newer_app_is_refused_with_version_code() {
     let err = ExtensionManager::stage_package(tmp.path(), "future", &pkg, None).unwrap_err();
     let ext = err.downcast_ref::<ExtensionError>().expect("structured error");
     assert_eq!((ext.error_code.as_str(), ext.related.clone()), ("app_version_unsatisfied", vec!["999.0.0".to_string()]));
-    // F8: 사바쨩이 모자라 거절했으면 요구 버전을 따로 싣는다
+    // 사바쨩이 모자라 거절했으면 요구 버전을 따로 싣는다
     assert_eq!(ext.required_core().as_deref(), Some("999.0.0"));
     let core = ExtensionError::component_version_unsatisfied("x", "saba-core", ">=1.2.0", Some("1.0.0"));
     assert_eq!(core.required_core().as_deref(), Some("1.2.0"));
@@ -1476,7 +1476,7 @@ fn test_component_version_unsatisfied_not_installed() {
 // ── 원격 manifest.json 파싱 호환성 테스트 ──
 
 /// 실제 manifest.json (로컬 설치용) 파싱 호환성 테스트
-/// 릴리즈 manifest의 `ext-*` 컴포넌트가 익스텐션 목록이 된다 (U9e)
+/// 릴리즈 manifest의 `ext-*` 컴포넌트가 익스텐션 목록이 된다
 #[test]
 fn release_manifest_ext_components_become_the_catalog() {
     let manifest: saba_chan_updater_lib::relay::ReleaseManifest = serde_json::from_value(serde_json::json!({

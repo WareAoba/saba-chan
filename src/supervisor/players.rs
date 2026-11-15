@@ -1,8 +1,8 @@
-//! 접속자 수 (Q-5). 모듈이 `[status] players`로 lifecycle 함수를 선언하면 데몬이 켜진 서버마다
+//! 접속자 수. 모듈이 `[status] players`로 lifecycle 함수를 선언하면 데몬이 켜진 서버마다
 //! 주기적으로 불러 마지막 값을 기억한다. 서버 목록(`ServerInfo.players`)과 relay 하트비트가 이 값을 읽는다.
 //! 함수는 `{"success": true, "online": <정수>, "max": <정수>?}`를 돌려준다 (02-modules §2.3)
 //!
-//! 모듈이 접속·퇴장 문구를 주면 그 문구로 센 수(`player_events`)가 먼저다 (사용자 지정). 모듈 함수는 최대 인원과,
+//! 모듈이 접속·퇴장 문구를 주면 그 문구로 센 수(`player_events`)가 먼저다. 모듈 함수는 최대 인원과,
 //! 콘솔을 처음부터 읽지 못한 서버에만 쓴다. 센 수는 데몬이 콘솔을 처음부터 읽은 프로세스에서만 세고, 프로세스가 끝나면 지운다
 
 use serde::{Deserialize, Serialize};
@@ -220,7 +220,7 @@ fn max_of(result: &Value) -> Option<u32> {
 
 /// 켜진 서버 중 모듈이 접속자 함수를 선언한 것만 묻고, 나머지는 기억을 지운다.
 /// REST 서버(`[protocols] supported`에 rest)는 응답 없음을 REST 포트에 붙어 보기만 해서 정한다: 요청을 보내면
-/// 서버 로그에 접근 줄이 남는다(팰월드 `REST accessed endpoint`). 주기 경로는 콘솔·RCON·REST 요청을 보내지 않는다(사용자 지정)
+/// 서버 로그에 접근 줄이 남는다(팰월드 `REST accessed endpoint`). 주기 경로는 콘솔·RCON·REST 요청을 보내지 않는다
 pub async fn refresh(sup: &tokio::sync::RwLock<Supervisor>) {
     let (rt, mut calls, idle, probes) = {
         let s = sup.read().await;
@@ -349,7 +349,7 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    // 콘솔 접속·퇴장 문구로 센 수가 먼저다 (사용자 지정). 모듈 함수는 최대 인원과, 콘솔을 처음부터 못 읽은 경우에만 쓴다
+    // 콘솔 접속·퇴장 문구로 센 수가 먼저다. 모듈 함수는 최대 인원과, 콘솔을 처음부터 못 읽은 경우에만 쓴다
     #[test]
     fn join_and_leave_lines_count_players_before_the_module_count() {
         let id = "roster-count-test";
@@ -401,7 +401,7 @@ mod tests {
         assert_eq!(get(&rt, id), None);
     }
 
-    // REST 서버는 포트에 붙어 보기만 한다 (요청을 보내면 서버 로그에 접근 줄이 1분마다 남는다, 사용자 지정)
+    // REST 서버는 포트에 붙어 보기만 한다 (요청을 보내면 서버 로그에 접근 줄이 1분마다 남는다)
     #[tokio::test]
     async fn a_rest_server_is_probed_by_connecting_only() {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -495,7 +495,7 @@ mod tests {
         assert_eq!(unresponsive(&rt, id, pid, later + UNRESPONSIVE_AFTER * 2), None);
     }
 
-    // 리뷰 282: 마인크래프트 enable-status=false면 핑이 늘 실패해 서버가 꺼질 때까지 거짓 경보가 떴다.
+    // 마인크래프트 enable-status=false면 핑이 늘 실패해 서버가 꺼질 때까지 거짓 경보가 떴다.
     // 모듈이 수를 모른다고 답하는 것(`{"success": true}`)은 답한 것이다
     #[test]
     fn a_server_that_answers_without_a_count_is_not_unresponsive() {
@@ -507,7 +507,7 @@ mod tests {
         assert_eq!(unresponsive(&rt, id, Some(1), start + UNRESPONSIVE_AFTER * 2), None);
     }
 
-    // 리뷰 282: 60초 사이에 끝난 재시작이 이전 프로세스의 실패 시각을 이어받아 곧바로 응답 없음으로 보였다
+    // 60초 사이에 끝난 재시작이 이전 프로세스의 실패 시각을 이어받아 곧바로 응답 없음으로 보였다
     #[test]
     fn a_restarted_server_does_not_inherit_the_old_process_failures() {
         let id = "restart-inherits-test";

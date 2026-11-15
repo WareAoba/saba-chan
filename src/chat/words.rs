@@ -57,7 +57,7 @@ pub fn tidy(word: &str) -> String {
     word.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-/// 서버 이름·낱말에 쓸 수 없는 쉼표 (사용자 지정 2026-11-06: 띄어쓰기는 받고 쉼표는 막는다.
+/// 서버 이름·낱말에 쓸 수 없는 쉼표 (띄어쓰기는 받고 쉼표는 막는다.
 /// 쉼표는 낱말 목록을 나누는 기호이고 접두사 뒤에도 온다 `사바쨩, 마크 상태`)
 pub fn is_comma(c: char) -> bool {
     matches!(c, ',' | '，' | '、' | '､')

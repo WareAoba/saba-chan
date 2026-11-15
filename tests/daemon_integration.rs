@@ -47,7 +47,7 @@ fn unique_name(prefix: &str) -> String {
 }
 
 /// 테스트용 모듈이 없으면 자동 생성 (로컬/CI 모두 대응).
-/// 병렬 시험이 덜 쓴 모듈을 보지 않게 한 번만 만들고, lifecycle.py를 먼저 쓴 뒤 module.toml을 rename으로 놓는다 (L47)
+/// 병렬 시험이 덜 쓴 모듈을 보지 않게 한 번만 만들고, lifecycle.py를 먼저 쓴 뒤 module.toml을 rename으로 놓는다
 fn ensure_test_module() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(write_test_module);
@@ -327,7 +327,7 @@ async fn test_ipc_multiple_instances_are_independent() {
     cleanup_test_instances();
 }
 
-/// 서버 추가 때 익스텐션이 물은 칸(`AddServer.options`)은 만들 때 `extension_data`로 한 번에 저장된다 (Q-7)
+/// 서버 추가 때 익스텐션이 물은 칸(`AddServer.options`)은 만들 때 `extension_data`로 한 번에 저장된다
 #[tokio::test]
 async fn test_ipc_create_instance_saves_extension_data() {
     let (base_url, _sup, server_task) = boot_ipc().await;

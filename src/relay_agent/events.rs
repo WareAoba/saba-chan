@@ -104,7 +104,7 @@ pub(super) fn kicks_heartbeat(kind: &str) -> bool {
     matches!(kind, "instance.started" | "instance.stopped" | "instance.ready" | "instance.exit")
 }
 
-/// 알림 채널(I3)에 올릴 모양 `{id, type, data}`. 올리지 않는 종류면 None.
+/// 알림 채널에 올릴 모양 `{id, type, data}`. 올리지 않는 종류면 None.
 /// 원격으로 나가므로 경로·콘솔 줄·오류 원문은 싣지 않는다. 격리된 익스텐션의 event hook도 이 모양만 받는다 (`extension::event_hooks`)
 pub(crate) fn relay_event(event: &crate::events::Event) -> Option<Value> {
     let d = &event.data;
@@ -141,7 +141,7 @@ pub(crate) fn relay_event(event: &crate::events::Event) -> Option<Value> {
         "instance.update_waiting" => pick(&["at", "instanceId", "instance", "players"]),
         // 게임 서버 업데이트 실패. 오류 원문에는 로컬 경로가 섞이므로 싣지 않는다
         "instance.update_failed" => pick(&["at", "instanceId", "instance"]),
-        // 디스코드에서 시작해 뒤에서 마친 여러 단계 실행 (I1). 원격 실행의 단계 줄에는 오류 원문이 없다(코드만)
+        // 디스코드에서 시작해 뒤에서 마친 여러 단계 실행. 원격 실행의 단계 줄에는 오류 원문이 없다(코드만)
         "plan.done" if d.get("guildId").is_some() => pick(&["at", "runId", "guildId", "ok", "steps", "stoppedAt"]),
         // 게임 채팅 전달: 사용자가 켠 서버의 채팅만 데몬이 다 만든 문장(`text`)으로 낸다 (`supervisor::game_chat`)
         // 채팅 연동 채널에 보낼 줄(`linkText`)과 그 채널(`links`)도 (`supervisor::chat_link`)

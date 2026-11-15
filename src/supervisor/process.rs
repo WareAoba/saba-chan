@@ -6,7 +6,6 @@ use anyhow::Result;
 #[cfg(not(target_os = "windows"))]
 use nix::libc;
 
-/// Check if a process with the given PID is alive. Cross-platform helper.
 pub fn is_process_alive(pid: u32) -> bool {
     #[cfg(target_os = "windows")]
     {
@@ -27,7 +26,7 @@ pub fn is_process_alive(pid: u32) -> bool {
     }
     #[cfg(not(target_os = "windows"))]
     {
-        // kill(pid, 0) checks process existence without actually sending a signal
+        // kill(pid, 0)은 신호 없이 있는지만 본다
         if unsafe { libc::kill(pid as i32, 0) } != 0 {
             return false;
         }
@@ -73,7 +72,6 @@ pub fn is_same_process(pid: u32, recorded_at: u64) -> bool {
     process_start_time(pid).is_none_or(|started| started <= recorded_at.saturating_add(START_TIME_SLACK_SECS))
 }
 
-/// Force-kill a process by PID. Cross-platform helper.
 /// 종료 요청이 거부됐고(권한 없음 등) 프로세스가 아직 살아 있으면 오류를 돌려준다.
 /// 그 프로세스 하나만 끝낸다: GUI가 띄운 데몬처럼 자식이 따로 살아야 하는 경우가 있다
 pub fn force_kill_pid(pid: u32) -> Result<()> {
@@ -292,7 +290,7 @@ mod tests {
     }
 
     /// 자식 하나(ping)를 띄운 런처(cmd)와 그 자식 PID. cmd는 ping보다 먼저 콘솔 호스트(conhost)를 자식으로 둔다:
-    /// 그것을 자식으로 잡으면 ping이 뜨기 전에 cmd를 죽였을 때 콘솔과 함께 사라진다 (L24). 이름으로 ping을 기다린다
+    /// 그것을 자식으로 잡으면 ping이 뜨기 전에 cmd를 죽였을 때 콘솔과 함께 사라진다. 이름으로 ping을 기다린다
     #[cfg(windows)]
     async fn launcher_with_child() -> (std::process::Child, u32) {
         use std::os::windows::process::CommandExt;

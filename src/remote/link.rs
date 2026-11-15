@@ -112,7 +112,7 @@ pub fn ws_url(relay_base: &str) -> String {
 }
 
 /// 웹으로 보내는 이벤트. 화면은 목록을 다시 읽을 때만 쓰므로 종류와 인스턴스 id만 담는다
-/// (경로·콘솔 줄·오류 원문은 PC 밖으로 내보내지 않는다, I3)
+/// (경로·콘솔 줄·오류 원문은 PC 밖으로 내보내지 않는다)
 fn web_event(event: &crate::events::Event) -> Option<Value> {
     let kind = event.kind.as_str();
     if !(kind.starts_with("instance.") || kind.starts_with("module.") || kind == "action.run") {

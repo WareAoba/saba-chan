@@ -349,7 +349,7 @@ async fn ran_since_last_backup(state: &IPCServer, id: &str) -> bool {
 }
 
 async fn run_task(state: &IPCServer, id: &str, task: &ScheduledTask, fire: chrono::NaiveDateTime, key: &str) {
-    // 감사 로그 (A10): 예약 작업이 한 일은 출처 schedule
+    // 감사 로그: 예약 작업이 한 일은 출처 schedule
     // 갈래마다 큰 핸들러 future를 품으므로 힙에 둔다 (디버그 빌드 스택 넘침)
     let called = chrono::Local::now().naive_local();
     let outcome = crate::audit::with_origin(crate::audit::Origin::new("schedule"), Box::pin(run_task_now(state, id, task, fire, key))).await;

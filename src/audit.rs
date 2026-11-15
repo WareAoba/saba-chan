@@ -1,4 +1,4 @@
-//! 감사 로그 (A10): 누가(GUI·CLI·디스코드·예약) 어떤 서버에 무엇을 했는지
+//! 감사 로그: 누가(GUI·CLI·디스코드·예약) 어떤 서버에 무엇을 했는지
 //!
 //! `<data_dir>/audit.log`에 한 줄 JSON으로 덧붙인다. 1 MiB를 넘으면 `audit.log.1`로 넘기고 새로 쓴다
 //! (둘만 남는다). 출처는 요청마다 task-local `Origin`에 담는다:
@@ -272,7 +272,7 @@ impl AuditLog {
                 tracing::warn!("[Audit] Could not write {}: {}", self.path.display(), e);
             }
         }
-        // 활동 줄·토스트용 (P4). 기록과 같은 모양, `ts`는 이벤트의 `at`이 대신한다
+        // 활동 줄·토스트용. 기록과 같은 모양, `ts`는 이벤트의 `at`이 대신한다
         if let Some(obj) = line.as_object_mut() {
             obj.remove("ts");
         }
@@ -403,7 +403,7 @@ pub(crate) fn sensitive(name: &str) -> bool {
 
 const MASK: &str = "***";
 
-/// 기록하기 전에 비밀을 가린다 (A10 P3-1). `text`는 명령 원문이나 stdin 줄, `args`는 따로 받은 인자.
+/// 기록하기 전에 비밀을 가린다. `text`는 명령 원문이나 stdin 줄, `args`는 따로 받은 인자.
 /// - 모듈이 `password`로 선언한 명령 인자, 이름에 pass·token·secret 같은 낱말이 든 인자는 값을 가린다
 /// - 그런 인자를 받는 명령(이름·별명이나 `console_template`의 첫 낱말이 같은 줄)과 이름부터 비밀스러운
 ///   명령은 첫 낱말 뒤를 모두 가린다

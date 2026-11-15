@@ -8,7 +8,7 @@ impl Supervisor {
     pub async fn get_server_status(sup: &tokio::sync::RwLock<Self>, instance_id: &str, module_name: &str) -> Result<Value> {
         tracing::debug!("Getting status for server '{}'", instance_id);
 
-        // 락 안에서는 값만 챙긴다. 익스텐션 hook과 모듈 status()는 락 밖에서 (C12)
+        // 락 안에서는 값만 챙긴다. 익스텐션 hook과 모듈 status()는 락 밖에서
         let (instance, hook) = {
             let s = sup.read().await;
             let instance = s.instance_store.get(instance_id)

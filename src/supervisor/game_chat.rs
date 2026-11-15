@@ -201,7 +201,7 @@ mod tests {
         GameChat { mode, keyword: keyword.into() }
     }
 
-    // 사용자 요청(2026-10-29): 모든 채팅을 보내거나, 첫머리에 감지 단어가 있으면 그 단어를 빼고 보낸다. 기본은 보내지 않는다
+    // 모든 채팅을 보내거나, 첫머리에 감지 단어가 있으면 그 단어를 빼고 보낸다. 기본은 보내지 않는다
     #[test]
     fn all_sends_every_chat_and_keyword_sends_only_marked_chat_without_the_word() {
         assert_eq!(GameChat::default().pick("hello"), None, "off by default");
@@ -240,7 +240,7 @@ mod tests {
         assert_eq!(compose("s", "p", &"가".repeat(400)).matches('가').count(), MESSAGE_MAX);
     }
 
-    // 사용자 요청(2026-10-30): 디스코드 글을 콘솔 명령으로 게임에 보낸다. 줄바꿈이 남으면 다음 콘솔 명령을 끼워 넣을 수 있다
+    // 디스코드 글을 콘솔 명령으로 게임에 보낸다. 줄바꿈이 남으면 다음 콘솔 명령을 끼워 넣을 수 있다
     #[test]
     fn outgoing_chat_is_one_line_without_control_characters() {
         assert_eq!(outgoing(" 김치 ", "안녕\nstop\r\n"), Some(("김치".to_string(), "안녕 stop".to_string())));

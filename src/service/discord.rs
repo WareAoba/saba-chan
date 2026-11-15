@@ -1,4 +1,4 @@
-//! 디스코드 길드 설정 (I2) 본체: 설정 모양과 검사, 저장, 릴레이와 맞추기 (API 설명은 `ipc/handlers/discord.rs`)
+//! 디스코드 길드 설정 본체: 설정 모양과 검사, 저장, 릴레이와 맞추기 (API 설명은 `ipc/handlers/discord.rs`)
 //!
 //! 원본은 데몬 config.json `relay.nodeSettings[<guild>].discord`다. 바꿀 때마다, 그리고 릴레이 에이전트가 연결될 때
 //! 릴레이 `PATCH /api/nodes/:guild/settings`로 맞춘다. 봇 설정 저장(`PUT /api/config/bot`)은 이 블록을 바꾸지 않는다.
@@ -104,7 +104,7 @@ pub struct Music {
     pub normalize: bool,
 }
 
-/// 읽어주는 사바쨩 (2026-10-31 사용자 지정): 바꿀 수 있는 값은 볼륨·속도·피치와 이름 부르기다.
+/// 읽어주는 사바쨩: 바꿀 수 있는 값은 볼륨·속도·피치와 이름 부르기다.
 /// 한 문장 30자·1분 10문장 제한은 릴레이의 고정값이다. 범위는 릴레이 `nodeSettingsSchema`와 같다
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -117,11 +117,11 @@ pub struct Tts {
     pub pitch: i64,
     /// 글 앞에 "이름님,"을 붙일지 (`TTS_NAMES`): `always` 항상, `multi` 읽는 사람이 여럿일 때, `never` 안 함
     pub names: String,
-    /// 내 글 읽기는 내가 있는 음성 채널의 채팅에서만 (게임 채팅 읽기는 예외, 2026-11-03 사용자 지정)
+    /// 내 글 읽기는 내가 있는 음성 채널의 채팅에서만 (게임 채팅 읽기는 예외)
     pub voice_chat_only: bool,
-    /// 읽은 글을 지우지 않는다 (2026-11-03 사용자 지정)
+    /// 읽은 글을 지우지 않는다
     pub keep_read: bool,
-    /// 늘 읽을 음성 채널 ID — 사람이 2명 이상 들어가면 봇이 들어가 그 채널 채팅을 모두 읽는다 (2026-11-03 사용자 지정, 최대 `TTS_AUTO_CHANNELS_MAX`)
+    /// 늘 읽을 음성 채널 ID — 사람이 2명 이상 들어가면 봇이 들어가 그 채널 채팅을 모두 읽는다 (최대 `TTS_AUTO_CHANNELS_MAX`)
     pub auto_channels: Vec<String>,
 }
 
@@ -975,7 +975,7 @@ mod tests {
         assert_eq!(rest, patch(json!({ "locale": "ko" })));
         assert_eq!(owned, patch(json!({ "bigEmoji": true })));
         assert_eq!(split_relay_owned(&patch(json!({ "bigEmoji": "yes" }))).unwrap_err().0, "bigEmoji");
-        // 게임 채팅 채널 글 막기·꺼지면 채팅 지우기 (사용자 11-03)도 릴레이가 원본이다
+        // 게임 채팅 채널 글 막기·꺼지면 채팅 지우기도 릴레이가 원본이다
         let (rest, owned) = split_relay_owned(&patch(json!({ "gameChatGuard": true, "gameChatClearOnStop": false }))).unwrap();
         assert!(rest.is_empty());
         assert_eq!(owned, patch(json!({ "gameChatGuard": true, "gameChatClearOnStop": false })));
@@ -1165,7 +1165,7 @@ mod tests {
         );
     }
 
-    /// 읽어주기 동작 (2026-11-03 사용자 지정): 음성 채널 채팅에서만 · 읽은 글 남기기 · 늘 읽을 음성 채널. 릴레이에도 보낸다
+    /// 읽어주기 동작: 음성 채널 채팅에서만 · 읽은 글 남기기 · 늘 읽을 음성 채널. 릴레이에도 보낸다
     #[test]
     fn tts_behavior_switches_and_auto_channels_reach_the_relay() {
         let mut s = GuildSettings::default();
@@ -1196,7 +1196,7 @@ mod tests {
         assert_eq!(r.tts.auto_channels, vec![a.to_string()]);
     }
 
-    /// 읽어주는 사바쨩 (2026-10-31 사용자 지정): 서버마다 볼륨(10~150%)·속도(80~150%)·피치(−6~+6반음)만 바꾼다. 릴레이에도 보낸다
+    /// 읽어주는 사바쨩: 서버마다 볼륨(10~150%)·속도(80~150%)·피치(−6~+6반음)만 바꾼다. 릴레이에도 보낸다
     #[test]
     fn tts_volume_speed_pitch_are_per_server_and_reach_the_relay() {
         let mut s = GuildSettings::default();
