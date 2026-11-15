@@ -28,7 +28,7 @@
 | GUI `selectedExtension` | AddServer 모달에서 **module 이름**을 담는 상태다. | `saba-chan-gui/src/components/Modals/AddInstanceNewServer.tsx` |
 | updater의 extension 업데이트 | 릴리즈 manifest의 `ext-<id>` 항목. 로컬 버전은 `extensions/*/manifest.json`의 id·version으로 읽는다. 데몬의 익스텐션 목록(`fetch_remote`)과 같은 manifest를 본다. | `updater/src/lib.rs`, `src/extension/remote.rs` `fetch_remote` |
 
-**결론**: 코드에서 "plugin"과 "extension"은 서로 다른 계층이다. `plugin`은 Python 프로세스 실행 프로토콜이고, `extension`은 그 위의 확장 시스템이다. 오너가 말하는 "plugin"은 코드의 `extension`에 해당하고, 코드의 `plugin` 모듈은 module과 extension이 공유하는 하위 런타임이다. 옛 레이아웃용 `run_extension`/`run_extension_with_progress`는 삭제되었다.
+**결론**: 코드에서 "plugin"과 "extension"은 서로 다른 계층이다. `plugin`은 Python 프로세스 실행 프로토콜이고, `extension`은 그 위의 확장 시스템이다. 오너가 말하는 "plugin"은 코드의 `extension`에 해당하고, 코드의 `plugin` 모듈은 module과 extension이 공유하는 하위 런타임이다.
 
 ---
 
@@ -174,7 +174,7 @@ manifest에 발화되지 않는 hook을 새로 선언하면 `parse_manifest`가 
 |---|---|---|
 | server.check_update | ● `check_update` | |
 
-ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ext_data.install_method_steamcmd`다. docker·music 열은 익스텐션 제거로 없어졌다.
+ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ext_data.install_method_steamcmd`다.
 
 ### 2.5 Python 쪽 엔트리포인트 호환성
 
@@ -304,7 +304,6 @@ slot 이름·창·종류는 `SLOT_TABLE` 한 곳에 있다. 종류: `inline`은 
 
 - `extension:icon` → 사바 스토리지 익스텐션 탭(`SabaStorageExtensions.tsx`, `window.api.extensionIcon`), `extension:initStatus` → `hooks/useExtensionInitStatus.ts`.
 
-
 ### 4.5 `host` (익스텐션 화면의 공식 통로, `src/extensions/host.ts`)
 
 모든 slot 컴포넌트가 `host` prop으로 받는다. 창마다 할 수 있는 일은 그 창이 `HostWindowContext`로 넣는다(메인 창 `App.tsx`, 트레이 팝업 `TrayPopup.tsx`, 바탕화면 오버레이 `DesktopOverlay.tsx`, 없으면 아무것도 하지 않는 기본값).
@@ -340,7 +339,7 @@ slot 이름·창·종류는 `SLOT_TABLE` 한 곳에 있다. 종류: `inline`은 
 - `SteamCMD` 클래스: 포터블 SteamCMD 탐색/설치, `install(...)`, `update`, buildid·브랜치 비교로 `check_update`. `check_update`는 설치된 빌드를 받은 때(appmanifest `LastUpdated`)와 그 브랜치의 빌드가 올라온 때(`app_info_print` branches의 `timeupdated`)를 `local_build_time`·`remote_build_time`으로 함께 답한다(Steam이 주지 않으면 `null`). 받은 SteamCMD 압축은 데몬 공용 `safe_extract`(02 §2.5)로 포터블 폴더에 바로 풀고, 풀기가 실패하면 실행 파일을 지워 다음 호출이 다시 받게 한다. 설치 시간 초과 때의 프로세스 트리 종료는 데몬 공용 `force_kill`이다.
 - daemon hook으로 실제로 쓰이는 것은 `server.check_update` 하나뿐이다. 설치는 module의 `lifecycle.py install_server`가 `from extensions.steamcmd import SteamCMD`로 직접 수행한다(palworld·zomboid `install_server`의 `install_for_module`).
 - `install_for_module(module_dir, install_dir, beta=None)`(steamcmd 다음 판): 모듈 module.toml `[install]`(`method = "steamcmd"`, `app_id`, `anonymous`, `beta`, `download_size`)을 읽어 SteamCMD를 준비하고 설치·업데이트한다. 앱 ID를 모듈 코드에 다시 적지 않는다. `[install]`에 steamcmd 앱 ID가 없으면 `ValueError`. `beta` 인자(인스턴스가 고른 브랜치, 02 §3.3 `list_versions`)가 있으면 `[install].beta`보다 먼저 쓴다. 반환은 `SteamCMD.install`과 같다.
-- 설치 진행률은 SteamCMD 출력의 `progress:` 줄 → 설치 폴더 appmanifest의 `BytesDownloaded`/`BytesToDownload`(`_manifest_progress`) → 늘어난 디스크 크기와 모듈이 적은 어림 총량(module.toml `[install] download_size`, `_disk_progress`) 순으로 읽는다. 익스텐션 안의 앱 ID별 크기 표(`_KNOWN_APP_SIZES`)는 지웠다: 게임 지식은 그 게임의 module.toml에만 둔다. `download_size`가 없는 모듈은 디스크 크기로 어림하지 않는다. 출력은 파이프에서 버퍼에 묶이기 쉽다. 디스크 크기가 어림 총량을 넘으면(미리 잡은 파일 크기·받기 임시 파일) 진행률을 올리지 않고 직전 값을 유지한다.
+- 설치 진행률은 SteamCMD 출력의 `progress:` 줄 → 설치 폴더 appmanifest의 `BytesDownloaded`/`BytesToDownload`(`_manifest_progress`) → 늘어난 디스크 크기와 모듈이 적은 어림 총량(module.toml `[install] download_size`, `_disk_progress`) 순으로 읽는다. 앱 ID별 크기 같은 게임 지식은 그 게임의 module.toml에만 둔다. `download_size`가 없는 모듈은 디스크 크기로 어림하지 않는다. 출력은 파이프에서 버퍼에 묶이기 쉽다. 디스크 크기가 어림 총량을 넘으면(미리 잡은 파일 크기·받기 임시 파일) 진행률을 올리지 않고 직전 값을 유지한다.
 - instance_fields는 `install_method_steamcmd`(설치 방식 표시, hook 조건)와 `steamcmd_beta`(사용자가 고른 브랜치) 둘뿐이다. daemon이 module의 `[install] method`를 보고 **범용 규칙**(`install_method_<방식>`, `<방식>_beta`)으로 채운다(`ServerInstance::apply_install_extension_data`, `record_installed_version`). 앱 ID·익명 로그인·플랫폼 같은 모듈 값은 인스턴스에 복사하지 않아 `steamcmd_app_id`·`steamcmd_anonymous`·`steamcmd_platform` 필드는 지웠다(0.1.14-beta.2, `min_app_version` 0.1.14-beta.2). core에 steamcmd 이름은 없다.
 
 ### 5.4 ue4-ini (디렉토리명 `ue4_ini`)
@@ -357,7 +356,6 @@ slot 이름·창·종류는 `SLOT_TABLE` 한 곳에 있다. 종류: `inline`은 
 ---
 
 ## 6. ext_process: 장기 실행 외부 프로세스 계약
-
 
 ---
 
