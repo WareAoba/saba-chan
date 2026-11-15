@@ -56,6 +56,7 @@ function addNotice({
     dedup = false,
     data = null,
     read = false,
+    timestamp,
 }: NoticeInput): Notice {
     const notices = loadNotices();
 
@@ -88,7 +89,7 @@ function addNotice({
         ...(detail ? { detail } : {}),
         action, // 'openUpdateModal' 등 클릭 시 실행할 액션
         data, // 액션에 넘길 값 (예: 패치노트)
-        timestamp: new Date().toISOString(),
+        timestamp: timestamp ?? new Date().toISOString(),
         read,
     };
     notices.unshift(notice);

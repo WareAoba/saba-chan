@@ -196,6 +196,8 @@ pub fn run() {
             streams::daemon_stream_open,
             streams::daemon_stream_close,
             sounds::sound_play,
+            sounds::sound_hold,
+            native::events_backlog,
             native::app_ready,
             native::daemon_status,
             native::daemon_restart,

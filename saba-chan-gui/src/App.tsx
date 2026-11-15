@@ -48,7 +48,9 @@ import { eventsAvailable, eventsLive, serverListPollMs } from './utils/daemonEve
 import { startPoll } from './utils/poll';
 import { motionAllowed } from './hooks/useSwapAnimation';
 import {
+    beginOpeningQuiet,
     beginOpeningSound,
+    endOpeningQuiet,
     OPENING_CHIME_LEAD_MS,
     OPENING_READY_WAIT_MS,
     type OpeningPlay,
@@ -137,6 +139,12 @@ function App() {
     const [patchNotes, setPatchNotes] = useState<Record<string, unknown> | null>(null);
     const [initFailed, setInitFailed] = useState<string | null>(null); // 데몬 기동 실패 문구
     const [initSeen, setInitSeen] = useState(0); // 받은 초기화 단계 수 (멈춤 감시를 다시 센다)
+    // 오프닝·기동음 없이 바로 여는 창: 데몬까지 모두 준비한 기동에서만 오프닝을 재생한다 (사용자 11-15).
+    // 다른 PC로 바꿔 다시 연 창(사용자 11-12), 데몬이 이미 떠 있던 창, 셸이 띄우지 않은 데몬에 붙은 기동
+    const [quickOpen, setQuickOpen] = useState(takeDaemonSwitch);
+    // 로딩 화면이 걷힐 때 읽는다: 로딩 중에 바뀌어도 로딩 효과를 다시 돌려 맡은 소리를 지우지 않게
+    const quickOpenRef = useRef(quickOpen);
+    quickOpenRef.current = quickOpen;
     const daemonRunning = backgroundDaemonStatus === 'running';
 
     // 마지막 업데이트 결과 (데몬 last-result): 데몬이 뜨면 한 번 묻고 알림을 남긴다. 알림을 누르면 패치노트
@@ -269,6 +277,8 @@ function App() {
                 .then((status) => {
                     if (status && status.running) {
                         console.log('[HMR] Daemon already running, skipping loading screen');
+                        // 데몬이 이미 떠 있던 창(인터페이스만 종료 뒤 다시 연 창·새로고침)은 오프닝 없이 연다
+                        setQuickOpen(true);
                         window.__sabaReadyReceived = true;
                         setInitStatus(t('loading.step_done'));
                         setInitProgress(100);
@@ -309,6 +319,8 @@ function App() {
                 setInitProgress((prev) => Math.max(prev, progressValues[data.step as keyof typeof progressValues] || prev));
 
                 if (data.step === 'ready') {
+                    // 셸이 이번에 데몬을 띄운 기동에서만 오프닝을 재생한다 (이미 떠 있던 데몬에 붙었거나 다시 보낸 ready는 false)
+                    if (data.opening === false) setQuickOpen(true);
                     window.__sabaReadyReceived = true;
                     setTimeout(() => setDaemonReady(true), 600);
                     setTimeout(() => setServersInitializing(false), 3500);
@@ -511,10 +523,8 @@ function App() {
         const timer = setTimeout(() => setRelayWaitOver(true), RELAY_WAIT_MS);
         return () => clearTimeout(timer);
     }, [daemonDone]);
-    // 다른 PC로 바꿔 다시 연 창이면 오프닝·기동음 없이 바로 연다 (사용자 11-12)
-    const [switchedDaemon] = useState(takeDaemonSwitch);
     const opening = openingGate({
-        switched: switchedDaemon,
+        quick: quickOpen,
         daemonOk: !openedWithoutDaemon,
         configLoaded: discordConfigLoaded,
         relayConfigured: !!discordCloudHostId,
@@ -561,11 +571,11 @@ function App() {
             return undefined;
         }
         if (!was) return undefined;
-        if (motionAllowed() && !switchedDaemon) {
+        if (motionAllowed() && !quickOpenRef.current) {
             setOpeningPhase('prepare');
             return undefined;
         }
-        // 움직임을 줄였거나 PC를 바꿔 열었으면 오프닝 없이 열되, 맡은 소리가 있으면 기동음 대신 그것을 낸다 (전환이면 기동음은 없다)
+        // 움직임을 줄였거나 바로 여는 창이면 오프닝 없이 열되, 맡은 소리가 있으면 기동음 대신 그것을 낸다 (바로 열면 기동음은 없다)
         const claimed = takeOpeningSound();
         setOpeningPhase('done');
         if (claimed) playOpeningSound(claimed);
@@ -573,7 +583,12 @@ function App() {
         setLoadingLeaving(true);
         const timer = setTimeout(() => setLoadingLeaving(false), LOADING_LEAVE_MS);
         return () => clearTimeout(timer);
-    }, [showLoading, switchedDaemon]);
+    }, [showLoading]);
+    // 로딩 화면·오프닝 동안에는 다른 알림(효과음·OS 알림·토스트)을 붙잡고, 다 걷히면 놓는다 (사용자 11-15)
+    useEffect(() => {
+        if (openingPhase !== 'done' || loadingLeaving) beginOpeningQuiet();
+        else endOpeningQuiet();
+    }, [openingPhase, loadingLeaving]);
     // 오프닝이 끝나면 탭 그림·글꼴을 한가할 때 미리 받아 둔다
     useEffect(() => {
         if (openingPhase === 'done') warmTabArt();
