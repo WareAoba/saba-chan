@@ -351,11 +351,12 @@ pub(super) fn heartbeat_body(metadata: Value, hash: &str, unchanged: bool, acks:
 /// 하트비트 메타데이터를 보낼 모양으로: (보낼 메타데이터, 지문, 바뀌지 않아 줄였는가).
 /// 지문은 `HEARTBEAT_VOLATILE`을 뺀 나머지(권한 포함)의 SHA-256이다. 릴레이가 받아 둔 지문(`sent`)과 같으면
 /// `HEARTBEAT_ALWAYS`만 보낸다 (모듈 명령·액션·낱말처럼 큰 값은 바뀔 때만)
-/// PC 주인 DM 알림 설정 (봇 설정 `backupNotice`·`dmNotice`). 기본값이면 싣지 않는다
+/// PC 주인 DM 알림 설정 (봇 설정 `backupNotice`·`dmNotice`). `dmOff`·`dmOn`은 비면 싣지 않는다
 pub(super) fn dm_notice_meta(meta: &mut Value, bot: &crate::config_store::BotConfig) {
     use crate::config_store::BackupNotice;
     match bot.backup_notice {
-        BackupNotice::All => {}
+        BackupNotice::All => meta["backupNotice"] = json!("all"),
+        // 기본값도 싣는다: 지금 운영 중인 옛 릴레이는 값이 없으면 성공한 백업까지 보낸다
         BackupNotice::Failures => meta["backupNotice"] = json!("failures"),
         BackupNotice::Off => meta["backupNotice"] = json!("off"),
     }

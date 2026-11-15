@@ -176,6 +176,7 @@
     "dm_notice_on": "켜짐",
     "dm_notice_off": "꺼짐",
     "dm_kind": {
+      "enabled": "DM 알림 전체",
       "crash": "비정상 종료",
       "unresponsive": "응답 없음",
       "externalStart": "사바쨩 밖에서 켜짐",

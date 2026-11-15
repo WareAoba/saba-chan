@@ -1476,6 +1476,8 @@ pub enum ConfigCmd {
 /// `bot dm-notice`의 DM 알림 종류 (데몬 봇 설정 `dmNotice`의 키)
 #[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DmKind {
+    /// DM 알림 전체 스위치 (`dmNotice.enabled`)
+    All,
     Crash,
     Unresponsive,
     ExternalStart,
@@ -1488,7 +1490,8 @@ pub enum DmKind {
 }
 
 impl DmKind {
-    pub const ALL: [DmKind; 9] = [
+    pub const ALL: [DmKind; 10] = [
+        DmKind::All,
         DmKind::Crash,
         DmKind::Unresponsive,
         DmKind::ExternalStart,
@@ -1503,6 +1506,7 @@ impl DmKind {
     /// 데몬 `dmNotice`의 키
     pub fn key(self) -> &'static str {
         match self {
+            DmKind::All => "enabled",
             DmKind::Crash => "crash",
             DmKind::Unresponsive => "unresponsive",
             DmKind::ExternalStart => "externalStart",
@@ -1515,9 +1519,9 @@ impl DmKind {
         }
     }
 
-    /// 설정에 없을 때의 값: PC 연결 끊김만 켜야 보낸다
+    /// 설정에 없을 때의 값: 전체 스위치와 PC 연결 끊김은 켜야 보낸다
     pub fn default_on(self) -> bool {
-        self != DmKind::Offline
+        !matches!(self, DmKind::All | DmKind::Offline)
     }
 }
 
