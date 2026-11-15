@@ -6,6 +6,7 @@ import { Icon } from '../../Icon';
 import { SabaNumberInput } from '../../ui/SabaUI';
 import { useHostDraft, usePendingChange } from '../../ui/SaveBar';
 import { RemoteDaemonSection, remoteDaemonAvailable } from '../RemoteDaemonSection';
+import { CUSTOM_RELAY_URL_VISIBLE } from '../settingsTabs';
 
 interface ConnectionTabProps {
     ipcPort: number;
@@ -89,27 +90,29 @@ export function ConnectionTab({
                     </div>
                 )}
 
-                {/* 커스텀 릴레이 서버 URL */}
-                <div className="setting-item">
-                    <label className="setting-label">
-                        <span className="setting-title">
-                            {t('gui:settings_modal.relay_url_label', '릴레이 서버 URL')}
-                        </span>
-                        <span className="setting-description">
-                            {t(
-                                'gui:settings_modal.relay_url_description',
-                                '클라우드 모드에서 사용할 릴레이 서버의 URL입니다. 비어있으면 기본 서버를 사용합니다.',
-                            )}
-                        </span>
-                    </label>
-                    <input
-                        type="text"
-                        className="input setting-field"
-                        value={relayDraft}
-                        onChange={(e) => setRelayDraft(e.target.value)}
-                        placeholder="https://relay.saba-chan.app"
-                    />
-                </div>
+                {/* 커스텀 릴레이 서버 URL: 당분간 숨긴다 */}
+                {CUSTOM_RELAY_URL_VISIBLE && (
+                    <div className="setting-item">
+                        <label className="setting-label">
+                            <span className="setting-title">
+                                {t('gui:settings_modal.relay_url_label', '릴레이 서버 URL')}
+                            </span>
+                            <span className="setting-description">
+                                {t(
+                                    'gui:settings_modal.relay_url_description',
+                                    '클라우드 모드에서 사용할 릴레이 서버의 URL입니다. 비어있으면 기본 서버를 사용합니다.',
+                                )}
+                            </span>
+                        </label>
+                        <input
+                            type="text"
+                            className="input setting-field"
+                            value={relayDraft}
+                            onChange={(e) => setRelayDraft(e.target.value)}
+                            placeholder="https://relay.saba-chan.app"
+                        />
+                    </div>
+                )}
             </section>
         </>
     );
