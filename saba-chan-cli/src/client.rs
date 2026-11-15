@@ -1195,6 +1195,13 @@ impl Api {
         self.post_long(&format!("/api/instance/{}/backups/import", seg(id)), json!({ "path": path }))
             .await
     }
+    /// GET /api/schedules/upcoming?hours= — 모든 서버의 다가오는 예약 `{upcoming:[{instance, task, next, clash}], clashes}`
+    pub async fn upcoming_schedules(&self, hours: Option<u32>) -> Result<Value> {
+        match hours {
+            Some(h) => self.get(&format!("/api/schedules/upcoming?hours={h}")).await,
+            None => self.get("/api/schedules/upcoming").await,
+        }
+    }
     /// GET /api/instance/:id/schedule — `{schedule, backup_keep, revision, backup_supported, announce_supported}`
     pub async fn schedule(&self, id: &str) -> Result<Value> {
         self.get(&format!("/api/instance/{}/schedule", seg(id))).await
@@ -1810,7 +1817,6 @@ mod route_coverage {
         ("/api/locales/{lang}/{ns}", "GUI 번역 (CLI는 설치 폴더 cli.json을 직접 읽고, TUI는 `locales_version`이 바뀌면 다시 읽는다)"),
         ("/api/instance/{id}/status", "GUI가 시작·정지가 끝났는지 묻는 길 (CLI `server info`·`list`는 /api/servers 상태를 쓴다)"),
         ("/api/instance/{id}/chat-link/{guild}", "디스코드 채널과 게임 채팅을 잇는 원격(디스코드 `/채팅연동`) 전용 (잇는 채널이 디스코드에만 있다)"),
-        ("/api/schedules/upcoming", "GUI 작업 기록 화면의 '다가오는 예약' 카드 (CLI는 `schedule show <서버>`로 서버마다 다음 실행을 본다)"),
         ("/api/guides", "GUI 가이드 카드·화면 강조 (GUI 화면을 짚는 안내라 CLI에는 그릴 곳이 없다)"),
         ("/api/guides/{id}", "GUI 가이드를 열었음·보던 단계·끝까지 봄"),
         ("/api/instance/{id}/console/stream", "콘솔 스트림(SSE): 앱·웹용 (사용자 11-12). CLI는 `/api/instance/{id}/console`을 주기 조회한다"),

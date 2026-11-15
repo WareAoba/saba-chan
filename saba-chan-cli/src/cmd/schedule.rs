@@ -22,7 +22,7 @@ const WEEKDAYS: [&str; 7] = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 
 pub async fn run(ctx: &Ctx, cmd: ScheduleCmd) -> Result<()> {
     match cmd {
-        ScheduleCmd::Show { server } => show(ctx, server.as_deref()).await,
+        ScheduleCmd::Show { server, hours } => show(ctx, server.as_deref(), hours).await,
         ScheduleCmd::Add {
             server,
             action,
@@ -320,8 +320,10 @@ async fn toggle(ctx: &Ctx, server: &str, number: usize, on: bool) -> Result<()> 
     .await
 }
 
-async fn show(ctx: &Ctx, server: Option<&str>) -> Result<()> {
-    let sv = resolve::server(ctx, server).await?;
+/// 서버 없이: 모든 서버의 다가오는 예약 (`hours` 안, 기본 24시간). 서버를 주면 그 서버의 예약 목록
+async fn show(ctx: &Ctx, server: Option<&str>, hours: Option<u32>) -> Result<()> {
+    let Some(server) = server else { return upcoming(ctx, hours).await };
+    let sv = resolve::server(ctx, Some(server)).await?;
     let cur = ctx.api.schedule(&sv.id).await?;
     ctx.out.data(&cur, |cur| {
         let list = tasks(cur);
@@ -366,6 +368,37 @@ async fn show(ctx: &Ctx, server: Option<&str>) -> Result<()> {
         if cur.get("announce_supported").and_then(Value::as_bool) != Some(true) {
             say!("{}", output::dim(&t!("schedule.no_announce")));
         }
+    });
+    Ok(())
+}
+
+/// 다가오는 예약 표의 줄: 다음 실행, 서버, 작업, 겹침 (데몬이 준 가까운 순서 그대로)
+fn upcoming_rows(up: &Value) -> Vec<[String; 4]> {
+    up.get("upcoming")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(|u| {
+            let task = u.get("task").cloned().unwrap_or(Value::Null);
+            let clash = if u.get("clash").and_then(Value::as_bool) == Some(true) { console::style(t!("schedule.clash")).yellow().to_string() } else { String::new() };
+            [u.get("next").and_then(Value::as_i64).map(local_time).unwrap_or_default(), s(u, "instance").to_string(), what(&task), clash]
+        })
+        .collect()
+}
+
+async fn upcoming(ctx: &Ctx, hours: Option<u32>) -> Result<()> {
+    let up = ctx.api.upcoming_schedules(hours).await?;
+    ctx.out.data(&up, |up| {
+        let rows = upcoming_rows(up);
+        if rows.is_empty() {
+            say!("{}", output::dim(&t!("schedule.upcoming_none", hours = hours.unwrap_or(24))));
+            return;
+        }
+        let mut t = output::table(&[t!("schedule.col.next"), t!("noun.server"), t!("schedule.col.task"), String::new()]);
+        for r in rows {
+            t.add_row(r.to_vec());
+        }
+        output::print_table(t);
     });
     Ok(())
 }
@@ -612,6 +645,23 @@ fn parse_at(raw: &str) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 서버 없이 `schedule show`: 데몬이 가까운 순으로 준 모든 서버의 다음 실행 (GUI '다가오는 예약' 카드).
+    /// 무거운 작업이 붙어 겹치면(`clash`) 표시한다
+    #[test]
+    fn upcoming_rows_follow_the_daemons_order_and_mark_clashes() {
+        crate::i18n::init("en");
+        let up = json!({ "upcoming": [
+            { "instance": "survival", "next": 1_800_000_000, "clash": true, "task": { "action": "backup", "at": "04:00" } },
+            { "instance": "lobby", "next": 1_800_000_060, "clash": false, "task": { "action": "restart", "at": "04:01" } },
+        ] });
+        let rows = upcoming_rows(&up);
+        assert_eq!(rows.len(), 2);
+        assert_eq!((rows[0][1].as_str(), rows[1][1].as_str()), ("survival", "lobby"));
+        assert_eq!(rows[0][0], local_time(1_800_000_000));
+        assert!(rows[0][3].contains(&t!("schedule.clash")) && rows[1][3].is_empty(), "{rows:?}");
+        assert!(upcoming_rows(&json!({ "upcoming": [] })).is_empty());
+    }
 
     /// 작업 하나를 지우지 않고 고친다. 준 것만 바뀌고 켜짐 여부는 그대로 (C19)
     /// 고치기 전에 읽은 일정의 revision을 실어 보낸다: 그사이 바뀌었으면 데몬이 409로 거절해 엉뚱한 작업을 지우지 않는다 (L51)

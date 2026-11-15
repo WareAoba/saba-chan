@@ -63,7 +63,8 @@
     "ask_dir": "Pasta de instalação",
     "ask_run": "Como executar o servidor?",
     "run_managed": "Gerenciado pelo saba-chan (recomendado)",
-    "run_unmanaged": "Gerenciamento manual (sem console do Saba-chan)"
+    "run_unmanaged": "Gerenciamento manual (sem console do Saba-chan)",
+    "branch_name": "{{name}} · branch"
   },
   "bot": {
     "ask_token": "Token do nó",
@@ -1001,7 +1002,7 @@
       "backup.export": "Exportar um backup para um único zip que pode ser levado a outro PC (sem nome: escolher da lista)",
       "backup.import": "Verificar um zip criado por `backup export` e adicioná-lo aos backups deste servidor (depois, restaurar)",
       "schedule": "Tarefas agendadas do servidor (iniciar, parar, reiniciar, salvar, backup, aviso, atualização, comando do jogo)",
-      "schedule.show": "Ver o agendamento",
+      "schedule.show": "Mostrar os agendamentos de um servidor. Sem servidor: os próximos agendamentos de todos os servidores",
       "schedule.add": "Agendar uma tarefa: start, stop, restart, save, backup, announce, update, command",
       "schedule.edit": "Alterar a tarefa N sem excluí-la: só mudam as opções informadas (veja schedule show)",
       "schedule.remove": "Excluir a tarefa N (veja schedule show)",
@@ -1108,7 +1109,8 @@
       "remote.install": "Instalar o Saba-chan em um PC Linux pelo ssh deste PC e conectar (`usuário@host`)",
       "remote.remove": "Remover um dos seus PCs: esquecê-lo aqui e, se quiser, desinstalar o Saba-chan nele e tirá-lo da lista do relay",
       "remote.update": "Atualizar agora um daemon remoto ou ligar/desligar as atualizações automáticas (`--auto on|off`)",
-      "config.public-address": "Endereço público deste PC (usado nos endereços de servidores e nas conexões de daemon remoto): sem valor mostra, domínio ou IP salva, auto usa o IP público que o Server-chan vê"
+      "config.public-address": "Endereço público deste PC (usado nos endereços de servidores e nas conexões de daemon remoto): sem valor mostra, domínio ou IP salva, auto usa o IP público que o Server-chan vê",
+      "server.access": "Quem pode usar este servidor no Discord: compartilhado ou somente membros, lista de membros, apelidos com expulsão automática. Sem opções: mostrar"
     },
     "arg": {
       "module.maker.game": "Jogo para o primeiro pedido",
@@ -1363,7 +1365,15 @@
       "remote.update.host_id": "Id do PC do daemon remoto (veja `remote daemons`)",
       "remote.update.auto": "Ligar (on) ou desligar (off) as atualizações automáticas. Sem ele: atualizar agora",
       "config.public-address.address": "Domínio ou IP (auto para o IP público)",
-      "config.public-address.share": "Mostrar com /<servidor> address no Discord (on|off)"
+      "config.public-address.share": "Mostrar com /<servidor> address no Discord (on|off)",
+      "branch_of": "Criar como branch deste servidor: mesmo jogo, configurações copiadas uma vez, pasta, mundo e portas separados",
+      "server.access.mode": "shared (compartilhado, permissões por nível do Discord) ou members (somente a lista de membros)",
+      "server.access.add_member": "Adicionar à lista de membros: apelido ou apelido=DiscordID (pode repetir)",
+      "server.access.remove_member": "Remover da lista de membros (pode repetir)",
+      "server.access.kick_others": "Somente membros: expulsar automaticamente apelidos fora da lista",
+      "server.access.kick": "Compartilhado: expulsar automaticamente quem entrar com este apelido (pode repetir)",
+      "server.access.unkick": "Remover da lista de expulsão automática (pode repetir)",
+      "schedule.show.hours": "Sem servidor: quantas horas à frente mostrar (padrão 24, máximo 720)"
     },
     "after": "Os nomes podem ser parciais (ex.: start pal). Sem argumentos em um terminal, abre o menu em tela cheia (SABA_NO_TUI=1: shell interativo).\nEm scripts, use --json e --yes. Códigos de saída: 0 sucesso · 1 falha · 2 uso · 3 falha de conexão com o daemon · 4 não encontrado · 130 cancelado"
   },
@@ -1480,7 +1490,9 @@
     "bad_date": "\"{{got}}\": data inválida. Use AAAA-MM-DD, ex.: 2026-12-24.",
     "bad_arg": "\"{{got}}\": argumento inválido. Use NOME=VALOR.",
     "confirm_danger": "{{command}} é difícil de desfazer e roda no horário definido sem confirmação. Agendar?",
-    "from_needs_every_days": "--from só vale para tarefas a cada N dias (--every-days)."
+    "from_needs_every_days": "--from só vale para tarefas a cada N dias (--every-days).",
+    "clash": "sobreposto",
+    "upcoming_none": "Nada agendado nas próximas {{hours}} horas"
   },
   "chatbot": {
     "api_key": "Chave de API salva",
@@ -2101,5 +2113,16 @@
     "some_failed": "Falha ao alterar alguns agentes",
     "is_linked": "✓ {{agent}}: com Saba-chan",
     "is_not_linked": "· {{agent}}: sem Saba-chan (saba-chan agent link)"
+  },
+  "access": {
+    "mode": "Modo de uso",
+    "shared": "Compartilhado",
+    "members": "Somente membros",
+    "member_list": "Lista de membros",
+    "kick_others": "Expulsar automaticamente quem não está na lista",
+    "kick_list": "Expulsão automática",
+    "none": "Ninguém",
+    "not_listed": "{{name}} não está na lista",
+    "saved": "Modo de uso de {{server}} salvo"
   }
 }

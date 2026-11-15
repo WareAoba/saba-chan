@@ -63,7 +63,8 @@
     "ask_dir": "安装文件夹路径",
     "ask_run": "服务器如何运行？",
     "run_managed": "由 saba-chan 管理（推荐）",
-    "run_unmanaged": "自行管理（无法使用 Saba-chan 控制台）"
+    "run_unmanaged": "自行管理（无法使用 Saba-chan 控制台）",
+    "branch_name": "{{name}} · 分支"
   },
   "bot": {
     "ask_token": "节点令牌",
@@ -1001,7 +1002,7 @@
       "backup.export": "将一个备份导出为可移到其他电脑的单个 zip(不带名称则从列表中选择)",
       "backup.import": "检查由 `backup export` 生成的 zip 并加入此服务器的备份列表(之后再还原)",
       "schedule": "服务器计划任务（启动、停止、重启、保存、备份、公告、更新、游戏命令）",
-      "schedule.show": "查看计划",
+      "schedule.show": "查看服务器的预约。不指定服务器时显示所有服务器即将执行的预约",
       "schedule.add": "添加计划任务：start、stop、restart、save、backup、announce、update、command",
       "schedule.edit": "修改第 N 个任务而不删除：只更改给出的选项（参见 schedule show）",
       "schedule.remove": "删除第 N 个任务（参见 schedule show）",
@@ -1108,7 +1109,8 @@
       "remote.install": "通过本机 ssh 在 Linux 电脑上安装 Saba-chan 并连接（`用户@主机`）",
       "remote.remove": "移除一台电脑：在这里忘记它，可选在那台电脑上卸载 Saba-chan 并从 Server-chan 列表中移除",
       "remote.update": "立即更新远程守护进程，或开关自动更新（`--auto on|off`）",
-      "config.public-address": "这台电脑的公开地址（游戏服务器地址和远程守护进程连接共用）：不带值显示当前值，给出域名或 IP 则保存，auto 使用 Server-chan 看到的公网 IP"
+      "config.public-address": "这台电脑的公开地址（游戏服务器地址和远程守护进程连接共用）：不带值显示当前值，给出域名或 IP 则保存，auto 使用 Server-chan 看到的公网 IP",
+      "server.access": "谁能在 Discord 中使用此服务器: 服务器共用、仅限成员、成员名单、自动踢出的昵称。不带选项则查看"
     },
     "arg": {
       "module.maker.game": "第一个请求中的游戏名",
@@ -1363,7 +1365,15 @@
       "remote.update.host_id": "远程守护进程的电脑 id（见 `remote daemons`）",
       "remote.update.auto": "开启(on)或关闭(off)自动更新。省略则立即更新",
       "config.public-address.address": "域名或 IP（auto 为公网 IP）",
-      "config.public-address.share": "是否通过 Discord 的 /<服务器> address 告知 (on|off)"
+      "config.public-address.share": "是否通过 Discord 的 /<服务器> address 告知 (on|off)",
+      "branch_of": "创建为此服务器的分支: 同一游戏，设置只复制一次，文件夹、世界、端口各自独立",
+      "server.access.mode": "shared (服务器共用，按 Discord 等级权限) 或 members (仅成员名单)",
+      "server.access.add_member": "加入成员名单: 昵称 或 昵称=DiscordID (可多次指定)",
+      "server.access.remove_member": "从成员名单中移除 (可多次指定)",
+      "server.access.kick_others": "仅限成员: 自动踢出名单外的昵称",
+      "server.access.kick": "服务器共用: 此昵称进入时自动踢出 (可多次指定)",
+      "server.access.unkick": "从自动踢出名单中移除 (可多次指定)",
+      "schedule.show.hours": "不指定服务器时: 查看未来多少小时 (默认 24，最大 720)"
     },
     "after": "名称写一部分即可（例：start pal）。在终端不带参数运行会打开全屏菜单（SABA_NO_TUI=1 时为交互式 shell）。\n脚本中请使用 --json 和 --yes。退出码：0 成功 · 1 失败 · 2 用法错误 · 3 守护进程连接失败 · 4 未找到 · 130 已取消"
   },
@@ -1480,7 +1490,9 @@
     "bad_date": "“{{got}}”不是日期。请按 YYYY-MM-DD 写成 2026-12-24 这样。",
     "bad_arg": "“{{got}}”不是参数。请写成 名称=值。",
     "confirm_danger": "{{command}} 难以撤销，到设定时间会不经确认直接执行。要预约吗？",
-    "from_needs_every_days": "--from 只用于每 N 天（--every-days）的任务。"
+    "from_needs_every_days": "--from 只用于每 N 天（--every-days）的任务。",
+    "clash": "重叠",
+    "upcoming_none": "未来 {{hours}} 小时内没有预约"
   },
   "chatbot": {
     "api_key": "API 密钥已保存",
@@ -2101,5 +2113,16 @@
     "some_failed": "部分代理更改失败",
     "is_linked": "✓ {{agent}}：已添加 Saba-chan",
     "is_not_linked": "· {{agent}}：未添加 Saba-chan（saba-chan agent link）"
+  },
+  "access": {
+    "mode": "使用模式",
+    "shared": "服务器共用",
+    "members": "仅限成员",
+    "member_list": "成员名单",
+    "kick_others": "自动踢出名单外玩家",
+    "kick_list": "自动踢出",
+    "none": "无",
+    "not_listed": "{{name}} 不在名单中",
+    "saved": "已保存 {{server}} 的使用模式"
   }
 }
