@@ -184,7 +184,7 @@ impl ProcessTracker {
     /// 이미 돌던 서버를 다시 붙일 때: 실제로 시작한 시각(유닉스 초)을 그대로 쓴다
     pub fn track_since(&self, server_name: &str, pid: u32, start_time: u64) {
         self.lock().insert(server_name.to_string(), ProcessInfo { pid, start_time });
-        tracing::info!("Now tracking server '{}' with pid: {}", server_name, pid);
+        tracing::debug!("Now tracking server '{}' with pid: {}", server_name, pid);
     }
 
     /// 같은 서버의 PID만 바꾼다 (런처가 끝나고 진짜 서버로 넘어갈 때). 시작 시각은 그대로
@@ -203,7 +203,7 @@ impl ProcessTracker {
     pub fn untrack(&self, server_name: &str) -> bool {
         let removed = self.lock().remove(server_name).is_some();
         if removed {
-            tracing::info!("Stopped tracking server '{}'", server_name);
+            tracing::debug!("Stopped tracking server '{}'", server_name);
         }
         removed
     }

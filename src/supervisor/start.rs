@@ -323,7 +323,7 @@ impl Supervisor {
             tracing::warn!("Launch of '{}' blocked: {:?}", instance.name, blocked);
             blocked.to_json(crate::sandbox::message(&blocked))
         })?;
-        tracing::info!("Starting '{}': program '{}' in '{}'", instance.name, program, working_dir);
+        tracing::debug!("Starting '{}': program '{}' in '{}'", instance.name, program, working_dir);
         Ok((program, gate))
     }
 
@@ -470,7 +470,7 @@ impl Supervisor {
     pub async fn start_server(sup: &tokio::sync::RwLock<Self>, instance_id: &str, module_name: &str, config: Value) -> Result<Value> {
         let gate = sup.read().await.addon_gate();
         let _swap = gate.hold_addons().await;
-        tracing::info!("Starting server '{}' with module '{}'", instance_id, module_name);
+        tracing::debug!("Starting server '{}' with module '{}'", instance_id, module_name);
 
         let moved = {
             let mut s = sup.write().await;
@@ -729,7 +729,7 @@ impl Supervisor {
             let s = sup.read().await;
             // ── Non-managed 모드: get_launch_command로 명령어를 받아 데몬이 직접 spawn ──
 
-            tracing::info!("Starting non-managed server for instance '{}' (module: {})", server_name, module_name);
+            tracing::debug!("Starting non-managed server for instance '{}' (module: {})", server_name, module_name);
 
             s.launch_command_call(&config, &instance, module_name, false)?.0
         };
@@ -876,7 +876,7 @@ impl Supervisor {
         // ── 3) 실행 명령 받기: 준비는 읽기 락, 모듈 호출은 락 밖 ──
         let (call, module) = {
             let s = sup.read().await;
-            tracing::info!("Starting managed server for instance '{}' (module: {})", instance.name, module_name);
+            tracing::debug!("Starting managed server for instance '{}' (module: {})", instance.name, module_name);
 
             s.launch_command_call(&config, &instance, module_name, true)?
         };
