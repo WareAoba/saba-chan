@@ -6,10 +6,7 @@
 
 ---
 
-
-> **2026-10-17 L3 이후**: 업데이트·모듈 목록·익스텐션 목록은 모두 릴레이의 서명된 릴리즈 manifest 하나에서 나온다. GitHub 업데이트 경로(`github.rs`, `api_base_url`, `github_owner`/`github_repo`, `include_prerelease`, 익스텐션 `manifest_url`, module.toml `[update]`, modules·extensions 저장소의 릴리즈 워크플로)는 없다. 근거 커밋: saba-chan 65e1763·8b840f7·60768a7, modules a26bdeb, extensions 301ff2c.
->
-> **현재 코드 기준 요약**: 로컬 Discord 봇(`discord_bot/`), docker·music 익스텐션, `ext_process` API는 모두 없어졌다. 익스텐션 저장소에는 `steamcmd`, `ue4_ini`, `xna` 세 개가 있다. 활성 목록과 익스텐션 글로벌 설정은 `<data_dir>/config.json`의 `extensions.enabled`, `extensions.settings`에 저장된다.
+> **요약**: 익스텐션 저장소에는 `desktop_pet`, `steamcmd`, `ue4_ini`, `xna`가 있다. 활성 목록과 익스텐션 글로벌 설정은 `<data_dir>/config.json`의 `extensions.enabled`, `extensions.settings`에 저장된다.
 
 ## 0. 용어 정리: "plugin" vs "extension" (프로젝트 오너 프레이밍 대비)
 
