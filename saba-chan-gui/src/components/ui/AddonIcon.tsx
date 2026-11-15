@@ -21,7 +21,7 @@ export function AddonIcon({ storeKey, extId, hasIcon, version, src, fallback, si
     const remote = !src && hasIcon && (storeKey || extId);
     const cacheKey = remote ? `${storeKey ? `store:${storeKey}` : `ext:${extId}`}@${version ?? ''}` : null;
     const loaded = useCachedIcon(cacheKey, () =>
-        storeKey ? window.api?.storeIcon?.(storeKey) : extId ? window.api?.extensionIcon?.(extId) : undefined,
+        storeKey ? window.api.storeIcon(storeKey) : extId ? window.api.extensionIcon(extId) : undefined,
     );
     const url = src || loaded;
     return url ? <img src={url} alt="" /> : <Icon name={fallback} size={size} />;

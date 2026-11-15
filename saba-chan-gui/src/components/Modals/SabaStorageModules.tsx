@@ -38,7 +38,7 @@ export function ModulesTab() {
 
     // 설치된 모듈 로드
     const loadInstalledModules = useCallback(async () => {
-        const res = await window.api?.moduleList?.();
+        const res = await window.api.moduleList();
         if (res?.modules) {
             clearModuleAuditCache();
             setInstalledModules(res.modules);
@@ -51,7 +51,7 @@ export function ModulesTab() {
     // 모듈 캐시 새로고침 (디스크 재스캔)
     const handleRefreshModules = useCallback(async () => {
         setRefreshingModules(true);
-        const res = await window.api?.moduleRefresh?.();
+        const res = await window.api.moduleRefresh();
         if (res?.modules) {
             clearModuleAuditCache();
             setInstalledModules(res.modules);
@@ -93,7 +93,7 @@ export function ModulesTab() {
     const handleInstallModule = useCallback(async (moduleId: string) => runInstall(moduleId, async () => {
         setInstallResults((prev) => ({ ...prev, [moduleId]: null }));
         try {
-            const res = await window.api?.moduleInstallFromManifest?.(moduleId);
+            const res = await window.api.moduleInstallFromManifest(moduleId);
             if (res?.success) {
                 setInstallResults((prev) => ({ ...prev, [moduleId]: 'ok' }));
                 // 데몬이 이 모듈이 쓰는 익스텐션을 받고 켰다: 알리고 익스텐션 목록도 새로
@@ -108,7 +108,7 @@ export function ModulesTab() {
                 if (ext?.installed?.length || ext?.enabled?.length) refreshExtensions?.();
                 // 설치 후 로컬 모듈 목록 갱신
                 clearModuleAuditCache();
-                const listRes = await window.api?.moduleRefresh?.();
+                const listRes = await window.api.moduleRefresh();
                 if (listRes?.modules) setInstalledModules(listRes.modules);
             } else if (res?.error_code === 'module_busy') {
                 // 같은 모듈의 다른 설치·제거가 끝나지 않았다: 실패로 굳히지 않고 다시 누를 수 있게 둔다
@@ -127,7 +127,7 @@ export function ModulesTab() {
         if (!id) return;
         setRemovingIds((prev) => new Set(prev).add(id));
         try {
-            const res = await window.api?.moduleRemove?.(id);
+            const res = await window.api.moduleRemove(id);
             if (res?.success) await loadInstalledModules();
             else if (res?.error_code === 'module_busy') safeShowToast(t('saba_storage.module_busy'), 'warning', 4000);
             else if (res?.error_code === 'module_in_use') safeShowToast(t('saba_storage.module_in_use'), 'warning', 5000);

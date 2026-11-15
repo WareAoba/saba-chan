@@ -29,8 +29,7 @@ const DAY = [
 const versionLabel = (v?: string | null) => (v ? `v${v}` : '—');
 
 function openExternal(url: string) {
-    if (window.api?.shellOpenExternal) window.api.shellOpenExternal(url);
-    else window.open(url, '_blank');
+    window.api.shellOpenExternal(url);
 }
 
 /* 펜으로 그린 낙서들. 질감은 .about-intro-card 의 #about-pen 필터가 입힌다 */

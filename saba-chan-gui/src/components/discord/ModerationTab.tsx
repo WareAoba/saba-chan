@@ -18,10 +18,6 @@ import { failed } from '../../utils/apiResult';
  * 채널 상태·음소거: GET/PATCH/POST/PUT /api/relay/node/:guild/moderation… , 배정: GET/PUT /api/relay/node/:guild/channels
  */
 
-export const moderationAvailable = () =>
-    typeof window.api?.relayNodeModeration === 'function' &&
-    typeof window.api?.relayNodeChannels === 'function' &&
-    typeof window.api?.relayNodeChannelsSave === 'function';
 
 interface ModerationTabProps {
     node: DiscordNode;

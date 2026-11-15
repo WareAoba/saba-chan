@@ -17,8 +17,6 @@ import { TagInput } from './TagInput';
 import type { DiscordNode } from './types';
 import { failed } from '../../utils/apiResult';
 
-export const botSettingsAvailable = () =>
-    typeof window.api?.discordSettingsGet === 'function' && typeof window.api?.discordSettingsSet === 'function';
 
 /** relay nodeSettingsSchema와 같은 범위 (I2 계약) */
 export const QUEUE_LINES = { min: 1, max: 20 };
@@ -178,7 +176,6 @@ export function BotSettingsTab({ node, section = 'bot', sampleModuleWord = '' }:
     const [chatbotConfirm, setChatbotConfirm] = useState<string | null>(null);
 
     const loadChatbot = useCallback(async () => {
-        if (typeof window.api?.chatbotGet !== 'function') return;
         try {
             const res = await window.api.chatbotGet();
             if (failed(res)) return;
@@ -452,7 +449,6 @@ export function BotSettingsTab({ node, section = 'bot', sampleModuleWord = '' }:
                             (confirmLevel) => confirmLevel !== settings.confirmLevel && save({ confirmLevel }),
                         )}
                         {chatbotConfirm &&
-                            typeof window.api?.chatbotSave === 'function' &&
                             confirmField(
                                 t('discord.bot_settings.confirm_chatbot'),
                                 t('discord.bot_settings.confirm_chatbot_hint'),
@@ -607,7 +603,7 @@ function AutoChannelsField({ guildId, value, locked, onChange }: AutoChannelsFie
     const [channels, setChannels] = useState<VoiceChannel[] | null>(null);
     useEffect(() => {
         let alive = true;
-        Promise.resolve(window.api.relayNodeChannels?.(guildId))
+        Promise.resolve(window.api.relayNodeChannels(guildId))
             .then((r) => alive && setChannels(Array.isArray(r?.voiceChannels) ? r.voiceChannels : []))
             .catch(() => alive && setChannels([]));
         return () => {

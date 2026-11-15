@@ -100,7 +100,7 @@ function VersionDialog({
     useEffect(() => {
         let live = true;
         (async () => {
-            const body = (await window.api?.addonVersions?.(card.key)) ?? { success: false };
+            const body = (await window.api.addonVersions(card.key)) ?? { success: false };
             if (live) setRes(body);
         })();
         return () => {
@@ -246,7 +246,7 @@ export function useAddonVersions(reload?: () => unknown) {
     const updatable = (card: AddonCard) => !!newerVersion(card) && !card.pinned && !card.pending_version && !(card.key in busy);
 
     const update = (card: AddonCard, batch = false) =>
-        change({ card, version: newerVersion(card) || '', from: card.version || '', until: '' }, () => window.api?.addonUnpin?.(card.key), batch);
+        change({ card, version: newerVersion(card) || '', from: card.version || '', until: '' }, () => window.api.addonUnpin(card.key), batch);
 
     /** 카드 오른쪽 업데이트 단추 */
     const updateButton = (card: AddonCard, disabled?: boolean) => {
@@ -373,7 +373,7 @@ export function useAddonVersions(reload?: () => unknown) {
                             label: t('saba_storage.version_confirm_go'),
                             action: () => {
                                 setConfirming(null);
-                                change(confirming, () => window.api?.addonPin?.(confirming.card.key, confirming.version));
+                                change(confirming, () => window.api.addonPin(confirming.card.key, confirming.version));
                             },
                         },
                         { label: t('modals.cancel'), action: () => setConfirming(null) },
@@ -397,7 +397,7 @@ export function useAddonVersions(reload?: () => unknown) {
                                 const until = card.pinned?.until_newer_than || '';
                                 setUnpinning(null);
                                 change({ card, version: until, from: card.version || '', until }, () =>
-                                    window.api?.addonUnpin?.(card.key),
+                                    window.api.addonUnpin(card.key),
                                 );
                             },
                         },

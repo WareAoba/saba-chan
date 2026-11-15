@@ -9,7 +9,6 @@ import { SabaSpinner } from '../ui/SabaUI';
 import { FileMoveDialog } from './FileMoveDialog';
 import './StorageSection.css';
 
-export const storageAvailable = () => typeof window.api?.systemStorage === 'function';
 
 /** 디스크 막대의 갈래 (데몬 `storage::Category`) 와 색 */
 export const CATEGORIES = ['servers', 'backups', 'components', 'app'] as const;

@@ -102,7 +102,7 @@ export function FileMoveDialog({ volumes, items, onClose, onMoved }: Props) {
     };
 
     const chooseFolder = async () => {
-        const target = await window.api.openFolderDialog?.();
+        const target = await window.api.openFolderDialog();
         if (target) await ask({ target });
     };
 

@@ -34,9 +34,8 @@ function BackgroundModal({ onClose, isClosing, ipcPort }: BackgroundModalProps) 
     const [remote, setRemote] = useState<string | null>(null);
 
     useEffect(() => {
-        if (typeof window.api?.daemonTarget !== 'function') return;
         let alive = true;
-        Promise.all([window.api.daemonTarget(), window.api.remoteDaemons?.()])
+        Promise.all([window.api.daemonTarget(), window.api.remoteDaemons()])
             .then(([current, list]) => {
                 const d = current?.target && list?.daemons?.find((x: ApiBody) => x.hostId === current.target);
                 if (!alive) return;
@@ -160,15 +159,13 @@ function BackgroundModal({ onClose, isClosing, ipcPort }: BackgroundModalProps) 
             </dl>
 
             {/* 4. 보조 동작 */}
-            {window.api?.logsOpenFolder && (
-                <button
-                    type="button"
-                    className="btn btn-ghost btn-block"
-                    onClick={() => openWithNotice(() => window.api.logsOpenFolder())}
-                >
-                    <Icon name="folder" size="sm" /> {t('shell.open_logs_folder')}
-                </button>
-            )}
+            <button
+                type="button"
+                className="btn btn-ghost btn-block"
+                onClick={() => openWithNotice(() => window.api.logsOpenFolder())}
+            >
+                <Icon name="folder" size="sm" /> {t('shell.open_logs_folder')}
+            </button>
 
             <p className="bg-pop-note">{t('background_modal.about_note')}</p>
         </div>

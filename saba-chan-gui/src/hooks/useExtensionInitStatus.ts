@@ -40,7 +40,6 @@ export default function useExtensionInitStatus() {
     }, []);
 
     const fetchStatus = useCallback(async () => {
-        if (!window.api?.extensionInitStatus) return;
         try {
             const data = await window.api.extensionInitStatus();
 

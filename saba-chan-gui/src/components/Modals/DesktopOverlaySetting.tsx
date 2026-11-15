@@ -20,7 +20,7 @@ export function DesktopOverlaySetting() {
 
     useEffect(() => {
         let alive = true;
-        Promise.resolve(window.api?.overlayState?.())
+        Promise.resolve(window.api.overlayState())
             .then((res) => {
                 if (alive && res && typeof res.enabled === 'boolean') setState(res as OverlayState);
             })

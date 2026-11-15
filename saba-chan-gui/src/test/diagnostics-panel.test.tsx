@@ -20,11 +20,6 @@ describe('진단 정보 (/api/diagnostics)', () => {
         window.api = {} as unknown as typeof window.api;
     });
 
-    it('채널이 없으면 그리지 않는다', () => {
-        const { container } = render(<DiagnosticsPanel />);
-        expect(container).toBeEmptyDOMElement();
-    });
-
     it('불러오면 버전·가동 시간·빠진 익스텐션·최근 문제를 보이고 복사할 수 있다', async () => {
         window.api.daemonDiagnostics = vi.fn().mockResolvedValue(diag) as never;
         const writeText = vi.fn().mockResolvedValue(undefined);

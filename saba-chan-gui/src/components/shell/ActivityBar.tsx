@@ -4,7 +4,7 @@ import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 're
 import { useTranslation } from 'react-i18next';
 import type { ApiBody } from '../../types/daemon';
 import { type AuditEntry as AuditRecord, auditWhat } from '../../utils/audit';
-import { auditEntryOf, eventsAvailable, eventsLive, subscribeDaemonEvents } from '../../utils/daemonEvents';
+import { auditEntryOf, eventsLive, subscribeDaemonEvents } from '../../utils/daemonEvents';
 import { connectStream, STREAM_RETRY_MS } from '../../utils/poll';
 import { type DaemonLogEntry, DaemonLogLine } from '../DaemonLogLine';
 import { Icon } from '../Icon';
@@ -17,10 +17,6 @@ interface AuditEntry extends AuditRecord {
     instance?: string;
 }
 
-/** 맨 아래 줄을 띄울 IPC가 있는지 (감사 로그) */
-export const activityAvailable = () => !!window.api?.auditList;
-/** 펼쳐서 데몬 콘솔을 볼 IPC가 있는지 (구버전 브리지에는 없다) */
-export const daemonConsoleAvailable = () => !!window.api?.daemonConsole;
 
 export const ACTIVITY_POLL_MS = 3000;
 /** 이벤트 스트림이 있으면 놓친 것만 메우는 느린 폴링 */
@@ -205,7 +201,6 @@ export function ActivityBar() {
     const [now, setNow] = useState(() => Date.now());
     const [open, setOpen] = useState(false);
     const [recent, setRecent] = useState(false);
-    const canExpand = daemonConsoleAvailable();
     const barRef = useRef<HTMLElement>(null);
 
     useEffect(() => {
@@ -236,12 +231,12 @@ export function ActivityBar() {
             }
         });
         // 이벤트로 줄이 바뀌지 않아도 "몇 초 전"은 흐르게 한다
-        const clock = eventsAvailable() ? setInterval(() => !document.hidden && setNow(Date.now()), ACTIVITY_POLL_MS) : null;
+        const clock = setInterval(() => !document.hidden && setNow(Date.now()), ACTIVITY_POLL_MS);
         poll();
         return () => {
             alive = false;
             clearTimeout(timer);
-            clearInterval(clock ?? undefined);
+            clearInterval(clock);
             off();
         };
     }, []);
@@ -262,8 +257,8 @@ export function ActivityBar() {
 
     if (last === undefined) return null;
 
-    // 펼칠 수 있으면 평소엔 안내 문구, 방금 실행된 명령이 있을 때만 그 명령을 보인다
-    const showCommand = last && (recent || !canExpand);
+    // 평소엔 안내 문구, 방금 실행된 명령이 있을 때만 그 명령을 보인다
+    const showCommand = last && recent;
     const summary = showCommand ? (
         <Ticker id={`cmd:${lastKey}`}>
             <span className="activity-text activity-shine">{activityText(last, t)}</span>
@@ -273,10 +268,8 @@ export function ActivityBar() {
             <span className="activity-time">{ago(last.ts, now, i18n.language)}</span>
         </Ticker>
     ) : (
-        <Ticker id={canExpand ? 'idle' : 'empty'}>
-            <span className="activity-text activity-shine muted">
-                {canExpand ? t('activity.idle') : t('activity.empty')}
-            </span>
+        <Ticker id="idle">
+            <span className="activity-text activity-shine muted">{t('activity.idle')}</span>
         </Ticker>
     );
 
@@ -298,26 +291,19 @@ export function ActivityBar() {
             >
                 <DaemonConsole />
             </Popover>
-            {canExpand ? (
-                <button
-                    type="button"
-                    className="activity-line"
-                    onClick={toggle}
-                    aria-expanded={shown}
-                    data-tooltip={shown ? t('activity.collapse') : t('activity.expand')}
-                >
-                    <Icon name="terminal" size="xs" />
-                    {summary}
-                    <span className={clsx('activity-chevron', { flipped: shown })}>
-                        <Icon name="chevronUp" size="xs" />
-                    </span>
-                </button>
-            ) : (
-                <div className="activity-line">
-                    <Icon name="terminal" size="xs" />
-                    {summary}
-                </div>
-            )}
+            <button
+                type="button"
+                className="activity-line"
+                onClick={toggle}
+                aria-expanded={shown}
+                data-tooltip={shown ? t('activity.collapse') : t('activity.expand')}
+            >
+                <Icon name="terminal" size="xs" />
+                {summary}
+                <span className={clsx('activity-chevron', { flipped: shown })}>
+                    <Icon name="chevronUp" size="xs" />
+                </span>
+            </button>
         </footer>
     );
 }

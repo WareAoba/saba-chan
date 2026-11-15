@@ -7,8 +7,6 @@ import { AgentLogo } from '../AgentLogo';
 import { Icon } from '../Icon';
 import { failed } from '../../utils/apiResult';
 
-export const agentLinkAvailable = () =>
-    typeof window.api?.relayMcpGrant === 'function' && typeof window.api?.relayMcpGrantRevoke === 'function';
 
 /**
  * 원격 MCP 에이전트 연결 (데몬 GET·DELETE /api/relay/mcp/grant).

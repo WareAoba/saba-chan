@@ -402,7 +402,7 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
     // ── 메인 창이 새로고침돼도 이미 떠 있는 분리 창을 다시 기억한다 ──
 
     useEffect(() => {
-        if (isPopoutMode || !window.api?.consolePopoutList) return;
+        if (isPopoutMode) return;
         let alive = true;
         window.api.consolePopoutList().then(
             (ids: string[]) => {
@@ -440,9 +440,9 @@ export function useMultiConsole({ isPopoutMode, popoutParams, consoleBufferRef }
             openConsole(instanceId, serverName);
         };
         const offs = [
-            window.api.onConsolePopoutOpened?.(handlePopoutOpened),
-            window.api.onConsolePopoutClosed?.(handlePopoutClosed),
-            window.api.onConsolePopinRequest?.(handlePopinRequest),
+            window.api.onConsolePopoutOpened(handlePopoutOpened),
+            window.api.onConsolePopoutClosed(handlePopoutClosed),
+            window.api.onConsolePopinRequest(handlePopinRequest),
         ];
         return () => {
             for (const off of offs) if (typeof off === 'function') off();

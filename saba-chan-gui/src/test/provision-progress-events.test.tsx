@@ -46,11 +46,12 @@ describe('설치 진행률', () => {
         unmount();
     });
 
-    it('이벤트가 없는 셸에서는 예전처럼 자주 묻는다', async () => {
-        (window.api as Partial<typeof window.api>).onDaemonEvent = undefined;
+    it('이벤트 스트림이 끊겨 있으면 예전처럼 자주 묻는다', async () => {
+        window.api.daemonEventsLive = vi.fn(() => false) as never;
         const { unmount } = renderHook(() => useInstanceMaintenance(server));
         await act(async () => vi.advanceTimersByTimeAsync(5000));
         expect((window.api.instanceProvisionProgress as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThanOrEqual(4);
         unmount();
+        delete (window.api as Partial<typeof window.api>).daemonEventsLive;
     });
 });

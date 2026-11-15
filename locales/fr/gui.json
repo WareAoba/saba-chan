@@ -2126,7 +2126,6 @@
   },
   "activity": {
     "idle": "Cliquez pour voir le journal de la console du daemon",
-    "empty": "Aucune commande serveur exécutée",
     "expand": "Afficher la console du daemon",
     "collapse": "Masquer la console du daemon",
     "console_title": "Console du daemon",

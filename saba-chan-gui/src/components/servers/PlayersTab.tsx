@@ -14,7 +14,7 @@ import { failed } from '../../utils/apiResult';
 
 /** 이 모듈이 플레이어 목록(`[[lists]]`)을 선언했고 데몬이 그 목록을 읽어 줄 수 있는가 */
 export const playerListsAvailable = (moduleData?: ModuleInfo | null) =>
-    !!moduleData?.lists?.length && typeof window.api?.instanceLists === 'function';
+    !!moduleData?.lists?.length;
 
 /**
  * 플레이어 탭: 모듈이 선언한 목록(화이트리스트·관리자·밴 등)의 지금 명단.
@@ -52,7 +52,7 @@ export function PlayersTab({ server, moduleData }: { server: Server; moduleData?
     }, [load, server.status]);
     // 지금 접속한 사람: 탭을 열 때 한 번만 묻는다 (주기적으로 묻지 않는다)
     useEffect(() => {
-        if (server.status !== 'running' || typeof window.api?.instancePlayers !== 'function') {
+        if (server.status !== 'running') {
             setOnline(new Set());
             return;
         }
@@ -150,7 +150,7 @@ export function PlayersTab({ server, moduleData }: { server: Server; moduleData?
         <section className="dc-card players-card" aria-label={t('players.title')}>
             <div className="dc-card-head">
                 <h2>{t('players.title')}</h2>
-                {setting && typeof window.api?.instanceUpdateSettings === 'function' && (
+                {setting && (
                     <span className="players-use">
                         <SabaToggle checked={enabled} disabled={busy} aria-label={useLabel} onChange={toggle} />
                         <span className="muted">{useLabel}</span>

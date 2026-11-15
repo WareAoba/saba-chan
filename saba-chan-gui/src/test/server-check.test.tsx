@@ -1,18 +1,12 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { checkAvailable, ServerCheck } from '../components/servers/ServerCheck';
+import { ServerCheck } from '../components/servers/ServerCheck';
 
 const server = { id: 'a', name: 'A', module: 'game', status: 'stopped' };
 
 describe('서버 점검 (validate·diagnose)', () => {
     beforeEach(() => {
         window.api = {} as unknown as typeof window.api;
-    });
-
-    it('채널이 없으면 아무것도 그리지 않는다', () => {
-        expect(checkAvailable()).toBe(false);
-        const { container } = render(<ServerCheck server={server as never} />);
-        expect(container).toBeEmptyDOMElement();
     });
 
     it('점검 결과의 문제와 해결 방법을 심각도 순으로 보인다', async () => {

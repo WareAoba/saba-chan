@@ -6,11 +6,6 @@ import { moduleSupports } from '../../utils/helpers';
 import { type CheckIssue, checkIssueText } from '../../utils/settingIssue';
 import { Icon } from '../Icon';
 
-/** 데몬에 점검 채널이 있을 때만 (구버전 브리지면 버튼을 숨긴다) */
-export const checkAvailable = () =>
-    typeof window.api?.instanceValidate === 'function' || typeof window.api?.instanceDiagnose === 'function';
-
-
 interface CheckResult {
     kind: 'validate' | 'diagnose';
     issues?: CheckIssue[];
@@ -33,8 +28,8 @@ export function ServerCheck({ server }: { server: Server }) {
     const [result, setResult] = useState<CheckResult | null>(null); // {kind, issues} | {kind, error}
     // 모듈이 구현한 점검만
     const module = useServerStore((s) => s.modules.find((m) => m.name === server.module));
-    const canValidate = typeof window.api?.instanceValidate === 'function' && moduleSupports(module, 'validate');
-    const canDiagnose = typeof window.api?.instanceDiagnose === 'function' && moduleSupports(module, 'diagnose_log');
+    const canValidate = moduleSupports(module, 'validate');
+    const canDiagnose = moduleSupports(module, 'diagnose_log');
 
     // biome-ignore lint/correctness/useExhaustiveDependencies: 다른 서버로 가면 결과를 지운다
     useEffect(() => {

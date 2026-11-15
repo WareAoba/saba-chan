@@ -52,7 +52,7 @@ export function ExtensionsTab() {
     const handleRescan = useCallback(async () => {
         setRescanning(true);
         try {
-            await window.api?.extensionRescan?.();
+            await window.api.extensionRescan();
             await refreshExtensions();
         } catch (_) {}
         setRescanning(false);

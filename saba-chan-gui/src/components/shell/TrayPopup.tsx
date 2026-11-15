@@ -23,20 +23,20 @@ export function TrayPopup() {
     const { daemonUp, servers, remote, run, refresh } = useQuickServers(REFRESH_MS);
 
     useEffect(() => {
-        Promise.resolve(window.api?.clientsLaunchable?.())
+        Promise.resolve(window.api.clientsLaunchable())
             .then((r) => setCanCli(r?.cli === true))
             .catch(() => {});
         const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') window.api?.trayAction?.('close');
+            if (e.key === 'Escape') window.api.trayAction('close');
         };
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
     }, []);
 
     // 내용이 바뀔 때마다 높이를 셸에 알린다 (첫 알림에 창이 보인다)
-    usePanelFit(rootRef, (height) => window.api?.trayPopupFit?.(height));
+    usePanelFit(rootRef, (height) => window.api.trayPopupFit(height));
 
-    const act = (action: string) => window.api?.trayAction?.(action);
+    const act = (action: string) => window.api.trayAction(action);
 
     // 익스텐션 칸(`TrayPopup.section`)의 host
     const serversRef = useRef(servers);
@@ -45,7 +45,7 @@ export function TrayPopup() {
         () => ({
             servers: () => serversRef.current,
             run,
-            openApp: () => window.api?.trayAction?.('open_window'),
+            openApp: () => window.api.trayAction('open_window'),
         }),
         [run],
     );

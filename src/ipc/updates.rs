@@ -4,7 +4,7 @@
 //! 파일 적용(apply)은 별도 업데이터 프로세스에서 처리합니다.
 //!
 //! 확인은 데몬이 한다: 릴레이 heartbeat의 판 번호(`latestReleases`)가 바뀌면 확인하고(`on_latest_releases`), 연결과 상관없이
-//! 24시간마다 한 번 더 본다(`spawn_update_scheduler`, `check_interval_hours`는 읽기만 한다). GUI·CLI는 `/api/updates/status`를 읽어 표시만 한다.
+//! 24시간마다 한 번 더 본다(`spawn_update_scheduler`). GUI·CLI는 `/api/updates/status`를 읽어 표시만 한다.
 //!
 //! ## 엔드포인트
 //! - `GET  /api/updates/status`              — 캐시된 업데이트 상태 조회
@@ -1072,7 +1072,7 @@ pub fn spawn_update_scheduler(state: UpdateState, shutdown: tokio_util::sync::Ca
                 wait = RETRY;
                 continue;
             }
-            // 연결된 데몬은 heartbeat의 판 번호로 알게 된다. 이것은 연결과 상관없는 안전망이다 (`check_interval_hours`는 쓰지 않는다)
+            // 연결된 데몬은 heartbeat의 판 번호로 알게 된다. 이것은 연결과 상관없는 안전망이다
             wait = match check_and_follow_up(&state).await {
                 Ok(_) => std::time::Duration::from_secs(u64::from(saba_chan_updater_lib::CHECK_EVERY_HOURS) * 3600),
                 Err(e) => {
@@ -2224,9 +2224,6 @@ async fn set_config(
     if let Some(v) = body.get("enabled").and_then(|v| v.as_bool()) {
         cfg.enabled = v;
     }
-    if let Some(v) = body.get("check_interval_hours").and_then(|v| v.as_u64()) {
-        cfg.check_interval_hours = v.clamp(1, 8) as u32;
-    }
     if let Some(v) = body.get("auto_download").and_then(|v| v.as_bool()) {
         cfg.auto_download = v;
     }
@@ -3269,7 +3266,6 @@ mod tests {
     fn updater_config_survives_restart() {
         let mut cfg = UpdateConfig::default();
         cfg.enabled = false;
-        cfg.check_interval_hours = 6;
         cfg.auto_download = true;
         cfg.failed_release = Some("0.1.14".into());
         cfg.user_held = true;
@@ -3278,7 +3274,6 @@ mod tests {
 
         let loaded = load_updater_config_from(&ConfigFile::at(dir.path()));
         assert!(!loaded.enabled);
-        assert_eq!(loaded.check_interval_hours, 6);
         assert!(loaded.auto_download);
         assert_eq!((loaded.failed_release.as_deref(), loaded.user_held), (Some("0.1.14"), true));
 
@@ -3288,6 +3283,8 @@ mod tests {
         save_updater_config_to(&ConfigFile::at(dir.path()), &cleared).unwrap();
         let section = ConfigFile::at(dir.path()).section("updates");
         assert!(section.get("user_held").is_none() && section["failed_release"].is_null());
+        // 확인 주기는 상수(CHECK_EVERY_HOURS)라 설정에 쓰지 않는다
+        assert!(section.get("check_interval_hours").is_none());
     }
 
     /// 0.1.1이 남긴 `updates` 설정: 채널과 릴레이 주소가 업데이트 뒤에도 남아야 한다

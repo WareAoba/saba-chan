@@ -30,7 +30,7 @@ export const useUpdateStore = create<UpdateStore>()((set) => ({
     refresh: async () => {
         let res: ApiBody | null = null;
         try {
-            res = await window.api?.updaterStatus?.();
+            res = await window.api.updaterStatus();
         } catch {
             return null;
         }
@@ -66,7 +66,7 @@ let unsubscribe: (() => void) | null = null;
 export function watchUpdates(): () => void {
     watchers += 1;
     if (watchers === 1) {
-        const off = window.api?.onUpdateEvent?.(receive);
+        const off = window.api.onUpdateEvent(receive);
         unsubscribe = typeof off === 'function' ? off : null;
         void useUpdateStore.getState().refresh();
     }

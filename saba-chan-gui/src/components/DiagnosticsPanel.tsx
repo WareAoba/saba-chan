@@ -15,7 +15,6 @@ interface Diagnostics {
     recent_problems?: { id: string | number; level: string; timestamp: string | number; message: string }[];
 }
 
-export const diagnosticsAvailable = () => typeof window.api?.daemonDiagnostics === 'function';
 
 /**
  * 데몬 진단 정보 (GET /api/diagnostics). 문제를 물어볼 때 붙여 넣을 수 있게 통째로 복사한다.
@@ -28,7 +27,6 @@ export function DiagnosticsPanel() {
     const [loading, setLoading] = useState(false);
     const [copied, setCopied] = useState(false);
 
-    if (!diagnosticsAvailable()) return null;
 
     const load = async () => {
         setLoading(true);

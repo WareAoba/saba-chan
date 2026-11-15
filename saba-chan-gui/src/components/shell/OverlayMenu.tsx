@@ -30,17 +30,17 @@ export function OverlayMenu() {
 
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') window.api?.overlayAction?.('close');
+            if (e.key === 'Escape') window.api.overlayAction('close');
         };
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
     }, []);
 
-    usePanelFit(rootRef, (height) => window.api?.overlayMenuFit?.(height));
+    usePanelFit(rootRef, (height) => window.api.overlayMenuFit(height));
 
     const resize = (value: number) => {
         setScale(value);
-        window.api?.overlaySetScale?.(value);
+        window.api.overlaySetScale(value);
     };
     const fill = ((scale - SCALE_MIN) / (SCALE_MAX - SCALE_MIN)) * 100;
 
@@ -66,11 +66,11 @@ export function OverlayMenu() {
                 <span className="quick-panel-size-value">{scale}%</span>
             </label>
             <div className="quick-panel-sep" />
-            <button type="button" className="quick-panel-row" onClick={() => window.api?.overlayAction?.('open_app')}>
+            <button type="button" className="quick-panel-row" onClick={() => window.api.overlayAction('open_app')}>
                 <Icon name="monitor" size={14} />
                 {t('desktop_overlay.menu_open_app')}
             </button>
-            <button type="button" className="quick-panel-row" onClick={() => window.api?.overlayAction?.('hide')}>
+            <button type="button" className="quick-panel-row" onClick={() => window.api.overlayAction('hide')}>
                 <Icon name="eyeOff" size={14} />
                 {t('desktop_overlay.menu_hide')}
             </button>

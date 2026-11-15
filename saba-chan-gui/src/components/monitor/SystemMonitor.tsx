@@ -39,7 +39,6 @@ import './SystemMonitor.css';
 const OPEN_INTERVAL_MS = 2000;
 const SUMMARY_INTERVAL_MS = 5000;
 
-export const systemMonitorAvailable = () => !!window.api?.systemMetrics;
 
 /** 이 너비 이상이면 고정 모니터를 상세 오른쪽 열로, 아니면 상세 위에 둔다 */
 export const MONITOR_SIDE_MIN_WIDTH = 1500;
@@ -61,10 +60,10 @@ const noPeaks: Peaks = { diskIo: 0, network: 0 };
 const sessionPeaks = new Map<string, Peaks>();
 let lastTarget = '';
 
-/** 지금 다룰 데몬 키 (이 PC는 ''). 브리지가 없거나 실패하면 이 PC로 본다 */
+/** 지금 다룰 데몬 키 (이 PC는 ''). 실패하면 이 PC로 본다 */
 async function currentTarget(): Promise<string> {
     try {
-        const res = await window.api?.daemonTarget?.();
+        const res = await window.api.daemonTarget();
         return res?.target || '';
     } catch {
         return '';
@@ -80,7 +79,6 @@ export function useSystemMetrics(intervalMs: number, sizes = true, gpu = false) 
     const [error, setError] = useState(false);
 
     useEffect(() => {
-        if (!systemMonitorAvailable()) return undefined;
         let alive = true;
         let timer: ReturnType<typeof setTimeout> | null = null;
         const tick = async () => {
@@ -185,7 +183,6 @@ export function SystemMonitor({ layout = 'top', servers = [], float }: SystemMon
     const rings = useMemo(() => buildRings(snapshot, slots, peaks, items), [snapshot, slots, peaks, items]);
     const ports = useMemo(() => (items.includes('network') ? portRows(snapshot, slots) : []), [items, snapshot, slots]);
 
-    if (!systemMonitorAvailable()) return null;
 
     const toggle = (
         <button

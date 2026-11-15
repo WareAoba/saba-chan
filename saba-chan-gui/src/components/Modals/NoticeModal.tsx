@@ -24,7 +24,7 @@ export function updateResultMessage(res: ApiBody | null | undefined, t: TFunctio
 
 /** 업데이트 결과 알림을 눌렀다: 데몬의 마지막 결과(확인한 것 포함)를 패치노트로 연다 */
 async function openPatchNotes(open: (data: unknown) => void) {
-    const res = await window.api?.updaterLastResult?.({ includeSeen: true });
+    const res = await window.api.updaterLastResult({ includeSeen: true });
     if (res?.result) open({ version: res.version || null, notes: res.notes ?? null, result: res.result });
 }
 

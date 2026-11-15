@@ -218,7 +218,7 @@ export function UpdatePill() {
                 if (openRef.current || anchor.current?.matches(':hover')) return;
                 if (!acked.current) {
                     acked.current = true;
-                    Promise.resolve(window.api?.updaterPhaseAck?.()).catch(() => {});
+                    Promise.resolve(window.api.updaterPhaseAck()).catch(() => {});
                 }
                 setDismissed(true);
             }, DONE_SEEN_MS);
@@ -247,7 +247,7 @@ export function UpdatePill() {
         }
         if (state === 'done' && !acked.current) {
             acked.current = true;
-            Promise.resolve(window.api?.updaterPhaseAck?.()).catch(() => {});
+            Promise.resolve(window.api.updaterPhaseAck()).catch(() => {});
         }
         if (open) close();
         else setOpen(true);
@@ -257,7 +257,7 @@ export function UpdatePill() {
         setAsking(false);
         let res: ApiBody | null = null;
         try {
-            res = await window.api?.updaterRestart?.();
+            res = await window.api.updaterRestart();
         } catch (e) {
             res = { ok: false, error: (e as Error)?.message };
         }

@@ -98,8 +98,7 @@ export function ServerRow({
             onSelect: () => onStart(server.id),
         },
         status === 'running' &&
-            onRestart &&
-            typeof window.api?.instanceRestart === 'function' && {
+            onRestart && {
                 id: 'restart',
                 label: t('shell.restart'),
                 icon: 'refresh',

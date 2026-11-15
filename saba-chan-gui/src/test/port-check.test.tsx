@@ -32,11 +32,6 @@ describe('포트포워딩 확인', () => {
         expect(invoke.mock.calls.at(-1)![1]).toMatchObject({ method: 'GET', path: '/api/instance/a%20b/port-check' });
     });
 
-    it('예전 데몬(브리지 없음)이면 그리지 않는다', () => {
-        const { container } = render(<PortCheck server={server} />);
-        expect(container).toBeEmptyDOMElement();
-    });
-
     it('확인하면 판정, 공인 주소, 포트마다 상태와 닫힘 안내를 보인다', async () => {
         window.api.instancePortCheckLast = vi.fn().mockResolvedValue({ instanceId: 'a', verdict: 'not_checked', hint: 'not_checked' });
         window.api.instancePortCheck = vi.fn().mockResolvedValue(closedReport);

@@ -117,12 +117,8 @@ function SettingsModal({
 
     // 앱 버전 & 컴포넌트 정보 가져오기
     useEffect(() => {
-        if (window.api?.getAppVersion) {
-            window.api.getAppVersion().then((v) => typeof v === 'string' && setAppVersion(v)).catch(() => {});
-        }
-        if (window.api?.getComponentInfo) {
-            window.api.getComponentInfo().then((info) => info && setComponentInfo(info)).catch(() => {});
-        }
+        window.api.getAppVersion().then((v) => typeof v === 'string' && setAppVersion(v)).catch(() => {});
+        window.api.getComponentInfo().then((info) => info && setComponentInfo(info)).catch(() => {});
     }, []);
 
     // 탭 전환 핸들러
@@ -137,7 +133,6 @@ function SettingsModal({
 
     // 사바쨩 삭제 핸들러
     const handleUninstall = useCallback(() => {
-        if (!window.api?.launchUninstaller) return;
         // question 모달을 통해 확인
         if (onTestModal) {
             onTestModal({
@@ -178,15 +173,13 @@ function SettingsModal({
     const handleLanguageChange = async (lng: string) => {
         setSelectedLanguage(lng);
         // 1. config.json의 gui에 먼저 확실히 저장 (데몬과 공유하는 원천)
-        if (window.api?.languageSet) {
-            // 저장하지 못하면 알린다: 화면은 바뀌어도 다음 실행에 옛 언어로 돌아간다
-            try {
-                const res = await window.api.languageSet(lng);
-                if (failed(res)) safeShowToast(t('gui:settings.save_error'), 'error');
-            } catch (err) {
-                console.error('Failed to save language to settings:', err);
-                safeShowToast(t('gui:settings.save_error'), 'error');
-            }
+        // 저장하지 못하면 알린다: 화면은 바뀌어도 다음 실행에 옛 언어로 돌아간다
+        try {
+            const res = await window.api.languageSet(lng);
+            if (failed(res)) safeShowToast(t('gui:settings.save_error'), 'error');
+        } catch (err) {
+            console.error('Failed to save language to settings:', err);
+            safeShowToast(t('gui:settings.save_error'), 'error');
         }
         // 2. localStorage 동기화 (캐시)
         localStorage.setItem('i18nextLng', lng);

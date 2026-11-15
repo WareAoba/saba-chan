@@ -344,7 +344,7 @@ export const useServerSettingsStore = create<ServerSettingsState>()((set, get) =
         // 디스크의 실제 설정으로 덮는다. 그사이 사용자가 고친 칸과, 다른 서버로 바꿔 연 경우는 건드리지 않는다
         if (!module?.settings?.fields) {
             setSettingsSource('live');
-        } else if (!latestServer.id || !window.api.instanceReadLiveSettings) {
+        } else if (!latestServer.id) {
             setSettingsSource('stored');
         } else {
             try {
@@ -958,10 +958,9 @@ export const useServerSettingsStore = create<ServerSettingsState>()((set, get) =
 
 /**
  * 저장할 때 추가 인자를 데몬으로 한 번 더 나눈다: 설정에 해당하는 값과 남는 인자.
- * 미리보기 IPC가 없거나 실행 인자를 쓰지 않거나 실패하면 null (추가 인자를 보내지 않는다).
+ * 실행 인자를 쓰지 않거나 실패하면 null (추가 인자를 보내지 않는다).
  */
 export async function settleLaunchArgs(id: string, fields: SettingField[] | undefined, values: SettingsValues) {
-    if (!window.api?.instanceLaunchPreview) return null;
     try {
         // 입력칸을 아직 받지 못했으면(undefined) 데몬이 저장된 추가 인자로 나눈다
         const res = await window.api.instanceLaunchPreview(

@@ -6,7 +6,6 @@ import { Icon } from '../Icon';
 import { SabaToggle } from '../ui/SabaUI';
 import { failed } from '../../utils/apiResult';
 
-export const netTraceAvailable = () => typeof window.api?.systemNetTrace === 'function';
 
 /** 데몬 `net_trace::Access` 중 문구가 있는 것 (unsupported면 설정을 숨긴다) */
 const ACCESS = ['ok', 'needs_grant', 'needs_relogin'];

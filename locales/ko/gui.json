@@ -2126,7 +2126,6 @@
   },
   "activity": {
     "idle": "눌러서 데몬 콘솔 기록 보기",
-    "empty": "아직 실행된 서버 명령 없음",
     "expand": "데몬 콘솔 펼치기",
     "collapse": "데몬 콘솔 접기",
     "console_title": "데몬 콘솔",

@@ -6,7 +6,6 @@ import NoticeModal from '../Modals/NoticeModal';
 import ExtensionSlot from '../ExtensionSlot';
 import { Icon } from '../Icon';
 import { Popover } from '../ui/Popover';
-import { auditAvailable } from '../servers/AuditTab';
 import { ConnectionRail } from './ConnectionRail';
 import { DaemonSwitcher } from './DaemonSwitcher';
 import { ExtensionAppBarActions, ExtensionPageTabs } from './ExtensionAppBar';
@@ -19,11 +18,11 @@ import { wordmarkFor } from '../../utils/wordmark';
 
 const WORDMARKS = { ko: './logo-kr.png', ja: './logo-jp.png', en: './logo-en.png' };
 
-/** 상단 탭 = 큰 기능 한 개 = 한 페이지. 새 페이지는 여기에 한 줄 추가한다(익스텐션 화면은 `App.page` slot, ExtensionPageTabs). available이 있으면 그 IPC가 있을 때만 보인다 */
+/** 상단 탭 = 큰 기능 한 개 = 한 페이지. 새 페이지는 여기에 한 줄 추가한다(익스텐션 화면은 `App.page` slot, ExtensionPageTabs). */
 export const APP_PAGES = [
     { id: 'servers', icon: 'server', labelKey: 'shell.nav_servers' },
     { id: 'discord', icon: 'discord', labelKey: 'shell.nav_discord' },
-    { id: 'activity', icon: 'clock', labelKey: 'shell.nav_activity', available: auditAvailable },
+    { id: 'activity', icon: 'clock', labelKey: 'shell.nav_activity' },
     { id: 'settings', icon: 'cog', labelKey: 'shell.nav_settings' },
 ];
 
@@ -88,7 +87,7 @@ export function AppBar({
             </div>
 
             <nav className="appbar-tabs" aria-label={t('shell.nav_label')} data-tauri-drag-region>
-                {APP_PAGES.filter((p) => !p.available || p.available()).map((p) => (
+                {APP_PAGES.map((p) => (
                     <button
                         key={p.id}
                         data-spot={`nav.${p.id}`}
@@ -118,7 +117,7 @@ export function AppBar({
                         <span className="spinner" aria-hidden="true" />
                     </span>
                 )}
-                {typeof window.api?.daemonTarget === 'function' && <DaemonSwitcher />}
+                <DaemonSwitcher />
                 <div className="popover-anchor" ref={railRef}>
                     <ConnectionRail
                         daemonStatus={daemonStatus}
@@ -179,11 +178,9 @@ export function WindowControls({ onClose }: { onClose?: () => void } = {}) {
     const { t } = useTranslation('gui');
     const [maximized, setMaximized] = useState(false);
     useEffect(() => {
-        const ask = window.api?.windowIsMaximized;
-        if (typeof ask !== 'function') return;
         let alive = true;
         const sync = () => {
-            Promise.resolve(ask())
+            Promise.resolve(window.api.windowIsMaximized())
                 .then((v) => alive && setMaximized(v === true))
                 .catch(() => {});
         };
@@ -200,7 +197,7 @@ export function WindowControls({ onClose }: { onClose?: () => void } = {}) {
             <button
                 type="button"
                 className="win-btn"
-                onClick={() => window.api?.minimizeWindow()}
+                onClick={() => window.api.minimizeWindow()}
                 data-tooltip={t('title_bar.minimize')}
                 aria-label={t('title_bar.minimize')}
             >
@@ -209,7 +206,7 @@ export function WindowControls({ onClose }: { onClose?: () => void } = {}) {
             <button
                 type="button"
                 className="win-btn"
-                onClick={() => window.api?.maximizeWindow()}
+                onClick={() => window.api.maximizeWindow()}
                 data-tooltip={t(`title_bar.${middle}`)}
                 aria-label={t(`title_bar.${middle}`)}
             >
@@ -218,7 +215,7 @@ export function WindowControls({ onClose }: { onClose?: () => void } = {}) {
             <button
                 type="button"
                 className="win-btn win-close"
-                onClick={() => (onClose ? onClose() : window.api?.closeWindow())}
+                onClick={() => (onClose ? onClose() : window.api.closeWindow())}
                 data-tooltip={t('title_bar.close')}
                 aria-label={t('title_bar.close')}
             >

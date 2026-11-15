@@ -16,7 +16,7 @@ import { Icon } from '../Icon';
 import { Disclosure } from '../ui/Disclosure';
 import { LinkedText } from '../ui/ScreenLink';
 import { SabaArt } from '../ui/SabaArt';
-import { FloatingMonitor, monitorPlacement, SystemMonitor, systemMonitorAvailable } from '../monitor/SystemMonitor';
+import { FloatingMonitor, monitorPlacement, SystemMonitor } from '../monitor/SystemMonitor';
 import { useDaemonTarget } from '../shell/DaemonSwitcher';
 import { OtherDaemons } from '../shell/OtherDaemons';
 import { BranchServerDialog } from './BranchServerDialog';
@@ -75,10 +75,9 @@ export function ServersPage({
     const singleColumn = width < SINGLE_COLUMN_MAX_WIDTH;
     const monitorOpen = useSettingsStore((s) => s.systemMonitorExpanded);
     const monitorMode = useSettingsStore((s) => s.systemMonitorMode);
-    // 끔이면 그리지 않아 데몬에 값도 묻지 않는다
-    const monitorAt = systemMonitorAvailable() ? monitorPlacement(monitorMode, monitorOpen, width) : 'none';
+    const monitorAt = monitorPlacement(monitorMode, monitorOpen, width);
     // 합쳐 보기 (G1c): 다른 데몬의 서버를 목록 아래에 데몬별로
-    const unified = useSettingsStore((s) => s.daemonView) === 'unified' && typeof window.api?.remoteServers === 'function';
+    const unified = useSettingsStore((s) => s.daemonView) === 'unified';
     const daemonTarget = useDaemonTarget();
     const selectedId = useUIStore((s) => s.activeServerId);
     const setSelectedId = useUIStore((s) => s.setActiveServerId);

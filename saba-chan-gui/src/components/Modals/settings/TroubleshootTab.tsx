@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useSettingsStore } from '../../../stores/useSettingsStore';
 import type { ModalConfig, ProgressBarConfig } from '../../../stores/useUIStore';
 import { safeShowToast } from '../../../utils/helpers';
-import { DiagnosticsPanel, diagnosticsAvailable } from '../../DiagnosticsPanel';
+import { DiagnosticsPanel } from '../../DiagnosticsPanel';
 import { Icon } from '../../Icon';
 
 interface TroubleshootTabProps {
@@ -34,20 +34,18 @@ export function TroubleshootTab({
         <>
             <section className="saba-card">
                 {/* 데몬 진단 정보 (GET /api/diagnostics) */}
-                {diagnosticsAvailable() && (
-                    <div className="setting-item setting-item-stack">
-                        <label className="setting-label">
-                            <span className="setting-title">
-                                {t('gui:diagnostics.title')}
-                            </span>
-                            <span className="setting-description">{t('gui:diagnostics.description')}</span>
-                        </label>
-                        <DiagnosticsPanel />
-                    </div>
-                )}
+                <div className="setting-item setting-item-stack">
+                    <label className="setting-label">
+                        <span className="setting-title">
+                            {t('gui:diagnostics.title')}
+                        </span>
+                        <span className="setting-description">{t('gui:diagnostics.description')}</span>
+                    </label>
+                    <DiagnosticsPanel />
+                </div>
 
                 {/* GUI 설정 기본값으로 (데몬 /api/config/gui/reset) */}
-                {typeof window.api?.configReset === 'function' && <ResetGuiSettings />}
+                <ResetGuiSettings />
 
                 {/* 사바쨩 삭제 */}
                 <div className="setting-item setting-item-danger" onClick={handleUninstall}>

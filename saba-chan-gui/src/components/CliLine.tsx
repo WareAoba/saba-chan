@@ -147,7 +147,6 @@ export function CliLine({ actionId, server, values, extra }: CliLineProps) {
     const [template, setTemplate] = useState<string | null>(null);
 
     useEffect(() => {
-        if (!window.api?.actionsList) return;
         let alive = true;
         loadCatalog().then((map) => alive && setTemplate(map[actionId] || null));
         return () => {

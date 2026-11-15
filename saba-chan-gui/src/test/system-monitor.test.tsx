@@ -306,12 +306,6 @@ describe('SystemMonitor', () => {
         await waitFor(() => expect(document.querySelector('.monitor-ring')).not.toBeNull());
         expect(document.querySelector('.monitor-ports')).toBeNull();
     });
-
-    it('데몬에 API가 없으면 아무것도 그리지 않는다', () => {
-        window.api.systemMetrics = undefined as never;
-        render(<SystemMonitor servers={[]} />);
-        expect(document.querySelector('.monitor')).toBeNull();
-    });
 });
 
 describe('시스템 모니터 표시 방식 (끔·고정·떠 있는 창)', () => {

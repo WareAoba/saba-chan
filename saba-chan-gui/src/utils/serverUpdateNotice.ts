@@ -12,7 +12,7 @@ export const SERVER_UPDATE_ACTION = 'applyServerUpdate';
  */
 export async function applyServerUpdateFromNotice(notice: Notice, t: TFunction) {
     const data = (notice.data || {}) as { instanceId?: string; name?: string };
-    if (!data.instanceId || !window.api?.instanceApplyUpdate) return;
+    if (!data.instanceId) return;
     const name = data.name || data.instanceId;
     removeNotice(notice.id);
     const result = await window.api.instanceApplyUpdate(data.instanceId);

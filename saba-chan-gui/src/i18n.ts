@@ -31,25 +31,23 @@ const localesWatcher = createLocalesVersionWatcher(() => {
 /** i18next 백엔드: 설치 폴더 번역(데몬)을 먼저, 없거나 키가 빠지면 내장본 */
 const localeBackend = createLocaleBackend(
     embedded,
-    async (language, namespace) => (window.api?.localesGet ? window.api.localesGet(language, namespace) : null),
+    (language, namespace) => window.api.localesGet(language, namespace),
     localesWatcher.markDaemonServed,
 );
-window.api?.onLocalesVersion?.(localesWatcher.apply);
+window.api.onLocalesVersion(localesWatcher.apply);
 
 // 저장된 언어 또는 시스템 언어 가져오기
 const getInitialLanguage = async () => {
     try {
         // 1. config.json의 gui.language가 단일 진실 원천 (데몬과 공유)
-        if (window.api?.languageGet) {
-            const savedLanguage = await window.api.languageGet();
-            if (savedLanguage && SUPPORTED_LANGUAGES.includes(savedLanguage)) {
-                // localStorage도 동기화 (캐시 역할)
-                localStorage.setItem('i18nextLng', savedLanguage);
-                return savedLanguage;
-            }
+        const savedLanguage = await window.api.languageGet();
+        if (savedLanguage && SUPPORTED_LANGUAGES.includes(savedLanguage)) {
+            // localStorage도 동기화 (캐시 역할)
+            localStorage.setItem('i18nextLng', savedLanguage);
+            return savedLanguage;
         }
 
-        // 2. 셸 브리지가 없으면 localStorage 폴백 (테스트 등)
+        // 2. 저장된 언어가 없으면 localStorage 폴백
         const storedLang = localStorage.getItem('i18nextLng');
         if (storedLang && SUPPORTED_LANGUAGES.includes(storedLang)) {
             return storedLang;
