@@ -154,7 +154,7 @@
 | `server.check_update` | `handlers/instance/update.rs` `server_update_status` | `GET /api/instance/:id/check-update`, 그리고 `/api/instance/:id/start`로 새로 켠 뒤 뒤에서(`update_available:true`면 `instance.update_notice {kind:"server"}`, `server.rs` `announce_updates`) | 동기(시작 뒤에는 spawn), 120s | 공통 + `install_dir, install, branch, app_id` | 설치 방식 익스텐션이 설치한 인스턴스에만 부른다(아니면 hook 없이 `{update_available:false, reason:"update_unsupported"}`, 모듈을 읽지 못했으면 판단하지 않고 아래로). 첫 번째 Ok를 그대로 응답한다. 모두 실패하면 오류 응답에 `update_available:false, reason:"check_failed"`를 붙인다(`update_status_from_hooks`). hook이 없으면 `{update_available:false, reason:"no_hook_handled"}`. `install`은 그 모듈 module.toml `[install]` 표 그대로(`method`, `app_id`, `anonymous`, `beta`, `download_size` 등, 없는 키는 빠진다)이고 인스턴스에 복사해 둔 값이 아니다: 모듈이 앱 ID를 바꾸면 기존 서버의 확인도 따라간다. `branch`는 사용자가 고른 브랜치(`extension_data["<방식>_beta"]`), 없으면 `[install].beta`, 그것도 없으면 null. `app_id`는 `install.app_id`와 같은 값으로, 0.1.14-beta.1까지의 익스텐션이 읽는다(`instance/update.rs` `check_update_context`, saba-core 0.1.14-beta.2). 결과에서 데몬과 화면이 읽는 키(모두 선택): `update_available`, `local_buildid`·`remote_buildid`(설치된 빌드와 새 빌드의 번호), `local_build_time`·`remote_build_time`(그 빌드를 받은 때·올라온 때, 유닉스 초), `reason`·`error`. 데몬은 `local_buildid`·`local_build_time`을 인스턴스 `server_build`에 적어 두고(01 인스턴스 필드), GUI는 새 버전 안내 줄과 정보 탭의 새 버전 줄에 `remote_*`를 보인다 |
 | `command.<name>` (익스텐션 명령) | `handlers/command.rs` | `POST /api/instance/:id/command`에서 모듈에 없는 명령 | 동기, 120s | 공통 + `running, args` | 결과를 명령 응답으로 돌려준다 |
 
-서버 hook(`server.pre_start`·`stop`·`status`·`post_create`·`pre_delete`·`settings_changed`·`check_update`)과 익스텐션 명령은 공통 문맥을 받는다(`extension::hook_context`, 0.1.14-beta.2부터): `instance_id, instance_name, instance_dir, module, extension_data, instance`. `instance`는 REST 비밀번호와 비밀 설정 값(모듈이 password로 선언했거나 이름에 pass·token·secret 같은 낱말이 든 것)을 `***`로 가린 인스턴스다(D-E2, `extension::redact_for_hooks`). 표의 "+"는 그 hook만 더 받는 키다. `daemon.*`와 `server.list_enrich`는 공통 문맥을 받지 않는다.
+서버 hook(`server.pre_start`·`stop`·`status`·`post_create`·`pre_delete`·`settings_changed`·`check_update`)과 익스텐션 명령은 공통 문맥을 받는다(`extension::hook_context`, 0.1.14-beta.2부터): `instance_id, instance_name, instance_dir, module, extension_data, instance`. `instance`는 REST 비밀번호와 비밀 설정 값(모듈이 password로 선언했거나 이름에 pass·token·secret 같은 낱말이 든 것)을 `***`로 가린 인스턴스다(`extension::redact_for_hooks`). 표의 "+"는 그 hook만 더 받는 키다. `daemon.*`와 `server.list_enrich`는 공통 문맥을 받지 않는다.
 
 manifest에 발화되지 않는 hook을 새로 선언하면 `parse_manifest`가 v1에서 거부, v0에서 경고한다(`ext/manifest.rs`).
 
@@ -163,7 +163,7 @@ manifest에 발화되지 않는 hook을 새로 선언하면 `parse_manifest`가 
 - 이름: `event:` 뒤에 이벤트 종류(영문 소문자·숫자·`_`·`.`). 종류 목록과 대조하지 않으므로 없는 종류는 받을 일이 없을 뿐 오류가 아니다. `event:`만 있거나 모양이 다르면 다른 hook처럼 "never fired"다. `condition`은 쓸 수 없다(이벤트에는 `extension_data`가 없다, v1 오류·v0 경고).
 - context: `{event: <종류>, id: <이벤트 번호>, data: {at, ...이벤트 데이터}}` + 그 익스텐션 자신의 `extension_config`. 결과는 쓰지 않는다. 실패는 다른 hook처럼 로그에만 남는다.
 - 넘기는 것: 버퍼에 남는 이벤트(`emit`)만. 지금 붙은 클라이언트에게만 가는 것(`emit_live`: `provision.progress`, `servers.changed`, `instance.update_checked`, `relay.status`)은 넘기지 않는다.
-- 격리된 익스텐션(확인되지 않았고 비격리 동의가 없는 것, `sandbox::extension_isolated`): 격리는 데이터 폴더·다른 인스턴스를 가리지만 밖으로 나가는 네트워크는 열어 두므로, 릴레이 알림 채널에 올리는 것과 같은 모양(I3, `relay_agent::relay_event`의 `data`)만 넘긴다. 경로·콘솔 줄·오류 원문은 빠지고, 릴레이에 올리지 않는 종류(`action.run`, `instance.player` 등)는 그 익스텐션에 넘기지 않는다. 확인된 익스텐션과 비격리 동의를 받은 익스텐션은 이벤트 데이터를 그대로 받는다.
+- 격리된 익스텐션(확인되지 않았고 비격리 동의가 없는 것, `sandbox::extension_isolated`): 격리는 데이터 폴더·다른 인스턴스를 가리지만 밖으로 나가는 네트워크는 열어 두므로, 릴레이 알림 채널에 올리는 것과 같은 모양(`relay_agent::relay_event`의 `data`)만 넘긴다. 경로·콘솔 줄·오류 원문은 빠지고, 릴레이에 올리지 않는 종류(`action.run`, `instance.player` 등)는 그 익스텐션에 넘기지 않는다. 확인된 익스텐션과 비격리 동의를 받은 익스텐션은 이벤트 데이터를 그대로 받는다.
 - 인스턴스 문맥 없이 부른다: HOST 작업(`instance.stdin`·`instance.rcon`·`instance.rest`)은 `no_instance`다. 그래서 이벤트마다 게임 서버에 명령을 보내지 못한다.
 - 상한: 익스텐션마다 줄 하나와 일꾼 하나. 디스패처는 줄에 넣기만 하므로 버스를 막지 않는다. 한 익스텐션의 hook은 한 번에 하나씩(기본 120s 타임아웃) 돌고, 느리거나 실패하거나 패닉해도 다른 익스텐션의 hook은 기다리지 않는다. 줄은 32건까지, 넘치면 가장 오래된 것을 버리고 줄이 빌 때까지 경고를 한 번 남긴다. 디스패처가 버스(256)에 뒤처지면 놓친 수를 경고로 남긴다.
 
@@ -229,7 +229,7 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 ### 3.5 의존성 처리
 
 - 익스텐션 간 의존성: 현재 세 manifest 모두 `dependencies: {}`다.
-- node: 데몬에는 Node 런타임 관리가 없다(L1에서 `node_env` 삭제). 익스텐션 manifest에도 node 의존성을 선언할 방법이 없다.
+- node: 데몬에는 Node 런타임 관리가 없다. 익스텐션 manifest에도 node 의존성을 선언할 방법이 없다.
 - Python 의존성: 익스텐션별 requirements 선언이 없다. 공용 venv를 쓴다.
 
 ---
