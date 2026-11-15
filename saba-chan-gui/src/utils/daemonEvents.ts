@@ -19,7 +19,7 @@ export interface EventToast {
     message: string;
     type: 'info' | 'warning' | 'error' | 'success';
     duration: number;
-    /** 알림 모음에 남길 한 줄 (서버별로 묶는다). 시작·정지·복원·크래시만 남긴다 */
+    /** 알림 모음에 남길 한 줄 (서버별로 묶는다). 단순히 켜고 끈 것은 남기지 않는다 (사용자 2026-11-15) */
     notice?: NoticeInput;
     /** 토스트는 띄우지 않는다: 앱에서 한 일은 그 자리에서 이미 알렸다 */
     silent?: boolean;
@@ -141,7 +141,8 @@ const LIFECYCLE_ACTIONS = ['start', 'stop', 'restart'];
 /**
  * 이벤트 → 토스트 {message, type, duration, notice?, silent?} 또는 null.
  * 토스트: GUI에서 직접 한 일은 이미 그 자리에서 띄우므로 다른 곳에서 일어난 일만.
- * 알림 모음(notice): 시작·정지·복원·크래시만, 서버별로 묶을 짧은 줄과 이유 (#14)
+ * 알림 모음(notice): 크래시·실패·원인 모를 종료·사바쨩 밖 시작·복원처럼 확인할 일만, 서버별로 묶을 짧은 줄과 이유.
+ * 어디서 시켰든 정상적으로 켜고 끈 것(instance.started·stopped)은 남기지 않는다 (사용자 2026-11-15)
  */
 export function eventToast(ev: DaemonEvent, t: TFunction, nameOf: (id: string) => string = (id) => id): EventToast | null {
     const d = ev.data;
@@ -207,26 +208,17 @@ export function eventToast(ev: DaemonEvent, t: TFunction, nameOf: (id: string) =
                 message: t('events.instance_started', { name, source }),
                 type: 'info',
                 duration: 4000,
-                notice: serverNotice(d, name, t('events.n_started', { source }), 'info'),
                 ...(d.source === 'gui' ? { silent: true } : {}),
             };
         }
         case 'instance.stopped': {
             const name = d.instance || nameOf(d.instanceId);
-            if (d.kind === 'in_game_stop') {
-                return {
-                    message: t('events.instance_stopped_in_game', { name }),
-                    type: 'info',
-                    duration: 4000,
-                    notice: serverNotice(d, name, t('events.n_stopped_in_game'), 'info'),
-                };
-            }
+            if (d.kind === 'in_game_stop') return { message: t('events.instance_stopped_in_game', { name }), type: 'info', duration: 4000 };
             const source = sourceText(d, t);
             return {
                 message: t('events.instance_stopped', { name, source }),
                 type: 'info',
                 duration: 4000,
-                notice: serverNotice(d, name, t('events.n_stopped', { source }), 'info'),
                 ...(d.source === 'gui' ? { silent: true } : {}),
             };
         }
