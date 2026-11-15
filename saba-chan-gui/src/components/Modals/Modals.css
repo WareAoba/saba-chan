@@ -2105,11 +2105,6 @@
     align-items: center;
     gap: var(--sp-1-5);
 }
-.remote-daemon-subtitle {
-    margin: var(--sp-2) 0 0;
-    font-size: 13px;
-    font-weight: 600;
-}
 /* 설정 > 연결: 내 PC 카드 (이 PC가 맨 앞, 강조 테두리) */
 .remote-pc-cards {
     margin: 0;

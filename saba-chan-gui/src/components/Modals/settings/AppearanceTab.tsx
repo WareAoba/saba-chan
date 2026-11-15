@@ -164,7 +164,7 @@ export function AppearanceTab({
             </div>
 
             {/* ── 초기화 버튼 ── */}
-            <div className="setting-item setting-item-clickable" onClick={handleResetTheme} style={{ marginTop: 8 }}>
+            <div className="setting-item setting-item-clickable" onClick={handleResetTheme}>
                 <label className="setting-label" style={{ cursor: 'pointer' }}>
                     <span className="setting-title">
                         {t('gui:settings_modal.reset_theme_label', 'Reset to Default')}

@@ -307,6 +307,16 @@ describe('설정 > 연결: 원격 데몬 (/api/remote/*)', () => {
         expect(useSettingsStore.getState().daemonView).toBe('unified');
     });
 
+    // 설정은 절 하나 = 카드 하나 (사용자 11-11): 내 PC도 제목·설명·PC 카드·서버 목록 보기가 카드 한 장에 든다 (사용자 11-15)
+    it('내 PC 절은 제목·PC 카드·서버 목록 보기를 카드 한 장에 담는다', async () => {
+        vi.mocked(window.api.remoteDaemons).mockResolvedValue({ daemons: [{ hostId: 'host-b', name: '게임 PC', label: '게임 PC', address: 'g', port: 57480 }] });
+        await act(async () => render(<RemoteDaemonSection />));
+        const section = cards().closest('.saba-card') as HTMLElement;
+        expect(section).not.toBeNull();
+        expect(within(section).getByRole('heading', { name: 'My PCs' })).toHaveClass('saba-card-title');
+        expect(within(section).getByRole('combobox', { name: 'Server list' })).toBeInTheDocument();
+    });
+
     // 주소는 내 PC 카드의 게임 서버 주소 줄 한 칸에서 정한다 (PublicAddress, 사용자 결정 2026-11-10): 여기서는 켬·포트만
     // 켬은 바로 저장한다. 포트는 다 친 뒤 저장 막대로 묻는다 (사용자 11-11: 즉시 저장 + 어쩔 수 없는 것만 아래 막대)
     it('켜면 바로 저장하고 데몬이 준 상태를 보인다', async () => {

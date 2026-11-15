@@ -544,8 +544,11 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
 
         </section>
 
-            {/* 내 PC 카드들은 카드 안의 카드가 되지 않게 따로 둔다 */}
-            <h5 className="remote-daemon-subtitle">{t('remote_daemon.my_pcs')}</h5>
+        {/* 내 PC도 절 하나 = 카드 하나: PC 카드들은 AI 에이전트 카드처럼 이 카드 안에 든다 */}
+        <section className="saba-card">
+            <h4 className="saba-card-title">
+                <Icon name="monitor" size="sm" /> {t('remote_daemon.my_pcs')}
+            </h4>
             <p className="setting-description">{t('remote_daemon.my_pcs_description')}</p>
             {peersError && <p className="setting-description">{peersError}</p>}
             <ul data-spot="remote.pcs" className="remote-pc-cards remote-pc-cards-even" aria-label={t('remote_daemon.my_pcs')}>
@@ -629,6 +632,7 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
                     <Icon name="alertCircle" size="sm" /> {error}
                 </div>
             )}
+        </section>
 
             {editing && editDialog(editing)}
             {removing && (
