@@ -280,6 +280,158 @@ textarea {
     font-weight: 600;
     background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
+.notice-bell {
+    position: relative;
+    flex-shrink: 0;
+}
+/* 남은 시간·언어 알약과 같은 32px 동그라미, 읽지 않은 수는 빨간 배지 */
+.notice-bell-btn {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: var(--bg-3);
+    color: var(--text-1);
+    cursor: pointer;
+    transition: background-color var(--dur-fast) var(--ease);
+}
+.notice-bell-btn:hover,
+.notice-bell-btn[aria-expanded='true'] {
+    background: color-mix(in srgb, var(--accent) 16%, var(--bg-3));
+}
+.notice-bell-badge {
+    position: absolute;
+    top: -3px;
+    right: -3px;
+    min-width: 17px;
+    height: 17px;
+    padding: 0 4px;
+    display: grid;
+    place-items: center;
+    border-radius: 999px;
+    background: var(--stop);
+    color: #fff;
+    font-size: 10.5px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+/* 종 아래로 열리는 알림 패널: 휴대폰은 화면 폭, 넓은 화면은 380px */
+.notice-panel {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 20;
+    width: min(380px, calc(100vw - 32px));
+    max-height: min(70vh, 520px);
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 14px;
+    background: var(--bg-1);
+    border: 1px solid var(--line-strong);
+    border-radius: 14px;
+    box-shadow: var(--shadow-float);
+    animation: toast-in 160ms var(--ease) backwards;
+}
+@media (max-width: 480px) {
+    .notice-bell {
+        position: static;
+    }
+    .notice-panel {
+        right: 16px;
+        left: 16px;
+        width: auto;
+    }
+}
+.notice-panel-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.notice-panel-head h3 {
+    flex: 1;
+    margin: 0;
+    font-size: 16px;
+}
+.notice-panel-clear {
+    padding: 4px 6px;
+    border: 0;
+    background: none;
+    color: var(--text-2);
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+}
+.notice-panel-clear:hover {
+    color: var(--text-1);
+}
+.notice-panel-empty {
+    margin: 8px 0;
+    color: var(--text-3);
+    font-size: 14px;
+    text-align: center;
+}
+.notice-group {
+    overflow: hidden;
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+}
+.notice-group-name {
+    padding: 8px 12px 0;
+    color: var(--text-3);
+    font-size: 12px;
+    letter-spacing: 0.02em;
+}
+.notice-item {
+    display: grid;
+    grid-template-columns: 8px 1fr auto;
+    gap: 10px;
+    align-items: start;
+    padding: 10px 12px;
+}
+.notice-item + .notice-item {
+    border-top: 1px solid var(--line);
+}
+/* 읽지 않은 것은 색 점(오류 빨강·성공 초록·안내 회색), 읽은 것은 빈 점 */
+.notice-dot {
+    width: 8px;
+    height: 8px;
+    margin-top: 7px;
+    border-radius: 50%;
+    background: var(--text-3);
+}
+.notice-dot.error {
+    background: var(--stop);
+}
+.notice-dot.success {
+    background: var(--ok);
+}
+.notice-dot.read {
+    background: transparent;
+    box-shadow: inset 0 0 0 1.5px var(--line-strong);
+}
+.notice-msg {
+    min-width: 0;
+    font-size: 14px;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+}
+.notice-msg small {
+    display: block;
+    color: var(--text-2);
+    font-size: 12.5px;
+}
+.notice-time {
+    color: var(--text-3);
+    font-size: 12px;
+    white-space: nowrap;
+}
 .topbar-title .pill {
     min-width: 0;
     overflow: hidden;

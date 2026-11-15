@@ -132,7 +132,7 @@ export function App({ api, session }: AppProps) {
     if (!live) return <Gate phase={phase} reason={reason} />;
     return (
         <div className="shell">
-            <SessionBar session={session}>
+            <SessionBar session={session} api={api}>
                 <nav className="tabs" aria-label={t('tabs.label')}>
                     {TABS.map((x) => {
                         const locked = noPc && x.id !== 'discord';
