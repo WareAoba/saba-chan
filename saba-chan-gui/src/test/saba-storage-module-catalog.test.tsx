@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import i18n from '../i18n';
 
 vi.mock('../contexts/ExtensionContext', () => ({
-    useExtensions: () => ({ extensions: [], manifestExtensions: [], availableUpdates: [], installingIds: new Set(), loading: false, refresh: vi.fn() }),
+    useExtensions: () => ({ extensions: [], manifestExtensions: [], installingIds: new Set(), loading: false, refresh: vi.fn() }),
 }));
 
 import SabaStorage from '../components/Modals/SabaStorage';

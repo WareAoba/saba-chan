@@ -6,7 +6,7 @@ import { act, fireEvent, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../contexts/ExtensionContext', () => ({
-    useExtensions: () => ({ extensions: [], manifestExtensions: [], availableUpdates: [], installingIds: new Set(), loading: false, refresh: vi.fn() }),
+    useExtensions: () => ({ extensions: [], manifestExtensions: [], installingIds: new Set(), loading: false, refresh: vi.fn() }),
 }));
 
 import SabaStorage from '../components/Modals/SabaStorage';
