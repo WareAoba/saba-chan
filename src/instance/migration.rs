@@ -118,10 +118,18 @@ pub fn keep_unrestored(instance_dir: &Path, to: &Path) -> std::io::Result<()> {
     std::fs::rename(instance_dir.join(DIR), to)
 }
 
-/// 인스턴스 폴더 밖에 있는 서버 폴더 (가져온 서버 등). 인스턴스를 지워도 남는다
+/// 인스턴스 폴더 밖에 있는 서버 폴더 (가져온 서버 등). 인스턴스를 지워도 남는다.
+/// 사바쨩이 인스턴스 폴더에서 다른 드라이브로 옮긴 서버 폴더(표시 `OWNED_MARKER`)는 사바쨩 것이라 넣지 않는다 ([`moved_out_folder`])
 pub fn linked_folder(working_dir: Option<&str>, instance_dir: &Path) -> Option<String> {
     let dir = working_dir.map(str::trim).filter(|d| !d.is_empty())?;
-    (!inside_instance(Path::new(dir), instance_dir)).then(|| dir.to_string())
+    (!inside_instance(Path::new(dir), instance_dir) && !saba_chan_updater_lib::component_dirs::is_owned(Path::new(dir))).then(|| dir.to_string())
+}
+
+/// 사바쨩이 인스턴스 폴더 밖으로 옮긴 서버 폴더. 인스턴스를 지울 때 함께 지운다
+pub fn moved_out_folder(working_dir: Option<&str>, instance_dir: &Path) -> Option<PathBuf> {
+    let dir = working_dir.map(str::trim).filter(|d| !d.is_empty())?;
+    let dir = Path::new(dir);
+    (!inside_instance(dir, instance_dir) && saba_chan_updater_lib::component_dirs::is_owned(dir)).then(|| dir.to_path_buf())
 }
 
 /// 인스턴스 폴더 안인가. 링크(정션 등) 아래 데이터 폴더처럼 `is_inside`가 판정하지 못하는 경로는 실제 경로로 보고,

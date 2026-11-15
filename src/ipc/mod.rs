@@ -739,6 +739,8 @@ pub struct IPCServer {
     pub relay_agent: crate::relay_agent::RelayAgent,
     /// 시스템 모니터 (요청이 올 때만 표본을 뜬다)
     pub system_monitor: crate::system_monitor::SystemMonitor,
+    /// 설정 › 저장 공간: 잰 크기와 옮기기 작업
+    pub storage: crate::storage::Storage,
     /// 원격 데몬 (원격 포트·주소 올리기·짝 맺은 PC·붙는 쪽 연결)
     pub remote_daemon: crate::remote_daemon::RemoteDaemon,
 }
@@ -814,6 +816,7 @@ impl IPCServer {
             daemon_log_buffer,
             relay_agent,
             system_monitor: crate::system_monitor::SystemMonitor::new(),
+            storage: crate::storage::Storage::default(),
             remote_daemon: crate::remote_daemon::RemoteDaemon::default(),
         }
     }
@@ -943,6 +946,9 @@ impl IPCServer {
             .route("/api/system/paths", get(handlers::paths::get_paths))
             .route("/api/system/paths/move", post(handlers::paths::move_dir))
             .route("/api/system/browse", get(handlers::paths::browse))
+            .route("/api/system/storage", get(handlers::storage::get_storage))
+            .route("/api/system/storage/move", get(handlers::storage::get_move).post(handlers::storage::start_move))
+            .route("/api/system/storage/move/cancel", post(handlers::storage::cancel_move))
             .route("/api/system/uninstall", post(handlers::uninstall::uninstall))
             .route("/api/system/autostart", get(handlers::autostart::get_autostart).put(handlers::autostart::put_autostart))
             // ── Client heartbeat ──

@@ -245,7 +245,7 @@ fn attribute(
 }
 
 /// `path`가 들어 있는 마운트 지점 (가장 긴 접두어)
-fn mount_for<'a>(path: &Path, mounts: &'a [String]) -> Option<&'a str> {
+pub(crate) fn mount_for<'a>(path: &Path, mounts: &'a [String]) -> Option<&'a str> {
     let norm = |p: &str| {
         let mut s = p.replace('\\', "/").to_lowercase();
         if !s.ends_with('/') {
@@ -706,6 +706,15 @@ fn drive_letter(mount: &str) -> Option<char> {
     (chars.next() == Some(':')).then(|| c.to_ascii_uppercase())
 }
 
+/// "ssd" | "hdd" | "unknown"
+pub(crate) fn disk_kind(d: &sysinfo::Disk) -> &'static str {
+    match d.kind() {
+        sysinfo::DiskKind::SSD => "ssd",
+        sysinfo::DiskKind::HDD => "hdd",
+        sysinfo::DiskKind::Unknown(_) => "unknown",
+    }
+}
+
 /// 모든 디스크 (마운트 하나에 하나, 이름순). 크기가 0인 가상 파일 시스템은 뺀다
 fn build_volumes(disks: &Disks, rpm: &HashMap<char, u32>) -> Vec<VolumeMetrics> {
     let mut out: Vec<VolumeMetrics> = disks
@@ -713,11 +722,7 @@ fn build_volumes(disks: &Disks, rpm: &HashMap<char, u32>) -> Vec<VolumeMetrics> 
         .filter(|d| d.total_space() > 0)
         .map(|d| {
             let mount = d.mount_point().to_string_lossy().to_string();
-            let kind = match d.kind() {
-                sysinfo::DiskKind::SSD => "ssd",
-                sysinfo::DiskKind::HDD => "hdd",
-                sysinfo::DiskKind::Unknown(_) => "unknown",
-            };
+            let kind = disk_kind(d);
             let rpm = drive_letter(&mount).and_then(|c| rpm.get(&c).copied());
             VolumeMetrics {
                 name: d.name().to_string_lossy().to_string(),

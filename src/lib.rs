@@ -11,6 +11,7 @@ pub mod module_paths;
 pub mod scheduler;  // 인스턴스 예약 작업 (A3)
 pub mod process_monitor;
 pub mod system_monitor;
+pub mod storage;  // 설정 › 저장 공간: 내장 디스크·사바쨩 파일 크기, 서버 폴더 옮기기
 pub mod utils;
 pub mod archive;  // 내려받은 ZIP(모듈·익스텐션)을 안전하게 풀기
 pub mod extension;  // 범용 익스텐션 시스템

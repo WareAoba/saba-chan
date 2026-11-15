@@ -1,0 +1,304 @@
+/* 설정 › 저장 공간: 디스크 막대, 사바쨩 파일 목록, 파일 이동 창. 색·그림자는 토큰만 (반투명이면 유리, 아니면 뉴모피즘) */
+
+.cat-servers {
+    --cat: var(--series-1);
+}
+.cat-backups {
+    --cat: var(--series-2);
+}
+.cat-components {
+    --cat: var(--series-3);
+}
+.cat-app {
+    --cat: var(--series-7);
+}
+.cat-other {
+    --cat: color-mix(in oklab, var(--text-3) 45%, transparent);
+}
+.cat-free {
+    --cat: var(--field);
+}
+
+.storage-meta {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp-1-5);
+    font-size: var(--fs-xs);
+    font-weight: 400;
+    color: var(--text-3);
+}
+
+.storage-chip {
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    padding: 1px var(--sp-1-5);
+    border-radius: var(--r-pill);
+    background: var(--field);
+    color: var(--text-2);
+}
+
+/* 디스크 한 줄 */
+.storage-disk {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1-5);
+    min-width: 0;
+    margin: 0;
+    padding: var(--sp-2-5) 0 0;
+    border: 0;
+    border-top: 1px solid var(--line);
+}
+.storage-disk:first-of-type {
+    border-top: 0;
+    padding-top: 0;
+}
+.storage-disk-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--sp-2);
+}
+.storage-disk-name {
+    font-weight: 600;
+}
+.storage-disk-size {
+    margin-left: auto;
+    font-size: var(--fs-sm);
+    color: var(--text-2);
+    font-variant-numeric: tabular-nums;
+}
+.storage-bar {
+    display: flex;
+    height: 12px;
+    border-radius: var(--r-pill);
+    overflow: hidden;
+    background: var(--field);
+    box-shadow: var(--neu-in);
+}
+.storage-seg {
+    height: 100%;
+    background: var(--cat);
+}
+.storage-seg + .storage-seg {
+    border-left: 1px solid var(--surface-gradient-solid, transparent);
+}
+.storage-disk-saba {
+    font-size: var(--fs-sm);
+    color: var(--text-2);
+    font-variant-numeric: tabular-nums;
+}
+.storage-disk-saba strong {
+    color: var(--text-1);
+}
+.storage-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-1) var(--sp-3);
+    font-size: var(--fs-xs);
+    color: var(--text-2);
+}
+.storage-legend i,
+.storage-item-name i {
+    display: inline-block;
+    flex: none;
+    width: 9px;
+    height: 9px;
+    margin-right: var(--sp-1-5);
+    border-radius: 3px;
+    background: var(--cat);
+}
+.storage-legend .cat-free {
+    box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+
+/* 사바쨩 파일 */
+.storage-items {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+}
+.storage-group-label {
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    color: var(--text-3);
+}
+.storage-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--sp-0-5) var(--sp-2-5);
+    padding: var(--sp-2) 0;
+    border-top: 1px solid var(--line);
+    align-items: center;
+}
+.storage-group-label + .storage-item {
+    border-top: 0;
+}
+.storage-item-name {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1-5);
+    min-width: 0;
+    font-weight: 500;
+}
+.storage-item-size {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1-5);
+    font-size: var(--fs-sm);
+    font-variant-numeric: tabular-nums;
+}
+.storage-item-path {
+    grid-column: 1 / -1;
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+    overflow-wrap: anywhere;
+}
+.storage-pill {
+    font-size: var(--fs-xs);
+    padding: 0 var(--sp-1-5);
+    border-radius: var(--r-pill);
+    background: var(--ok-soft);
+    color: var(--ok);
+    font-weight: 600;
+}
+
+/* 파일 이동 창 */
+.storage-steps {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+}
+.storage-step {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+}
+.storage-step-label {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    color: var(--text-2);
+}
+.storage-step-n {
+    display: grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-size: var(--fs-xs);
+}
+.storage-drives {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: var(--sp-2-5);
+}
+.storage-drive {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+    padding: var(--sp-2-5) var(--sp-3);
+    text-align: left;
+    font: inherit;
+    color: inherit;
+    border: 1.5px solid var(--line);
+    border-radius: var(--r-md);
+    background: var(--surface-gradient);
+    box-shadow: var(--neu-up);
+    cursor: pointer;
+}
+.storage-drive[aria-checked='true'] {
+    border-color: var(--accent);
+    box-shadow: var(--accent-ring);
+}
+.storage-drive:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+.storage-drive-top {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1-5);
+    font-weight: 600;
+}
+.storage-drive-free,
+.storage-drive-why {
+    font-size: var(--fs-xs);
+    color: var(--text-2);
+    font-variant-numeric: tabular-nums;
+}
+.storage-drive-why {
+    color: var(--text-3);
+}
+.storage-mini {
+    display: flex;
+    height: 6px;
+    border-radius: var(--r-pill);
+    overflow: hidden;
+    background: var(--field);
+}
+.storage-mini > span {
+    background: var(--text-3);
+}
+.storage-mini > .adds {
+    background: var(--accent);
+}
+.storage-path {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+    padding: var(--sp-2-5) var(--sp-3);
+    border-radius: var(--r-sm);
+    background: var(--field);
+    box-shadow: var(--neu-in);
+}
+.storage-path code {
+    font-size: var(--fs-sm);
+    overflow-wrap: anywhere;
+}
+.storage-path-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--sp-2);
+    font-size: var(--fs-xs);
+    color: var(--text-3);
+}
+.storage-checks {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1-5);
+    font-size: var(--fs-sm);
+}
+.storage-checks li {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--sp-2);
+}
+.storage-checks .tone-ok svg {
+    color: var(--ok);
+}
+.storage-checks .tone-warn svg {
+    color: var(--warn);
+}
+.storage-progress {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+}
+.storage-progress-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: var(--fs-sm);
+    color: var(--text-2);
+    font-variant-numeric: tabular-nums;
+}

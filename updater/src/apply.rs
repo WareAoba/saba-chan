@@ -832,15 +832,21 @@ fn clean_dir(dir: &Path) -> Result<()> {
 
 /// `src` 폴더를 `dst`에 그대로 복사한다 (디렉터리 링크·junction은 따라가 내용을 복사한다). 실패한 경로를 오류에 적는다
 pub(crate) fn copy_tree(src: &Path, dst: &Path) -> std::io::Result<()> {
+    copy_tree_with(src, dst, &mut |_| Ok(()))
+}
+
+/// [`copy_tree`]하며 파일 하나를 복사할 때마다 그 크기로 `copied`를 부른다. `copied`가 오류를 내면 거기서 멈춘다
+pub(crate) fn copy_tree_with(src: &Path, dst: &Path, copied: &mut dyn FnMut(u64) -> std::io::Result<()>) -> std::io::Result<()> {
     let fail = |p: &Path, e: std::io::Error| std::io::Error::new(e.kind(), format!("{}: {}", p.display(), e));
     std::fs::create_dir_all(dst).map_err(|e| fail(dst, e))?;
     for entry in std::fs::read_dir(src).map_err(|e| fail(src, e))? {
         let entry = entry.map_err(|e| fail(src, e))?;
         let (from, to) = (entry.path(), dst.join(entry.file_name()));
         if from.is_dir() {
-            copy_tree(&from, &to)?;
+            copy_tree_with(&from, &to, copied)?;
         } else {
-            std::fs::copy(&from, &to).map_err(|e| fail(&from, e))?;
+            let bytes = std::fs::copy(&from, &to).map_err(|e| fail(&from, e))?;
+            copied(bytes)?;
         }
     }
     Ok(())
