@@ -61,8 +61,11 @@ const ALLOWED = new Set([
     '@gui/components/discord/modDuration',
     // 코코낸내 기능 묶음·시각 (GUI 봇 설정과 같은 상수)
     '@gui/components/discord/sleep',
+    // 알림함 한 건 읽기·묶기·시각 (앱 알림 창과 같은 규칙, 화면 없는 순수 함수)
+    '@gui/utils/noticeView',
     // 데몬·디스코드 응답 모양 (타입만, 실행 코드 없음)
     '@gui/types/daemon',
+    '@gui/types/global',
     '@gui/components/discord/types',
     '@gui/styles/tokens.css',
     // 그라데이션 버튼 호버 순환 (앱과 같은 움직임과 그림)

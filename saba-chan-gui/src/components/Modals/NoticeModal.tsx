@@ -6,6 +6,7 @@ import { useServerStore } from '../../stores/useServerStore';
 import type { ApiBody } from '../../types/daemon';
 import type { Notice } from '../../types/global';
 import { clearAllNotices, loadNotices, markAllRead, NOTICE_UPDATE, refreshNotices, removeNotice } from '../../utils/noticeInbox';
+import { groupNotices, noticeTime } from '../../utils/noticeView';
 import { initials } from '../../utils/serverView';
 import { applyServerUpdateFromNotice, SERVER_UPDATE_ACTION } from '../../utils/serverUpdateNotice';
 import './Modals.css';
@@ -47,7 +48,7 @@ function NoticeCard({ notice, onDismiss, onAction, t }: NoticeCardProps) {
     const clickable = !!notice.action;
     const isUpdateCard = notice.action === 'openUpdateModal';
 
-    const timeStr = formatTime(notice.timestamp, t);
+    const timeStr = noticeTime(notice.timestamp, t);
 
     const handleClick = () => {
         if (clickable && onAction) onAction(notice.action!, notice);
@@ -91,33 +92,6 @@ function NoticeCard({ notice, onDismiss, onAction, t }: NoticeCardProps) {
                 <Icon name="close" size="xs" />
             </button>
         </div>
-    );
-}
-
-function formatTime(isoString: string, t: TFunction) {
-    const d = new Date(isoString);
-    const now = new Date();
-    const diff = now.getTime() - d.getTime();
-
-    // within 1 minute
-    if (diff < 60_000) return t('notice_modal.just_now');
-    // within 1 hour
-    if (diff < 3_600_000) return t('notice_modal.minutes_ago', { count: Math.floor(diff / 60_000) });
-    // today
-    if (d.toDateString() === now.toDateString()) {
-        return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-    }
-    // yesterday
-    const yesterday = new Date(now);
-    yesterday.setDate(yesterday.getDate() - 1);
-    if (d.toDateString() === yesterday.toDateString()) {
-        return `${t('notice_modal.yesterday')} ${d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`;
-    }
-    // else
-    return (
-        d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) +
-        ' ' +
-        d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
     );
 }
 
@@ -165,24 +139,14 @@ function NoticeModal({ isOpen, onClose, isClosing, onOpenUpdateModal, onOpenPatc
 
     if (!isOpen) return null;
 
-    // 서버 알림은 서버 id로, 나머지는 출처로 묶는다. 최근 알림이 있는 묶음이 먼저 (알림은 최신이 먼저다)
-    const groupKey = (n: Notice) => (n.instanceId ? `server:${n.instanceId}` : n.source);
-    const groups = new Map<string, Notice[]>();
-    for (const n of notices) {
-        const key = groupKey(n);
-        groups.set(key, [...(groups.get(key) || []), n]);
-    }
-
-    // 서버 묶음은 지금 이름(이름을 바꿨을 수 있다), 없어진 서버면 알릴 때의 이름. 나머지는 데몬이 준 이름("사바쨩")
-    const serverOf = (list: Notice[]) => servers.find((s) => s.id === list[0].instanceId);
-    const groupLabel = (list: Notice[]) => (list[0].instanceId && serverOf(list)?.name) || list[0].source;
-    const groupIcon = (list: Notice[]) => {
-        if (!list[0].instanceId) return null;
-        const server = serverOf(list);
+    const groups = groupNotices(notices, (id) => servers.find((s) => s.id === id)?.name);
+    const groupIcon = (instanceId: string | undefined, label: string) => {
+        if (!instanceId) return null;
+        const server = servers.find((s) => s.id === instanceId);
         const module = server && modules.find((m) => m.name === server.module);
         return (
             <span className="notice-group-icon" aria-hidden="true">
-                {module?.icon ? <img src={module.icon} alt="" /> : initials(server?.name || list[0].source)}
+                {module?.icon ? <img src={module.icon} alt="" /> : initials(label)}
             </span>
         );
     };
@@ -218,11 +182,11 @@ function NoticeModal({ isOpen, onClose, isClosing, onOpenUpdateModal, onOpenPatc
                         <p>{t('notice_modal.empty')}</p>
                     </div>
                 ) : (
-                    [...groups].map(([key, list]) => (
+                    groups.map(({ key, instanceId, label, notices: list }) => (
                         <div key={key} className="notice-group">
                             <div className="notice-group-header">
-                                {groupIcon(list)}
-                                <span className="notice-group-label">{groupLabel(list)}</span>
+                                {groupIcon(instanceId, label)}
+                                <span className="notice-group-label">{label}</span>
                                 <span className="notice-group-count">{list.length}</span>
                             </div>
                             {list.map((notice) => (

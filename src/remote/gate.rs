@@ -72,11 +72,11 @@ pub static ROUTES: &[Route] = &[
     deny("POST", "/api/audit/export"),
     // 이벤트는 원격 연결이 따로 밀어 준다 (SSE는 요청·응답 한 번으로 끝나지 않는다)
     not_on_web("GET", "/api/events"),
-    // 알림함 (`crate::notices`): 짝 맺은 PC의 앱·원격 MCP가 쓴다. 웹 콘솔 화면은 아직 없다
-    not_on_web("GET", "/api/notices"),
-    not_on_web("DELETE", "/api/notices"),
-    not_on_web("POST", "/api/notices/read"),
-    not_on_web("DELETE", "/api/notices/{id}"),
+    // 알림함 (`crate::notices`): 짝 맺은 PC의 앱·원격 MCP·웹 콘솔 알림 종이 같은 목록을 본다
+    allow("GET", "/api/notices"),
+    allow("DELETE", "/api/notices"),
+    allow("POST", "/api/notices/read"),
+    allow("DELETE", "/api/notices/{id}"),
     // ── 서버 ──
     allow("GET", "/api/servers"),
     allow("GET", "/api/instance/{id}/status"),
@@ -691,6 +691,14 @@ mod tests {
             decide("DELETE", "/api/instance/abc/backups/2026-10-24_1200"),
             Ok("/api/instance/{id}/backups/{name}")
         );
+    }
+
+    #[test]
+    fn web_console_reads_and_clears_the_notice_inbox() {
+        assert_eq!(decide("GET", "/api/notices?locale=ko"), Ok("/api/notices"));
+        assert_eq!(decide("POST", "/api/notices/read"), Ok("/api/notices/read"));
+        assert_eq!(decide("DELETE", "/api/notices/12"), Ok("/api/notices/{id}"));
+        assert_eq!(decide("DELETE", "/api/notices"), Ok("/api/notices"));
     }
 
     #[test]

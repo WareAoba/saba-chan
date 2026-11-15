@@ -5,8 +5,9 @@ import { useApp } from '../store';
 import { Icon } from './icons';
 import { LanguageMenu } from './LanguageMenu';
 import { InstallBand } from './NoPc';
+import { NoticeBell } from './NoticeBell';
 import { Wordmark } from './ui';
-import type { WebSession } from '../types';
+import type { WebApi, WebSession } from '../types';
 
 /** 남은 시간 "14:05" */
 export function remainingText(expiresAt: number | null, now: number) {
@@ -14,8 +15,17 @@ export function remainingText(expiresAt: number | null, now: number) {
     return `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
 }
 
-/** children: 탭 메뉴. 넓은 화면은 이 줄 가운데, 휴대폰은 화면 아래에 붙는다 (styles.css .tabs) */
-export function SessionBar({ session, children }: { session: WebSession | null; children?: ReactNode }) {
+/** children: 탭 메뉴. 넓은 화면은 이 줄 가운데, 휴대폰은 화면 아래에 붙는다 (styles.css .tabs).
+ * PC가 붙은 세션이면 언어 버튼 앞에 알림 종 (PC 데몬의 알림함) */
+export function SessionBar({
+    session,
+    api,
+    children,
+}: {
+    session: WebSession | null;
+    api?: WebApi;
+    children?: ReactNode;
+}) {
     const { t } = useTranslation();
     const { expiresAt, warning, phase, hostId } = useApp((s) => s.session);
     const [now, setNow] = useState(Date.now());
@@ -39,6 +49,7 @@ export function SessionBar({ session, children }: { session: WebSession | null; 
                 <button type="button" className="btn btn-plain btn-small" onClick={() => session?.extend()}>
                     {t('session.extend')}
                 </button>
+                {hostId && api && <NoticeBell api={api} />}
                 <LanguageMenu />
             </div>
             {warning && <p className="banner banner-warn">{t('session.ending_soon')}</p>}

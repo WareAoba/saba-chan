@@ -85,6 +85,7 @@ const SAME_EVERYWHERE = [
 /** 영어와 글자가 같아도 그 언어에서 맞는 문구 (언어: 파일:키) */
 const SAME_AS_EN: Record<string, string[]> = {
     es: [
+        'gui.json:storage.total',
         'gui.json:palette.title',
         'gui.json:audit.http_other',
         'gui.json:monitor.pick_network_all',
@@ -113,6 +114,9 @@ const SAME_AS_EN: Record<string, string[]> = {
         'gui.json:server_settings.idle_stop_unit',
     ],
     'pt-BR': [
+        'gui.json:storage.cat_backups',
+        'gui.json:storage.total',
+        'gui.json:storage.item_backups',
         'gui.json:palette.title',
         'gui.json:discord.iw_cmd_status',
         'gui.json:settings_modal.tab_console',
@@ -154,6 +158,7 @@ const SAME_AS_EN: Record<string, string[]> = {
         'gui.json:players.online',
     ],
     de: [
+        'gui.json:storage.option_server',
         'gui.json:palette.title',
         'gui.json:audit.filter',
         'gui.json:audit.detail_server',
@@ -204,6 +209,10 @@ const SAME_AS_EN: Record<string, string[]> = {
         'gui.json:players.online',
     ],
     fr: [
+        'gui.json:saba_storage.summary_addons',
+        'gui.json:storage.total',
+        'gui.json:storage.item_modules',
+        'gui.json:storage.item_extensions',
         'gui.json:palette.title',
         'gui.json:saba_storage.version_kind_module',
         'gui.json:saba_storage.version_kind_ext',

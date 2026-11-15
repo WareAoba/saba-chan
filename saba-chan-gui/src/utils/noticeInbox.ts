@@ -1,5 +1,6 @@
 import type { ApiBody } from '../types/daemon';
 import type { Notice } from '../types/global';
+import { toNotice } from './noticeView';
 
 /**
  * 알림함은 데몬이 보관한다 (GET /api/notices). 무엇을 넣을지도 데몬이 정한다: 화면은 넣지 않고 받아 그린다.
@@ -13,20 +14,6 @@ export const NOTICE_UPDATE = 'saba-notice-update';
 let cache: Notice[] = [];
 
 const changed = () => window.dispatchEvent(new CustomEvent(NOTICE_UPDATE));
-
-/** 데몬의 한 건 → 알림 카드 한 칸 */
-const toNotice = (n: ApiBody): Notice => ({
-    id: n.id,
-    message: n.message ?? '',
-    type: n.level === 'success' || n.level === 'error' ? n.level : 'info',
-    source: n.source,
-    ...(n.instanceId ? { instanceId: n.instanceId } : {}),
-    ...(n.detail ? { detail: n.detail } : {}),
-    action: n.action ?? null,
-    data: n.data ?? null,
-    timestamp: new Date((n.at ?? 0) * 1000).toISOString(),
-    read: !!n.read,
-});
 
 /** 데몬에서 다시 읽는다. 데몬이 없거나 실패하면 받아 둔 목록을 그대로 둔다 */
 export async function refreshNotices() {
