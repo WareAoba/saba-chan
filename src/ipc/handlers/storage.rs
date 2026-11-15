@@ -229,7 +229,11 @@ async fn start_server_move(state: IPCServer, req: MoveRequest) -> Response {
     ) {
         (Some(t), _) => PathBuf::from(t),
         (None, Some(mount)) => {
-            let instance_mount = volume_for(&volumes, &instance_dir).map(|v| PathBuf::from(&v.mount));
+            // 직접 고른 폴더·가져온 서버는 인스턴스 폴더 안으로 들이지 않는다 (plan_server_move가 거절한다)
+            let linked = crate::instance::migration::linked_folder(Some(&server_dir.to_string_lossy()), &instance_dir).is_some();
+            let instance_mount = (!linked)
+                .then(|| volume_for(&volumes, &instance_dir).map(|v| PathBuf::from(&v.mount)))
+                .flatten();
             storage::default_server_target(
                 Path::new(mount),
                 &instance_dir,
@@ -333,7 +337,12 @@ async fn run_server_move(
     .map_err(|e| component_dirs::PathError::new("copy_failed", e.to_string()))??;
     // 직접 고른 폴더·가져온 서버는 옮겨도 사용자 것이다: 사바쨩 표시를 떼서 인스턴스를 지울 때 남긴다
     if plan.linked {
-        let _ = std::fs::remove_file(plan.target.join(component_dirs::OWNED_MARKER));
+        let marker = plan.target.join(component_dirs::OWNED_MARKER);
+        if let Err(e) = std::fs::remove_file(&marker)
+            && e.kind() != std::io::ErrorKind::NotFound
+        {
+            tracing::warn!("[Storage] Could not remove {}: {}", marker.display(), e);
+        }
     }
     tracing::info!(
         "[Storage] Moved the server folder of {} from {} to {}",

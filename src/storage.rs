@@ -402,7 +402,8 @@ pub fn folder_name(name: &str, id: &str) -> String {
     }
 }
 
-/// 드라이브를 고르면 옮길 자리: 인스턴스 폴더가 있는 드라이브면 인스턴스 폴더 안(`subdir`), 아니면
+/// 드라이브를 고르면 옮길 자리: 인스턴스 폴더가 있는 드라이브면 인스턴스 폴더 안(`subdir`, 직접 고른 폴더·가져온 서버는
+/// `instance_mount`를 넘기지 않아 늘 바깥), 아니면
 /// `<드라이브>/saba-chan/servers/<서버 이름>` (그 이름이 있으면 `-2`, `-3`…)
 pub fn default_server_target(
     mount: &Path,
@@ -525,12 +526,13 @@ pub fn plan_server_move(
     if install_dir.is_some_and(|i| saba_chan_updater_lib::paths_overlap(i, target)) {
         return Err(Refused::new("overlaps_install", shown()));
     }
-    // 데이터 폴더 안은 이 인스턴스 폴더 안만 (다른 곳은 사바쨩이 지우거나 덮어쓴다)
+    let linked = crate::instance::migration::linked_folder(Some(&server_dir.to_string_lossy()), instance_dir).is_some();
+    // 데이터 폴더 안은 이 인스턴스 폴더 안만 (다른 곳은 사바쨩이 지우거나 덮어쓴다).
+    // 직접 고른 폴더·가져온 서버는 인스턴스 폴더 안에도 두지 않는다 (인스턴스를 지울 때 함께 지워진다)
     let data_dir = saba_chan_updater_lib::constants::resolve_data_dir();
-    if inside(target, &data_dir) && !inside(target, instance_dir) {
+    if (inside(target, &data_dir) && !inside(target, instance_dir)) || (linked && inside(target, instance_dir)) {
         return Err(Refused::new("overlaps_data", shown()));
     }
-    let linked = crate::instance::migration::linked_folder(Some(&server_dir.to_string_lossy()), instance_dir).is_some();
     Ok(ServerMove {
         source: server_dir.to_path_buf(),
         target: target.to_path_buf(),
@@ -649,6 +651,8 @@ mod tests {
         let picked = tmp.path().join("mine");
         std::fs::create_dir_all(&picked).unwrap();
         assert_eq!(code(&picked, &to("srv")), Ok(true));
+        // 인스턴스 폴더 안으로 들이면 인스턴스를 지울 때 함께 지워진다
+        assert_eq!(code(&picked, &instance_dir.join("server2")), Err("overlaps_data"));
         saba_chan_updater_lib::component_dirs::mark_owned(&picked).unwrap();
         assert_eq!(
             code(&picked, &to("srv")),
