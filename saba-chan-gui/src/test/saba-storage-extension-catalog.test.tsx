@@ -1,7 +1,6 @@
 /**
  * 익스텐션 탭 (리뉴얼 시안 2026-11-14): 받을 수 있는 목록을 ▾ 뒤에 숨기지 않고 늘 펼쳐 보인다.
- * 목록에는 앱 언어의 설명과 데몬이 받아 둔 그림을 쓴다. 업데이트는 구성요소 탭의 단추 하나가 맡아
- * 카드마다 업데이트 단추를 두지 않는다.
+ * 목록에는 앱 언어의 설명과 데몬이 받아 둔 그림을 쓴다. 카드의 업데이트 단추는 saba-storage-addon-update.test.tsx가 본다.
  */
 import { act, fireEvent, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -18,7 +17,6 @@ beforeEach(async () => {
     await i18n.changeLanguage('ko');
     ctx = {
         extensions: [{ id: 'steamcmd', name: 'SteamCMD', version: '1.0.0', enabled: true, has_icon: true }],
-        availableUpdates: [{ id: 'steamcmd', latest_version: '1.1.0' }],
         manifestExtensions: [
             { id: 'steamcmd', name: 'SteamCMD', version: '1.1.0', has_icon: true },
             {
@@ -70,14 +68,6 @@ describe('익스텐션 탭', () => {
         expect(cards[0]).toHaveTextContent('바탕화면 펫');
         await waitFor(() => expect(cards[0].querySelector('img')?.getAttribute('src')).toBe(ICON));
         expect(window.api.storeIcon).toHaveBeenCalledWith('ext-pet');
-    });
-
-    it('설치된 카드에는 업데이트 단추가 없고 새 버전만 알린다', () => {
-        render(<ExtensionsTab />);
-        const installed = document.querySelector<HTMLElement>('[data-spot="extensions.installed"]')!;
-        expect(installed.querySelector('.saba-disclosure-body')).toHaveProperty('hidden', false);
-        expect(installed.querySelector('.ss-icon-btn.accent')).toBeNull();
-        expect(installed.querySelector('.ss-update-badge')).toHaveTextContent('v1.1.0');
     });
 
     it('새로고침은 데몬도 새로 받게 한다', async () => {

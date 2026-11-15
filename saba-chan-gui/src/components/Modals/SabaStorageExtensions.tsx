@@ -27,7 +27,6 @@ export function ExtensionsTab() {
         extensions = [],
         refreshExtensions,
         manifestExtensions = [],
-        availableUpdates = [],
         manifestLoading,
         installingIds = new Set<string>(),
         fetchManifest,
@@ -95,6 +94,14 @@ export function ExtensionsTab() {
 
     const installedIds = new Set(extensions.map((e) => e.id));
     const uninstalled = manifestExtensions.filter((r) => !installedIds.has(r.id));
+    const extCard = (ext: (typeof extensions)[number]): AddonCard => ({
+        key: `ext-${ext.id}`,
+        name: ext.name || ext.id,
+        kind: 'ext',
+        version: ext.version,
+        pinned: ext.pinned,
+        pending_version: ext.pending_version,
+    });
 
     return (
         <div className="saba-storage-tab-content">
@@ -110,16 +117,19 @@ export function ExtensionsTab() {
                     </>
                 }
                 actions={
-                    <button
-                        type="button"
-                        className="ss-icon-btn"
-                        disabled={rescanning}
-                        onClick={handleRescan}
-                        data-tooltip={t('extensions.rescan')}
-                        aria-label={t('extensions.rescan')}
-                    >
-                        <Icon name={rescanning ? 'loader' : 'refresh'} size="sm" />
-                    </button>
+                    <>
+                        {versions.updateAllButton(extensions.map(extCard))}
+                        <button
+                            type="button"
+                            className="ss-icon-btn"
+                            disabled={rescanning}
+                            onClick={handleRescan}
+                            data-tooltip={t('extensions.rescan')}
+                            aria-label={t('extensions.rescan')}
+                        >
+                            <Icon name={rescanning ? 'loader' : 'refresh'} size="sm" />
+                        </button>
+                    </>
                 }
             >
             {extensions.length === 0 ? (
@@ -128,17 +138,9 @@ export function ExtensionsTab() {
             ) : (
                 <div className="ss-cards">
                     {[...extensions].sort((a, b) => byName(a.name || a.id, b.name || b.id)).map((ext) => {
-                        const updateInfo = availableUpdates.find((u) => u.id === ext.id);
                         const isRemoving = removingIds.has(ext.id);
                         const isBusy = isRemoving || installingIds.has(ext.id);
-                        const card: AddonCard = {
-                            key: `ext-${ext.id}`,
-                            name: ext.name || ext.id,
-                            kind: 'ext',
-                            version: ext.version,
-                            pinned: ext.pinned,
-                            pending_version: ext.pending_version,
-                        };
+                        const card = extCard(ext);
                         const progress = versions.progress(card);
                         return (
                             <div
@@ -174,9 +176,6 @@ export function ExtensionsTab() {
                                         {ext.name}
                                         {ext.version && <span className="ss-card-version">v{ext.version}</span>}
                                         <TrustBadge trust={ext.trust} />
-                                        {updateInfo && (
-                                            <span className="ss-update-badge">v{updateInfo.latest_version}</span>
-                                        )}
                                         {versions.chip(card)}
                                     </span>
                                     {progress ||
@@ -188,6 +187,7 @@ export function ExtensionsTab() {
                                     {ext.enabled && <ExtensionConfigForm ext={ext} />}
                                 </div>
                                 <div className="ss-card-actions">
+                                    {versions.updateButton(card, isBusy)}
                                     <SabaToggle
                                         size="sm"
                                         checked={!!ext.enabled}

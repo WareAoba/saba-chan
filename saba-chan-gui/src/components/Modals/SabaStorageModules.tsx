@@ -164,6 +164,15 @@ export function ModulesTab() {
     };
 
     // 매니페스트에서 미설치 모듈
+    const moduleCard = (m: ModuleInfo): AddonCard => ({
+        key: `module-${getModuleId(m)}`,
+        name: m.name,
+        kind: 'module',
+        version: m.version,
+        pinned: m.pinned,
+        pending_version: m.pending_version,
+    });
+
     const uninstalledModules = manifestModules ? manifestModules.filter((m) => !installedIds.has(m.id)) : [];
     const runnableModules = uninstalledModules.filter((m) => m.platform_supported !== false);
     const unrunnableModules = uninstalledModules.filter((m) => m.platform_supported === false);
@@ -182,16 +191,19 @@ export function ModulesTab() {
                     </>
                 }
                 actions={
-                    <button
-                        type="button"
-                        className="ss-icon-btn"
-                        disabled={refreshingModules}
-                        onClick={handleRefreshModules}
-                        data-tooltip={t('saba_storage.refresh_modules')}
-                        aria-label={t('saba_storage.refresh_modules')}
-                    >
-                        <Icon name={refreshingModules ? 'loader' : 'refresh'} size="sm" />
-                    </button>
+                    <>
+                        {versions.updateAllButton(sortedModules.map(moduleCard))}
+                        <button
+                            type="button"
+                            className="ss-icon-btn"
+                            disabled={refreshingModules}
+                            onClick={handleRefreshModules}
+                            data-tooltip={t('saba_storage.refresh_modules')}
+                            aria-label={t('saba_storage.refresh_modules')}
+                        >
+                            <Icon name={refreshingModules ? 'loader' : 'refresh'} size="sm" />
+                        </button>
+                    </>
                 }
             >
                 {installedModules === null ? null : installedModules.length === 0 ? (
@@ -201,14 +213,7 @@ export function ModulesTab() {
                         {sortedModules.map((m, idx) => {
                             const moduleId = getModuleId(m);
                             const isRemoving = removingIds.has(moduleId);
-                            const card: AddonCard = {
-                                key: `module-${moduleId}`,
-                                name: m.name,
-                                kind: 'module',
-                                version: m.version,
-                                pinned: m.pinned,
-                                pending_version: m.pending_version,
-                            };
+                            const card = moduleCard(m);
                             const progress = versions.progress(card);
                             return (
                                 <div
@@ -243,6 +248,7 @@ export function ModulesTab() {
                                         {versions.pinNote(card)}
                                     </div>
                                     <div className="ss-card-actions">
+                                        {versions.updateButton(card, isRemoving)}
                                         <button
                                             type="button"
                                             className="ss-icon-btn danger"
