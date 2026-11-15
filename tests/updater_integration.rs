@@ -173,7 +173,6 @@ fn test_update_config_serialization() {
         enabled: true,
         check_interval_hours: 6,
         auto_download: true,
-        install_root: Some("/opt/saba".into()),
         channel: "beta".into(),
         ..Default::default()
     };
@@ -183,7 +182,6 @@ fn test_update_config_serialization() {
     assert_eq!(restored.check_interval_hours, 6);
     assert!(restored.auto_download);
     assert_eq!(restored.channel, "beta");
-    assert_eq!(restored.install_root, Some("/opt/saba".into()));
 }
 
 // ═══════════════════════════════════════════════════════

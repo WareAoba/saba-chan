@@ -351,7 +351,9 @@ pub struct UpdateConfig {
     /// 한 번 `auto_apply`·`auto_download`를 켠다. 그 뒤 사용자가 고른 값은 그대로 둔다
     #[serde(default)]
     pub live_update_migrated: bool,
-    /// 스테이징 디렉터리 (다운로드와 임시 파일 저장, 기본값: 실행파일 경로 기준)
+    /// 설치 폴더. 데몬은 늘 자기 exe 폴더를 쓴다: 설정 파일에서 읽지도 쓰지도 않는다.
+    /// 앱이 정하게 두면 다른 폴더의 GUI(미리보기 빌드)가 붙을 때마다 바뀌었다. 시험만 여기에 넣는다
+    #[serde(skip)]
     pub install_root: Option<String>,
     /// 릴레이 주소 (None이면 relay::DEFAULT_RELAY_URL). 모의 릴레이 시험은 여기에
     /// `scripts/mock-release-server.js` 주소를 넣는다. 0.1.1은 `relay_base_url`로 저장했다
@@ -901,14 +903,6 @@ impl UpdateManager {
 
     /// 설정 업데이트
     pub fn update_config(&mut self, new_config: UpdateConfig) {
-        // install_root override: config에 install_root가 설정되면 실제 경로 갱신
-        if let Some(ref root) = new_config.install_root {
-            let new_root = std::path::PathBuf::from(root);
-            if new_root != self.install_root {
-                tracing::info!("[UpdateManager] install_root updated: {:?} -> {:?}", self.install_root, new_root);
-                self.install_root = new_root;
-            }
-        }
         self.config = new_config;
     }
 

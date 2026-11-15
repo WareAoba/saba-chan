@@ -550,7 +550,7 @@ Relay 서명 방식(`relay.rs:115-161`):
 | GET | `/api/updates/integrity` | `updates.rs:814` | - | `{success,checked_at,overall,total,verified,failed,skipped,components[...]}` |
 | GET/POST | `/api/updates/repair` | `updates.rs` `get_repair`/`repair` | - | 설치 점검·복구. GET `{success, verified, failed, skipped, repair:[{component, display_name, installed, offered}], unavailable:[…]}`: 무결성 검사에서 `Tampered`·`FileNotFound`인 구성요소 중 확인한 릴리즈가 설치된 판을 그대로 내주는 것(`repair`)과 아닌 것(`unavailable`). POST는 `repair`만 그 판으로 다시 받아(`download_components_with`) 적용하고(`apply_updates_with`) 답에 `repaired`·`needs_updater`·`requires_updater`·`errors`를 더한다. 데몬·GUI·업데이터가 끼면 `apply`처럼 부른 쪽이 `launch-updater`를 부른다. 05 문서 참고 |
 | GET | `/api/updates/config` | `updates.rs:844` | - | `{success, config, mock_relay}` |
-| PUT | `/api/updates/config` | `updates.rs:859` | 부분 `{enabled,check_interval_hours(1-8),auto_download,auto_apply,install_root,relay_url,channel}` | `{success, config}`. `channel`은 `stable`·`rc`·`beta`만 받고 그 밖은 400 `invalid_channel`(05 §1 채널). `config.json`의 `updates` 절에 저장한다(`:899-902, 936-942`). 비어 있지 않은 `relay_url`은 개발 빌드(`mock-relay`)만 받고, 릴리즈 빌드는 403 `relay_url_not_settable`(D7: 출처는 config.json에서만) |
+| PUT | `/api/updates/config` | `updates.rs:859` | 부분 `{enabled,check_interval_hours(1-8),auto_download,auto_apply,relay_url,channel}` | `{success, config}`. 설치 폴더는 받지 않는다: 데몬은 늘 자기 exe 폴더를 쓴다(다른 폴더의 GUI가 붙어도 바뀌지 않는다). `channel`은 `stable`·`rc`·`beta`만 받고 그 밖은 400 `invalid_channel`(05 §1 채널). `config.json`의 `updates` 절에 저장한다(`:899-902, 936-942`). 비어 있지 않은 `relay_url`은 개발 빌드(`mock-relay`)만 받고, 릴리즈 빌드는 403 `relay_url_not_settable`(D7: 출처는 config.json에서만) |
 
 ---
 
@@ -923,7 +923,7 @@ REST 자격증명 조회의 `get_credentials` 재진입은 바깥 호출의 자�
 ## 8. updates.rs: 업데이트 엔드포인트와 외부 URL
 
 - `UpdateState`가 `UpdateManager`(updater 크레이트)를 `Arc<RwLock>`으로 감싼다. 설정은 `config.json`의 `updates` 절에서 읽고(`load_updater_config`, `updates.rs:916-934`), 없거나 깨졌으면 `UpdateConfig::default()`를 쓴다.
-  - 필드(`updater/src/lib.rs:236-271`): `enabled`(기본 true), `check_interval_hours`(3), `auto_download`(false), `auto_apply`(false, 받고 다음 실행 때 적용), `install_root`, `relay_url`(None이면 `https://saba-chan.online`), `channel`(`stable`).
+  - 필드(`updater/src/lib.rs:236-271`): `enabled`(기본 true), `check_interval_hours`(3), `auto_download`(false), `auto_apply`(false, 받고 다음 실행 때 적용), `relay_url`(None이면 `https://saba-chan.online`), `channel`(`stable`). `install_root`는 설정 파일에 읽고 쓰지 않는다(`#[serde(skip)]`, 시험만 넣는다). 없으면 데몬 exe 폴더다.
 - `PUT /api/updates/config`는 바꾼 설정을 `config.json`에 저장한다(`updates.rs:900-902`).
 - 주기 확인은 데몬의 `spawn_update_scheduler`가 한다(`updates.rs:256`). `check_interval_hours`마다 확인하고 `auto_download`나 `auto_apply`이면 받아 둔다. `auto_apply`이면 받아 둔 것을 데몬이 스스로 적용한다(05 §1.6 자동 적용). 끄면 사용자가 다시 시작을 누를 때 적용한다.
 - **접속하는 외부 URL**

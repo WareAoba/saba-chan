@@ -2230,9 +2230,6 @@ async fn set_config(
     if let Some(v) = body.get("auto_apply").and_then(|v| v.as_bool()) {
         cfg.auto_apply = v;
     }
-    if let Some(v) = body.get("install_root").and_then(|v| v.as_str()) {
-        cfg.install_root = Some(v.to_string());
-    }
     // 업데이트 출처는 앱에서 바꾸지 않는다 (D7): config.json의 updates.relay_url로만.
     // 모의 릴레이를 믿는 개발 빌드만 앱(개발 옵션)에서 바꿀 수 있다. 비우기(기본 릴레이로 되돌리기)는 늘 된다
     if let Some(v) = body.get("relay_url").and_then(|v| v.as_str()) {
@@ -3194,6 +3191,29 @@ mod tests {
         assert!(!state.begin_core_apply());
         assert!(state.end_core_apply(), "a check after the last round runs the loop again");
         assert!(state.begin_core_apply());
+    }
+
+    /// 다른 폴더의 GUI(미리보기 빌드 등)가 붙어도 데몬이 설치된 구성요소를 찾는 폴더는 바뀌지 않는다
+    #[tokio::test]
+    async fn a_client_cannot_move_where_the_daemon_looks_for_installed_parts() {
+        let other = tempfile::tempdir().unwrap();
+        std::fs::write(other.path().join(saba_chan_updater_lib::GUI_EXE), b"exe").unwrap();
+        let state = UpdateState::new();
+        let before = state.manager.read().await.is_component_installed(&Component::Gui);
+        let _ = set_config(State(state.clone()), Json(json!({ "install_root": other.path().to_string_lossy() }))).await.into_response();
+        assert_eq!(state.manager.read().await.is_component_installed(&Component::Gui), before);
+    }
+
+    /// 예전 GUI가 config.json에 남긴 설치 폴더는 읽지도 다시 쓰지도 않는다
+    #[test]
+    fn an_install_root_left_in_config_json_is_ignored() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = ConfigFile::at(dir.path());
+        file.set_section("updates", json!({ "install_root": "D:\\SabaPreview\\exe", "channel": "beta" })).unwrap();
+        let loaded = load_updater_config_from(&file);
+        assert_eq!(loaded.install_root, None);
+        save_updater_config_to(&file, &loaded).unwrap();
+        assert!(file.section("updates").get("install_root").is_none());
     }
 
     /// 모르는 채널은 저장하지 않는다
