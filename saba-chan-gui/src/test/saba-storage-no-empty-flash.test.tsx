@@ -42,7 +42,7 @@ afterEach(() => {
 
 // 설치됨 묶음의 "없음" 줄 (받을 수 있는 목록의 받는 중 줄은 세지 않는다)
 const empty = () =>
-    document.querySelector('.saba-art, .saba-empty') ??
+    document.querySelector('.saba-art') ??
     document.querySelector('[data-spot$=".installed"] .ss-empty');
 
 describe('받기 전에는 없음 그림을 띄우지 않는다', () => {

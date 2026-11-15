@@ -42,10 +42,9 @@ export function serverManageActions(get: () => ServerState, fetchServers: () => 
     };
 
     // ── addServer ─────────────────────────────────────
-    const addServer = async (payload: AddServerPayload, legacyModuleName?: string) => {
-        // payload = { name, module_name, accept_agreements?, preset?, extension_data?, migration_source?, migration_mode?, module_settings?, version?, working_dir?, managed_start?, port? }
-        const serverName = typeof payload === 'string' ? payload : payload?.name;
-        const moduleName = typeof payload === 'string' ? legacyModuleName : payload?.module_name;
+    const addServer = async (payload: AddServerPayload) => {
+        const serverName = payload.name;
+        const moduleName = payload.module_name;
 
         if (!serverName || !serverName.trim()) {
             setModal({

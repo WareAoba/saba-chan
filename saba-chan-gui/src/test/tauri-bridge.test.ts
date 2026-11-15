@@ -131,7 +131,6 @@ describe('데몬 응답 가공', () => {
                     return { status: 200, data: { success: true } };
                 },
             }),
-            refresh_ipc_base: null,
         });
         const first = api.settingsSave({ theme: 'old' });
         const second = api.settingsSave({ theme: 'new' });
@@ -184,7 +183,6 @@ describe('데몬 응답 가공', () => {
             daemon_request: daemon({
                 'PATCH /api/config/gui': { status: 200, data: { success: true } },
             }),
-            refresh_ipc_base: null,
         });
         expect(await api.settingsSave({ ipcPort: 57475 })).toBe(true);
         expect(tauri.invoke.mock.calls.map((c) => c[0])).not.toContain('refresh_ipc_base');

@@ -34,6 +34,7 @@ impl I18n {
         }
     }
 
+    #[cfg(test)]
     pub fn from_values(lang: Value, en: Value) -> Self {
         Self { lang, en }
     }

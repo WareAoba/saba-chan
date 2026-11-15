@@ -654,8 +654,6 @@ span[style*="--icon-loader"] svg {
     background: var(--ok);
 }
 
-/* .extension-list / .extension-item removed – extension listing was redundant with dropdown */
-
 /* Settings Modal Styles */
 .modal-overlay {
     position: fixed;
@@ -669,53 +667,6 @@ span[style*="--icon-loader"] svg {
     justify-content: center;
     z-index: 1000;
 }
-
-.modal-content {
-    background: var(--bg-2);
-    border-radius: 8px;
-    box-shadow: 0 4px 16px var(--shadow-xl);
-    width: 90%;
-    max-width: 600px;
-    max-height: 80vh;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-}
-
-.modal-header {
-    padding: var(--sp-5);
-    border-bottom: 1px solid var(--line);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.modal-header h3 {
-    margin: 0;
-    color: var(--text-1);
-}
-
-.modal-body {
-    padding: var(--sp-5);
-    flex: 1;
-    overflow-y: auto;
-}
-
-.modal-footer {
-    padding: var(--sp-5);
-    border-top: 1px solid var(--line);
-    display: flex;
-    gap: var(--sp-2-5);
-    justify-content: flex-end;
-}
-
-/* 모듈별 별명 관리 섹션 */
-
-/* 모듈 별명 입력 섹션 */
-
-/* 명령어 별명 입력 섹션 */
-
-/* Discord Info Box */
 
 .settings-tab-indicator {
     position: absolute;

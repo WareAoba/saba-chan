@@ -207,7 +207,6 @@ pub fn run() {
             native::settings_local_load,
             native::settings_local_save,
             native::settings_get_path,
-            native::refresh_ipc_base,
             native::language_get,
             native::language_set,
             native::daemon_target_get,

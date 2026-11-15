@@ -141,7 +141,6 @@ export function formatBytes(n: number) {
 }
 
 export const formatRate = (bps: number) => `${formatBytes(bps)}/s`;
-export const formatPercent = (p: number) => (Number.isFinite(p) ? `${Math.round(p)}%` : '—');
 const percentValue = (p: number | null | undefined) => (typeof p === 'number' && Number.isFinite(p) ? String(Math.round(p)) : '—');
 const formatGhz = (mhz: number) => `${(mhz / 1000).toFixed(2)} GHz`;
 

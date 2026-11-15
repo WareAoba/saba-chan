@@ -104,11 +104,6 @@ export const grantable = (perm: GuildPermissions | null | undefined) =>
     ladderOf(perm)
         .map((l) => l.id as number)
         .filter((id) => id !== OWNER);
-/** 명령 요구 레벨로 고를 수 있는 값 (높은 것부터, 금지 제외) */
-export const requirable = (perm: GuildPermissions | null | undefined) =>
-    ladderOf(perm)
-        .map((l) => l.id as number)
-        .filter((id) => id !== BANNED);
 
 /** 레벨 이름: 길드가 붙인 이름, 없으면(기본 단계) 로케일 */
 export function levelLabel(t: TFunction, perm: GuildPermissions | null | undefined, id: number | undefined) {
@@ -390,10 +385,6 @@ export function lineStep(draft: LadderLevel[], at: number, dir: -1 | 1) {
     for (let i = at + dir; i >= 0 && i < draft.length; i += dir) if (lineSlot(draft[i])) return i;
     return null;
 }
-
-/** 줄을 `index` 칸에 놓을 때의 자리: 놓을 수 없는 칸(금지·새 칸)이면 그 위로 처음 놓을 수 있는 칸 */
-export const lineDrop = (draft: LadderLevel[], index: number) =>
-    lineSlot(draft[index]) ? index : (lineStep(draft, index, -1) ?? 0);
 
 /** 디스코드 되묻기 단계 */
 export const RISKS = ['safe', 'caution', 'danger'];

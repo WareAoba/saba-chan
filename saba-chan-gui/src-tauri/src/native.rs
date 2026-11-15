@@ -433,11 +433,6 @@ pub fn settings_get_path(app: AppHandle) -> String {
 }
 
 #[tauri::command]
-pub fn refresh_ipc_base(app: AppHandle) {
-    app.state::<AppState>().refresh_ipc_base();
-}
-
-#[tauri::command]
 pub fn language_get(app: AppHandle) -> String {
     settings::language(&app.state::<AppState>().settings())
 }

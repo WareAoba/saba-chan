@@ -963,11 +963,6 @@ impl UpdateManager {
         self.cached_manifest.as_ref()?.components.get("saba-core").map(relay::ManifestComponent::runner_formats)
     }
 
-    /// 지금 적용하는(받아 둔) 릴리즈 버전
-    pub fn applying_version(&self) -> Option<String> {
-        self.applying_release().map(|r| r.version)
-    }
-
     // ─── 업데이트 확인 ────────────────────────────────────────────────────────
 
     /// 릴레이의 서명된 manifest 하나로 모든 컴포넌트의 최신 버전과 R2 URL을 얻는다.

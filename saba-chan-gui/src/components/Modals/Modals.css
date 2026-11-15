@@ -51,22 +51,6 @@
     }
 }
 
-.modal-title {
-    font-size: calc(17px * var(--font-scale));
-    font-weight: 600;
-    margin: var(--sp-2-5) 0;
-    color: var(--text-1);
-}
-
-.modal-message {
-    font-size: calc(13px * var(--font-scale));
-    color: var(--text-2);
-    margin: 0 0 var(--sp-4) 0;
-    line-height: 1.5;
-    white-space: pre-line;
-    word-wrap: break-word;
-}
-
 .modal-detail {
     font-size: calc(12px * var(--font-scale));
     color: var(--text-3);
@@ -450,8 +434,7 @@
     animation: fadeOut 0.22s ease-in forwards;
 }
 
-.modal-overlay.closing .modal,
-.modal-overlay.closing .modal-content {
+.modal-overlay.closing .modal {
     animation: slideDown 0.22s ease-in forwards;
 }
 
@@ -1042,19 +1025,6 @@
 .update-modal-status-bar.success {
     color: var(--ok);
     background: color-mix(in oklab, var(--ok) 6%, transparent);
-}
-
-.update-modal-status {
-    display: flex;
-    align-items: center;
-    gap: var(--sp-2);
-    padding: var(--sp-2) var(--sp-4);
-    font-size: calc(13px * var(--font-scale));
-    font-weight: 500;
-}
-
-.update-modal-status.success {
-    color: var(--ok);
 }
 
 /* 하위 스위치가 딸린 설정 항목 (효과음 종류별) */

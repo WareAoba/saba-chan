@@ -41,7 +41,6 @@
 /* 떠 있는 창도 같은 70% 유리다 (사용자 11-11). 대신 뒤의 화면을 흐려서 겹친 글자가 섞이지 않게 한다.
    흐림은 바깥 판 하나에만 준다: 판 안에 또 흐림을 두면 안쪽은 바깥 판만 흐려 겹이 진해진다.
    (test/glass-material.test.ts가 --shadow-float를 쓰는 창이 모두 여기 있는지 본다) */
-:root[data-backdrop="on"] .modal-content,
 :root[data-backdrop="on"] .background-modal-container,
 :root[data-backdrop="on"] .notice-modal-container,
 :root[data-backdrop="on"] .context-menu,

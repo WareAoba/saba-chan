@@ -1828,9 +1828,6 @@ button.activity-line:hover {
 }
 /* 다시 시작해야 적용되는 칸 (module.toml restart_required) */
 /* 저장 막대 위의 다시 시작 안내 (저장 줄 안 첫 줄) */
-.modal-footer:has(> .settings-restart-notice) {
-    flex-wrap: wrap;
-}
 .settings-restart-notice {
     flex: 1 0 100%;
     align-items: center;

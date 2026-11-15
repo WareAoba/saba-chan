@@ -1,10 +1,8 @@
 import { act, render, renderHook } from '@testing-library/react';
 import { memo, useEffect } from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import ExtensionSlot from '../components/ExtensionSlot';
 import { useModalClose } from '../hooks/useModalClose';
-import type { AddServerPayload } from '../stores/serverActions';
-import { setupServerStore } from './serverStore';
 import type { HighlightRule, ModuleInfo } from '../types/daemon';
 import { getCachedRules, highlightLine } from '../utils/syntaxHighlight';
 
@@ -69,21 +67,5 @@ describe('모달 닫기 타이머', () => {
         vi.advanceTimersByTime(500);
         expect(onClose).not.toHaveBeenCalled();
         vi.useRealTimers();
-    });
-});
-
-describe('서버 만들기 (이름, 모듈) 호출', () => {
-    beforeEach(() => {
-        window.showToast = vi.fn();
-        window.api = {
-            serverList: vi.fn().mockResolvedValue({ servers: [] }),
-            instanceCreate: vi.fn().mockResolvedValue({ success: true, id: 'b' }),
-        } as unknown as typeof window.api;
-    });
-
-    it('두 번째 인자의 모듈로 만든다', async () => {
-        const { result } = setupServerStore({ modules: [{ name: 'game' }] });
-        await act(async () => result.current.addServer('B' as unknown as AddServerPayload, 'game'));
-        expect(window.api.instanceCreate).toHaveBeenCalledWith(expect.objectContaining({ module_name: 'game' }));
     });
 });

@@ -174,7 +174,6 @@ describe('권한 레벨 계산', () => {
             members: { 1002: 10, 1004: -1 },
         });
         expect(L.grantable(perm)).toEqual([10, 2, 0, -1]);
-        expect(L.requirable(perm)).toEqual([3, 10, 2, 0]);
         expect(L.membersByLevel(perm).map((g) => g.level)).toEqual([3, 10, -1]);
         expect(L.ladderOf(base()).map((l) => l.id)).toEqual([3, 2, 1, 0, -1]);
     });
@@ -249,8 +248,6 @@ describe('권한 레벨 계산', () => {
         const saved = L.ladderOf(base());
         // 줄은 금지 칸과 아직 저장하지 않은 새 칸에는 놓지 않는다
         const draft = L.addLevel(saved, 'Mod');
-        expect(L.lineDrop(draft, 5)).toBe(4);
-        expect(L.lineDrop(draft, 1)).toBe(0);
         expect(L.lineStep(draft, 0, 1)).toBe(2);
         expect(L.lineStep(draft, 4, 1)).toBeNull();
         expect(L.lineStep(draft, 0, -1)).toBeNull();

@@ -214,6 +214,7 @@ impl DaemonClient {
         }
     }
 
+    #[cfg(test)]
     pub fn target_generation(&self) -> u64 {
         *self.target_gen.borrow()
     }

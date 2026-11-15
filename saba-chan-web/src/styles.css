@@ -844,24 +844,6 @@ textarea {
     gap: 12px;
     padding: 12px 12px 12px 0;
 }
-.card-main {
-    flex: 1;
-    min-width: 0;
-    display: grid;
-    gap: 4px;
-    padding: 4px 0 4px 16px;
-    text-align: left;
-    background: none;
-    border: 0;
-    cursor: pointer;
-}
-.card-title {
-    font-weight: 700;
-    font-size: 16px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
 .card-sub {
     margin: 0;
     color: var(--text-2);
@@ -2543,15 +2525,6 @@ textarea {
     text-align: right;
     overflow-wrap: anywhere;
     font-variant-numeric: tabular-nums;
-}
-.exit-crash,
-.exit-start_failed {
-    background: var(--stop-soft);
-    color: var(--stop);
-}
-.exit-unknown_exit {
-    background: var(--warn-soft);
-    color: var(--warn);
 }
 .row-title .pill:first-child {
     margin: 0 8px 0 0;
