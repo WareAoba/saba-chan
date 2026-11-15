@@ -892,7 +892,7 @@
       "server.remove": "서버 지우기",
       "server.start": "서버 시작",
       "server.stop": "서버 정지",
-      "server.restart": "서버 다시 시작",
+      "server.restart": "서버 재시작",
       "server.console": "콘솔 보면서 입력하기",
       "server.run": "게임 명령 실행 (명령을 안 주면 목록 표시)",
       "server.commands": "이 서버가 알아듣는 게임 명령",
