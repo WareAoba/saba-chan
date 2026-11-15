@@ -1,5 +1,6 @@
 //! 명령 처리 — 갈래마다 파일 하나
 
+pub mod access;
 pub mod agent;
 pub mod audit;
 pub mod backup;

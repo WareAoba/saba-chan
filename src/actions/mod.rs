@@ -1186,8 +1186,13 @@ async fn resolve_in(server: &IPCServer, id: &str, instance: Option<&str>, input:
             Some(_) => {}
         }
     }
-    // 원격(디스코드·챗봇)은 비밀값과 실행 파일·폴더·인자를 바꾸지 못한다 (어느 깊이든, 모듈 필드 포함)
+    // 원격(디스코드·챗봇)은 비밀값과 실행 파일·폴더·인자를 바꾸지 못한다 (어느 깊이든, 모듈 필드 포함).
+    // 원격 MCP는 사용 모드와 그 명단만 바꾼다 (`MCP_ACCESS_KEYS`)
     if caller.remote.is_some() && matches!(def.id, "instance.settings.set" | "instance.create") {
+        let mut input = input.clone();
+        if caller.origin.via.as_deref() == Some(MCP_VIA) {
+            input.retain(|k, _| !MCP_ACCESS_KEYS.contains(&k.as_str()));
+        }
         let module = match &instance {
             Some(i) => server.supervisor.read().await.instance_store.get(i).map(|x| x.module_name.clone()).or_else(|| module_hint.map(str::to_string)),
             None => input.get("module_name").and_then(Value::as_str).map(str::to_string),
@@ -1489,6 +1494,9 @@ fn builtin_command(action: &str) -> Option<&'static str> {
         _ => None,
     }
 }
+
+/// 원격 MCP가 바꾸는 사용 모드·전용 멤버 명단·자동 강퇴 목록 (`LAUNCH_KEYS` 중, 사용자 2026-11-15). 디스코드·챗봇은 그대로 못 바꾼다
+const MCP_ACCESS_KEYS: &[&str] = &["access", "controllers", "controllers_only", "kick_players"];
 
 /// 원격 MCP가 웹 원격·짝 맺은 PC의 PC 전용 규칙(라우트·칸)을 받지 않는 액션 (사용자 결정 2026-11-05)
 const MCP_UNLOCKED: &[&str] = &["update.check", "update.apply", "instance.properties.get", "instance.properties.set"];

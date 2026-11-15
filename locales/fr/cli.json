@@ -63,7 +63,8 @@
     "ask_dir": "Dossier d'installation",
     "ask_run": "Comment le serveur doit-il tourner ?",
     "run_managed": "Géré par saba-chan (recommandé)",
-    "run_unmanaged": "Géré manuellement (sans console Saba-chan)"
+    "run_unmanaged": "Géré manuellement (sans console Saba-chan)",
+    "branch_name": "{{name}} · branche"
   },
   "bot": {
     "ask_token": "Jeton du nœud",
@@ -1001,7 +1002,7 @@
       "backup.export": "Exporter une sauvegarde dans un seul zip déplaçable vers un autre PC (sans nom : choisir dans la liste)",
       "backup.import": "Vérifier un zip créé par `backup export` et l'ajouter aux sauvegardes de ce serveur (puis restaurer)",
       "schedule": "Tâches planifiées du serveur (démarrage, arrêt, redémarrage, enregistrement, sauvegarde, annonce, mise à jour, commande de jeu)",
-      "schedule.show": "Voir la planification",
+      "schedule.show": "Afficher les tâches planifiées d'un serveur. Sans serveur : les prochaines tâches de tous les serveurs",
       "schedule.add": "Planifier une tâche : start, stop, restart, save, backup, announce, update, command",
       "schedule.edit": "Modifier la tâche n° N sans la supprimer : seules les options données changent (voir schedule show)",
       "schedule.remove": "Supprimer la tâche n° N (voir schedule show)",
@@ -1108,7 +1109,8 @@
       "remote.install": "Installer Saba-chan sur un PC Linux via le ssh de ce PC et s’y connecter (`utilisateur@hôte`)",
       "remote.remove": "Retirer un de tes PC : l’oublier ici et, au choix, y désinstaller Saba-chan et le retirer de la liste du relais",
       "remote.update": "Mettre à jour un daemon distant maintenant, ou activer/désactiver ses mises à jour automatiques (`--auto on|off`)",
-      "config.public-address": "Adresse publique de ce PC (utilisée par les adresses de serveurs de jeu et les connexions de daemon distant) : sans valeur l'affiche, un domaine ou une IP l'enregistre, auto utilise l'IP publique vue par Server-chan"
+      "config.public-address": "Adresse publique de ce PC (utilisée par les adresses de serveurs de jeu et les connexions de daemon distant) : sans valeur l'affiche, un domaine ou une IP l'enregistre, auto utilise l'IP publique vue par Server-chan",
+      "server.access": "Qui peut utiliser ce serveur sur Discord : partagé ou membres uniquement, liste des membres, pseudos expulsés automatiquement. Sans option : afficher"
     },
     "arg": {
       "module.maker.game": "Jeu à mettre dans la première demande",
@@ -1363,7 +1365,15 @@
       "remote.update.host_id": "Id du PC du daemon distant (voir `remote daemons`)",
       "remote.update.auto": "Activer (on) ou désactiver (off) les mises à jour automatiques. Sans : mettre à jour maintenant",
       "config.public-address.address": "Domaine ou IP (auto pour l'IP publique)",
-      "config.public-address.share": "L'afficher avec /<serveur> address sur Discord (on|off)"
+      "config.public-address.share": "L'afficher avec /<serveur> address sur Discord (on|off)",
+      "branch_of": "Créer comme branche de ce serveur : même jeu, paramètres copiés une fois, dossier, monde et ports séparés",
+      "server.access.mode": "shared (partagé, droits selon le niveau Discord) ou members (liste des membres uniquement)",
+      "server.access.add_member": "Ajouter à la liste des membres : pseudo ou pseudo=DiscordID (répétable)",
+      "server.access.remove_member": "Retirer de la liste des membres (répétable)",
+      "server.access.kick_others": "Membres uniquement : expulser automatiquement les pseudos hors liste",
+      "server.access.kick": "Partagé : expulser automatiquement quiconque entre avec ce pseudo (répétable)",
+      "server.access.unkick": "Retirer de la liste d'expulsion automatique (répétable)",
+      "schedule.show.hours": "Sans serveur : nombre d'heures à afficher à l'avance (24 par défaut, 720 max)"
     },
     "after": "Les noms peuvent être partiels (ex. start pal). Sans argument dans un terminal, le menu plein écran s'ouvre (SABA_NO_TUI=1 : shell interactif).\nDans les scripts, utilisez --json et --yes. Codes de sortie : 0 succès · 1 échec · 2 utilisation · 3 connexion au daemon impossible · 4 introuvable · 130 annulé"
   },
@@ -1480,7 +1490,9 @@
     "bad_date": "« {{got}} » n'est pas une date. Utilisez AAAA-MM-JJ, ex. 2026-12-24.",
     "bad_arg": "« {{got}} » n'est pas un argument. Utilisez NOM=VALEUR.",
     "confirm_danger": "{{command}} est difficile à annuler et s'exécute à l'heure prévue sans confirmation. Planifier ?",
-    "from_needs_every_days": "--from ne s'utilise qu'avec les tâches tous les N jours (--every-days)."
+    "from_needs_every_days": "--from ne s'utilise qu'avec les tâches tous les N jours (--every-days).",
+    "clash": "chevauchement",
+    "upcoming_none": "Rien de planifié dans les {{hours}} prochaines heures"
   },
   "chatbot": {
     "api_key": "Clé API enregistrée",
@@ -2101,5 +2113,16 @@
     "some_failed": "Échec de la modification de certains agents",
     "is_linked": "✓ {{agent}} : Saba-chan ajouté",
     "is_not_linked": "· {{agent}} : Saba-chan absent (saba-chan agent link)"
+  },
+  "access": {
+    "mode": "Mode d'utilisation",
+    "shared": "Partagé",
+    "members": "Membres uniquement",
+    "member_list": "Liste des membres",
+    "kick_others": "Expulser automatiquement les non-membres",
+    "kick_list": "Expulsion automatique",
+    "none": "Personne",
+    "not_listed": "{{name}} n'est pas dans la liste",
+    "saved": "Mode d'utilisation de {{server}} enregistré"
   }
 }
