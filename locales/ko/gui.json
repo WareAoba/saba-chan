@@ -2566,7 +2566,7 @@
     "menu_hide": "바탕화면에서 숨기기",
     "menu_size": "펫 크기",
     "setting_label": "바탕화면 오버레이",
-    "setting_description": "익스텐션이 바탕화면 구석에 띄우는 작은 창(데스크톱 펫 등)을 표시합니다. 끌어서 옮길 수 있습니다.",
+    "setting_description": "익스텐션이 바탕화면 구석에 띄우는 작은 창(움직이는 사바쨩 등)을 표시합니다. 끌어서 옮길 수 있습니다.",
     "setting_unsupported": "이 데스크톱(Wayland)에서는 표시 불가"
   },
   "autostart": {
