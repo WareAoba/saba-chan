@@ -2177,11 +2177,6 @@
 .remote-pc-meta .remote-pc-sub {
     min-width: 0;
 }
-.remote-pc-meta .remote-pc-sub:not(:empty) + .remote-pc-ver::before {
-    content: "·";
-    margin-right: var(--sp-1);
-    color: var(--text-3);
-}
 .remote-pc-card .remote-pc-kv {
     gap: var(--sp-1-5) var(--sp-3);
     padding-top: var(--sp-3);
