@@ -24,14 +24,14 @@ const sortIssues = (issues: CheckIssue[]) =>
     [...issues].sort((a, b) => (SEVERITY_ORDER[a.severity] ?? 9) - (SEVERITY_ORDER[b.severity] ?? 9));
 
 /**
- * 서버 점검: 모듈 validate(켜기 전 점검)와 diagnose(최근 로그 진단)를 직접 돌려 본다 (Q-2).
+ * 서버 점검: 모듈 validate(켜기 전 점검)와 diagnose(최근 로그 진단)를 직접 돌려 본다.
  * 문구는 모듈이 현지화해서 준다.
  */
 export function ServerCheck({ server }: { server: Server }) {
     const { t } = useTranslation('gui');
     const [running, setRunning] = useState<CheckResult['kind'] | null>(null); // 'validate' | 'diagnose'
     const [result, setResult] = useState<CheckResult | null>(null); // {kind, issues} | {kind, error}
-    // 모듈이 구현한 점검만 (MK1)
+    // 모듈이 구현한 점검만
     const module = useServerStore((s) => s.modules.find((m) => m.name === server.module));
     const canValidate = typeof window.api?.instanceValidate === 'function' && moduleSupports(module, 'validate');
     const canDiagnose = typeof window.api?.instanceDiagnose === 'function' && moduleSupports(module, 'diagnose_log');

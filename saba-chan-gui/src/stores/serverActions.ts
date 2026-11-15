@@ -31,7 +31,7 @@ export interface ServerActions {
     /** confirmed: 부른 곳에서 이미 재시작을 골랐다 (설정 저장 뒤 '지금 다시 시작') → 다시 묻지 않는다 */
     restartServer: (id: string, options?: { confirmed?: boolean }) => Promise<void>;
     renameServer: (id: string, newName: string) => Promise<boolean>;
-    addServer: (payload: AddServerPayload, legacyModuleName?: string) => Promise<boolean>;
+    addServer: (payload: AddServerPayload) => Promise<boolean>;
     deleteServer: (server: Server) => void;
 }
 

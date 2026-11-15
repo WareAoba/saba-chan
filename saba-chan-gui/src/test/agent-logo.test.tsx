@@ -2,7 +2,7 @@ import { render } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { AgentLogo, agentLogo } from '../components/AgentLogo';
 
-// 사용자 요청(2026-11-08): MCP 에이전트 카드에 에이전트 로고를 넣는다
+// MCP 에이전트 카드에 에이전트 로고를 넣는다
 describe('에이전트 로고', () => {
     it('OAuth client_name으로 로고를 고른다', () => {
         expect(agentLogo('Claude')).toBe('claude');

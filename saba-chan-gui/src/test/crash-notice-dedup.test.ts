@@ -7,7 +7,7 @@ import { type Server, useServerStore } from '../stores/useServerStore';
 
 const t = i18n.getFixedT('en', 'gui');
 
-// G-S6: 크래시 한 번을 이벤트(instance.exit)와 목록 폴링(실행 → 멈춤)이 따로 알려 알림이 두 번 떴다
+// 크래시 한 번을 이벤트(instance.exit)와 목록 폴링(실행 → 멈춤)이 따로 알려 알림이 두 번 떴다
 describe('크래시 알림은 한 번만', () => {
     const running = { id: 'c1', name: 'Crashy', module: 'game', status: 'running' };
     const hook = () => setupServerStore();

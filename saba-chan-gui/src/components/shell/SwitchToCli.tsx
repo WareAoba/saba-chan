@@ -30,7 +30,7 @@ export function SwitchToCliButton() {
         setBusy(true);
         try {
             const instance = useUIStore.getState().activeServerId || undefined;
-            // 고른 원격 데몬(G1)은 CLI에도 넘긴다: 그 서버는 그 데몬에 있다
+            // 고른 원격 데몬은 CLI에도 넘긴다: 그 서버는 그 데몬에 있다
             const current = await window.api.daemonTarget?.().catch(() => null);
             const res = await window.api.clientLaunch({
                 kind: 'cli',

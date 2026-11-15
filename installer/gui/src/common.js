@@ -1,7 +1,5 @@
-// ═══════════════════════════════════════════════════════
 // 설치기·업데이터 창 공용: 테마, 글자 로고, 링, 매트릭스, 그림 펼침 흐름
 // 번들러 없이 실리므로 window.SabaUI 하나로 내보낸다 (installer.js·updater.js보다 먼저 싣는다)
-// ═══════════════════════════════════════════════════════
 
 window.SabaUI = (() => {
     const REDUCE = !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -64,7 +62,7 @@ window.SabaUI = (() => {
         return template.replace(/\{\{(\w+)\}\}/g, (_, name) => String(vars[name] ?? ''));
     }
 
-    // ── 링 ─────────────────────────────────────────────
+    // ── 링 ──
     // 한 바퀴 1초짜리 회전을 두고 playbackRate로 빠르기를 바꾼다 (각도가 끊기지 않는다)
     const PERIOD = { idle: 6000, spin: 1000, ok: 3000, bad: 2000 };
 
@@ -99,7 +97,7 @@ window.SabaUI = (() => {
         return { set, get state() { return state; } };
     }
 
-    // ── 매트릭스 ───────────────────────────────────────
+    // ── 매트릭스 ──
     // GUI 로딩 화면의 MatrixRain(saba-chan-gui/src/components/shell/MatrixRain.tsx)과 같은 방식:
     // 열마다 낱말이 흘러내리고, 지나간 줄은 반투명 바탕에 덮이며 흐려진다
     const WORDS = ['saba', 'core', 'gui', 'cli', 'py', 'toml', 'json', 'sha256', 'OK', 'copy', 'unzip', 'link', 'reg', 'module', 'ext', 'locale', 'runtime', 'lnk'];
@@ -200,7 +198,7 @@ window.SabaUI = (() => {
         return { start, stop };
     }
 
-    // ── 그림 펼침 흐름 ─────────────────────────────────
+    // ── 그림 펼침 흐름 ──
     // expand(펼쳐 머묾) 동안 끝난 결과는 접히기 시작할 때 보인다: 그림이 덮은 채로 화면이 바뀌지 않게
     function flow(el, { onFold } = {}) {
         el.style.setProperty('--t-open', `${TIMING.open}ms`);

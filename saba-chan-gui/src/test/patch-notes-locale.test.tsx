@@ -4,7 +4,7 @@ import NoticeModal from '../components/Modals/NoticeModal';
 import { announceLastUpdateResult, PatchNotesModal } from '../components/Modals/PatchNotesModal';
 import i18n from '../i18n';
 
-// L2: 업데이트 결과 안내가 사용자 언어가 아니라 영어로 보였다
+// 업데이트 결과 안내가 사용자 언어가 아니라 영어로 보였다
 describe('업데이트 결과 안내 언어', () => {
     beforeAll(async () => {
         await i18n.loadLanguages('ko');

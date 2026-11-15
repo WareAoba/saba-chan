@@ -234,7 +234,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs:639-817`(`router()`, 인증 �
 | logs | `<dataDir>/logs/*.log` | 직접 쓰기 | — |
 | renderer localStorage | WebView 저장소(Windows WebView2) | 직접 | `i18nextLng`(i18n.ts `getInitialLanguage`·`getCachedLanguage`, SettingsModal.tsx:335), 테마 키(themeManager.ts:72-184), 공지 목록(NoticeModal.tsx:21-42) |
 
-**쓰기 분기.** 쓰기는 "daemon이 응답하는가"로 나눈다. 데몬이 응답하면 API로만 쓰고, 오류 응답이면 로컬로 넘어가지 않고 실패로 끝낸다(`createApi.ts` `saveSettings`·`settingsSave`, `native.rs:189-199`). 남은 직접 접근은 **읽기**다. `load_settings()`는 데몬 상태와 상관없이 파일을 읽고, `language_get`, `create_main_window`, `refresh_ipc_base`, 데몬 기동 env, 창 크기 저장(`window.rs:159-188`, 파일에서 읽어 merge한 뒤 API로 저장)이 이 값을 쓴다.
+**쓰기 분기.** 쓰기는 "daemon이 응답하는가"로 나눈다. 데몬이 응답하면 API로만 쓰고, 오류 응답이면 로컬로 넘어가지 않고 실패로 끝낸다(`createApi.ts` `saveSettings`·`settingsSave`, `native.rs:189-199`). 남은 직접 접근은 **읽기**다. `load_settings()`는 데몬 상태와 상관없이 파일을 읽고, `language_get`, `create_main_window`, `AppState::refresh_ipc_base`, 데몬 기동 env, 창 크기 저장(`window.rs:159-188`, 파일에서 읽어 merge한 뒤 API로 저장)이 이 값을 쓴다.
 
 ### 1.4 화면과 모달별 기능 (`src/`)
 
@@ -467,7 +467,7 @@ Discord ─ 릴레이의 사바쨩 봇 ─(롱폴링, HMAC 서명)─ 데몬 rel
 | # | 위치 | 분류 | 내용 | 비고 |
 |---|---|---|---|---|
 | G1 | daemon.rs `load_token` | FS-R | `.ipc_token` 읽기 | 불가피(인증 부트스트랩) |
-| G2 | settings.rs `read_config_document`·`load_settings` | FS-R/CFG | `load_settings()`는 daemon 상태와 상관없이 **항상** config.json `gui`(깨졌으면 `.bak`, 없으면 예전 settings.json)를 직접 읽는다. 기동 시 포트·언어(`lib.rs` `run`), `create_main_window`, 데몬 기동 env, `refresh_ipc_base`, 창 크기 저장, `language_get`, `settings_local_load`(브리지의 settings 폴백)가 이 함수를 쓴다 | ipcPort 부트스트랩만 불가피하고, 나머지는 API로 대체할 수 있다 |
+| G2 | settings.rs `read_config_document`·`load_settings` | FS-R/CFG | `load_settings()`는 daemon 상태와 상관없이 **항상** config.json `gui`(깨졌으면 `.bak`, 없으면 예전 settings.json)를 직접 읽는다. 기동 시 포트·언어(`lib.rs` `run`), `create_main_window`, 데몬 기동 env, `AppState::refresh_ipc_base`, 창 크기 저장, `language_get`, `settings_local_load`(브리지의 settings 폴백)가 이 함수를 쓴다 | ipcPort 부트스트랩만 불가피하고, 나머지는 API로 대체할 수 있다 |
 | G3 | settings.rs `write_gui_section`, native.rs `save_settings`·`save_local` | FS-W/CFG | `write_gui_section()`: 데몬이 **응답하지 않을 때만** config.json `gui`를 직접 쓴다(데몬과 같은 `ConfigFile` writer). 셸 `save_settings()`(window.rs의 windowBounds 저장, `language_set`)와 브리지가 부르는 `settings_local_save`(`createApi.ts`)가 이 경로를 탄다 | 부트스트랩 전용. 예전 `daemonProcess` 분기 버그는 해결(§6.3) |
 | G4 | createApi.ts `settingsLoad` | FS-R/CFG | `settingsLoad`: API 실패 시 `settings_local_load`로 로컬 폴백 | 위와 같음 |
 | G5 | logging.rs `init` | FS-W | 로그 디렉터리 생성과 로그 파일 쓰기 | GUI 자체 로그 |

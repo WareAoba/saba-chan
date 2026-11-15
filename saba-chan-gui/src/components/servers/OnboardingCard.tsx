@@ -14,7 +14,7 @@ const GO: Record<string, (() => void) | undefined> = {
 };
 
 /**
- * 처음 시작하기 체크리스트 (J1-a, 사용자 11-08~10). 데몬 `GET /api/onboarding`의 단계를 순서대로 보이고,
+ * 처음 시작하기 체크리스트 (J1-a). 데몬 `GET /api/onboarding`의 단계를 순서대로 보이고,
  * 다음 단계만 펼쳐 설명과 버튼을 단다. 남은 필수 단계가 없거나 ✕로 닫았으면 그리지 않는다.
  */
 export function OnboardingCard() {

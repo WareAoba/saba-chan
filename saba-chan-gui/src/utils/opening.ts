@@ -30,7 +30,7 @@ export function openingGate(s: OpeningInput): { hold: boolean; chime: boolean } 
     return { hold: false, chime: !s.relayConfigured || s.relayConnected };
 }
 
-/** 다른 PC로 바꿀 때 창을 다시 읽는다: 다시 연 창이 오프닝 없이 열리게 표시해 둔다 (사용자 11-12) */
+/** 다른 PC로 바꿀 때 창을 다시 읽는다: 다시 연 창이 오프닝 없이 열리게 표시해 둔다 */
 const SWITCH_KEY = 'saba:daemon-switched';
 export function markDaemonSwitch(): void {
     try {

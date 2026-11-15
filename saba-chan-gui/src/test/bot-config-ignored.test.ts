@@ -1,5 +1,5 @@
 /**
- * 권한 키는 봇 설정 저장으로 바뀌지 않는다(L61). 데몬이 `ignored`로 알린 키를 GUI도 버리지 않고 알린다 (CLI와 같게).
+ * 권한 키는 봇 설정 저장으로 바뀌지 않는다. 데몬이 `ignored`로 알린 키를 GUI도 버리지 않고 알린다 (CLI와 같게).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApi } from '../api/createApi';

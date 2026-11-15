@@ -190,7 +190,7 @@ mod tests {
         assert!(!is_downgrade("dev", "1.0.0"));
     }
 
-    // L13: 프리릴리스는 점으로 나눈 식별자별로, 숫자는 숫자로 비교한다 (SemVer 11절)
+    // 프리릴리스는 점으로 나눈 식별자별로, 숫자는 숫자로 비교한다 (SemVer 11절)
     #[test]
     fn prerelease_identifiers_compare_numerically() {
         let v = |s| SemVer::parse(s).unwrap();
@@ -200,7 +200,7 @@ mod tests {
         assert!(v("1.0.0-alpha.beta") > v("1.0.0-alpha.1"), "numeric identifiers rank below text");
     }
 
-    // L13: `+build`는 버전 비교에 쓰지 않는다 (예전에는 patch를 못 읽어 0이 됐다)
+    // `+build`는 버전 비교에 쓰지 않는다 (예전에는 patch를 못 읽어 0이 됐다)
     #[test]
     fn build_metadata_is_ignored() {
         let v = SemVer::parse("1.2.3+build.7").unwrap();

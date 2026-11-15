@@ -223,7 +223,7 @@ export function SettingsPanel({ api, server, moduleData, running }: ServerPanelP
                                 modNs={modNs}
                             />
                         ))}
-                        {/* 긴 목록 맨 아래가 아니라 화면 아래에 붙는 저장 막대 (사용자 11-06 #9) */}
+                        {/* 긴 목록 맨 아래가 아니라 화면 아래에 붙는 저장 막대 */}
                         {touched.size > 0 && (
                             <div className="savebar">
                                 <span className="hint">{tg('discord.unsaved')}</span>

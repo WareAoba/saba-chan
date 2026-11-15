@@ -122,7 +122,7 @@ describe('익스텐션 GUI 번들 실행이 실패했을 때', () => {
         expect(result.current.slots['test.slot']?.map((e) => e.Component)).toEqual([Slot]);
     });
 
-    // Codex 리뷰 #549: 등록하기 전에 throw한 앞 로드가 그때 있던 겹친 로드의 전역을 자기 것으로 보고 지웠다
+    // 등록하기 전에 throw한 앞 로드가 그때 있던 겹친 로드의 전역을 자기 것으로 보고 지웠다
     it('등록 전에 실패한 앞 로드는 겹친 로드가 등록한 전역을 지우지 않는다', async () => {
         // A의 스크립트를 먼저 넣고, 나중에 넣은 B가 먼저 실행된다
         let runFirst!: () => void;
@@ -144,7 +144,7 @@ describe('익스텐션 GUI 번들 실행이 실패했을 때', () => {
         expect(window.SabaExtDocker).toBe(loaded);
     });
 
-    // Codex 재검증 #549: 먼저 넣은 A가 겹친 B의 성공 뒤에 실행돼 전역을 덮어쓰고 throw하면 B의 전역까지 사라졌다
+    // 먼저 넣은 A가 겹친 B의 성공 뒤에 실행돼 전역을 덮어쓰고 throw하면 B의 전역까지 사라졌다
     it('늦게 실행돼 전역을 덮어쓴 뒤 실패한 로드는 겹친 로드의 전역으로 되돌린다', async () => {
         let runFirst!: () => void;
         runs.push((el: HTMLScriptElement) => {

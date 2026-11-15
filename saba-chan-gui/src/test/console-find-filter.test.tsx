@@ -6,7 +6,7 @@ import { ServerConsole } from '../components/servers/ServerConsole';
 import type { ConsoleEntry } from '../stores/useConsoleStore';
 import type { Server } from '../stores/useServerStore';
 
-// 콘솔 탭: 수준 칩(전체·경고·오류), 위로 올려 읽는 동안의 "맨 아래로", Ctrl+F 줄 찾기 (사용자 11-12 시안 A)
+// 콘솔 탭: 수준 칩(전체·경고·오류), 위로 올려 읽는 동안의 "맨 아래로", Ctrl+F 줄 찾기
 const LINES = [
     { key: 1, id: 1, content: 'Preparing spawn area', level: 'INFO' },
     { key: 2, id: 2, content: "Can't keep up! Running 2031ms behind", level: 'WARN' },
@@ -108,7 +108,7 @@ describe('콘솔 줄 찾기 (Ctrl+F)', () => {
     });
 });
 
-// 사용자 11-14: PIP 띄우기는 탭 바가 아니라 콘솔 상단바(수준 칩 줄) 안에 둔다
+// PIP 띄우기는 탭 바가 아니라 콘솔 상단바(수준 칩 줄) 안에 둔다
 describe('콘솔 상단바의 PIP 단추', () => {
     it('띄울 수 있으면 수준 칩 줄 오른쪽에 PIP 단추를 두고, 누르면 띄운다', () => {
         const onPopout = vi.fn();

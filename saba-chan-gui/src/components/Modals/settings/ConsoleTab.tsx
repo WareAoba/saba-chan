@@ -43,7 +43,7 @@ export function ConsoleTab({ customTheme, handleCustomThemeChange }: ConsoleTabP
     const consoleGlass = useSettingsStore((s) => s.consoleGlass);
     return (
         <section className="saba-card">
-            {/* ── 5-0. 콘솔 반투명: 창 반투명일 때 콘솔 바탕도 유리 (사용자 11-11, 기본 켜짐) ── */}
+            {/* ── 5-0. 콘솔 반투명: 창 반투명일 때 콘솔 바탕도 유리 (기본 켜짐) ── */}
             <div className="setting-item">
                 <label className="setting-label">
                     <span className="setting-title">{t('gui:settings_modal.console_glass_label')}</span>
@@ -208,7 +208,7 @@ export function ConsoleTab({ customTheme, handleCustomThemeChange }: ConsoleTabP
                 />
             </div>
 
-            {/* 콘솔 글꼴: 글자마다 하나 (utils/consoleFonts.js) */}
+            {/* 콘솔 글꼴: 글자마다 하나 (utils/consoleFonts.ts) */}
             <div className="setting-item setting-item-vertical">
                 <div className="setting-label">
                     <span className="setting-title">

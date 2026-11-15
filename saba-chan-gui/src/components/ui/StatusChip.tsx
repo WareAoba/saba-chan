@@ -25,7 +25,7 @@ export function StatusChip({ tone = 'idle', label, detail, pulse = false, classN
 }
 
 /**
- * 눌린 홈 안의 세그먼트 탭 (N2). items: [{ id, label, icon? }]
+ * 눌린 홈 안의 세그먼트 탭. items: [{ id, label, icon? }]
  */
 interface SegmentedProps {
     items: { id: string; label: ReactNode; icon?: ReactNode }[];

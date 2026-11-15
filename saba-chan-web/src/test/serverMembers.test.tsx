@@ -4,7 +4,7 @@ import { GuildPermissions } from '../components/PermissionsTab';
 import { initI18n } from '../i18n';
 import { mockApi } from './mocks';
 
-// 멤버 레벨은 디스코드 서버 단위 (사용자 지정 2026-11-04, 앱과 같다): 서버의 멤버 탭에서 정하고, 인스턴스 메뉴에는 레벨별 명령만
+// 멤버 레벨은 디스코드 서버 단위 (앱과 같다): 서버의 멤버 탭에서 정하고, 인스턴스 메뉴에는 레벨별 명령만
 const flush = () => act(async () => {});
 
 function setup() {

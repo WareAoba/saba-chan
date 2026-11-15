@@ -449,7 +449,7 @@ mod tests {
         assert!(super::import_failure(&json!({})).is_none());
     }
 
-    /// 원격 데몬에는 그 PC의 전체 경로만 보낸다: Windows·리눅스 어느 쪽 경로든 알아본다 (D2)
+    /// 원격 데몬에는 그 PC의 전체 경로만 보낸다: Windows·리눅스 어느 쪽 경로든 알아본다
     #[test]
     fn a_remote_path_must_be_full_on_either_os() {
         for p in ["/srv/game", "C:\\Games\\a.zip", "d:/saba", "\\\\nas\\share"] {

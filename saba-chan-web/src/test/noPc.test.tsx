@@ -109,7 +109,7 @@ describe('PC 없는 사람의 웹', () => {
         expect(screen.getByRole<HTMLInputElement>('checkbox', { name: /^Emoji upscale/ }).checked).toBe(true);
     });
 
-    it('PC 없는 서버도 코코낸내를 릴레이에 바로 바꾸고, PC 가 있어야 하는 서버 조작·알림만 잠근다 (사용자 11-12)', async () => {
+    it('PC 없는 서버도 코코낸내를 릴레이에 바로 바꾸고, PC 가 있어야 하는 서버 조작·알림만 잠근다', async () => {
         const session = fakeSession();
         render(<App api={mockApi({})} session={mockSession(session)} />);
         await flush();

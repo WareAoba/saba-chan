@@ -84,7 +84,7 @@ fn consent_rows(v: &Value) -> Vec<Vec<String>> {
 mod tests {
     use super::*;
 
-    /// 두 동의 목록을 한 표로, 파일이 바뀐 동의는 쓰이지 않는다고 표시한다 (C13)
+    /// 두 동의 목록을 한 표로, 파일이 바뀐 동의는 쓰이지 않는다고 표시한다
     #[test]
     fn both_consent_lists_show_and_a_changed_component_is_marked() {
         let v = json!({

@@ -96,7 +96,7 @@ pub fn other_listed_install(file: &Path, install_dir: &Path) -> bool {
 /// 사용자 데이터 폴더에서 앱이 만들지 않는 항목: 제거기는 어떤 경우에도 지우지 않는다 (업데이트 서명 키)
 const NEVER_REMOVED: &[&str] = &[".keys"];
 
-/// 제거할 때 사용자 데이터 폴더에 남길 것. 아무것도 정하지 않으면 둘 다 남긴다 (사용자 지정 10-22)
+/// 제거할 때 사용자 데이터 폴더에 남길 것. 아무것도 정하지 않으면 둘 다 남긴다
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Keep {
     /// 설정·연결 토큰 등 아래 두 목록에 없는 모든 항목

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { CommandAliasInfo, ModuleInfo, ModuleLoadError, ServerInfo } from '../types/daemon';
-import { debugWarn, retryWithBackoff, safeShowToast, waitForDaemon } from '../utils/helpers';
+import { retryWithBackoff, safeShowToast, waitForDaemon } from '../utils/helpers';
 import { branchesUnderParents } from '../utils/serverView';
 import { type ServerActions, serverActions } from './serverActions';
 import { resetServerActions } from './serverActionsState';
@@ -163,18 +163,15 @@ export const useServerStore = create<ServerState>()((set, get) => ({
 
     _fetchModulesOnce: async (quiet = false) => {
         try {
-            console.log('Fetching modules...');
             try {
                 await waitForDaemon(5000);
             } catch (err) {
-                debugWarn('Daemon not ready, but continuing:', (err as Error).message);
+                console.warn('Daemon not ready, but continuing:', (err as Error).message);
             }
 
             const data = await retryWithBackoff(() => window.api.moduleList(), 3, 800);
-            console.log('Module data received:', data);
 
             if (data && data.modules) {
-                console.log('Setting modules:', data.modules.length, 'modules');
                 set({ modules: data.modules, failedModules: data.failed || [], modulesLoaded: true });
 
                 // 번역과 메타데이터(별명)를 모듈마다 차례로 기다리지 않고 한꺼번에 받는다
@@ -187,7 +184,6 @@ export const useServerStore = create<ServerState>()((set, get) => ({
                                 for (const [lang, localeData] of Object.entries(locales)) {
                                     i18n.addResourceBundle(lang, `mod_${mod.name}`, localeData, true, true);
                                 }
-                                console.log(`Module locales registered for ${mod.name}:`, Object.keys(locales));
                             }
                         }
                     } catch (e) {
@@ -197,7 +193,7 @@ export const useServerStore = create<ServerState>()((set, get) => ({
                 const loadAliases = async (mod: { name: string }): Promise<ModuleAliases | null> => {
                     try {
                         const metadata = await window.api.moduleGetMetadata(mod.name);
-                        // 데몬이 파싱한 메타데이터만 쓴다 (원본 toml은 응답에서 빠질 예정)
+                        // 데몬이 파싱한 메타데이터만 쓴다
                         const meta = metadata?.metadata;
                         if (!meta) return null;
                         const mergedCommands: Record<string, ModuleCommandAliases> = {};
@@ -240,13 +236,12 @@ export const useServerStore = create<ServerState>()((set, get) => ({
                     if (entry) aliasesMap[mod.name] = entry;
                 });
                 set({ moduleAliasesPerModule: aliasesMap });
-                console.log('Module aliases loaded:', aliasesMap);
             } else if (data && data.error) {
                 console.error('Module fetch error:', data.error);
                 const errMsg = translateError(data.error);
                 if (errMsg && !quiet) safeShowToast(t('modules.load_failed_toast', { error: errMsg }), 'error', 4000);
             } else {
-                debugWarn('No modules data:', data);
+                console.warn('No modules data:', data);
                 if (!quiet) safeShowToast(t('modules.list_empty'), 'warning', 3000);
             }
         } catch (error) {

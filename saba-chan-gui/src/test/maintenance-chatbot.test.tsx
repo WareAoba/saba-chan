@@ -364,13 +364,13 @@ describe('ChatbotView', () => {
         expect(screen.queryByLabelText('Reasoning effort')).toBeNull();
         expect(screen.queryByLabelText('Join in uninvited')).toBeNull();
         expect(screen.queryByLabelText('Image generation')).toBeNull();
-        // 고르면 바로 저장한다 (저장 막대 없음, 사용자 11-11)
+        // 고르면 바로 저장한다 (저장 막대 없음)
         expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
         await waitFor(() => expect(window.api.chatbotSave).toHaveBeenCalledWith({ settings: { model: 'gpt-y' } }));
         delete (window.api as Partial<typeof window.api>).chatbotModels;
     });
 
-    // 리뷰 #944: 대신 쓰는 모델을 자동으로 고른 것은 사용자가 고른 것이 아니므로 저장하지 않는다
+    // 대신 쓰는 모델을 자동으로 고른 것은 사용자가 고른 것이 아니므로 저장하지 않는다
     it('릴레이가 대신 쓰는 모델을 알려 줘도 화면을 열기만 해서는 저장하지 않는다', async () => {
         window.api.chatbotGet = vi.fn().mockResolvedValue({
             success: true,

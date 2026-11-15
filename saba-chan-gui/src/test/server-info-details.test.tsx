@@ -12,7 +12,7 @@ import { useUIStore } from '../stores/useUIStore';
 
 const ServerDetail = ServerDetailFull as unknown as ComponentType<Partial<ComponentProps<typeof ServerDetailFull>>>;
 
-// 사용자 11-06 #27: 정보 탭의 개발 용어(통신 방식·PID·REST)는 '자세히' 안에, 인스턴스 ID는 그대로 보인다
+// 정보 탭의 개발 용어(통신 방식·PID·REST)는 '자세히' 안에, 인스턴스 ID는 그대로 보인다
 describe('서버 정보 탭', () => {
     it('통신 방식·PID·REST는 접힌 자세히 안에 두고, 인스턴스 ID는 바로 보인다', () => {
         useServerStore.setState({ modulesLoaded: true });
@@ -35,7 +35,7 @@ describe('서버 정보 탭', () => {
                 consoleProps={{ consoles: {}, popoutOpen: {}, consolePopoutIds: [] } as never}
             />,
         );
-        // 서버 정보 카드 안의 공통 펼치기 (사용자 11-11)
+        // 서버 정보 카드 안의 공통 펼치기
         const head = screen.getByRole('button', { name: 'Details' });
         expect(head.getAttribute('aria-expanded')).toBe('false');
         const more = container.querySelector('.info-tab .saba-disclosure-body') as HTMLElement;

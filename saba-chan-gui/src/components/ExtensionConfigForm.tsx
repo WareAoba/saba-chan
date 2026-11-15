@@ -17,7 +17,7 @@ const coerce = (def: ExtensionFieldDef, raw: Json | undefined) => {
 };
 
 /**
- * 익스텐션 전역 설정 (manifest `config_fields`, GET/PUT /api/extensions/:id/config, Q-2).
+ * 익스텐션 전역 설정 (manifest `config_fields`, GET/PUT /api/extensions/:id/config).
  * 값은 데몬이 config.json에 저장한다. 이름은 익스텐션 locales의 config.<키>가 있으면 그것을 쓴다.
  * inline: 접는 버튼 없이 처음부터 펼친다 (설정 창의 익스텐션 탭)
  */

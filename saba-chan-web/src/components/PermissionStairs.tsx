@@ -88,7 +88,7 @@ export function PermissionStairs({ api, guildId, perm, board, instance, busy, wr
     };
     const current = chips.find((c) => c.id === selected);
     const label = (c: StairChip) => (c.instance ? `${c.title} · ${instanceName(c.instance)}` : c.title || '');
-    // 게임(모듈·플러그인) 명령 칩은 명령 원문, 번역 이름은 말풍선과 화면 읽기 이름으로 (사용자 지정 2026-11-07).
+    // 게임(모듈·플러그인) 명령 칩은 명령 원문, 번역 이름은 말풍선과 화면 읽기 이름으로.
     // 사바쨩 기능(시작·백업 등)과 묶음·도움말 칩은 번역 이름 그대로
     const chipText = (c: StairChip) => {
         const text = c.module && c.name ? c.name : c.title;

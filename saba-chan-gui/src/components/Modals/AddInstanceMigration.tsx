@@ -71,7 +71,7 @@ export function AddInstanceMigration({
             // 선택하면 자동 스캔
             performScan(selected);
         }
-    }, [extensions]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [extensions]);
 
     // ─── 디렉토리 스캔 + 모듈 감지 ───
     const performScan = useCallback(
@@ -228,9 +228,7 @@ export function AddInstanceMigration({
         </div>
     );
 
-    // ══════════════════════════════════════════
     //  Step 1: 폴더 고르기 + 스캔
-    // ══════════════════════════════════════════
     if (step === 'pick-dir') {
         return (
             <AddServerFrame
@@ -379,9 +377,7 @@ export function AddInstanceMigration({
         );
     }
 
-    // ══════════════════════════════════════════
     //  Step 2: 이름·폴더 다루는 방식 → 가져오기
-    // ══════════════════════════════════════════
     return (
         <AddServerFrame
             title={t('migration_modal.configure_title')}

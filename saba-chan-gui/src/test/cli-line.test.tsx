@@ -75,14 +75,14 @@ describe('CLI로 보기 (P2 후속 §5)', () => {
         expect(writeText).toHaveBeenCalledWith('saba do instance.settings.set --server mc port=25566');
     });
 
-    // 사용자 11-06 #27: 내부 키가 보이는 CLI 줄은 '명령줄로 하기'를 펼쳐야 보인다
+    // 내부 키가 보이는 CLI 줄은 '명령줄로 하기'를 펼쳐야 보인다
     it('CLI 줄은 접힌 "명령줄로 하기" 안에 있다', async () => {
         window.api.actionsList = vi.fn().mockResolvedValue({
             actions: [{ id: 'instance.settings.set', cli: 'saba do instance.settings.set --server <server>' }],
         }) as never;
         const { container } = render(<CliLine actionId="instance.settings.set" server="mc" />);
         await act(async () => {});
-        // 브라우저 기본 <details>가 아니라 공통 펼치기 (사용자 11-11)
+        // 브라우저 기본 <details>가 아니라 공통 펼치기
         expect(container.querySelector('details')).toBeNull();
         const head = screen.getByRole('button', { name: 'Use the command line' });
         expect(head.getAttribute('aria-expanded')).toBe('false');

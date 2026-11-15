@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { describe, expect, it } from 'vitest';
 import { SabaNumberInput } from '../components/ui/SabaUI';
 
-// 기본 다이얼 대신 붙인 단추도 직접 입력처럼 onChange를 부른다 (사용자 11-07)
+// 기본 다이얼 대신 붙인 단추도 직접 입력처럼 onChange를 부른다
 function Harness() {
     const [v, setV] = useState('5');
     return <SabaNumberInput aria-label="n" step={5} min={0} value={v} onChange={(e) => setV(e.target.value)} />;

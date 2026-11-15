@@ -700,7 +700,7 @@ export function ProviderBadge({ provider }: { provider: string }) {
         <p className="cb-provider">
             <span
                 className="cb-provider-logo"
-                // biome-ignore lint/security/noDangerouslySetInnerHtml: 저장소에 넣은 고정 SVG (providerBrands.js)
+                // biome-ignore lint/security/noDangerouslySetInnerHtml: 저장소에 넣은 고정 SVG (providerBrands.ts)
                 dangerouslySetInnerHTML={{ __html: brand.svg }}
             />
             {t('chatbot.provider_connected', { provider: name })}

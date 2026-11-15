@@ -5,7 +5,6 @@ import { ComponentsTab } from './SabaStorageComponents';
 import { ExtensionsTab } from './SabaStorageExtensions';
 import { ModulesTab } from './SabaStorageModules';
 
-// ─────────────────────────────────────────────────────────────
 // 사바 스토리지 (구 업데이트 센터)
 //
 // 탭 3개:
@@ -15,7 +14,6 @@ import { ModulesTab } from './SabaStorageModules';
 //
 // @param {boolean}  devMode   - 개발자 모드
 // @param {string}   initialTab - 처음 보일 탭 (components | modules | extensions)
-// ─────────────────────────────────────────────────────────────
 interface SabaStorageProps {
     devMode?: boolean;
     initialTab?: string;

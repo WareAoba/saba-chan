@@ -25,7 +25,7 @@ const detail = (status: string) => {
     );
 };
 
-// 사용자 11-06 #10: 설치 완성 카드의 '시작'은 서버가 켜지면 남지 않는다
+// 설치 완성 카드의 '시작'은 서버가 켜지면 남지 않는다
 describe('설치 완성 카드', () => {
     it('정지된 서버에서는 보이고, 서버가 켜지면 닫힌다', () => {
         useServerStore.setState({ modulesLoaded: true });

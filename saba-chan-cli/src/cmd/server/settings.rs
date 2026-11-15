@@ -75,7 +75,7 @@ pub(super) fn typed_setting(fields: &[Value], instance: &Value, key: &str, raw: 
     if let Some(opts) = field.and_then(|f| f.get("options")).and_then(Value::as_array) {
         let opts: Vec<&str> = opts.iter().filter_map(Value::as_str).collect();
         if !opts.is_empty() {
-            // 데몬은 선택지를 그대로 비교하므로, 대소문자만 다르게 친 값은 모듈이 정한 선택지로 보낸다 (L58)
+            // 데몬은 선택지를 그대로 비교하므로, 대소문자만 다르게 친 값은 모듈이 정한 선택지로 보낸다
             let pick = |raw: &str| {
                 opts.iter()
                     .find(|o| **o == raw)

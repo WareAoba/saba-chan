@@ -39,7 +39,7 @@ describe('nodePermissions (데몬 src/chat/mod.rs 해석과 같다)', () => {
         expect(cloudStateOf({ hostId: 'h', connected: true })).toBe('connected');
         expect(cloudStateOf({ hostId: 'h', error: 'x' })).toBe('error');
         expect(cloudStateOf({ hostId: 'h' })).toBe('connecting');
-        // 붙어 있다가 끊겨 에이전트가 다시 붙는 중이면 실패가 아니라 (노랑) 연결 중이다 (사용자 11-11)
+        // 붙어 있다가 끊겨 에이전트가 다시 붙는 중이면 실패가 아니라 (노랑) 연결 중이다
         expect(cloudStateOf({ hostId: 'h', error: 'x', reconnecting: true })).toBe('connecting');
         // 데몬에서 설정을 아직 못 읽었으면 호스트가 비어도 연결 전이라고 단정하지 않는다
         expect(cloudStateOf({ hostId: '', loaded: false })).toBe('checking');
@@ -203,7 +203,7 @@ describe('DiscordPage', () => {
         expect(save).not.toHaveBeenCalled();
     });
 
-    // 사용자 요청(2026-10-26): 켜짐 알림은 서버마다 켜고(기본 꺼짐) 데몬 길드 API로 바로 저장한다
+    // 켜짐 알림은 서버마다 켜고(기본 꺼짐) 데몬 길드 API로 바로 저장한다
     it('켜짐 알림·자리 꽉 참 알림은 서버마다 기본 꺼짐이고, 켜면 데몬 API로 바로 저장한다', async () => {
         const { useDiscordStore } = await import('../stores/useDiscordStore');
         const saved = async (instanceId: string, guildId: string, enabled: boolean) => ({
@@ -228,14 +228,14 @@ describe('DiscordPage', () => {
         expect(window.api.guildStartNoticeSave).toHaveBeenCalledWith('s1', 'g1', true);
         // 앱은 스토어 값을 그대로 넘긴다 (이 하네스는 자기 상태를 넘겨 다시 그리지 않는다)
         expect((useDiscordStore.getState().nodeSettings.g1 as Record<string, unknown>).startNotice).toEqual(['s1']);
-        // 사용자 11-04: 자리 꽉 참 알림도 서버마다, 따로 저장한다
+        // 자리 꽉 참 알림도 서버마다, 따로 저장한다
         await act(async () => fireEvent.click(bells[3]));
         expect(window.api.guildFullNoticeSave).toHaveBeenCalledWith('s2', 'g1', true);
         expect((useDiscordStore.getState().nodeSettings.g1 as Record<string, unknown>).fullNotice).toEqual(['s2']);
         expect(save).not.toHaveBeenCalled();
     });
 
-    // 사용자 11-06 #19: 안내 문구의 링크로 디스코드 서버의 탭을 바로 연다
+    // 안내 문구의 링크로 디스코드 서버의 탭을 바로 연다
     it('화면 주소 링크(디스코드 서버 › 멤버)로 그 서버의 멤버 탭을 연다', async () => {
         const { openScreen } = await import('../utils/openScreen');
         window.api.permissionsGet = vi.fn().mockResolvedValue({ guildId: 'g1', members: {}, preset: 'default' });

@@ -61,7 +61,7 @@ const CORE_PORT_FIELDS = ['port'];
 const NOT_PRESET_TYPES = ['password', 'file'];
 
 /**
- * 만들기 화면의 "상세 설정"에서 미리 정할 수 있는 칸 (사용자 11-11).
+ * 만들기 화면의 "상세 설정"에서 미리 정할 수 있는 칸.
  * 설치 칸은 요약에서 고르고, 포트는 다른 서버와 겹치지 않게 데몬이 고르며, 인스턴스 폴더를 쓰는 칸은 폴더가 정해진 뒤에 뜻이 있다
  */
 export const presetFields = (module?: Pick<ModuleInfo, 'settings'> | null): SettingField[] =>

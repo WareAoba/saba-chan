@@ -1,7 +1,7 @@
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 
-// 붙는 중은 떠나온 상태(꺼짐)의 회색으로 깜빡이고, 붙어 있다가 끊겨 다시 붙는 중만 노랑 (사용자 11-11)
+// 붙는 중은 떠나온 상태(꺼짐)의 회색으로 깜빡이고, 붙어 있다가 끊겨 다시 붙는 중만 노랑
 const DAEMON_TONE: Record<string, string> = { running: 'ok', checking: 'idle', stopped: 'stop', error: 'stop', token_invalid: 'stop' };
 const BOT_TONE: Record<string, string> = { running: 'ok', connecting: 'idle', stopped: 'idle' };
 

@@ -9,7 +9,7 @@ export function screenFallbackNotice(key: 'server_missing' | 'guild_missing' | '
 }
 
 /**
- * 화면 주소(utils/screenAddress)의 화면을 연다 (사용자 11-06 #19).
+ * 화면 주소(utils/screenAddress)의 화면을 연다.
  * 없어진 서버를 가리키면 서버 목록을 열고 이유를 알린다.
  * 디스코드 서버·탭은 디스코드 페이지가, 서버 탭은 서버 상세가 확인하고 없으면 같은 식으로 알린다.
  */

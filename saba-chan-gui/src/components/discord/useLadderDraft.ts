@@ -8,7 +8,7 @@ export const ladderKeyOf = (level: L.LadderLevel) => String(level.id !== undefin
 /**
  * 레벨 편집 초안 (앱 `LadderTab`·웹 `LadderEditor`가 같이 쓴다, 그리는 모양은 화면마다 다르다).
  * 카드를 끌어 순서를 바꾸고(놓으면 카드들이 새 자리로 미끄러진다), 칩을 끌어 다른 레벨로 옮기고,
- * 권한 맞바꾸기(사용자 지정 2026-11-07)는 칸 두 개를 고르면 두 레벨의 명령이 자리를 바꾼다.
+ * 권한 맞바꾸기는 칸 두 개를 고르면 두 레벨의 명령이 자리를 바꾼다.
  * 조작 가능 줄은 맞바꾸기 차례에서 자리를 낸다. `chipSelector`: 접힌 칩을 셀 때 찾는 칩 (화면마다 CSS 이름이 다르다)
  */
 export function useLadderDraft<T extends HTMLElement>(
@@ -57,7 +57,7 @@ export function useLadderDraft<T extends HTMLElement>(
     );
     const commandLevels = L.boardPatch(board, levels);
     const commandsChanged = Object.keys(commandLevels).length > 0;
-    // 레벨 편집은 사바쨩 기능만 보인다 (사용자 지정 2026-11-07): 인스턴스마다 다른 게임(모듈) 명령과
+    // 레벨 편집은 사바쨩 기능만 보인다: 인스턴스마다 다른 게임(모듈) 명령과
     // 인스턴스마다 정하는 조작 가능(서버 조작)은 인스턴스 권한 화면에서 정한다. 맞바꾸기는 모든 명령을 그대로 옮긴다
     const chips = L.stairChips(L.draftBoard(board, levels)).filter((c) => !c.module && !c.controllers);
     chipDropRef.current = (id, at) => {
@@ -71,7 +71,7 @@ export function useLadderDraft<T extends HTMLElement>(
             ...Object.fromEntries(chip.items.filter((i) => !i.fixed).map((i) => [i.key as string, level])),
         }));
     };
-    // 노란 테두리는 "저장하지 않은 변경" (사용자 지정 2026-11-07): 저장된 레벨과 초안 레벨이 다른 명령
+    // 노란 테두리는 "저장하지 않은 변경": 저장된 레벨과 초안 레벨이 다른 명령
     const savedLevel = new Map(items.map((it) => [it.key as string, it.level]));
 
     // 칩은 숨기지 않는다. 카드가 칩 세 줄을 넘을 때만 접고 "+N"을 누르면 그 카드의 칩을 모두 편다

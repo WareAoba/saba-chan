@@ -42,7 +42,7 @@ describe('opening chime (정상 기동음)', () => {
     });
 });
 
-describe('PC 전환 (사용자 11-12: 전환할 때는 오프닝 없음)', () => {
+describe('PC 전환 (전환할 때는 오프닝 없음)', () => {
     it('opens straight away after a switch: no wait for the relay and no chime', () => {
         expect(openingGate({ ...base, switched: true, relayChecked: false, relayConnected: false })).toEqual({
             hold: false,

@@ -31,7 +31,7 @@ describe('서버 설정 칸', () => {
         expect(onChange).toHaveBeenCalledWith('allow_flight', true);
     });
 
-    // 서버 설정은 다시 시작해야 적용되는 게 보통이라, 바꾼 칸에만 표시한다 (사용자 11-07)
+    // 서버 설정은 다시 시작해야 적용되는 게 보통이라, 바꾼 칸에만 표시한다
     it('다시 시작해야 적용되는 칸은 바꿨을 때만 그렇다고 표시한다', () => {
         const { rerender } = render(<SettingsField field={flight} value={false} modNs="game" onChange={vi.fn()} />);
         expect(screen.queryByText('Applies after restart')).toBeNull();

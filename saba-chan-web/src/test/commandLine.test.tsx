@@ -4,7 +4,7 @@ import { CommandsPanel } from '../components/CommandsPanel';
 import { initI18n } from '../i18n';
 import { asServer, mockApi } from './mocks';
 
-// 사용자 11-06 #4: 웹 명령 탭도 앱과 같다. 직접 치는 명령은 입력 줄에서 색으로 나누고 안내하며,
+// 웹 명령 탭도 앱과 같다. 직접 치는 명령은 입력 줄에서 색으로 나누고 안내하며,
 // API로 요청하는 명령은 카드를 눌러 칸이 있는 입력 창으로 보낸다
 beforeAll(() => initI18n('en'));
 afterEach(cleanup);

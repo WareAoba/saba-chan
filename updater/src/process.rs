@@ -246,7 +246,7 @@ mod tests {
         use windows_sys::Win32::Foundation::{SetHandleInformation, HANDLE, HANDLE_FLAG_INHERIT};
         use windows_sys::Win32::System::Console::{GetStdHandle, SetStdHandle, STD_OUTPUT_HANDLE};
         // 표준 출력 핸들은 프로세스 전체가 함께 쓴다: 바꾸는 동안 다른 시험과 시험 틀의 출력이 이 파이프로 새거나
-        // 닫힌 핸들에 쓰다 멈춘다 (L71). 이 시험만 도는 자식 프로세스에서 바꾼다
+        // 닫힌 핸들에 쓰다 멈춘다. 이 시험만 도는 자식 프로세스에서 바꾼다
         const ALONE: &str = "SABA_TEST_STD_HANDLE_ALONE";
         if std::env::var_os(ALONE).is_none() {
             let out = Command::new(std::env::current_exe().unwrap())

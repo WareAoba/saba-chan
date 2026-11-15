@@ -1,5 +1,5 @@
 /**
- * G-S4: 서버 목록 요청 둘이 겹쳐 먼저 보낸 것이 늦게 오면, 옛 상태가 한 폴링 동안 보였다.
+ * 서버 목록 요청 둘이 겹쳐 먼저 보낸 것이 늦게 오면, 옛 상태가 한 폴링 동안 보였다.
  */
 import { act } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';

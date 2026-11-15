@@ -13,7 +13,7 @@ const freshInternal = () => ({
     optimistic: new Map<string, OptimisticStatus>(), // id → { status, pending }
     lastErrorToast: 0,
     firstFetchDone: false,
-    // 목록 요청 번호. 먼저 보낸 요청이 늦게 오면 그 목록은 버린다 (G-S4)
+    // 목록 요청 번호. 먼저 보낸 요청이 늦게 오면 그 목록은 버린다
     fetchSeq: { sent: 0, applied: 0 },
     bootGrace: true, // suppress notifications during app boot
     bootGraceTimer: null as ReturnType<typeof setTimeout> | null,

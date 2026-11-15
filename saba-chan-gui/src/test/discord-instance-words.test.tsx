@@ -62,7 +62,7 @@ describe('InstanceDiscordTab', () => {
         expect(screen.getByText('킥')).toBeTruthy();
     });
 
-    // 사용자 11-06 #9: 저장 단추는 긴 목록 맨 아래가 아니라 화면 아래에 붙는 막대로, 명령 이름은 화면에 보이는 이름으로
+    // 저장 단추는 긴 목록 맨 아래가 아니라 화면 아래에 붙는 막대로, 명령 이름은 화면에 보이는 이름으로
     it('바꾸면 화면 아래에 붙는 저장 막대가 뜨고, 명령은 모듈 번역 이름으로 보인다', async () => {
         i18n.addResourceBundle('en', 'mod_minecraft', { commands: { kick: { label: 'Kick player' } } }, true, true);
         window.api.instanceWords = vi.fn().mockResolvedValue({

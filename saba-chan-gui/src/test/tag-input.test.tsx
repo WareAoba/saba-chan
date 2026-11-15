@@ -16,7 +16,7 @@ describe('단어 칩 입력', () => {
         expect(onChange).toHaveBeenCalledWith(['시작']);
     });
 
-    // 사용자 11-06 #2: 서버를 부르는 말은 띄어 써도 되고 쉼표는 못 쓴다 (쉼표는 낱말을 나누는 기호)
+    // 서버를 부르는 말은 띄어 써도 되고 쉼표는 못 쓴다 (쉼표는 낱말을 나누는 기호)
     it('띄어쓰기를 받는 칸은 쉼표로만 나누고 사이 공백은 한 칸으로 줄인다', () => {
         const onChange = vi.fn();
         render(<TagInput value={[]} onChange={onChange} ariaLabel="words" allowSpaces />);

@@ -6,6 +6,7 @@ import { useStickyClip } from '../../hooks/useStickyClip';
 import type { Server } from '../../stores/useServerStore';
 import type { ModuleInfo } from '../../types/daemon';
 import { screenFallbackNotice } from '../../utils/openScreen';
+import { accessOf } from '../../utils/serverView';
 import { Icon } from '../Icon';
 import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { LinkedText } from '../ui/ScreenLink';
@@ -15,7 +16,7 @@ import { BotSettingsTab, botSettingsAvailable } from './BotSettingsTab';
 import { ChatbotGuildTab } from './ChatbotGuildTab';
 import { chatbotAvailable } from './ChatbotView';
 import { ControllersTab } from '../servers/ControllersTab';
-import { AccessMode, accessOf, KickButton, MembersKick } from './InstanceAccess';
+import { AccessMode, KickButton, MembersKick } from './InstanceAccess';
 import * as P from './nodePermissions';
 import { ModerationTab, moderationAvailable } from './ModerationTab';
 import { MembersPanel, PermissionPanel } from './PermissionsTab';
@@ -149,7 +150,7 @@ function InstancesTab({
                         const full = Array.isArray(fullNoticed) && fullNoticed.includes(srv.id);
                         const openable = allowed && !owner;
                         return (
-                            // biome-ignore lint/a11y/useKeyWithClickEvents: 카드 어디를 눌러도 권한 메뉴로 (사용자 지정 2026-11-07). 키보드는 오른쪽 화살표 버튼이 받는다
+                            // biome-ignore lint/a11y/useKeyWithClickEvents: 카드 어디를 눌러도 권한 메뉴로. 키보드는 오른쪽 화살표 버튼이 받는다
                             <li
                                 key={srv.id}
                                 className={clsx('dc-list-row', { dim: !allowed, 'is-openable': openable })}
@@ -351,7 +352,7 @@ export function NodeView({
 
     return (
         <div className="dc-view">
-            {/* 서버 정보 카드와 탭 바는 위에 고정하고 그 아래만 스크롤한다 (사용자 11-07) */}
+            {/* 서버 정보 카드와 탭 바는 위에 고정하고 그 아래만 스크롤한다 */}
             <div className="sticky-head" ref={topRef}>
                 <header className="detail-head">
                     <div className="detail-icon">

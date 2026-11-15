@@ -1018,7 +1018,7 @@ mod tests {
         assert_eq!(crate::i18n::fill(&confirm, &[("version", "0.1.13".into())]), "0.1.13으로 되돌릴까요?");
     }
 
-    /// update last는 원시 객체 대신 버전·결과·구성요소·실패를 줄로 보인다 (C16)
+    /// update last는 원시 객체 대신 버전·결과·구성요소·실패를 줄로 보인다
     #[test]
     fn the_last_result_reads_as_rows() {
         let r = json!({ "success": true, "version": "0.1.7", "notes": "고친 것", "result": {

@@ -41,11 +41,10 @@ export function serverManageActions(get: () => ServerState, fetchServers: () => 
         return false;
     };
 
-    // ── addServer ─────────────────────────────────────
-    const addServer = async (payload: AddServerPayload, legacyModuleName?: string) => {
-        // payload = { name, module_name, accept_agreements?, preset?, extension_data?, migration_source?, migration_mode?, module_settings?, version?, working_dir?, managed_start?, port? }
-        const serverName = typeof payload === 'string' ? payload : payload?.name;
-        const moduleName = typeof payload === 'string' ? legacyModuleName : payload?.module_name;
+    // ── addServer ──
+    const addServer = async (payload: AddServerPayload) => {
+        const serverName = payload.name;
+        const moduleName = payload.module_name;
 
         if (!serverName || !serverName.trim()) {
             setModal({
@@ -105,7 +104,6 @@ export function serverManageActions(get: () => ServerState, fetchServers: () => 
                 }
             }
 
-            console.log('Adding instance:', instanceData);
             const result = await window.api.instanceCreate(instanceData);
 
             // ── 켜진 익스텐션 파일이 바뀌어 확인되지 않음 (다시 설치·되돌리기 안내) ──
@@ -248,7 +246,7 @@ export function serverManageActions(get: () => ServerState, fetchServers: () => 
         }
     };
 
-    // ── deleteServer ──────────────────────────────────
+    // ── deleteServer ──
     const deleteServer = async (server: Server) => {
         // 가져온 서버(인스턴스 폴더 밖의 서버 폴더): 연결만 끊고 폴더는 남긴다. 보관한 원래 설정으로 되돌릴지 고른다
         if (server.linked_folder) {
@@ -335,7 +333,6 @@ export function serverManageActions(get: () => ServerState, fetchServers: () => 
                 const errorMsg = translateError(result.error);
                 setModal({ type: 'failure', title: t('servers.delete_failed_title'), message: errorMsg });
             } else {
-                console.log(`Instance "${server.name}" (ID: ${server.id}) deleted`);
                 const message = result.linked_folder
                     ? t('server_actions.server_unlinked', { name: server.name, path: result.linked_folder }) +
                       (result.settings_restore_failed ? '\n' + unrestoredNote(result) : '')

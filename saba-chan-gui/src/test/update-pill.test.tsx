@@ -95,7 +95,7 @@ describe('업데이트 알약', () => {
         await waitFor(() => expect(container.querySelector('.appbar-pill')).toBeNull());
     });
 
-    // 알약을 누르지 않아도 다른 동작(마우스를 움직이거나 누르거나 키를 침)을 하면 5초 뒤 지운다 (사용자 11-12, 11-13)
+    // 알약을 누르지 않아도 다른 동작(마우스를 움직이거나 누르거나 키를 침)을 하면 5초 뒤 지운다 (11-13)
     it('완료가 뜬 뒤 다른 동작을 하면 5초 뒤 데몬에 확인했다고 알리고 사라진다', async () => {
         status.mockResolvedValue(phase('done'));
         const { container } = render(<UpdatePill />);

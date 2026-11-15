@@ -1,5 +1,5 @@
 /**
- * 원격 데몬 쪽 경로 고르기 창 (D2): 원격 데몬을 다루는 중 대화상자 대신 그 PC의 폴더를 보여 준다.
+ * 원격 데몬 쪽 경로 고르기 창: 원격 데몬을 다루는 중 대화상자 대신 그 PC의 폴더를 보여 준다.
  */
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

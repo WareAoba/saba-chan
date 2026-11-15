@@ -1,5 +1,5 @@
 /**
- * G-D7: 에이전트 상태 확인(3초 제한)이 한 번 늦거나 실패했다고 'stopped'로 보이면 안 된다.
+ * 에이전트 상태 확인(3초 제한)이 한 번 늦거나 실패했다고 'stopped'로 보이면 안 된다.
  * 브리지는 모름(unknown)을 따로 주고, 스토어는 릴레이 확인처럼 두 번 연달아 실패해야 꺼짐으로 본다.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';

@@ -106,7 +106,7 @@ export function commandCli(
     return known ? `${prefix} ${words.map(arg).join(' ')}` : `${prefix} ${arg(text)}`;
 }
 
-/** 명령 한 줄과 복사 버튼. 내부 키가 보이므로 '명령줄로 하기'를 펼쳐야 보인다 (사용자 11-06 #27) */
+/** 명령 한 줄과 복사 버튼. 내부 키가 보이므로 '명령줄로 하기'를 펼쳐야 보인다 */
 export function CliText({ line }: { line: string }) {
     const { t } = useTranslation('gui');
     const [copied, setCopied] = useState(false);

@@ -5,7 +5,7 @@ import { initI18n } from '../i18n';
 import { readConsoleFonts } from '../prefs';
 import { mockApi } from './mocks';
 
-// 사용자 11-02: 웹 콘솔도 앱과 같은 글꼴을 글자마다 고른다. 이 브라우저에만 기억한다 (언어·테마처럼)
+// 웹 콘솔도 앱과 같은 글꼴을 글자마다 고른다. 이 브라우저에만 기억한다 (언어·테마처럼)
 beforeAll(() => initI18n('ko'));
 beforeEach(() => localStorage.clear());
 

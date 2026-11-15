@@ -1,5 +1,5 @@
 /**
- * 얇은 클라이언트 점검 7번 (2026-11-12): 설치 진행률을 1.2초마다 묻지 않고 데몬의 `provision.progress` 이벤트로 받는다.
+ * 얇은 클라이언트 점검 7번: 설치 진행률을 1.2초마다 묻지 않고 데몬의 `provision.progress` 이벤트로 받는다.
  * 이벤트가 없는 셸에서만 예전처럼 자주 묻는다.
  */
 import { act, renderHook } from '@testing-library/react';

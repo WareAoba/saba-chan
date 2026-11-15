@@ -12,7 +12,7 @@ import { SabaSpinner } from '../ui/SabaUI';
 import { closeGuide, type GuideStep, openAddServer, startAddServer, useGuideStore } from './guides';
 
 /**
- * 처음 시작하기 (사용자 11-08~10): 서버가 없을 때 서버 화면.
+ * 처음 시작하기: 서버가 없을 때 서버 화면.
  * welcome 디스코드 연결부터 → fork 쓰던 서버 불러오기 / 새로 만들기 → (모듈이 없으면) modules 게임 모듈 받기.
  */
 export function FirstRunGuide({ step }: { step: GuideStep }) {
@@ -39,7 +39,7 @@ export function FirstRunGuide({ step }: { step: GuideStep }) {
                 </button>
                 {step === 'welcome' && (
                     <div className="guide-welcome">
-                        {/* 로딩 화면과 같은 빛 번지는 그라데이션 링 안의 사바쨩 프로필 (사용자 11-10) */}
+                        {/* 로딩 화면과 같은 빛 번지는 그라데이션 링 안의 사바쨩 프로필 */}
                         <div className="guide-hero" aria-hidden="true">
                             <span className="guide-hero-glow" />
                             <span className="guide-hero-ring" />

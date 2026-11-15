@@ -15,7 +15,7 @@ const TITLES: Record<RemotePathRequest['kind'], string> = {
 };
 
 /**
- * 원격 데몬 쪽 경로 고르기 (D2). 원격 데몬을 다루는 동안 대화상자를 여는 브리지 메서드
+ * 원격 데몬 쪽 경로 고르기. 원격 데몬을 다루는 동안 대화상자를 여는 브리지 메서드
  * (openFileDialog·openFolderDialog·dataExport 등)가 이 창을 띄운다. 폴더 목록은 그 데몬이 읽는다 (GET /api/system/browse)
  */
 /** 열려 있는 요청 하나: 고른 경로(또는 취소 null)로 resolve한다 */
@@ -135,7 +135,7 @@ function RemotePathPicker() {
         if (kind === 'save' && replacing !== value) {
             const req = requestRef.current;
             checking.current = true;
-            const res = await window.api.systemBrowse(value, null).catch(() => null);
+            const res = await window.api.systemBrowse(value, null);
             checking.current = false;
             // 묻는 동안 창을 닫았거나 이름·폴더를 바꿨으면 그 답으로 정하지 않는다
             if (requestRef.current !== req || shown.current !== value) return;

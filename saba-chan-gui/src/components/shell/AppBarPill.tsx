@@ -202,7 +202,7 @@ const RING_R = 7;
 const RING_C = 2 * Math.PI * RING_R;
 
 /**
- * 알약 앞의 진행 링. `percent`를 모르면(없으면) 호가 돌며 짧아졌다 길어진다 (사용자 11-13 시안 B).
+ * 알약 앞의 진행 링. `percent`를 모르면(없으면) 호가 돌며 짧아졌다 길어진다.
  * 호는 강조색 두 색 그라데이션으로 칠한다. 그라데이션 이름은 링마다 따로 (알약이 여럿 떠도 겹치지 않게)
  */
 export function PillRing({ percent }: { percent?: number }) {

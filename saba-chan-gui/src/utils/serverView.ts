@@ -41,7 +41,7 @@ export function viewStatus(server: Partial<ServerInfo>, moduleData?: unknown, mo
 
 /**
  * 상태 → StatusChip 색 (tokens.css의 --ok/--stop/--warn/--info).
- * 켜는 중·끄는 중은 떠나온 상태의 색으로 깜빡인다 (사용자 11-11): 켜는 중 = 꺼짐 회색, 끄는 중 = 켜짐 초록. 노랑은 복구 중만
+ * 켜는 중·끄는 중은 떠나온 상태의 색으로 깜빡인다: 켜는 중 = 꺼짐 회색, 끄는 중 = 켜짐 초록. 노랑은 복구 중만
  */
 export type StatusTone = 'ok' | 'stop' | 'warn' | 'info' | 'idle';
 
@@ -177,3 +177,9 @@ export function branchesUnderParents<T extends ServerInfo>(servers: T[]): T[] {
     const grouped = top.flatMap((parent) => [parent, ...servers.filter((s) => branchParentOf(s, servers) === parent)]);
     return grouped.every((s, i) => s === servers[i]) ? servers : grouped;
 }
+
+/** 인스턴스 사용 모드: 서버 공용(길드 레벨 권한)이 기본이고, 전용 멤버면 명단에 든 사람만 조작한다 */
+export type Access = 'shared' | 'members';
+
+export const accessOf = (server: { access?: string | null } | undefined): Access =>
+    server?.access === 'members' ? 'members' : 'shared';

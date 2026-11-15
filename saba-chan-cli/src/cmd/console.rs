@@ -576,7 +576,7 @@ mod tests {
     use serde_json::json;
 
     /// 서버가 멈추면 데몬은 디스크 로그로 바꿔 since를 무시하고 최근 줄을 준다: 이미 찍은 줄은 다시 찍지 않고,
-    /// 마지막으로 본 줄 뒤에 남은 줄(멈추기 직전 출력)만 찍는다 (L53)
+    /// 마지막으로 본 줄 뒤에 남은 줄(멈추기 직전 출력)만 찍는다
     #[test]
     fn a_stop_prints_only_the_disk_lines_after_the_last_one_seen() {
         let memory = Cursor::from(&json!({ "lines": [{ "id": 900, "content": "a" }, { "id": 901, "content": "b" }], "running": true }));
@@ -595,7 +595,7 @@ mod tests {
         assert!(new_lines(None, &disk, &disk, lines).is_empty());
     }
 
-    /// `daemon logs -f`는 데몬이 다시 켜져 번호가 1부터 다시 시작하면 처음부터 다시 읽는다 (L55)
+    /// `daemon logs -f`는 데몬이 다시 켜져 번호가 1부터 다시 시작하면 처음부터 다시 읽는다
     #[test]
     fn a_new_daemon_log_epoch_means_the_daemon_restarted() {
         let seen = log_epoch(&json!({ "lines": [{ "id": 900 }], "epoch": 3 }));

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { areaToLch, lchToArea } from '../components/ui/OklchPicker';
 import { inGamut, maxChroma, oklchToRgb } from '../utils/oklch';
 
-// 색 고르는 판은 삼각형(범위 밖 빈칸) 대신 사각형을 꽉 채운다: 가로 = 그 밝기에서 낼 수 있는 채도의 비율 (사용자 11-11)
+// 색 고르는 판은 삼각형(범위 밖 빈칸) 대신 사각형을 꽉 채운다: 가로 = 그 밝기에서 낼 수 있는 채도의 비율
 describe('OKLCH 판 = 꽉 찬 사각형', () => {
     it('판의 어느 점이든 화면에 낼 수 있는 색이고, 오른쪽 끝은 그 밝기의 최대 채도다', () => {
         for (const h of [0, 90, 200, 270]) {

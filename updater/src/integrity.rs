@@ -5,7 +5,7 @@
 //! 검사(`verify_installed`)는 그 기록만 본다. 네트워크를 쓰지 않는다.
 //! 업데이터가 설치하지 않은 컴포넌트(설치기로 처음 깐 것)는 기록이 없어 결과에 나오지 않는다.
 //!
-//! 신뢰 출처(M12): 서명된 릴리즈 카탈로그에서 받은 컴포넌트 키는 `<데이터 폴더>/official-components.json`에
+//! 신뢰 출처: 서명된 릴리즈 카탈로그에서 받은 컴포넌트 키는 `<데이터 폴더>/official-components.json`에
 //! 따로 적는다(`set_official`). `trust_of`는 "카탈로그에서 받았고 그 뒤로 코드 파일이 그대로인가"를 답한다.
 //! 이것은 설치 출처 표시다. 기록 파일은 서명되지 않으므로, 이미 실행된 코드가 기록을 고쳤다면 막지 못한다.
 
@@ -18,9 +18,7 @@ use std::path::{Path, PathBuf};
 /// 컴포넌트 키 → (파일 절대 경로 → sha256)
 pub type InstalledFiles = BTreeMap<String, BTreeMap<String, String>>;
 
-// ══════════════════════════════════════════════════════
 // 검증 결과 구조체
-// ══════════════════════════════════════════════════════
 
 /// 개별 컴포넌트의 무결성 검증 결과
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -86,9 +84,7 @@ pub enum OverallIntegrity {
     Empty,
 }
 
-// ══════════════════════════════════════════════════════
 // 기록과 검증
-// ══════════════════════════════════════════════════════
 
 /// 기록 파일은 읽고-고치고-쓴다. 같은 프로세스에서 동시에 고치면 한쪽 기록이 사라지므로 차례로 한다
 static RECORDS_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
@@ -500,9 +496,7 @@ fn verify_component(key: &str, files: &BTreeMap<String, String>, hash: fn(&Path)
     result(IntegrityStatus::Verified, None, None, None, format!("{} files match", files.len()))
 }
 
-// ══════════════════════════════════════════════════════
 // SHA256 계산
-// ══════════════════════════════════════════════════════
 
 /// 파일의 SHA256 해시를 계산합니다.
 pub fn compute_sha256(path: &Path) -> Result<String, String> {
@@ -577,7 +571,7 @@ fn component_sort_key(key: &str) -> (u8, String) {
 mod tests {
     use super::*;
 
-    // U-13: 깨진 설치 기록 때문에 기록이 계속 실패하면 모든 모듈·익스텐션이 "다시 받기" 대상으로 남는다
+    // 깨진 설치 기록 때문에 기록이 계속 실패하면 모든 모듈·익스텐션이 "다시 받기" 대상으로 남는다
     #[test]
     fn a_corrupt_record_file_is_set_aside_and_recording_continues() {
         // 잘린 JSON, UTF-8이 아닌 바이트
@@ -656,7 +650,7 @@ mod tests {
         assert_eq!(trust_at(&records, &official, "module-x", &new.join("x")), Trust::Verified);
     }
 
-    /// Codex 재검증 #544: Windows는 ASCII 밖 글자도 대소문자를 가리지 않는다 (`Ä` = `ä`)
+    /// Windows는 ASCII 밖 글자도 대소문자를 가리지 않는다 (`Ä` = `ä`)
     #[cfg(windows)]
     #[test]
     fn a_record_under_the_same_folder_in_other_case_moves_too() {
@@ -710,7 +704,7 @@ mod tests {
         assert_eq!(serde_json::to_value(Trust::Modified).unwrap(), "modified");
     }
 
-    /// Codex #926: 자동 교체는 폴더를 통째로 바꾼다. 사용자가 넣은 파일(설정 등)이 있으면 코드가 아니어도 바꾸지 않는다.
+    /// 자동 교체는 폴더를 통째로 바꾼다. 사용자가 넣은 파일(설정 등)이 있으면 코드가 아니어도 바꾸지 않는다.
     /// 교체가 남기는 것(맨 위의 점 항목, `__pycache__`)은 상관없다
     #[test]
     fn a_folder_with_user_files_is_not_replaced_in_place() {
@@ -815,7 +809,7 @@ mod tests {
         assert!(has_unrecorded_code(&dir, &recorded));
     }
 
-    /// Codex #916: 대소문자를 가리는 폴더에서 `a.py`와 `A.py`는 다른 파일이다. 기록에 없는 쪽을 놓치지 않는다
+    /// 대소문자를 가리는 폴더에서 `a.py`와 `A.py`는 다른 파일이다. 기록에 없는 쪽을 놓치지 않는다
     #[cfg(target_os = "linux")]
     #[test]
     fn a_file_differing_only_in_case_is_unrecorded() {

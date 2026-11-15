@@ -17,7 +17,7 @@ import type { ComponentProps, ComponentType } from 'react';
 /** 시험에 필요한 props만 넘기려고 느슨하게 받는다 */
 const SettingsModal = SettingsModalImpl as ComponentType<Partial<ComponentProps<typeof SettingsModalImpl>>>;
 
-// 사용자 11-02: 콘솔 글꼴을 글자마다 고른다. 기본은 영문 Cascadia, 한글 D2Coding, 일본어 HackGen
+// 콘솔 글꼴을 글자마다 고른다. 기본은 영문 Cascadia, 한글 D2Coding, 일본어 HackGen
 describe('콘솔 글꼴', () => {
     it('기본값과 글자별 후보', () => {
         expect(CONSOLE_FONT_DEFAULTS).toEqual({

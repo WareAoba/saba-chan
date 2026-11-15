@@ -10,7 +10,7 @@ use tracing_subscriber::{fmt, EnvFilter};
 pub fn init(data_dir: &Path) {
     let dir = data_dir.join("logs");
     let file = std::fs::create_dir_all(&dir).ok().and_then(|_| {
-        // main.js와 같은 이름: ISO 시각에서 :·. 를 -로, 밀리초는 뺀다 (UTC)
+        // 파일 이름: ISO 시각에서 :·. 를 -로, 밀리초는 뺀다 (UTC)
         let ts = chrono::Utc::now().format("%Y-%m-%dT%H-%M-%S");
         let path = dir.join(format!("saba-chan-{ts}.log"));
         std::fs::OpenOptions::new()

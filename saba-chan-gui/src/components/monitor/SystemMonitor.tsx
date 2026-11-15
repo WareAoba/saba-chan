@@ -48,7 +48,7 @@ const FLOAT_TIGHT_WIDTH = 320;
 /** 원 크기: 떠 있는 창은 내용을 덜 가리게 조금 작게 */
 const RING_SIZE = { top: 92, side: 100, float: 84 } as const;
 
-/** 서버 페이지에서 모니터를 둘 자리 (사용자 11-11: 끔 · 고정 · 떠 있는 창) */
+/** 서버 페이지에서 모니터를 둘 자리 (끔 · 고정 · 떠 있는 창) */
 export type MonitorPlacement = 'none' | 'top' | 'side' | 'float';
 export function monitorPlacement(mode: SystemMonitorMode, expanded: boolean, width: number): MonitorPlacement {
     if (mode === 'off') return 'none';
@@ -361,7 +361,7 @@ export function SystemMonitor({ layout = 'top', servers = [], float }: SystemMon
 const NO_DRAG = 'button, input, label, a, select, .monitor-pick-panel, .monitor-ports';
 
 /**
- * 떠 있는 시스템 모니터 (사용자 11-11). 서버 페이지 위에 겹쳐 놓고, 끌어 옮기면 가까운 모서리 기준 자리를 설정에 남긴다.
+ * 떠 있는 시스템 모니터. 서버 페이지 위에 겹쳐 놓고, 끌어 옮기면 가까운 모서리 기준 자리를 설정에 남긴다.
  * 모서리 가까이 놓으면 붙고, 창이 줄어 밖으로 밀리면 안쪽으로 돌아온다 (floatPosition.ts)
  */
 export function FloatingMonitor({ servers = [] }: { servers?: Pick<Server, 'id' | 'name'>[] }) {

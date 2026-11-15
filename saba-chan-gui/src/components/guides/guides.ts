@@ -8,7 +8,7 @@ import { safeShowToast } from '../../utils/helpers';
 import { openScreen } from '../../utils/openScreen';
 
 /**
- * 가이드 (사용자 11-08~11).
+ * 가이드.
  *
  * 기능 가이드는 데몬이 준다 (`GET /api/guides`, 데몬 `guides/<이름>/`): 제목·요약·단계(여는 화면·앱이 할 일·짚을 자리·문구),
  * 완료·new!·보던 단계. 서버 목록 아래 가이드 카드(GuideCard)가 안 끝낸 것을 보이고, 고르면 화면 강조(Spotlight)가 단계를 짚는다.

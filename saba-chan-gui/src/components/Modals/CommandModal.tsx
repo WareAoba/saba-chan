@@ -19,7 +19,7 @@ import { commandInputLabel, commandText } from '../../utils/serverView';
 import { isImeKey } from '../../utils/ime';
 
 // 서버 상세의 "명령" 탭 (이름은 옛 모달에서 왔다).
-// 콘솔로 가는 명령은 입력 줄에서 치고(문법 강조·안내), API로 요청하는 명령(rest·module)은 눌러서 칸이 있는 입력 창으로 보낸다 (사용자 11-06 #4)
+// 콘솔로 가는 명령은 입력 줄에서 치고(문법 강조·안내), API로 요청하는 명령(rest·module)은 눌러서 칸이 있는 입력 창으로 보낸다
 interface CommandModalProps {
     server: Server;
     modules: ModuleInfo[];

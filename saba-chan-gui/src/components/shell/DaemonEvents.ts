@@ -21,7 +21,7 @@ const serverUpdateNotice = (text: string, instanceId: string, name: string) => (
 
 /**
  * 데몬 이벤트를 받아 토스트·알림을 띄우고, 서버 상태가 바뀌었을 만한 이벤트면 목록을 다시 읽는다.
- * 그리는 것은 없다. onDaemonEvent가 없으면 마운트하지 않는다 (App.js).
+ * 그리는 것은 없다. onDaemonEvent가 없으면 마운트하지 않는다 (App.tsx).
  */
 export function DaemonEvents({ onServersChanged }: { onServersChanged?: () => void }) {
     const { t } = useTranslation('gui');

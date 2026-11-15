@@ -1,5 +1,5 @@
 /**
- * 포트 충돌 강제 정지 알림은 데몬이 읽어도 지우지 않고 id를 붙여 둔다(L50).
+ * 포트 충돌 강제 정지 알림은 데몬이 읽어도 지우지 않고 id를 붙여 둔다.
  * GUI는 본 마지막 id를 `notices_after`로 실어 그 뒤 알림만 받고, 같은 알림을 두 번 띄우지 않는다.
  */
 import { describe, expect, it, vi } from 'vitest';

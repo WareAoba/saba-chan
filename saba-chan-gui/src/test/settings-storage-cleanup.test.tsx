@@ -1,5 +1,5 @@
 /**
- * 설정 정리 (사용자 10-26):
+ * 설정 정리:
  * - 설정의 익스텐션 탭을 없앤다. 켜기·끄기와 익스텐션 설정은 사바 스토리지 익스텐션 탭에서 한다.
  * - 작업 기록은 설정 탭에 펼쳐 두지 않고 상단 탭의 별도 페이지로 둔다.
  */
@@ -83,7 +83,7 @@ describe('설정에서 익스텐션 탭을 뺀다', () => {
         );
     });
 
-    // 사용자 요청(2026-11-08): 정보는 버튼·오버레이가 아니라 설정 목록의 마지막 탭이다
+    // 정보는 버튼·오버레이가 아니라 설정 목록의 마지막 탭이다
     it('정보 탭을 누르면 그 자리에 정보 페이지가 열린다', async () => {
         render(<SettingsModal />);
         expect(document.querySelector('.settings-about-btn')).toBeNull();
@@ -93,7 +93,7 @@ describe('설정에서 익스텐션 탭을 뺀다', () => {
         expect(document.querySelector('#settings-panel-about .about-scroll-area')).not.toBeNull();
     });
 
-    // 사용자 요청(2026-11-08): 사바 스토리지를 설정 목록의 한 탭으로 뺀다 (뒤로 버튼 없음)
+    // 사바 스토리지를 설정 목록의 한 탭으로 뺀다 (뒤로 버튼 없음)
     it('사바 스토리지 탭을 누르면 그 자리에 열린다', async () => {
         render(<SettingsModal />);
         const tab = screen.getByRole('tab', { name: i18n.t('gui:saba_storage.title') });
@@ -104,7 +104,7 @@ describe('설정에서 익스텐션 탭을 뺀다', () => {
         expect(screen.getAllByRole('tab').length).toBeGreaterThan(3);
     });
 
-    // 사용자 요청(2026-11-06): 고급에 몰린 설정을 여러 탭으로 나눈다 (옮기기만, 설정 자체는 그대로)
+    // 고급에 몰린 설정을 여러 탭으로 나눈다 (옮기기만, 설정 자체는 그대로)
     it('설정을 갈래별 탭에 나눠 둔다', async () => {
         render(<SettingsModal />);
         const open = async (key: string) => {

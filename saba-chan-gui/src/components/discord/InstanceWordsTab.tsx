@@ -91,7 +91,7 @@ function InstanceCard({ inst, onSaved }: InstanceCardProps) {
 
     return (
         <section className="dc-card">
-            {/* 다른 서버 탭(설정·유지보수)과 같은 카드: 제목·설명이 카드 안에 (사용자 11-07) */}
+            {/* 다른 서버 탭(설정·유지보수)과 같은 카드: 제목·설명이 카드 안에 */}
             <div className="dc-card-head">
                 <h2 className="ss-card-title" data-find="name">
                     <Icon name="discord" size="sm" /> {t('discord.iw_title')}
@@ -151,7 +151,7 @@ function InstanceCard({ inst, onSaved }: InstanceCardProps) {
                 })}
             </div>
 
-            {/* 긴 명령 목록 맨 아래가 아니라 화면 아래에 붙는 막대 (사용자 11-06 #9) */}
+            {/* 긴 명령 목록 맨 아래가 아니라 화면 아래에 붙는 막대 */}
             {dirty && (
                 <SaveBar
                     dirty

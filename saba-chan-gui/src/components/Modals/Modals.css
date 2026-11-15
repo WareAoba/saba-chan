@@ -51,22 +51,6 @@
     }
 }
 
-.modal-title {
-    font-size: calc(17px * var(--font-scale));
-    font-weight: 600;
-    margin: var(--sp-2-5) 0;
-    color: var(--text-1);
-}
-
-.modal-message {
-    font-size: calc(13px * var(--font-scale));
-    color: var(--text-2);
-    margin: 0 0 var(--sp-4) 0;
-    line-height: 1.5;
-    white-space: pre-line;
-    word-wrap: break-word;
-}
-
 .modal-detail {
     font-size: calc(12px * var(--font-scale));
     color: var(--text-3);
@@ -79,7 +63,7 @@
     border-left: 3px solid var(--line);
 }
 
-/* ===== Context Menu (components/ui/ContextMenu.js) ===== */
+/* ===== Context Menu (components/ui/ContextMenu.tsx) ===== */
 .context-menu {
     position: fixed;
     z-index: 9999;
@@ -450,8 +434,7 @@
     animation: fadeOut 0.22s ease-in forwards;
 }
 
-.modal-overlay.closing .modal,
-.modal-overlay.closing .modal-content {
+.modal-overlay.closing .modal {
     animation: slideDown 0.22s ease-in forwards;
 }
 
@@ -990,9 +973,7 @@
     color: var(--stop);
 }
 
-/* ═══════════════════════════════════════════════ */
 /* UpdateModal — 인앱 업데이트 모달                     */
-/* ═══════════════════════════════════════════════ */
 
 .update-mock-toggle {
     display: flex;
@@ -1044,19 +1025,6 @@
     background: color-mix(in oklab, var(--ok) 6%, transparent);
 }
 
-.update-modal-status {
-    display: flex;
-    align-items: center;
-    gap: var(--sp-2);
-    padding: var(--sp-2) var(--sp-4);
-    font-size: calc(13px * var(--font-scale));
-    font-weight: 500;
-}
-
-.update-modal-status.success {
-    color: var(--ok);
-}
-
 /* 하위 스위치가 딸린 설정 항목 (효과음 종류별) */
 .setting-item-group {
     flex-direction: column;
@@ -1087,9 +1055,7 @@
     color: var(--text-2);
 }
 
-/* ═══════════════════════════════════════════════ */
 /* 클릭 가능한 설정 항목                             */
-/* ═══════════════════════════════════════════════ */
 
 .setting-item-clickable {
     cursor: pointer;
@@ -1106,7 +1072,6 @@
     pointer-events: none;
 }
 
-/* ═══════════════════════════════════════════════ */
 /* UpdatePanel — 설정 모달 내부 업데이트 패널        */
 
 .update-panel-header {
@@ -1190,7 +1155,7 @@
     color: var(--text-3);
 }
 
-/* ── Extension Store & Version Management ───────────────────── */
+/* ── Extension Store & Version Management ── */
 
 .ss-card {
     display: flex;
@@ -1839,9 +1804,7 @@
     color: var(--stop) !important;
 }
 
-/* ═══════════════════════════════════════════════════════════
-   Theme Customization — Accent Presets, Color Picker, Sliders
-   ═══════════════════════════════════════════════════════════ */
+/* Theme Customization — Accent Presets, Color Picker, Sliders */
 
 .setting-item-vertical {
     flex-direction: column;
@@ -2190,7 +2153,7 @@
     text-overflow: ellipsis;
     white-space: nowrap;
 }
-/* 내 PC 카드 (사용자 11-13): 이름은 한 줄을 혼자 쓰고, 상태·OS·판은 그 아래 한 줄. 값 목록은 가는 선으로 나눈다 */
+/* 내 PC 카드: 이름은 한 줄을 혼자 쓰고, 상태·OS·판은 그 아래 한 줄. 값 목록은 가는 선으로 나눈다 */
 .remote-pc-card .remote-pc-top {
     align-items: flex-start;
     gap: var(--sp-3);
@@ -2487,7 +2450,7 @@
     color: var(--stop);
 }
 
-/* 불러오기 설명 (사용자 11-08~10): 켜져 있음 경고, 파일 둘 곳, 바뀌는 것, 편해지는 점 */
+/* 불러오기 설명: 켜져 있음 경고, 파일 둘 곳, 바뀌는 것, 편해지는 점 */
 .mg-notices {
     display: flex;
     flex-direction: column;

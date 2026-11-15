@@ -7,9 +7,7 @@ use tokio::sync::RwLock;
 use saba_chan_installer_core::{release, uninstall, InstallHooks, InstallOptions, InstallProgress, ModuleInfo, SetupOptions, VerifiedRelease};
 use crate::elevate::elevate_create_dir;
 
-// ═══════════════════════════════════════════════════════
 // 타입
-// ═══════════════════════════════════════════════════════
 
 /// 인스톨러 전역 상태
 #[derive(Debug)]
@@ -68,9 +66,7 @@ pub struct AppMode {
 
 type SharedState = Arc<RwLock<InstallerState>>;
 
-// ═══════════════════════════════════════════════════════
 // Tauri 커맨드 — 상태
-// ═══════════════════════════════════════════════════════
 
 #[tauri::command]
 async fn get_installer_state(state: State<'_, SharedState>) -> Result<serde_json::Value, String> {
@@ -157,9 +153,7 @@ async fn set_selected_modules(
     Ok(())
 }
 
-// ═══════════════════════════════════════════════════════
 // Tauri 커맨드 — 모듈
-// ═══════════════════════════════════════════════════════
 
 #[tauri::command]
 async fn get_available_modules(state: State<'_, SharedState>) -> Result<Vec<ModuleInfo>, String> {
@@ -185,9 +179,7 @@ async fn get_available_modules(state: State<'_, SharedState>) -> Result<Vec<Modu
     Ok(modules)
 }
 
-// ═══════════════════════════════════════════════════════
-// Tauri 커맨드 — 릴리즈 (relay 서명 manifest, U10)
-// ═══════════════════════════════════════════════════════
+// Tauri 커맨드 — 릴리즈 (relay 서명 manifest)
 
 #[tauri::command]
 async fn fetch_latest_release(
@@ -207,9 +199,7 @@ async fn fetch_latest_release(
     Ok(info)
 }
 
-// ═══════════════════════════════════════════════════════
 // Tauri 커맨드 — 설치 실행
-// ═══════════════════════════════════════════════════════
 
 /// 설치와 제거는 한 번에 하나만 돈다 (두 번 누르면 같은 임시 폴더·설치 폴더를 함께 쓴다)
 static WORK_BUSY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
@@ -332,9 +322,7 @@ impl InstallHooks for WindowHooks {
     }
 }
 
-// ═══════════════════════════════════════════════════════
 // Tauri 커맨드 — 제거
-// ═══════════════════════════════════════════════════════
 
 #[tauri::command]
 async fn start_uninstall(app: AppHandle, keep_settings: bool, keep_instances: bool) -> Result<(), String> {
@@ -385,9 +373,7 @@ async fn launch_app(state: State<'_, SharedState>) -> Result<(), String> {
     }
 }
 
-// ═══════════════════════════════════════════════════════
 // Tauri 커맨드 — 언어
-// ═══════════════════════════════════════════════════════
 
 #[tauri::command]
 async fn browse_folder(app: AppHandle) -> Result<Option<String>, String> {

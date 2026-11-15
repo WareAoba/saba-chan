@@ -32,7 +32,7 @@ describe('설치 실패 문구', () => {
         expect(installFailureText(t, { restore_failed: ['PalServer'], message: 'm' }, translate)).toBe('tr(m)');
     });
 
-    // 리뷰 630 P3-1: 모듈 오류의 낱말(timed out 등) 때문에 토스트 전체가 일반 문구로 바뀌어 남긴 사본 안내가 사라졌다.
+    // 모듈 오류의 낱말(timed out 등) 때문에 토스트 전체가 일반 문구로 바뀌어 남긴 사본 안내가 사라졌다.
     // 데몬 #533(dc0849d9)부터 500도 restore_failed·kept_backups를 싣는다: 그 칸으로 보이고 모듈 오류만 번역한다
     it('500 오류의 되돌리지 못한 파일 안내는 번역에 묻히지 않는다', () => {
         const res = {
@@ -47,7 +47,7 @@ describe('설치 실패 문구', () => {
     });
 });
 
-// F7: 서버 목록의 "새로 설치"와 설정 화면의 버전 설치가 같은 답을 같은 문구로 보인다
+// 서버 목록의 "새로 설치"와 설정 화면의 버전 설치가 같은 답을 같은 문구로 보인다
 describe('설치 답 해석 (installFailure)', () => {
     it('성공이면 문구가 없다', () => {
         expect(installFailure(t, { success: true, version: '1.0' }, translate)).toBeNull();

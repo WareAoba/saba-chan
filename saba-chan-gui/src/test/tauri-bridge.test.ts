@@ -91,7 +91,7 @@ describe('Tauri 브리지 설치', () => {
 });
 
 describe('데몬 응답 가공', () => {
-    // F8: 에이전트 상태는 데몬이 정한 `state`를 그대로 쓴다 (오류 코드를 다시 해석하지 않는다)
+    // 에이전트 상태는 데몬이 정한 `state`를 그대로 쓴다 (오류 코드를 다시 해석하지 않는다)
     it('디스코드 에이전트 상태는 데몬의 state를 따른다', async () => {
         const { api } = await install({
             daemon_request: daemon({ 'GET /api/relay/agent': { status: 200, data: { state: 'replaced', running: false, lastErrorCode: 'something_new' } } }),
@@ -131,7 +131,6 @@ describe('데몬 응답 가공', () => {
                     return { status: 200, data: { success: true } };
                 },
             }),
-            refresh_ipc_base: null,
         });
         const first = api.settingsSave({ theme: 'old' });
         const second = api.settingsSave({ theme: 'new' });
@@ -142,7 +141,7 @@ describe('데몬 응답 가공', () => {
         expect(puts).toEqual(['old', 'new']);
     });
 
-    // 데몬이 잠근 채 합친다. GET으로 읽어 통째로 보내면 그 사이 CLI가 바꾼 값을 되돌린다 (Codex 10-21 #2)
+    // 데몬이 잠근 채 합친다. GET으로 읽어 통째로 보내면 그 사이 CLI가 바꾼 값을 되돌린다
     it('데몬이 응답하면 바꾼 키만 PATCH하고 미리 읽지 않는다', async () => {
         const bodies: Loose[] = [];
         const get = vi.fn(() => ({ status: 200, data: { theme: 'light', language: 'en' } }));
@@ -184,7 +183,6 @@ describe('데몬 응답 가공', () => {
             daemon_request: daemon({
                 'PATCH /api/config/gui': { status: 200, data: { success: true } },
             }),
-            refresh_ipc_base: null,
         });
         expect(await api.settingsSave({ ipcPort: 57475 })).toBe(true);
         expect(tauri.invoke.mock.calls.map((c) => c[0])).not.toContain('refresh_ipc_base');

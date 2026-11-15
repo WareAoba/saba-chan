@@ -9,7 +9,7 @@ describe('채널 배정 변환', () => {
         expect(channelsPatch(saved, { chatbot: [], music: null })).toEqual({ chatbot: [], music: null });
     });
 
-    it('게임 채팅·상황판은 채널 목록 — 바꾼 것만, 순서만 다르면 보내지 않는다 (사용자 11-04)', () => {
+    it('게임 채팅·상황판은 채널 목록 — 바꾼 것만, 순서만 다르면 보내지 않는다', () => {
         const saved = { chatbot: [], music: null, gameChat: ['1'], board: [] };
         expect(channelsPatch(saved, { ...saved, gameChat: ['1', '2'] })).toEqual({ gameChat: ['1', '2'] });
         expect(channelsPatch({ ...saved, gameChat: ['1', '2'] }, { ...saved, gameChat: ['2', '1'] })).toEqual({});

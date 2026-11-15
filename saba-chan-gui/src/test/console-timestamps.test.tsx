@@ -1,5 +1,5 @@
 /**
- * 콘솔 시각 표시 (사용자 10-27): 끔 / 24시간 / 12시간, 날짜 함께. 데몬이 준 줄 시각(unix 초)을 이 PC 시간대로 보인다
+ * 콘솔 시각 표시: 끔 / 24시간 / 12시간, 날짜 함께. 데몬이 준 줄 시각(unix 초)을 이 PC 시간대로 보인다
  */
 import { render } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
