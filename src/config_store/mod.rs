@@ -452,15 +452,20 @@ pub struct BotConfig {
     pub new_guild_instances: NewGuildInstances,
     /// 백업 결과를 PC 주인에게 DM으로 알리는 범위 (`failures`면 실패만). 릴레이가 하트비트 `backupNotice`로 거른다
     pub backup_notice: BackupNotice,
+    /// 백업 DM 기본값을 `failures`로 바꾼 뒤 옛 값을 한 번 옮겼는가 (`BotConfig::normalize`)
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub(crate) backup_notice_moved: bool,
     /// PC 주인 DM 알림을 종류별로 켜고 끈다. 백업은 `backup_notice`가 맡는다.
     /// 릴레이가 하트비트 `dmOff`(끈 종류)·`dmOn`(켜야 보내는 종류 중 켠 것)으로 거른다
     pub dm_notice: DmNotice,
 }
 
-/// PC 주인 DM 알림 종류별 켜짐 (`BotConfig::dm_notice`). 빠진 칸은 켜짐이다 (`offline`만 꺼짐)
+/// PC 주인 DM 알림 종류별 켜짐 (`BotConfig::dm_notice`). 빠진 칸은 켜짐이다 (`enabled`·`offline`만 꺼짐)
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct DmNotice {
+    /// DM 알림 전체 스위치. 꺼져 있으면 아래 종류와 백업 DM 모두 보내지 않는다 (사용자 2026-11-15, 기본 꺼짐)
+    pub enabled: bool,
     /// 비정상 종료 (`instance.exit`)
     pub crash: bool,
     /// 켜져 있지만 응답 없음 (`instance.unresponsive`)
@@ -484,6 +489,7 @@ pub struct DmNotice {
 impl Default for DmNotice {
     fn default() -> Self {
         Self {
+            enabled: false,
             crash: true,
             unresponsive: true,
             external_start: true,
@@ -515,9 +521,9 @@ impl DmNotice {
         .collect()
     }
 
-    /// 켜야 보내는 종류 중 켠 것 (하트비트 `dmOn`)
+    /// 켜야 보내는 것 중 켠 것 (하트비트 `dmOn`): 전체 스위치 `all`과 PC 연결 끊김 `offline`
     pub fn on_kinds(&self) -> Vec<&'static str> {
-        if self.offline { vec!["offline"] } else { Vec::new() }
+        [("all", self.enabled), ("offline", self.offline)].into_iter().filter_map(|(k, on)| on.then_some(k)).collect()
     }
 }
 
@@ -526,9 +532,9 @@ impl DmNotice {
 #[serde(rename_all = "lowercase")]
 pub enum BackupNotice {
     /// 성공·실패 모두
-    #[default]
     All,
-    /// 실패만
+    /// 실패만 (기본: 예약·업데이트 전 백업마다 DM이 가지 않게, 사용자 2026-11-15)
+    #[default]
     Failures,
     /// 보내지 않는다
     Off,
@@ -569,7 +575,8 @@ impl Default for BotConfig {
             cloud_members: HashMap::new(),
             translate_commands: true,
             new_guild_instances: NewGuildInstances::Auto,
-            backup_notice: BackupNotice::All,
+            backup_notice: BackupNotice::Failures,
+            backup_notice_moved: true,
             dm_notice: DmNotice::default(),
         }
     }
@@ -589,6 +596,13 @@ impl BotConfig {
             }
         }
         self.prefixes = self.prefixes.iter().map(|p| p.trim().to_string()).collect();
+        // 옛 기본값 `all`은 고르지 않고 저장된 값이 대부분이라 새 기본값으로 한 번 옮긴다. 옮긴 뒤 고른 `all`은 그대로 둔다
+        if !self.backup_notice_moved {
+            if self.backup_notice == BackupNotice::All {
+                self.backup_notice = BackupNotice::Failures;
+            }
+            self.backup_notice_moved = true;
+        }
     }
 
     /// 접두사는 공백 없는 1~32자, 10개까지
@@ -1326,6 +1340,18 @@ mod tests {
         assert_eq!(store.get_gui_settings().await.font_scale, 100);
     }
 
+    /// 백업 DM 기본값은 실패만이다. 옛 파일의 `all`(대부분 고르지 않은 옛 기본값)은 한 번 옮기고, 그 뒤 고른 `all`은 남긴다
+    #[tokio::test]
+    async fn an_old_backup_notice_moves_to_failures_once() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(ConfigStore::new(dir.path()).get_bot_config().await.backup_notice, BackupNotice::Failures);
+        std::fs::write(dir.path().join("config.json"), r#"{"relay": {"backupNotice": "all"}}"#).unwrap();
+        let store = ConfigStore::new(dir.path());
+        assert_eq!(store.get_bot_config().await.backup_notice, BackupNotice::Failures);
+        store.set_bot_config_from_json(serde_json::json!({"backupNotice": "all"})).await.unwrap();
+        assert_eq!(ConfigStore::new(dir.path()).get_bot_config().await.backup_notice, BackupNotice::All);
+    }
+
     #[tokio::test]
     async fn ui_language_follows_the_os_until_one_is_chosen() {
         let dir = tempfile::tempdir().unwrap();
@@ -1587,7 +1613,9 @@ mod tests {
     #[test]
     fn bot_config_missing_fields_use_defaults() {
         let loaded: BotConfig = serde_json::from_str("{}").unwrap();
-        assert_eq!(loaded, BotConfig::default());
+        // 표시가 없는 파일은 옛 파일이다: 백업 DM 값을 한 번 옮긴다 (`normalize`)
+        assert!(!loaded.backup_notice_moved);
+        assert_eq!(BotConfig { backup_notice_moved: true, ..loaded }, BotConfig::default());
     }
 
     #[test]

@@ -154,7 +154,7 @@
     "delete_hint": "서버 설정과 파일을 지웁니다.",
     "stop_first": "서버를 정지한 뒤에 할 수 있습니다.",
     "save_failed": "저장 실패",
-    "reload": "바뀐 값 불러오기"
+    "reload": "새로 고침"
   },
   "backups": {
     "create": "지금 백업",
@@ -467,7 +467,7 @@
       "only_self": "사바쨩 글만",
       "only_other_bots": "다른 봇 글만",
       "only_bots": "봇 글만",
-      "clearing": "이어 지우는 중",
+      "clearing": "삭제 중",
       "clearing_back": "이어 지우는 중 · {{time}} 전까지",
       "clearing_back_long": "{{time}} 전 기록까지 지우는 중…",
       "slow_for": "슬로우 기간",
@@ -530,7 +530,7 @@
       "desc": "제재, 채널 잠금, 청소"
     },
     "load_failed": "설정 읽기 실패. 연결을 확인하고 다시 읽어 주세요.",
-    "retry": "다시 읽기",
+    "retry": "다시 시도",
     "guilds_failed": "디스코드 서버 목록 읽기 실패. 연결을 확인하고 다시 읽어 주세요.",
     "api_key_pc_hint": "이 PC의 키입니다. 이 PC에 연결된 모든 디스코드 서버가 함께 씁니다.",
     "channel_notify": "알림 채널",

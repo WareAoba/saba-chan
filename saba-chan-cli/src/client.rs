@@ -1776,6 +1776,9 @@ mod route_coverage {
     /// 데몬 라우트 중 CLI가 부르지 않는 것과 그 까닭. 여기 없는 라우트는 모두 CLI(그래서 TUI)에서 닿아야 한다
     const NOT_FOR_CLI: &[(&str, &str)] = &[
         ("/api/client/register", "GUI 창 수명 (CLI는 한 번 돌고 끝난다)"),
+        ("/api/system/storage", "설정 › 저장 공간의 디스크·사바쨩 파일 크기 (CLI 명령은 화면 시안을 거쳐 따로 붙인다)"),
+        ("/api/system/storage/move", "설정 › 저장 공간의 파일 이동 (CLI는 `config move`로 모듈·익스텐션 폴더를 옮긴다. 서버 폴더 옮기기 명령은 시안을 거쳐 따로 붙인다)"),
+        ("/api/system/storage/move/cancel", "파일 이동 취소 (위와 같다)"),
         ("/api/system/uninstall", "짝 맺은 PC가 원격으로 부르는 제거 (CLI는 `remote remove --uninstall`이 그 PC에 보내고, 이 PC는 `uninstall`)"),
         ("/api/chatbot/common", "원격(디스코드 `/설정` 사바쨩 전체)용 모델·키만 바꾸기 (CLI는 `PUT /api/chatbot`으로 같은 값을 바꾼다)"),
         ("/api/updates/install", "원격(디스코드 `/사바쨩 업데이트`)용 한 번에 받고 적용 (CLI `update`는 단계마다 진행을 보인다)"),

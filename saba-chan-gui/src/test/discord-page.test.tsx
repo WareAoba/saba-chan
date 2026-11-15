@@ -125,7 +125,7 @@ describe('DiscordPage', () => {
         window.api.discordSettingsGet = vi.fn().mockResolvedValue({ guildId: 'g1', locale: 'auto', sleepBlocks: [], music: {} }) as never;
         window.api.discordSettingsSet = vi.fn() as never;
         await act(async () => render(<Harness save={vi.fn()} mods={[]} />));
-        await waitFor(() => expect(document.querySelectorAll('.dc-nav-row')).toHaveLength(2));
+        await waitFor(() => expect(document.querySelectorAll('.dc-nav-row')).toHaveLength(3));
         const nodeRow = [...document.querySelectorAll('.dc-nav-row')].find((b) => b.textContent.includes('사바 마을'));
         await act(async () => fireEvent.click(nodeRow as Element));
         await act(async () => fireEvent.click(screen.getByRole('tab', { name: /Bot|봇/ })));
@@ -158,6 +158,15 @@ describe('DiscordPage', () => {
         await act(async () => fireEvent.click(document.querySelectorAll('.dc-nav-row')[1]));
         expect(await screen.findByRole('heading', { name: /Saba-chan settings/ })).toBeTruthy();
         delete (window.api as Partial<typeof window.api>).chatbotGet;
+    });
+
+    // 사용자 11-15: DM 알림 카드가 사바쨩 설정에 있으므로, 말하는 사바쨩을 쓸 수 없는 PC 에도 메뉴가 보인다
+    it('말하는 사바쨩 브리지가 없어도 사바쨩 설정 메뉴가 있고, DM 알림 카드만 보인다', async () => {
+        useDiscordStore.setState({ _botConfigLoaded: true });
+        await act(async () => render(<Harness save={vi.fn()} />));
+        await waitFor(() => expect(document.querySelectorAll('.dc-nav-row')).toHaveLength(3));
+        await act(async () => fireEvent.click(document.querySelectorAll('.dc-nav-row')[1]));
+        expect(await screen.findByRole('heading', { name: 'DM alerts' })).toBeTruthy();
     });
 
     it('설정을 아직 읽지 못했으면 연결 버튼 없이 연결 확인 중을 보인다', async () => {
@@ -193,7 +202,7 @@ describe('DiscordPage', () => {
         })) as never;
         const save = vi.fn();
         await act(async () => render(<Harness save={save} />));
-        await waitFor(() => expect(document.querySelectorAll('.dc-nav-row')).toHaveLength(2));
+        await waitFor(() => expect(document.querySelectorAll('.dc-nav-row')).toHaveLength(3));
         const nodeRow = [...document.querySelectorAll('.dc-nav-row')].find((b) => b.textContent.includes('사바 마을'));
         await act(async () => fireEvent.click(nodeRow as Element));
         // 인스턴스 탭(첫 탭)에서 "고른 것만"으로 바꾼다
@@ -217,7 +226,7 @@ describe('DiscordPage', () => {
         window.api.guildFullNoticeSave = vi.fn(saved) as never;
         const save = vi.fn();
         await act(async () => render(<Harness save={save} />));
-        await waitFor(() => expect(document.querySelectorAll('.dc-nav-row')).toHaveLength(2));
+        await waitFor(() => expect(document.querySelectorAll('.dc-nav-row')).toHaveLength(3));
         const nodeRow = [...document.querySelectorAll('.dc-nav-row')].find((b) => b.textContent.includes('사바 마을'));
         await act(async () => fireEvent.click(nodeRow as Element));
         // 서버마다 켜짐·꺼짐 알림(종)과 자리 꽉 참 알림 두 칸
@@ -240,7 +249,7 @@ describe('DiscordPage', () => {
         const { openScreen } = await import('../utils/openScreen');
         window.api.permissionsGet = vi.fn().mockResolvedValue({ guildId: 'g1', members: {}, preset: 'default' });
         await act(async () => render(<Harness save={vi.fn()} />));
-        await waitFor(() => expect(document.querySelectorAll('.dc-nav-row')).toHaveLength(2));
+        await waitFor(() => expect(document.querySelectorAll('.dc-nav-row')).toHaveLength(3));
         await act(async () => openScreen('discord/g1/members'));
         expect(screen.getByRole('tab', { name: /^(Members|멤버)$/ }).getAttribute('aria-selected')).toBe('true');
         expect(window.showToast).not.toHaveBeenCalled();
@@ -248,7 +257,7 @@ describe('DiscordPage', () => {
 
     it('멤버 목록을 다시 받다 실패하면 받아 둔 목록을 지우지 않고 알린다', async () => {
         await act(async () => render(<Harness save={vi.fn()} />));
-        await waitFor(() => expect(document.querySelectorAll('.dc-nav-row')).toHaveLength(2));
+        await waitFor(() => expect(document.querySelectorAll('.dc-nav-row')).toHaveLength(3));
         const nodeRow = [...document.querySelectorAll('.dc-nav-row')].find((b) => b.textContent.includes('사바 마을'));
         await act(async () => fireEvent.click(nodeRow as Element));
         await openMemberLevels();
@@ -271,7 +280,7 @@ describe('DiscordPage', () => {
             reason: 'bot_unavailable',
         }) as never;
         await act(async () => render(<Harness save={vi.fn()} />));
-        await waitFor(() => expect(document.querySelectorAll('.dc-nav-row')).toHaveLength(2));
+        await waitFor(() => expect(document.querySelectorAll('.dc-nav-row')).toHaveLength(3));
         const nodeRow = [...document.querySelectorAll('.dc-nav-row')].find((b) => b.textContent.includes('사바 마을'));
         await act(async () => fireEvent.click(nodeRow as Element));
         await openMemberLevels();

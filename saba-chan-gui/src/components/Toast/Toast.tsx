@@ -2,6 +2,7 @@ import clsx from 'clsx';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import type { ToastOptions, ToastType } from '../../types/global';
+import { deferDuringOpening } from '../../utils/opening';
 import { Icon } from '../Icon';
 import './Toast.css';
 
@@ -86,6 +87,8 @@ function Toast() {
         // options.isNotice = true 이면 알림 모달에도 저장
         // options.source = 'saba-chan' | 서버 모듈 이름
         window.showToast = (message, type = 'info', duration = 3000, options = {}) => {
+            // 오프닝 중에는 끝난 뒤에 띄운다 (알림함 기록도 그때)
+            if (deferDuringOpening(() => window.showToast?.(message, type, duration, options))) return -1;
             const id = Date.now() + Math.random();
             const newToast = { id, message, type, isStatus: false, action: options.action };
             setToasts((prev) => [...prev, newToast]);

@@ -30,7 +30,7 @@ describe('DataTransferSection', () => {
             dryRun ? preview(overwrite) : { ...preview(overwrite), dryRun: false },
         ) as never;
         render(<DataTransferSection />);
-        fireEvent.click(screen.getByRole('button', { name: /Choose file to import/ }));
+        fireEvent.click(screen.getByRole('button', { name: 'Import' }));
         expect(await screen.findByText(/Skip Beta \(a server with the same ID exists\)/)).toBeTruthy();
 
         // 재미리보기가 실패하면 토글을 되돌린다

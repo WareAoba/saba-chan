@@ -744,12 +744,12 @@ fn new_guild_mode(cfg: &Value) -> &'static str {
     if cfg.get("newGuildInstances").and_then(Value::as_str) == Some("manual") { "manual" } else { "auto" }
 }
 
-/// 봇 설정의 `backupNotice` (없거나 모르는 값이면 데몬 기본 `all`)
+/// 봇 설정의 `backupNotice` (없거나 모르는 값이면 데몬 기본 `failures`)
 fn backup_notice_mode(cfg: &Value) -> &'static str {
     match cfg.get("backupNotice").and_then(Value::as_str) {
-        Some("failures") => "failures",
+        Some("all") => "all",
         Some("off") => "off",
-        _ => "all",
+        _ => "failures",
     }
 }
 
@@ -1275,11 +1275,11 @@ mod tests {
     }
 
     #[test]
-    fn backup_notice_mode_falls_back_to_all() {
+    fn backup_notice_mode_falls_back_to_failures() {
         use serde_json::json;
-        assert_eq!(super::backup_notice_mode(&json!({ "backupNotice": "failures" })), "failures");
-        assert_eq!(super::backup_notice_mode(&json!({ "backupNotice": "x" })), "all");
-        assert_eq!(super::backup_notice_mode(&json!({})), "all");
+        assert_eq!(super::backup_notice_mode(&json!({ "backupNotice": "all" })), "all");
+        assert_eq!(super::backup_notice_mode(&json!({ "backupNotice": "x" })), "failures");
+        assert_eq!(super::backup_notice_mode(&json!({})), "failures");
         assert_eq!(super::backup_notice_mode(&json!({ "backupNotice": "off" })), "off");
     }
 
@@ -1293,7 +1293,8 @@ mod tests {
         assert_eq!(s["unresponsive"], true);
         assert_eq!(s["offline"], false, "PC 연결 끊김은 켜야 보낸다");
         assert_eq!(super::dm_notice_states(&json!({ "dmNotice": { "offline": true } }))["offline"], true);
-        assert_eq!(s.as_object().unwrap().len(), 9);
+        assert_eq!(s["enabled"], false, "DM 알림 전체 스위치는 기본 꺼짐");
+        assert_eq!(s.as_object().unwrap().len(), 10);
     }
 
     use super::*;

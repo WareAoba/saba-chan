@@ -36,15 +36,17 @@ export const DM_NOTICE_KINDS = [
     'moderation',
 ] as const;
 export type DmNoticeKind = (typeof DM_NOTICE_KINDS)[number];
-export type DmNotice = Record<DmNoticeKind, boolean>;
-/** 데몬 값 → 종류별 켜짐. 빠지거나 모르는 칸은 데몬 기본(켜짐. PC 연결 끊김 `offline`만 켜야 보낸다) */
+/** 종류별 켜짐과 전체 스위치 `enabled` */
+export type DmNotice = Record<DmNoticeKind, boolean> & { enabled: boolean };
+/** 데몬 값 → 종류별 켜짐. 빠지거나 모르는 칸은 데몬 기본(켜짐. 전체 스위치 `enabled`와 PC 연결 끊김 `offline`만 켜야 보낸다) */
 export function readDmNotice(raw: unknown): DmNotice {
     const src = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
-    return Object.fromEntries(
-        DM_NOTICE_KINDS.map((k) => [k, k === 'offline' ? src[k] === true : src[k] !== false]),
-    ) as DmNotice;
+    return {
+        ...Object.fromEntries(DM_NOTICE_KINDS.map((k) => [k, k === 'offline' ? src[k] === true : src[k] !== false])),
+        enabled: src.enabled === true,
+    } as DmNotice;
 }
-const readBackupNotice = (raw: unknown): BackupNotice => (raw === 'failures' || raw === 'off' ? raw : 'all');
+const readBackupNotice = (raw: unknown): BackupNotice => (raw === 'all' || raw === 'off' ? raw : 'failures');
 
 // bot-config 최상위 키 ↔ 스토어 필드. 바뀐 칸만 PATCH(JSON Merge Patch)로 보낸다:
 // 다른 경로(CLI·원격·다른 길드 설정)가 그사이 바꾼 값을 옛 스냅샷으로 되돌리지 않게
@@ -162,7 +164,7 @@ const initialState = (): DiscordData => ({
     // 페어링 코드로 새로 묶인 디스코드 서버에 이 PC의 서버를 바로 열지('auto') 나중에 고를지('manual') (데몬 기본 auto)
     discordNewGuildInstances: 'auto',
     // 백업 결과 DM: 모두('all')·실패만('failures')·끄기('off') (데몬 기본 all)
-    discordBackupNotice: 'all',
+    discordBackupNotice: 'failures',
     // DM 알림 종류별 켜짐 (데몬 기본 모두 켬)
     discordDmNotice: readDmNotice(null),
 

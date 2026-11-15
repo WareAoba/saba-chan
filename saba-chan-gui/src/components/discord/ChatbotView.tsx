@@ -8,6 +8,7 @@ import { Icon } from '../Icon';
 import { SabaFail } from '../ui/SabaArt';
 import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { StatusChip } from '../ui/StatusChip';
+import { DmNoticeCard } from './DmNoticeCard';
 import { PROVIDER_BRANDS } from './providerBrands';
 import type { DiscordNode } from './types';
 import { failed } from '../../utils/apiResult';
@@ -251,9 +252,11 @@ export function ChatbotView({ nodes = [] }: ChatbotViewProps) {
         }
     }, [t]);
 
+    // 말하는 사바쨩을 쓸 수 없는 PC 도 이 화면에 온다 (DM 알림 카드)
+    const available = chatbotAvailable();
     useEffect(() => {
-        load();
-    }, [load]);
+        if (available) load();
+    }, [available, load]);
 
     const nameOf = (id: string) => nodes.find((n) => n.guildId === id)?.guildName || id;
     const guildIds = data ? [...new Set([...nodes.map((n) => n.guildId), ...Object.keys(data.guilds || {})])] : [];
@@ -267,7 +270,7 @@ export function ChatbotView({ nodes = [] }: ChatbotViewProps) {
                 <p className="muted">{t('chatbot.saba_desc')}</p>
             </header>
             {loadError && <SabaFail message={loadError} onRetry={load} retryLabel={t('maintenance.retry')} />}
-            {!data && !loadError && <SabaSpinner />}
+            {available && !data && !loadError && <SabaSpinner />}
             {data && (
                 <>
                     {data.pendingRelayDelete && (
@@ -299,6 +302,7 @@ export function ChatbotView({ nodes = [] }: ChatbotViewProps) {
                     />
                 </>
             )}
+            <DmNoticeCard />
         </div>
     );
 }

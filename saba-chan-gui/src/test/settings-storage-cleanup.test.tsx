@@ -128,7 +128,8 @@ describe('설정에서 익스텐션 탭을 뺀다', () => {
         has('audit_keep_label');
         await open('tab_connection');
         has('ipc_port_label');
-        has('relay_url_label');
+        // 커스텀 서버쨩 주소 칸은 당분간 숨긴다 (코드는 남겨 둠)
+        lacks('relay_url_label');
         await open('tab_troubleshoot');
         has('uninstall_label');
         lacks('ipc_port_label');

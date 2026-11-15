@@ -176,6 +176,7 @@
     "dm_notice_on": "an",
     "dm_notice_off": "aus",
     "dm_kind": {
+      "enabled": "Alle DM-Benachrichtigungen",
       "crash": "Abstürze",
       "unresponsive": "Reagiert nicht",
       "externalStart": "Außerhalb von Saba-chan gestartet",

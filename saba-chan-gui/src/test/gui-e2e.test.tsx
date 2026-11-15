@@ -135,6 +135,24 @@ import { useUIStore } from '../stores/useUIStore';
 // ── lifecycle helpers ──
 let statusCallback = null as ((s: { step: string; message: string }) => void) | null;
 
+/** 데몬이 꺼져 있던 기동: 셸이 데몬을 띄우고 ready를 보낸다 (`opening`: 셸이 이번에 데몬을 띄웠는가) */
+async function coldBoot(overrides: Record<string, unknown>, opening = true, onFrame?: () => void) {
+    window.api = createApiMock({
+        daemonStatus: vi.fn().mockResolvedValue({ running: false }),
+        onStatusUpdate: vi.fn((cb) => {
+            statusCallback = cb;
+        }),
+        ...overrides,
+    });
+    const view = await act(async () => render(<App />));
+    const observer = onFrame ? new MutationObserver(onFrame) : null;
+    observer?.observe(view.container, { subtree: true, childList: true, attributes: true });
+    await act(async () => {
+        (statusCallback as unknown as (s: object) => void)({ step: 'ready', message: '준비', opening });
+    });
+    return view;
+}
+
 beforeEach(() => {
     vi.clearAllMocks();
     vi.useRealTimers();
@@ -486,8 +504,7 @@ describe('로딩 스크린 상태 머신', () => {
 
     it('로딩이 끝나면 메인 화면을 로딩 화면 아래에 먼저 그리고, 오프닝을 재생한 뒤 로딩 화면을 걷는다', async () => {
         const playSound = vi.fn();
-        window.api = createApiMock({ playSound });
-        const { container } = await act(async () => render(<App />));
+        const { container } = await coldBoot({ playSound });
         // 메인 화면이 이미 그려진 채로 로딩 화면이 덮고 있다
         await waitFor(
             () => {
@@ -508,8 +525,7 @@ describe('로딩 스크린 상태 머신', () => {
         (window as { __claimGuide?: typeof probe }).__claimGuide = probe;
         try {
             const playSound = vi.fn();
-            window.api = createApiMock({ playSound });
-            const { container } = await act(async () => render(<App />));
+            const { container } = await coldBoot({ playSound });
             await waitFor(() => expect(container.querySelector('.loading-screen')).not.toBeInTheDocument(), {
                 timeout: 15000,
             });
@@ -518,6 +534,42 @@ describe('로딩 스크린 상태 머신', () => {
         } finally {
             delete (window as { __claimGuide?: typeof probe }).__claimGuide;
         }
+    }, 20000);
+
+    it('로딩 화면·오프닝 동안 셸에 다른 알림을 붙잡게 하고, 오프닝이 끝나면 놓는다', async () => {
+        const soundHold = vi.fn();
+        const { container } = await coldBoot({ soundHold });
+        expect(soundHold.mock.calls).toEqual([[true]]);
+        await waitFor(() => expect(container.querySelector('.loading-screen')).not.toBeInTheDocument(), {
+            timeout: 15000,
+        });
+        expect(soundHold.mock.calls).toEqual([[true], [false]]);
+    }, 20000);
+
+    // 오프닝은 데몬까지 모두 준비한 기동에서만 (사용자 11-15)
+    it('데몬이 이미 떠 있던 창(인터페이스만 종료 뒤 다시 연 창)은 오프닝·기동음 없이 연다', async () => {
+        const playSound = vi.fn();
+        window.api = createApiMock({ daemonStatus: vi.fn().mockResolvedValue({ running: true }), playSound });
+        const { container } = await act(async () => render(<App />));
+        await waitFor(() => expect(container.querySelector('.loading-screen')).not.toBeInTheDocument(), {
+            timeout: 15000,
+        });
+        expect(container.querySelector('.loading-screen.opening')).not.toBeInTheDocument();
+        expect(playSound).not.toHaveBeenCalled();
+    }, 20000);
+
+    it('셸이 데몬을 띄우지 않고 이미 떠 있던 데몬에 붙었으면(ready opening:false) 오프닝·기동음 없이 연다', async () => {
+        const playSound = vi.fn();
+        // 오프닝 대신 로딩 화면이 잠깐 사라지기만 한다 (움직임을 줄였을 때와 같은 길)
+        let sawLeaving = false;
+        const { container } = await coldBoot({ playSound }, false, () => {
+            if (document.querySelector('.loading-screen.leaving')) sawLeaving = true;
+        });
+        await waitFor(() => expect(container.querySelector('.loading-screen')).not.toBeInTheDocument(), {
+            timeout: 15000,
+        });
+        expect(sawLeaving).toBe(true);
+        expect(playSound).not.toHaveBeenCalled();
     }, 20000);
 
     it('콘솔 PIP 창은 로딩 화면·오프닝 없이 바로 콘솔을 연다', async () => {

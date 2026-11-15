@@ -176,6 +176,7 @@
     "dm_notice_on": "開",
     "dm_notice_off": "關",
     "dm_kind": {
+      "enabled": "全部私訊通知",
       "crash": "異常結束",
       "unresponsive": "無回應",
       "externalStart": "在 Saba-chan 之外啟動",

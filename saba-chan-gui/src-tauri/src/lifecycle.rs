@@ -42,7 +42,9 @@ pub struct Lifecycle {
     quitting: AtomicBool,
     client_id: Mutex<Option<String>>,
     last_status: Mutex<Option<Value>>,
-    last_update_key: Mutex<Option<String>>,
+    update_alerts: Mutex<UpdateAlerts>,
+    /// 메인 화면이 받지 못한 데몬 이벤트 (창이 닫혀 있거나 아직 뜨는 중). 화면이 뜨면 가져가 알림함에 넣는다
+    backlog: Mutex<Backlog>,
     events_stop: Arc<AtomicBool>,
     heartbeat_task: Mutex<Option<JoinHandle<()>>>,
     events_task: Mutex<Option<JoinHandle<()>>>,
@@ -52,6 +54,72 @@ pub struct Lifecycle {
     renderer_ready: AtomicBool,
     /// 데몬 재시작은 한 번에 하나만. 겹치면 child가 이미 죽은 프로세스를 가리킬 수 있다
     restart_lock: tokio::sync::Mutex<()>,
+}
+
+/// 모듈·익스텐션 업데이트 OS 알림·소리를 낼지 정한다. 같은 목록은 한 번만 알리고,
+/// 이 GUI가 뜬 뒤 처음 읽은 상태(이미 있던 업데이트)는 소리 없이 기억만 한다: 창을 다시 열 때마다·오프닝 중에
+/// 같은 알림이 울리지 않게 (사용자 11-15). 그 업데이트는 앱 안 알림(상단 바·알림함)으로 보인다
+#[derive(Default)]
+struct UpdateAlerts {
+    last_key: Option<String>,
+    primed: bool,
+}
+
+impl UpdateAlerts {
+    /// 확인에 성공한 상태 하나. `key`: 알릴 모듈·익스텐션 목록의 지문(없으면 None). 알려야 하면 true
+    fn note(&mut self, key: Option<&str>) -> bool {
+        let first = !std::mem::replace(&mut self.primed, true);
+        let Some(key) = key else { return false };
+        if self.last_key.as_deref() == Some(key) {
+            return false;
+        }
+        self.last_key = Some(key.to_string());
+        !first
+    }
+
+    /// 받을 업데이트가 없어졌다: 다시 생기면 알린다
+    fn cleared(&mut self) {
+        self.last_key = None;
+        self.primed = true;
+    }
+}
+
+/// 메인 화면이 받지 못한 데몬 이벤트를 모아 둔다 (사용자 11-15: 인터페이스만 종료한 동안의 일도 평소처럼 알림함에).
+/// 화면이 가져가면(`take`) 멈추고, 창을 모두 닫으면(`window_closed`) 다시 모은다. 처음(창이 아직 없다)에도 모은다
+#[derive(Default)]
+struct Backlog {
+    taken: bool,
+    events: std::collections::VecDeque<SseEvent>,
+}
+
+impl Backlog {
+    /// 오래 닫혀 있어도 이만큼만 (오래된 것부터 버린다)
+    const CAP: usize = 200;
+
+    fn keep(&mut self, ev: &SseEvent) {
+        // 설치 진행은 자주 온다: 끝난 것만 (알림이 되는 것은 끝뿐이다)
+        if self.taken || (ev.kind == "provision.progress" && ev.data["done"] != json!(true)) {
+            return;
+        }
+        if self.events.len() == Self::CAP {
+            self.events.pop_front();
+        }
+        self.events.push_back(ev.clone());
+    }
+
+    fn take(&mut self) -> Vec<SseEvent> {
+        self.taken = true;
+        self.events.drain(..).collect()
+    }
+
+    fn window_closed(&mut self) {
+        self.taken = false;
+    }
+}
+
+/// 메인 화면이 뜨는 동안·닫혀 있던 동안 모아 둔 데몬 이벤트를 가져간다 (그 뒤로는 화면이 바로 받는다)
+pub fn take_backlog(app: &AppHandle) -> Vec<SseEvent> {
+    app.state::<AppState>().life.backlog.lock().unwrap().take()
 }
 
 fn sleep(ms: u64) -> tokio::time::Sleep {
@@ -68,9 +136,29 @@ fn replace_task(slot: &Mutex<Option<JoinHandle<()>>>, task: Option<JoinHandle<()
 
 /// 렌더러에 초기화 단계 전달. 새로고침한 렌더러에 다시 보내려고 마지막 값을 기억한다
 pub fn send_status(app: &AppHandle, step: &str, message: &str) {
-    let payload = json!({ "step": step, "message": message, "ts": chrono::Utc::now().timestamp_millis() });
+    emit_status(
+        app,
+        json!({ "step": step, "message": message, "ts": chrono::Utc::now().timestamp_millis() }),
+    );
+}
+
+fn emit_status(app: &AppHandle, payload: Value) {
     *app.state::<AppState>().life.last_status.lock().unwrap() = Some(payload.clone());
     emit_main(app, "status:update", payload);
+}
+
+/// 초기화를 마쳤다는 `ready`. `opening`: 이번 기동에서 이 GUI가 데몬을 띄웠는가 (이미 떠 있던 데몬에 붙었으면 false).
+/// 렌더러는 데몬까지 모두 준비한 기동에서만 오프닝을 재생한다 (사용자 11-15)
+fn ready_status(message: &str, attached: bool) -> Value {
+    json!({ "step": "ready", "message": message, "ts": chrono::Utc::now().timestamp_millis(), "opening": !attached })
+}
+
+/// 새로 붙은 렌더러(새로고침·트레이에서 다시 연 창)에 다시 보내는 마지막 단계: 이미 끝난 기동이라 오프닝은 없다
+fn replayed_status(mut last: Value) -> Value {
+    if last["step"] == "ready" {
+        last["opening"] = json!(false);
+    }
+    last
 }
 
 fn status_t(app: &AppHandle, step: &str, key: &str) {
@@ -107,7 +195,7 @@ pub fn app_ready(app: &AppHandle) {
     }
     if !begin_init(app) {
         if let Some(last) = life.last_status.lock().unwrap().clone() {
-            emit_main(app, "status:update", last);
+            emit_main(app, "status:update", replayed_status(last));
         }
     }
 }
@@ -152,7 +240,8 @@ async fn finish_background_init(app: &AppHandle) {
     // 바탕화면 오버레이를 쓸 익스텐션이 켜져 있으면 띄운다
     crate::overlay::sync(app).await;
 
-    status_t(app, "ready", "init.ready");
+    let attached = state.life.attached_daemon.load(Ordering::SeqCst);
+    emit_status(app, ready_status(&state.t("init.ready", &[]), attached));
 
     // 업데이터가 다시 띄웠으면 첫 ready 뒤 한 번 알린다
     if state.after_update && !state.life.ready_sent.swap(true, Ordering::SeqCst) {
@@ -861,6 +950,7 @@ fn start_events(app: &AppHandle) {
                     }
                 }
                 if feed == Feed::Chosen {
+                    app2.state::<AppState>().life.backlog.lock().unwrap().keep(&ev);
                     emit_main(&app2, "events:message", &ev);
                     crate::overlay::emit(&app2, "events:message", &ev);
                 }
@@ -933,7 +1023,7 @@ fn on_update_status(app: &AppHandle, data: &Value) {
     let Some(notice) = events::update_notice(data) else {
         if events::updates_cleared(data) {
             // 받을 것이 없어졌다: 남은 업데이트 알림을 지우고, 다시 생기면 OS 알림도 다시 띄운다
-            *state.life.last_update_key.lock().unwrap() = None;
+            state.life.update_alerts.lock().unwrap().cleared();
             emit_main(
                 app,
                 "updates:available",
@@ -963,14 +1053,12 @@ fn on_update_status(app: &AppHandle, data: &Value) {
         sorted.join("\0")
     };
     // 확인과 기록을 한 잠금 안에서: 이벤트와 다시 붙을 때의 읽기가 겹쳐도 한 번만 알린다
-    let is_new = !addon_names.is_empty() && {
-        let mut last = state.life.last_update_key.lock().unwrap();
-        let is_new = last.as_deref() != Some(addon_key.as_str());
-        if is_new {
-            *last = Some(addon_key.clone());
-        }
-        is_new
-    };
+    let is_new = state
+        .life
+        .update_alerts
+        .lock()
+        .unwrap()
+        .note((!addon_names.is_empty()).then_some(addon_key.as_str()));
     if is_new {
         let count = addon_names.len().to_string();
         let names = addon_names.join(", ");
@@ -1022,10 +1110,22 @@ fn notify_critical(app: &AppHandle, ev: &SseEvent, feed: Feed, from: Option<&str
     });
 }
 
+/// OS 알림. 로딩 화면·오프닝 동안에는 모아 두었다가 끝나면 띄운다 (`sounds::sound_hold`)
+pub fn show_notification(app: &AppHandle, title: &str, body: &str, silent: bool) {
+    let held = sounds::quiet()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .hold_toast(std::time::Instant::now(), title, body);
+    if held {
+        return tracing::info!("[Notify] Held until the opening ends");
+    }
+    toast_now(app, title, body, silent);
+}
+
 /// Windows는 토스트를 직접 띄운다: 알림 플러그인은 결과를 버려 실패해도 기록이 남지 않는다.
 /// `silent`: 앱 효과음이 같이 울리는 알림. 토스트는 기본 알림음을 내므로(0.8.1부터) 끈다
 #[cfg(windows)]
-pub fn show_notification(_app: &AppHandle, title: &str, body: &str, silent: bool) {
+fn toast_now(_app: &AppHandle, title: &str, body: &str, silent: bool) {
     use saba_chan_updater_lib::notify_app_id;
     use tauri_winrt_notification::{IconCrop, Toast};
     let (title, body) = (title.to_string(), body.to_string());
@@ -1047,14 +1147,14 @@ pub fn show_notification(_app: &AppHandle, title: &str, body: &str, silent: bool
 
 /// macOS는 UserNotifications로 낸다. 앱 묶음 밖에서 띄운 개발 실행은 알림 플러그인으로 낸다
 #[cfg(target_os = "macos")]
-pub fn show_notification(app: &AppHandle, title: &str, body: &str, silent: bool) {
+fn toast_now(app: &AppHandle, title: &str, body: &str, silent: bool) {
     if !crate::mac_notify::show(title, body, silent) {
         plugin_notification(app, title, body);
     }
 }
 
 #[cfg(all(not(windows), not(target_os = "macos")))]
-pub fn show_notification(app: &AppHandle, title: &str, body: &str, _silent: bool) {
+fn toast_now(app: &AppHandle, title: &str, body: &str, _silent: bool) {
     plugin_notification(app, title, body);
 }
 
@@ -1114,6 +1214,8 @@ pub async fn interface_only_quit(app: &AppHandle) {
     tracing::info!("Closing every window; staying in the tray");
     // 다음 창의 렌더러가 준비될 때까지 서버 열기 요청을 맡아 둔다
     state.life.renderer_ready.store(false, Ordering::SeqCst);
+    // 창이 없는 동안의 데몬 이벤트는 다음 창이 알림함에 넣는다
+    state.life.backlog.lock().unwrap().window_closed();
     crate::window::close_answered();
     crate::window::close_all(app);
 }
@@ -1187,6 +1289,50 @@ pub fn on_exit(app: &AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 화면이 가져가기 전(창이 없거나 뜨는 중)의 이벤트를 모으고, 가져간 뒤에는 창을 모두 닫을 때까지 모으지 않는다
+    #[test]
+    fn backlog_keeps_events_only_while_no_window_takes_them() {
+        let ev = |kind: &str, data: Value| SseEvent { id: None, kind: kind.into(), data };
+        let mut b = Backlog::default();
+        b.keep(&ev("instance.exit", json!({ "kind": "crash" })));
+        b.keep(&ev("provision.progress", json!({ "done": false })));
+        b.keep(&ev("provision.progress", json!({ "done": true })));
+        let kinds = |v: Vec<SseEvent>| v.into_iter().map(|e| e.kind).collect::<Vec<_>>();
+        assert_eq!(kinds(b.take()), ["instance.exit", "provision.progress"]);
+        b.keep(&ev("instance.started", json!({})));
+        assert!(b.take().is_empty(), "the window gets events live after taking");
+        b.window_closed();
+        for _ in 0..Backlog::CAP + 5 {
+            b.keep(&ev("instance.stopped", json!({})));
+        }
+        assert_eq!(b.take().len(), Backlog::CAP);
+    }
+
+    /// 이 GUI가 뜬 뒤 처음 읽은 업데이트(이미 있던 것)는 소리·OS 알림 없이 기억만 하고, 그 뒤 새로 생긴 목록만 알린다
+    #[test]
+    fn update_alerts_skip_what_was_already_there_when_the_gui_started() {
+        let mut a = UpdateAlerts::default();
+        assert!(!a.note(Some("Palworld")), "already pending at startup: silent");
+        assert!(!a.note(Some("Palworld")), "same list again: silent");
+        assert!(a.note(Some("Minecraft\0Palworld")), "a new update while running: alert");
+        a.cleared();
+        assert!(a.note(Some("Palworld")), "came back after being cleared: alert");
+
+        let mut none_at_start = UpdateAlerts::default();
+        assert!(!none_at_start.note(None));
+        assert!(none_at_start.note(Some("Palworld")), "found after startup: alert");
+    }
+
+    /// 오프닝은 이 GUI가 데몬을 띄운 기동의 첫 ready에서만. 새로 붙은 렌더러에 다시 보내는 ready는 오프닝 없이
+    #[test]
+    fn opening_only_for_the_startup_that_launched_the_daemon() {
+        assert_eq!(ready_status("ok", false)["opening"], json!(true));
+        assert_eq!(ready_status("ok", true)["opening"], json!(false), "attached to a daemon that was already up");
+        assert_eq!(replayed_status(ready_status("ok", false))["opening"], json!(false));
+        let daemon = json!({ "step": "daemon", "message": "m" });
+        assert_eq!(replayed_status(daemon.clone()), daemon);
+    }
 
     /// 데몬이 스스로 업데이터를 띄웠다고 알리면(`update.restarting`) 끌 GUI 목록에 든 GUI만 스스로 끝나고, 나머지는 데몬을 기다린다
     #[test]

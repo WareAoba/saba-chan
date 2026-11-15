@@ -1,6 +1,7 @@
 import { type ReactNode, useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { AddonPin, AddonPinResponse, AddonVersionsResponse, ApiBody, ApiResult } from '../../types/daemon';
+import { useUpdateStore, watchUpdates } from '../../stores/useUpdateStore';
 import { failed } from '../../utils/apiResult';
 import { createTranslateError } from '../../utils/helpers';
 import { Icon } from '../Icon';
@@ -10,7 +11,10 @@ import { SabaSpinner } from '../ui/SabaUI';
 import { StatusChip } from '../ui/StatusChip';
 import { QuestionModal } from './Modals';
 
-// 모듈·익스텐션 버전 고르기 (사바 스토리지 카드 우클릭 메뉴)
+// 모듈·익스텐션 버전 고르기 (사바 스토리지 카드 우클릭 메뉴)와 업데이트 단추
+//
+// 새 버전이 있는지는 데몬의 업데이트 상태(`update.status`)가 알린다. 업데이트 단추는 "자동 업데이트로 돌아가기"와 같이
+// 데몬에 가장 새 버전으로 바꾸라고 보낸다 (`DELETE /api/updates/addons/{key}/pin`).
 //
 // 고를 수 있는 버전, 받기·서명 확인·설치, 켜진 서버 기다리기, 고정과 풀기는 모두 데몬이 한다.
 // 여기서는 데몬이 준 목록을 보여 주고 고른 것을 보낸 뒤 답을 알린다.
@@ -190,8 +194,8 @@ export const reasonOf = (t: T, res: ApiBody) =>
 
 /**
  * 모듈 탭·익스텐션 탭이 같이 쓴다. reload는 바꾼 뒤 목록(버전·고정·기다림)을 다시 받는다.
- * 카드에는 menuItems(우클릭 메뉴), chip(고정 표시), progress(받는 중·기다리는 중 줄), pinNote(고정 설명)를 붙이고,
- * 탭 위에 banner, 아무 곳에 dialogs를 둔다.
+ * 카드에는 menuItems(우클릭 메뉴), chip(새 버전·고정 표시), progress(받는 중·기다리는 중 줄), pinNote(고정 설명),
+ * updateButton(업데이트 단추)을 붙이고, 설치됨 머리에 updateAllButton, 탭 위에 banner, 아무 곳에 dialogs를 둔다.
  */
 export function useAddonVersions(reload?: () => unknown) {
     const { t } = useTranslation('gui');
@@ -203,11 +207,15 @@ export function useAddonVersions(reload?: () => unknown) {
     // 켜진 서버를 기다리는 카드 → 데몬이 알려 준 서버 (목록에는 pending_version만 온다)
     const [waiting, setWaiting] = useState<Record<string, { version: string; servers: string[] }>>({});
     const [banner, setBanner] = useState<Banner>(null);
+    const status = useUpdateStore((s) => s.status);
+
+    useEffect(() => watchUpdates(), []);
 
     const change = useCallback(
-        async ({ card, version, from }: Change, send: () => Promise<ApiBody> | undefined) => {
+        async ({ card, version, from }: Change, send: () => Promise<ApiBody> | undefined, batch = false) => {
             setBusy((prev) => ({ ...prev, [card.key]: version }));
-            setBanner(null);
+            // 모두 업데이트 중에는 앞 카드의 실패 알림을 뒤 카드가 지우지 않는다
+            if (!batch) setBanner(null);
             const res: ApiResult<AddonPinResponse> = (await send()) ?? { success: false };
             const label = { name: card.name, kind: kindWord(t, card) };
             if (failed(res)) {
@@ -216,16 +224,68 @@ export function useAddonVersions(reload?: () => unknown) {
                 const servers = res.waiting_for || [];
                 setWaiting((prev) => ({ ...prev, [card.key]: { version: res.version || version, servers } }));
             } else {
-                setBanner({ tone: 'success', text: t('saba_storage.version_done', { ...label, version: res.version || version }) });
+                const done: Banner = { tone: 'success', text: t('saba_storage.version_done', { ...label, version: res.version || version }) };
+                setBanner((prev) => (batch && prev?.tone === 'error' ? prev : done));
             }
             setBusy((prev) => {
                 const { [card.key]: _, ...rest } = prev;
                 return rest;
             });
             await reload?.();
+            await useUpdateStore.getState().refresh();
         },
         [t, reload],
     );
+
+    /** 데몬이 알린 새 버전 */
+    const newerVersion = (card: AddonCard): string | null => {
+        const comp = (status?.components as ApiBody[] | undefined)?.find((c) => c.component === card.key);
+        return comp?.update_available && comp.latest_version ? String(comp.latest_version) : null;
+    };
+    // 고정했거나 바꾸기를 기다리거나 받는 중인 카드는 단추를 내지 않는다
+    const updatable = (card: AddonCard) => !!newerVersion(card) && !card.pinned && !card.pending_version && !(card.key in busy);
+
+    const update = (card: AddonCard, batch = false) =>
+        change({ card, version: newerVersion(card) || '', from: card.version || '', until: '' }, () => window.api?.addonUnpin?.(card.key), batch);
+
+    /** 카드 오른쪽 업데이트 단추 */
+    const updateButton = (card: AddonCard, disabled?: boolean) => {
+        if (card.key in busy) {
+            return (
+                <button type="button" className="btn btn-primary btn-sm ss-update-btn" disabled>
+                    {t('saba_storage.updating')}
+                </button>
+            );
+        }
+        if (!updatable(card)) return null;
+        return (
+            <button type="button" className="btn btn-primary btn-sm ss-update-btn" disabled={disabled} onClick={() => update(card)}>
+                <Icon name="arrowUp" size="sm" />
+                {t('saba_storage.update')}
+            </button>
+        );
+    };
+
+    /** 설치됨 머리의 모두 업데이트. 바꿀 것이 둘 이상일 때만 보이고, 하나씩 차례로 바꾼다 */
+    const updateAllButton = (cards: AddonCard[]) => {
+        const targets = cards.filter(updatable);
+        if (targets.length < 2) return null;
+        return (
+            <button
+                type="button"
+                className="btn btn-ghost btn-sm ss-update-btn"
+                disabled={Object.keys(busy).length > 0}
+                onClick={async () => {
+                    setBanner(null);
+                    for (const card of targets) await update(card, true);
+                }}
+            >
+                <Icon name="arrowUp" size="sm" />
+                {t('saba_storage.update_all')}
+                <span className="ss-section-count">{targets.length}</span>
+            </button>
+        );
+    };
 
     const menuItems = (card: AddonCard, disabled: boolean): ContextMenuItem[] => [
         {
@@ -244,7 +304,16 @@ export function useAddonVersions(reload?: () => unknown) {
         },
     ];
 
-    const chip = (card: AddonCard) => card.pinned && <StatusChip tone="info" label={t('saba_storage.version_pinned')} />;
+    /** 이름 옆 표시: 새 버전, 고정 */
+    const chip = (card: AddonCard) => {
+        const latest = newerVersion(card);
+        return (
+            <>
+                {latest && !card.pinned && <span className="ss-update-badge">v{latest}</span>}
+                {card.pinned && <StatusChip tone="info" label={t('saba_storage.version_pinned')} />}
+            </>
+        );
+    };
 
     /** 받는 중이거나 켜진 서버를 기다리는 동안 카드 설명 자리에 보인다 */
     const progress = (card: AddonCard): ReactNode => {
@@ -339,5 +408,5 @@ export function useAddonVersions(reload?: () => unknown) {
         </>
     );
 
-    return { menuItems, chip, progress, pinNote, banner: bannerEl, dialogs };
+    return { menuItems, chip, progress, pinNote, updateButton, updateAllButton, banner: bannerEl, dialogs };
 }

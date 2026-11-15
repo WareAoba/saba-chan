@@ -134,13 +134,14 @@ describe('데몬 이벤트 스트림', () => {
         expect(broken?.notice).toMatchObject({ message: 'Restore failed', detail: 'Not possible while the server is running', type: 'error' });
     });
 
-    it('켜고 끈 출처를 문구에 싣고, 사바쨩 밖에서 켠 것만 경고로 알린다', () => {
+    it('켜고 끈 출처를 토스트에 싣고, 알림함에는 단순히 켜고 끈 것을 남기지 않는다 (사바쨩 밖에서 켠 것만 경고로)', () => {
         const started = (data: Record<string, unknown>) => eventToast({ type: 'instance.started', data: { instanceId: 'srv-1', instance: 'Survival', ...data } }, t);
         const stopped = (data: Record<string, unknown>) => eventToast({ type: 'instance.stopped', data: { instanceId: 'srv-1', instance: 'Survival', ...data } }, t);
-        // 앱에서 한 일은 그 자리에서 토스트를 띄웠으니 알림에만 읽은 것으로 남긴다
-        expect(started({ source: 'gui', unexpected: false })).toMatchObject({ silent: true, notice: { message: 'Started · App', read: true } });
-        expect(stopped({ source: 'gui', kind: 'user_stop' })).toMatchObject({ silent: true, notice: { message: 'Stopped · App', read: true } });
+        // 앱에서 한 일은 그 자리에서 토스트를 띄웠다
+        expect(started({ source: 'gui', unexpected: false })).toMatchObject({ silent: true });
+        expect(stopped({ source: 'gui', kind: 'user_stop' })).toMatchObject({ silent: true });
         const table = [
+            ['gui', 'App'],
             ['discord', 'Discord'],
             ['chatbot', 'Talking Saba-chan'],
             ['cli', 'CLI'],
@@ -153,20 +154,15 @@ describe('데몬 이벤트 스트림', () => {
         for (const [source, label] of table) {
             const on = started({ source, unexpected: false });
             expect(on).toMatchObject({ message: `'Survival' started (${label})`, type: 'info' });
-            expect(on?.silent).toBeFalsy();
-            expect(on?.notice).toEqual({ message: `Started · ${label}`, type: 'info', source: 'Survival', instanceId: 'srv-1' });
-            expect(stopped({ source, kind: 'user_stop' })).toMatchObject({
-                message: `'Survival' stopped (${label})`,
-                type: 'info',
-                notice: { message: `Stopped · ${label}` },
-            });
+            expect(on?.notice, source).toBeUndefined();
+            const off = stopped({ source, kind: 'user_stop' });
+            expect(off).toMatchObject({ message: `'Survival' stopped (${label})`, type: 'info' });
+            expect(off?.notice, source).toBeUndefined();
         }
-        expect(started({ source: 'discord', userName: 'Kimchi', unexpected: false })?.notice?.message).toBe('Started · Discord · Kimchi');
-        expect(stopped({ source: 'game', kind: 'in_game_stop' })).toMatchObject({
-            message: "'Survival' stopped from inside the game",
-            type: 'info',
-            notice: { message: 'Stopped from inside the game' },
-        });
+        for (const [source] of table.slice(1)) expect(started({ source, unexpected: false })?.silent).toBeFalsy();
+        const inGame = stopped({ source: 'game', kind: 'in_game_stop' });
+        expect(inGame).toMatchObject({ message: "'Survival' stopped from inside the game", type: 'info' });
+        expect(inGame?.notice).toBeUndefined();
         expect(started({ source: 'external', unexpected: true })).toMatchObject({
             message: "'Survival' started outside Saba-chan. Saba-chan did not start this process.",
             type: 'warning',
@@ -188,19 +184,49 @@ describe('데몬 이벤트 스트림', () => {
         expect(refetch).toHaveBeenCalledTimes(1);
         expect(window.showToast).toHaveBeenCalledTimes(1);
         expect(window.showToast).toHaveBeenCalledWith("'Survival' stopped (Discord · Kimchi)", 'info', 4000, undefined);
+        // 단순히 끈 것은 알림함에 남기지 않는다
+        expect(window.__sabaNotice?.addNotice).not.toHaveBeenCalled();
+        await stream.emit({ id: 4, type: 'instance.exit', data: { instanceId: 'srv-1', instance: 'Survival', kind: 'crash' } });
         expect(window.__sabaNotice?.addNotice).toHaveBeenCalledTimes(1);
-        expect(window.__sabaNotice?.addNotice).toHaveBeenCalledWith({
-            message: 'Stopped · Discord · Kimchi',
-            type: 'info',
-            source: 'Survival',
-            instanceId: 'srv-1',
-        });
+        expect(window.__sabaNotice?.addNotice).toHaveBeenCalledWith(expect.objectContaining({ source: 'Survival', instanceId: 'srv-1', type: 'error' }));
         // 새 판은 상단 바 업데이트 알약이 보인다: "N개 발견" 알림은 만들지 않는다
-        await stream.emit({ id: 4, type: 'update.available', data: { components: [{ name: 'saba-core' }, 'gui'] } });
+        await stream.emit({ id: 5, type: 'update.available', data: { components: [{ name: 'saba-core' }, 'gui'] } });
         expect(window.__sabaNotice?.addNotice).toHaveBeenCalledTimes(1);
         delete window.__sabaNotice;
         unmount();
         expect(stream.subs.size).toBe(0);
+    });
+
+    // 인터페이스만 종료한 동안(창이 없던 동안)의 일도 평소처럼 알림함에 (사용자 11-15)
+    it('창이 없던 동안 셸이 모아 둔 이벤트를 화면이 뜰 때 알림함에 넣는다 (토스트 없이, 일어난 시각으로)', async () => {
+        window.showToast = vi.fn();
+        window.__sabaNotice = { addNotice: vi.fn() } as unknown as typeof window.__sabaNotice;
+        const stream = fakeStream();
+        const crash = { id: 7, type: 'instance.exit', data: { instanceId: 'srv-1', instance: 'Survival', kind: 'crash', at: 1700000000 } };
+        const started = { id: 8, type: 'instance.started', data: { instanceId: 'srv-1', instance: 'Survival', source: 'external', unexpected: true, at: 1700000100 } };
+        let answer: (v: unknown[]) => void = () => {};
+        (window.api as Partial<typeof window.api>).eventsBacklog = vi.fn(() => new Promise<unknown[]>((r) => (answer = r))) as never;
+        const { unmount } = render(<DaemonEvents onServersChanged={vi.fn()} />);
+        // 가져오는 사이 바로 받은 것(같은 번호)은 두 번 넣지 않는다
+        await stream.emit(started);
+        await act(async () => answer([crash, started]));
+        const add = vi.mocked(window.__sabaNotice!.addNotice);
+        expect(add).toHaveBeenCalledTimes(2);
+        expect(add.mock.calls[0][0]).toMatchObject({
+            source: 'Survival',
+            type: 'info',
+            message: 'Started outside Saba-chan',
+        });
+        expect(add.mock.calls[1][0]).toMatchObject({
+            source: 'Survival',
+            type: 'error',
+            timestamp: new Date(1700000000 * 1000).toISOString(),
+        });
+        // 바로 받은 것만 토스트, 모아 둔 것은 알림함에만
+        expect(window.showToast).toHaveBeenCalledTimes(1);
+        delete window.__sabaNotice;
+        delete (window.api as Partial<typeof window.api>).eventsBacklog;
+        unmount();
     });
 
     it('켠 서버의 모듈·게임 서버에 새 버전이 있으면 알림을 남긴다 (모듈은 업데이트 화면으로)', async () => {

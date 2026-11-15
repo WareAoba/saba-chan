@@ -49,6 +49,8 @@ export interface NoticeInput {
     data?: unknown;
     /** 이미 본 일 (앱에서 직접 한 일): 읽지 않은 수에 넣지 않는다 */
     read?: boolean;
+    /** 일어난 시각 (ISO). 없으면 지금 */
+    timestamp?: string;
 }
 
 export interface SabaNoticeApi {

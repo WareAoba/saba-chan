@@ -64,8 +64,8 @@ tauri-nspanel = "2.1"
 winreg = "0.56"
 # 알림 플러그인과 같은 토스트 구현. 결과를 받아 기록하려고 직접 부른다
 tauri-winrt-notification = "0.8"
-# 효과음 (PlaySound, 실행 파일에 실은 wav)
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Media_Audio"] }
+# 효과음 (PlaySound, 실행 파일에 실은 wav), 펫·판을 작업 표시줄에서 빼는 도구 창 스타일
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Media_Audio", "Win32_UI_WindowsAndMessaging"] }
 
 [dev-dependencies]
 tempfile = "3.8"

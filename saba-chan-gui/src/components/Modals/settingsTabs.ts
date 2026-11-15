@@ -26,3 +26,6 @@ export const SETTINGS_TAB_LABELS: Record<SettingsTab, string> = {
     troubleshoot: 'gui:settings_modal.tab_troubleshoot',
     about: 'gui:settings_modal.about_title',
 };
+
+/** 연결 탭의 커스텀 서버쨩 주소 칸. 사용자 요청(2026-11-15)으로 당분간 숨긴다. 코드는 남겨 두고 이 값만 켜면 돌아온다 */
+export const CUSTOM_RELAY_URL_VISIBLE = false;

@@ -288,7 +288,7 @@ pub fn relocate_component(
     commit: impl FnOnce() -> std::io::Result<()>,
 ) -> Result<Relocated, PathError> {
     let is_default = crate::same_path(dst, &default_dir(kind, data_dir));
-    relocate_inner(src, dst, commit, true, !is_default)
+    relocate_inner(src, dst, commit, true, !is_default, &|_, _| true)
 }
 
 /// 옮긴 결과
@@ -304,7 +304,26 @@ pub struct Relocated {
 /// 새 폴더가 다 갖춰진 뒤에야 `commit`(설정 저장)을 부른다. 그 전에 실패하거나 `commit`이 실패하면 `src`는 그대로이고
 /// 만든 것은 지운다. `commit`이 끝난 뒤에만 `src`를 지운다
 pub fn relocate(src: &Path, dst: &Path, commit: impl FnOnce() -> std::io::Result<()>) -> Result<Relocated, PathError> {
-    relocate_inner(src, dst, commit, true, false)
+    relocate_inner(src, dst, commit, true, false, &|_, _| true)
+}
+
+/// 복사로 옮길 때의 단계 ([`relocate_watched`]가 알린다)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Phase {
+    Copy,
+    Verify,
+}
+
+/// [`relocate`]와 같지만 복사·검사하며 그 단계에서 끝낸 바이트로 `watch`를 부른다 (같은 드라이브의 이름 바꾸기는 부르지 않는다).
+/// `watch`가 false를 돌려주면 멈춘다: `src`는 그대로이고 만든 것은 지운다 (`canceled`)
+pub fn relocate_watched(
+    src: &Path,
+    dst: &Path,
+    commit: impl FnOnce() -> std::io::Result<()>,
+    watch: &(dyn Fn(Phase, u64) -> bool + Sync),
+) -> Result<Relocated, PathError> {
+    relocate_inner(src, dst, commit, true, false, watch)
 }
 
 /// 옮긴 구성요소 폴더는 사용자 지정 위치의 상속 ACL(다른 계정 수정 권한 등)을 잇지 않는다
@@ -318,6 +337,7 @@ fn relocate_inner(
     commit: impl FnOnce() -> std::io::Result<()>,
     try_rename: bool,
     secure_acl: bool,
+    watch: &(dyn Fn(Phase, u64) -> bool + Sync),
 ) -> Result<Relocated, PathError> {
     let shown = dst.display().to_string();
     // 링크·정션을 푼 실제 경로로도 본다: 대상 위 폴더가 원본을 가리키면 원본 안에 복사해 끝없이 커진다
@@ -393,8 +413,19 @@ fn relocate_inner(
     let copied = std::fs::create_dir_all(&staging)
         .and_then(|_| std::fs::write(staging.join(STAGING_MARKER), b""))
         .map_err(|e| PathError::new("not_writable", format!("{}: {}", staging.display(), e)))
-        .and_then(|_| crate::apply::copy_tree(src, &staging).map_err(|e| PathError::new("copy_failed", e.to_string())))
-        .and_then(|_| verify_copy(src, &staging))
+        .and_then(|_| {
+            let mut done = 0u64;
+            crate::apply::copy_tree_with(src, &staging, &mut |bytes| {
+                done += bytes;
+                if watch(Phase::Copy, done) {
+                    Ok(())
+                } else {
+                    Err(std::io::Error::new(std::io::ErrorKind::Interrupted, CANCELED))
+                }
+            })
+            .map_err(|e| canceled_or(e, "copy_failed"))
+        })
+        .and_then(|_| verify_copy(src, &staging, watch))
         .and_then(|_| {
             std::fs::remove_file(staging.join(STAGING_MARKER))
                 .map_err(|e| PathError::new("not_writable", format!("{}: {}", staging.display(), e)))
@@ -499,7 +530,18 @@ fn is_junction(_meta: &std::fs::Metadata) -> bool {
 }
 
 /// 원본의 모든 파일이 사본에 같은 크기·SHA-256으로 있고, 사본에 다른 파일이 없는가
-fn verify_copy(src: &Path, copy: &Path) -> Result<(), PathError> {
+/// 지켜보는 쪽이 멈춘 복사 (`Interrupted` + 이 문구)
+const CANCELED: &str = "canceled";
+
+fn canceled_or(e: std::io::Error, code: &'static str) -> PathError {
+    if e.kind() == std::io::ErrorKind::Interrupted && e.to_string() == CANCELED {
+        PathError::new(CANCELED, String::new())
+    } else {
+        PathError::new(code, e.to_string())
+    }
+}
+
+fn verify_copy(src: &Path, copy: &Path, watch: &(dyn Fn(Phase, u64) -> bool + Sync)) -> Result<(), PathError> {
     let a = files_under(src).map_err(|e| PathError::new("verify_failed", e.to_string()))?;
     let mut b = files_under(copy).map_err(|e| PathError::new("verify_failed", e.to_string()))?;
     b.retain(|rel| rel != Path::new(STAGING_MARKER));
@@ -509,11 +551,16 @@ fn verify_copy(src: &Path, copy: &Path) -> Result<(), PathError> {
             format!("{} files copied of {}", b.len(), a.len()),
         ));
     }
+    let mut done = 0u64;
     for rel in &a {
         let (x, y) = (src.join(rel), copy.join(rel));
         match (digest(&x), digest(&y)) {
             (Ok(a), Ok(b)) if a == b => {}
             _ => return Err(PathError::new("verify_failed", rel.display().to_string())),
+        }
+        done += std::fs::metadata(&x).map(|m| m.len()).unwrap_or(0);
+        if !watch(Phase::Verify, done) {
+            return Err(PathError::new(CANCELED, String::new()));
         }
     }
     Ok(())
@@ -831,12 +878,12 @@ mod tests {
         let staging = staging_dir(&dst);
         std::fs::create_dir_all(&staging).unwrap();
         crate::apply::copy_tree(&src, &staging).unwrap();
-        assert_eq!(verify_copy(&src, &staging), Ok(()));
+        assert_eq!(verify_copy(&src, &staging, &|_, _| true), Ok(()));
         std::fs::write(staging.join("i18n.py"), "x = 2\n").unwrap();
-        assert_eq!(verify_copy(&src, &staging).unwrap_err().code, "verify_failed");
+        assert_eq!(verify_copy(&src, &staging, &|_, _| true).unwrap_err().code, "verify_failed");
         std::fs::write(staging.join("i18n.py"), "x = 1\n").unwrap();
         std::fs::write(staging.join("extra.txt"), "").unwrap();
-        assert_eq!(verify_copy(&src, &staging).unwrap_err().code, "verify_failed");
+        assert_eq!(verify_copy(&src, &staging, &|_, _| true).unwrap_err().code, "verify_failed");
     }
 
     #[test]
@@ -844,7 +891,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let (src, dst) = (tmp.path().join("old/modules"), tmp.path().join("new/modules"));
         tree(&src);
-        let r = relocate_inner(&src, &dst, || Ok(()), false, false).unwrap();
+        let r = relocate_inner(&src, &dst, || Ok(()), false, false, &|_, _| true).unwrap();
         assert!(r.left_behind.is_empty());
         assert!(!src.exists() && !staging_dir(&dst).exists());
         assert_eq!(
@@ -854,9 +901,36 @@ mod tests {
 
         let (src2, dst2) = (tmp.path().join("old2/modules"), tmp.path().join("new2/modules"));
         tree(&src2);
-        let err = relocate_inner(&src2, &dst2, || Err(std::io::Error::other("no")), false, false).unwrap_err();
+        let err = relocate_inner(&src2, &dst2, || Err(std::io::Error::other("no")), false, false, &|_, _| true).unwrap_err();
         assert_eq!(err.code, "commit_failed");
         assert!(src2.join("minecraft/module.toml").is_file());
+        assert!(!dst2.exists() && !staging_dir(&dst2).exists());
+    }
+
+    /// 복사·검사 진행을 바이트로 알리고, 지켜보는 쪽이 멈추면 원본을 둔 채 만든 것을 지운다 (서버 폴더 옮기기 진행률·취소)
+    #[test]
+    fn a_watched_copy_reports_bytes_and_can_be_canceled() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (src, dst) = (tmp.path().join("old/server"), tmp.path().join("new/server"));
+        tree(&src);
+        let total = files_under(&src).unwrap().iter().map(|r| std::fs::metadata(src.join(r)).unwrap().len()).sum::<u64>();
+        let seen = std::sync::Mutex::new(Vec::new());
+        // 같은 드라이브면 이름만 바꾼다: 복사 경로를 보려고 이름 바꾸기를 끈다
+        relocate_inner(&src, &dst, || Ok(()), false, false, &|phase, bytes| {
+            seen.lock().unwrap().push((phase, bytes));
+            true
+        })
+        .unwrap();
+        let seen = seen.into_inner().unwrap();
+        assert_eq!(seen.iter().filter(|s| s.0 == Phase::Copy).map(|s| s.1).max(), Some(total));
+        assert_eq!(seen.iter().filter(|s| s.0 == Phase::Verify).map(|s| s.1).max(), Some(total));
+        assert!(dst.join("i18n.py").is_file() && !src.exists());
+
+        let (src2, dst2) = (tmp.path().join("old2/server"), tmp.path().join("new2/server"));
+        tree(&src2);
+        let err = relocate_inner(&src2, &dst2, || panic!("must not commit"), false, false, &|_, bytes| bytes == 0).unwrap_err();
+        assert_eq!(err.code, "canceled");
+        assert!(src2.join("i18n.py").is_file());
         assert!(!dst2.exists() && !staging_dir(&dst2).exists());
     }
 
@@ -869,14 +943,14 @@ mod tests {
         let staging = staging_dir(&dst);
         std::fs::create_dir_all(&staging).unwrap();
         std::fs::write(staging.join("mine.txt"), "user").unwrap();
-        let err = relocate_inner(&src, &dst, || panic!("must not commit"), false, false).unwrap_err();
+        let err = relocate_inner(&src, &dst, || panic!("must not commit"), false, false, &|_, _| true).unwrap_err();
         assert_eq!(err.code, "not_empty");
         assert_eq!(std::fs::read_to_string(staging.join("mine.txt")).unwrap(), "user");
         assert!(src.join("i18n.py").is_file());
 
         // 끊긴 옮기기가 남긴 것(표시 있음)은 지우고 다시 옮긴다
         std::fs::write(staging.join(STAGING_MARKER), "").unwrap();
-        relocate_inner(&src, &dst, || Ok(()), false, false).unwrap();
+        relocate_inner(&src, &dst, || Ok(()), false, false, &|_, _| true).unwrap();
         assert!(!staging.exists() && !dst.join("mine.txt").exists() && !dst.join(STAGING_MARKER).exists());
         assert!(dst.join("i18n.py").is_file() && !src.exists());
     }
@@ -891,7 +965,7 @@ mod tests {
         let alias = tmp.path().join("alias");
         let made = std::process::Command::new("cmd").args(["/c", "mklink", "/J"]).arg(&alias).arg(&src).output().unwrap();
         assert!(made.status.success(), "{}{}", String::from_utf8_lossy(&made.stdout), String::from_utf8_lossy(&made.stderr));
-        let err = relocate_inner(&src, &alias.join("modules"), || panic!("must not commit"), false, false).unwrap_err();
+        let err = relocate_inner(&src, &alias.join("modules"), || panic!("must not commit"), false, false, &|_, _| true).unwrap_err();
         assert_eq!(err.code, "overlaps_current");
         assert!(!src.join("modules").exists() && !src.join(".modules.saba-moving").exists());
         std::fs::remove_dir(&alias).unwrap();
@@ -979,7 +1053,7 @@ mod tests {
                     }
                 }
                 written.retain(|rel, _| src.join(rel).is_file());
-                let r = relocate_inner(&src, &dst, || if fail { Err(std::io::Error::other("no")) } else { Ok(()) }, rename, false);
+                let r = relocate_inner(&src, &dst, || if fail { Err(std::io::Error::other("no")) } else { Ok(()) }, rename, false, &|_, _| true);
                 let (root, gone) = if fail { (&src, &dst) } else { (&dst, &src) };
                 prop_assert_eq!(r.is_ok(), !fail);
                 prop_assert!(!gone.exists());

@@ -214,7 +214,7 @@ describe('새 서버 만들기 — 요약 한 장', () => {
         expect(screen.getByText('26.2')).toBeTruthy();
     });
 
-    it('"게임 다시 고르기"로 게임 목록에 돌아간다', async () => {
+    it('"게임 변경"으로 게임 목록에 돌아간다', async () => {
         open();
         await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Choose another game' })));
         expect(screen.getByRole('button', { name: /Minecraft/ })).toBeTruthy();

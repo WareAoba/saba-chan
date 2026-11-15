@@ -989,7 +989,7 @@ pub(crate) mod tests {
             assert_eq!((s, body["fields"].clone()), (403, json!(["extension_data"])), "{data} {body}");
         }
 
-        for path in ["/api/migration/export", "/api/migration/import", "/api/system/paths/move"] {
+        for path in ["/api/migration/export", "/api/migration/import", "/api/system/paths/move", "/api/system/storage/move"] {
             let (s, body) = send("POST", path.into(), Some(json!({}))).await;
             assert_eq!((s, body["error_code"].as_str()), (403, Some("remote_local_only")), "{path}");
         }
