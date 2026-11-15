@@ -113,6 +113,21 @@ describe('모듈 업데이트 단추', () => {
         expect(vi.mocked(window.api.addonUnpin).mock.calls.map((c) => c[0]).sort()).toEqual(['module-minecraft', 'module-palworld']);
     });
 
+    it('모두 업데이트 중 하나가 실패하면 뒤 카드가 성공해도 실패 알림이 남는다', async () => {
+        const addonUnpin = vi.fn(async (key: string) =>
+            key === 'module-minecraft'
+                ? { success: false, error_code: 'module_modified', error: 'modified' }
+                : { success: true, state: 'applied', version: '0.1.15', waiting_for: [] },
+        );
+        fakeApi([MINECRAFT, PALWORLD], [newer('module-minecraft', '0.1.14'), newer('module-palworld', '0.1.15')], { addonUnpin });
+        await openTab(1);
+        const all = await screen.findByRole('button', { name: new RegExp(tr('update_all')) });
+        await act(async () => fireEvent.click(all));
+        await waitFor(() => expect(addonUnpin).toHaveBeenCalledTimes(2));
+        await waitFor(() => expect(document.querySelector('.update-modal-status-bar')).not.toBeNull());
+        expect(document.querySelector('.update-modal-status-bar.error')).toHaveTextContent(tr('version_error.modified'));
+    });
+
     it('새 버전이 하나면 모두 업데이트는 없다', async () => {
         fakeApi([MINECRAFT, PALWORLD], [newer('module-minecraft', '0.1.14')]);
         await openTab(1);

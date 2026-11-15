@@ -214,9 +214,10 @@ export function useAddonVersions(reload?: () => unknown) {
     useEffect(() => watchUpdates(), []);
 
     const change = useCallback(
-        async ({ card, version, from }: Change, send: () => Promise<ApiBody> | undefined) => {
+        async ({ card, version, from }: Change, send: () => Promise<ApiBody> | undefined, batch = false) => {
             setBusy((prev) => ({ ...prev, [card.key]: version }));
-            setBanner(null);
+            // 모두 업데이트 중에는 앞 카드의 실패 알림을 뒤 카드가 지우지 않는다
+            if (!batch) setBanner(null);
             const res: ApiResult<AddonPinResponse> = (await send()) ?? { success: false };
             const label = { name: card.name, kind: kindWord(t, card) };
             if (failed(res)) {
@@ -225,7 +226,8 @@ export function useAddonVersions(reload?: () => unknown) {
                 const servers = res.waiting_for || [];
                 setWaiting((prev) => ({ ...prev, [card.key]: { version: res.version || version, servers } }));
             } else {
-                setBanner({ tone: 'success', text: t('saba_storage.version_done', { ...label, version: res.version || version }) });
+                const done: Banner = { tone: 'success', text: t('saba_storage.version_done', { ...label, version: res.version || version }) };
+                setBanner((prev) => (batch && prev?.tone === 'error' ? prev : done));
             }
             setBusy((prev) => {
                 const { [card.key]: _, ...rest } = prev;
@@ -245,8 +247,8 @@ export function useAddonVersions(reload?: () => unknown) {
     // 고정했거나 바꾸기를 기다리거나 받는 중인 카드는 단추를 내지 않는다
     const updatable = (card: AddonCard) => !!newerVersion(card) && !card.pinned && !card.pending_version && !(card.key in busy);
 
-    const update = (card: AddonCard) =>
-        change({ card, version: newerVersion(card) || '', from: card.version || '', until: '' }, () => window.api?.addonUnpin?.(card.key));
+    const update = (card: AddonCard, batch = false) =>
+        change({ card, version: newerVersion(card) || '', from: card.version || '', until: '' }, () => window.api?.addonUnpin?.(card.key), batch);
 
     /** 카드 오른쪽 업데이트 단추 */
     const updateButton = (card: AddonCard, disabled?: boolean) => {
@@ -276,7 +278,8 @@ export function useAddonVersions(reload?: () => unknown) {
                 className="btn btn-ghost btn-sm ss-update-btn"
                 disabled={Object.keys(busy).length > 0}
                 onClick={async () => {
-                    for (const card of targets) await update(card);
+                    setBanner(null);
+                    for (const card of targets) await update(card, true);
                 }}
             >
                 <Icon name="arrowUp" size="sm" />
