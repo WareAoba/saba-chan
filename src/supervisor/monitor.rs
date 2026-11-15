@@ -81,7 +81,7 @@ impl Supervisor {
                         {
                             Some(new_pid) => {
                                 tracing::info!("Instance '{}': launcher {} exited, following server PID {}", instance.name, pid, new_pid);
-                                let _ = self.tracker.replace_pid(&instance.id, new_pid);
+                                self.tracker.replace_pid(&instance.id, new_pid);
                             }
                             None => tracing::debug!("Instance '{}': PID {} gone but saba-runner still runs it", instance.name, pid),
                         }

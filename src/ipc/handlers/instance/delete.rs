@@ -126,7 +126,7 @@ async fn delete_instance_held(state: IPCServer, id: String, keep_settings: bool)
             if let Some(m) = managed {
                 supervisor.managed_store.insert(&id, m).await;
             }
-            let _ = supervisor.tracker.track_since(&id, pid, started.unwrap_or_default());
+            supervisor.tracker.track_since(&id, pid, started.unwrap_or_default());
             return super::super::error(StatusCode::CONFLICT, "server_running", "The server is still running and could not be stopped");
         }
     }
