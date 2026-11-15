@@ -43,7 +43,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::ipc::IPCServer;
-use crate::remote_daemon::{self, config, peer};
+use crate::remote_daemon::{self, config, peer, server::relay_target};
 
 fn bad(code: &str, message: &str) -> Response {
     super::error(StatusCode::BAD_REQUEST, code, message)
@@ -189,10 +189,6 @@ pub async fn revoke_client(State(state): State<IPCServer>, Path(host_id): Path<S
         Ok(false) => super::error(StatusCode::NOT_FOUND, "not_paired", "Not paired"),
         Err(e) => super::error(StatusCode::INTERNAL_SERVER_ERROR, "save_failed", e.to_string()),
     }
-}
-
-async fn relay_target(state: &IPCServer) -> Option<remote_daemon::relay::Target> {
-    remote_daemon::server::RelaySource::Configured(state.clone()).target().await
 }
 
 pub async fn list_peers(State(state): State<IPCServer>) -> Response {

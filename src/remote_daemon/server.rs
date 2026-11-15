@@ -71,6 +71,11 @@ impl RelaySource {
     }
 }
 
+/// 설정한 릴레이와 이 PC의 노드 토큰. 노드 토큰이 없으면 None
+pub(crate) async fn relay_target(server: &crate::ipc::IPCServer) -> Option<Target> {
+    RelaySource::Configured(server.clone()).target().await
+}
+
 /// 짝 맺은 PC 목록 (인증층이 요청마다 본다)과, 토큰마다 그 토큰으로 연 응답을 끝낼 표.
 /// 목록에서 빠진 토큰(짝을 풀었거나 다시 맺어 바뀐 토큰)으로 열어 둔 스트림은 목록을 바꿀 때 끝낸다
 #[derive(Clone, Default)]

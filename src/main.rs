@@ -421,23 +421,7 @@ async fn main() -> anyhow::Result<()> {
             let results = extension::run_hook(&ext_mgr, "daemon.startup", ctx).await;
 
             for (ext_id, result) in results {
-                match result {
-                    Ok(val) => {
-                        let success = val.get("success").and_then(|s| s.as_bool()).unwrap_or(true);
-                        let msg = val.get("message").and_then(|m| m.as_str()).unwrap_or("OK");
-                        if success {
-                            tracing::info!("Extension '{}' startup complete: {}", ext_id, msg);
-                        } else {
-                            let err = val.get("error").and_then(|e| e.as_str()).unwrap_or("unknown");
-                            tracing::warn!("Extension '{}' startup failed: {}", ext_id, err);
-                        }
-                        init_tracker.mark_finished(&ext_id, success, msg).await;
-                    }
-                    Err(e) => {
-                        tracing::error!("Extension '{}' startup error: {}", ext_id, e);
-                        init_tracker.mark_finished(&ext_id, false, &e.to_string()).await;
-                    }
-                }
+                service::extensions::record_startup(&init_tracker, &ext_id, result).await;
             }
         });
     }

@@ -136,7 +136,7 @@ pub fn spawn_sync(server: IPCServer) {
                 _ = tokio::time::sleep(wait) => {}
             }
             wait = std::time::Duration::from_secs(600);
-            if let Some(target) = server::RelaySource::Configured(server.clone()).target().await {
+            if let Some(target) = server::relay_target(&server).await {
                 let _ = server.remote_daemon.sync_with_relay(&ConfigFile::default_location(), &target).await;
             }
         }

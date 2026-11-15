@@ -375,7 +375,7 @@ impl Pool {
         let conn = match self.open_or_tunnel(relay, host_id, endpoint).await {
             Ok(conn) => conn,
             Err(NotOpened::Unreachable) => {
-                self.direct_failed().insert(key, DirectFailed { at: std::time::Instant::now(), wait: DIRECT_RETRY, probing: false });
+                self.direct_failed().insert(key, DirectFailed { at: std::time::Instant::now(), failures: 1, probing: false });
                 return Ok(Sent::NotConnected);
             }
             Err(other) => return Err(other),
@@ -451,7 +451,7 @@ impl Pool {
                 if t.is_none() {
                     return direct.await;
                 }
-                self.direct_failed().insert(idle_key(endpoint), DirectFailed { at: std::time::Instant::now(), wait: DIRECT_RETRY, probing: true });
+                self.direct_failed().insert(idle_key(endpoint), DirectFailed { at: std::time::Instant::now(), failures: 1, probing: true });
                 let (pool, endpoint) = (self.clone(), endpoint.clone());
                 tokio::spawn(async move {
                     match direct.await {
@@ -464,7 +464,7 @@ impl Pool {
                             pool.direct_failed().remove(&idle_key(&endpoint));
                         }
                         Err(_) => {
-                            pool.direct_failed().insert(idle_key(&endpoint), DirectFailed { at: std::time::Instant::now(), wait: DIRECT_RETRY, probing: false });
+                            pool.direct_failed().insert(idle_key(&endpoint), DirectFailed { at: std::time::Instant::now(), failures: 1, probing: false });
                         }
                     }
                 });
@@ -494,11 +494,11 @@ impl Pool {
 const DIRECT_RETRY: Duration = if cfg!(test) { Duration::from_millis(200) } else { Duration::from_secs(15) };
 const DIRECT_RETRY_MAX: Duration = if cfg!(test) { Duration::from_millis(800) } else { Duration::from_secs(300) };
 
-/// 직접 붙지 못한 주소(주소·포트·지문)와 그때, 다시 붙어 보기까지 기다릴 시간. 뒤에서 다시 붙어 보는 중이면 `probing`
+/// 직접 붙지 못한 주소(주소·포트·지문)와 그때, 잇달아 못 붙은 횟수(다시 붙어 보기까지 기다릴 시간을 정한다). 뒤에서 다시 붙어 보는 중이면 `probing`
 #[derive(Clone, Copy)]
 struct DirectFailed {
     at: std::time::Instant,
-    wait: Duration,
+    failures: u32,
     probing: bool,
 }
 
@@ -521,9 +521,9 @@ impl Pool {
         let key = idle_key(endpoint);
         let mut failed = self.direct_failed();
         let Some(f) = failed.get_mut(&key) else { return true };
-        if !f.probing && f.at.elapsed() >= f.wait {
+        if !f.probing && f.at.elapsed() >= crate::utils::exp_backoff(DIRECT_RETRY, DIRECT_RETRY_MAX, f.failures) {
             f.probing = true;
-            let wait = (f.wait * 2).min(DIRECT_RETRY_MAX);
+            let failures = f.failures + 1;
             let (pool, endpoint) = (self.clone(), endpoint.clone());
             tokio::spawn(async move {
                 let ok = match pool.open(&endpoint).await {
@@ -537,7 +537,7 @@ impl Pool {
                 if ok {
                     failed.remove(&idle_key(&endpoint));
                 } else {
-                    failed.insert(idle_key(&endpoint), DirectFailed { at: std::time::Instant::now(), wait, probing: false });
+                    failed.insert(idle_key(&endpoint), DirectFailed { at: std::time::Instant::now(), failures, probing: false });
                 }
             });
         }
@@ -575,7 +575,7 @@ impl Pool {
                     *seen += 1;
                     if *seen >= FULL_LIMIT {
                         streak.remove(&idle_key(endpoint));
-                        self.direct_failed().insert(idle_key(endpoint), DirectFailed { at: std::time::Instant::now(), wait: DIRECT_RETRY, probing: false });
+                        self.direct_failed().insert(idle_key(endpoint), DirectFailed { at: std::time::Instant::now(), failures: 1, probing: false });
                     }
                 }
             }
@@ -791,7 +791,7 @@ impl Pool {
         let wait = if offline {
             OFFLINE_RECHECK
         } else if u.streak >= UNREACHABLE_LIMIT {
-            DIRECT_RETRY.saturating_mul(1 << (u.streak - UNREACHABLE_LIMIT).min(8)).min(DIRECT_RETRY_MAX)
+            crate::utils::exp_backoff(DIRECT_RETRY, DIRECT_RETRY_MAX, u.streak - UNREACHABLE_LIMIT + 1)
         } else {
             return;
         };

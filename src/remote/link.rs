@@ -84,7 +84,7 @@ pub fn ensure(server: IPCServer, relay_base: &str, token: &str) {
                     // 기다리는 중에 멈추면 다시 붙지 않는다
                     tokio::select! {
                         _ = cancel.cancelled() => break,
-                        _ = tokio::time::sleep(Duration::from_secs(1 << (failures - 1))) => {}
+                        _ = tokio::time::sleep(crate::utils::exp_backoff(Duration::from_secs(1), Duration::MAX, failures)) => {}
                     }
                 }
                 Ok(Ended::Dropped) | Err(_) => break,
