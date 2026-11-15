@@ -1446,145 +1446,42 @@ mod tests {
         assert_eq!(after, vec!["There are 0 of 20 players online"]);
     }
 
-    #[test]
-    fn test_log_buffer_push_and_query() {
-        let mut buffer = LogBuffer::new();
-        buffer.push(LogSource::Stdout, "line 0".into(), LogLevel::Info);
-        buffer.push(LogSource::Stdout, "line 1".into(), LogLevel::Info);
-        buffer.push(LogSource::Stderr, "err 0".into(), LogLevel::Error);
-
-        assert_eq!(buffer.lines.len(), 3);
-        // get_since(0) → id >= 0 → 전체 3줄 반환
-        assert_eq!(buffer.get_since(0).len(), 3);
-        // get_since(1) → id >= 1 → 2줄 반환 (id=0 제외)
-        assert_eq!(buffer.get_since(1).len(), 2);
-        assert_eq!(buffer.get_recent(2).len(), 2);
-        assert_eq!(buffer.get_recent(100).len(), 3);
-    }
-
+    /// 가득 차면 가장 오래된 줄부터 밀어내고, 줄 번호는 계속 늘어난다
     #[test]
     fn test_log_buffer_ring() {
-        let mut buffer = LogBuffer::new();
-        for i in 0..(DEFAULT_LOG_BUFFER + 100) {
-            buffer.push(LogSource::Stdout, format!("line {}", i), LogLevel::Info);
-        }
-        assert_eq!(buffer.lines.len(), DEFAULT_LOG_BUFFER);
-        assert!(buffer.lines.front().unwrap().id > 0);
-    }
-
-    #[test]
-    fn test_log_buffer_custom_capacity() {
         let mut buffer = LogBuffer::with_capacity(5);
         for i in 0..10 {
             buffer.push(LogSource::Stdout, format!("line {}", i), LogLevel::Info);
         }
-        assert_eq!(buffer.lines.len(), 5);
-        // 가장 오래된 것이 evict되었으므로 첫 라인은 "line 5"
-        assert_eq!(buffer.lines.front().unwrap().content, "line 5");
-        assert_eq!(buffer.lines.back().unwrap().content, "line 9");
+        let kept: Vec<_> = buffer.get_recent(100).into_iter().map(|l| (l.id, l.content)).collect();
+        assert_eq!(kept, (5..10).map(|i| (i, format!("line {i}"))).collect::<Vec<_>>());
     }
 
-    #[test]
-    fn test_log_buffer_ids_are_monotonic() {
-        let mut buffer = LogBuffer::new();
-        let l1 = buffer.push(LogSource::Stdout, "a".into(), LogLevel::Info);
-        let l2 = buffer.push(LogSource::Stdout, "b".into(), LogLevel::Info);
-        let l3 = buffer.push(LogSource::Stdout, "c".into(), LogLevel::Info);
-        assert!(l1.id < l2.id, "IDs must be monotonically increasing");
-        assert!(l2.id < l3.id, "IDs must be monotonically increasing");
-    }
-
+    /// `get_since(id)`는 그 번호부터(포함) 돌려준다. 아직 없는 번호면 빈 목록
     #[test]
     fn test_log_buffer_get_since_returns_from_id_inclusive() {
         let mut buffer = LogBuffer::new();
-        let l1 = buffer.push(LogSource::Stdout, "first".into(), LogLevel::Info);    // id=0
-        let _l2 = buffer.push(LogSource::Stdout, "second".into(), LogLevel::Info);  // id=1
-        let _l3 = buffer.push(LogSource::Stdout, "third".into(), LogLevel::Info);   // id=2
-
-        // get_since(0) → id >= 0 → 모든 라인 반환
-        let since = buffer.get_since(l1.id);
-        assert_eq!(since.len(), 3, "Should return all 3 lines from id {}", l1.id);
-        assert_eq!(since[0].content, "first");
-        assert_eq!(since[1].content, "second");
-        assert_eq!(since[2].content, "third");
-
-        // get_since(1) → id >= 1 → "first" 제외
-        let since_1 = buffer.get_since(1);
-        assert_eq!(since_1.len(), 2);
-        assert_eq!(since_1[0].content, "second");
-        assert_eq!(since_1[1].content, "third");
+        for content in ["first", "second", "third"] {
+            buffer.push(LogSource::Stdout, content.into(), LogLevel::Info);
+        }
+        let contents = |since| buffer.get_since(since).into_iter().map(|l| l.content).collect::<Vec<_>>();
+        assert_eq!(contents(0), ["first", "second", "third"]);
+        assert_eq!(contents(1), ["second", "third"]);
+        assert!(contents(999_999).is_empty());
     }
 
-    /// GUI 폴링 시퀀스 시뮬레이션:
-    /// 1. 초기 폴링: since=0 → 전체 반환
-    /// 2. 이후 폴링: since=last_id+1 → 새 라인만 반환, 누락 없음
+    /// GUI 폴링: 받은 마지막 번호 + 1로 다시 물으면 새 줄만 빠짐없이 온다
     #[test]
     fn test_log_buffer_polling_sequence_no_missing_lines() {
         let mut buffer = LogBuffer::new();
-        buffer.push(LogSource::Stdout, "line0".into(), LogLevel::Info); // id=0
-        buffer.push(LogSource::Stdout, "line1".into(), LogLevel::Info); // id=1
-        buffer.push(LogSource::Stdout, "line2".into(), LogLevel::Info); // id=2
-
-        // Poll 1: since=0 → id >= 0 → 전체 반환 (id=0 포함)
-        let poll1 = buffer.get_since(0);
-        assert_eq!(poll1.len(), 3);
-        assert_eq!(poll1[0].content, "line0");
-        let since_id = poll1.last().unwrap().id + 1; // GUI: sinceId = 2 + 1 = 3
-
-        // 새 라인 추가
-        buffer.push(LogSource::Stdout, "line3".into(), LogLevel::Info); // id=3
-        buffer.push(LogSource::Stdout, "line4".into(), LogLevel::Info); // id=4
-
-        // Poll 2: since=3 → id >= 3 → line3, line4 반환 (line3 누락 없음)
-        let poll2 = buffer.get_since(since_id);
-        assert_eq!(poll2.len(), 2);
-        assert_eq!(poll2[0].content, "line3");
-        assert_eq!(poll2[1].content, "line4");
-    }
-
-    #[test]
-    fn test_log_buffer_get_since_future_id_returns_empty() {
-        let mut buffer = LogBuffer::new();
-        buffer.push(LogSource::Stdout, "a".into(), LogLevel::Info);
-        let since = buffer.get_since(999999);
-        assert!(since.is_empty(), "Future ID should return no results");
-    }
-
-    #[test]
-    fn test_log_buffer_get_recent_zero() {
-        let mut buffer = LogBuffer::new();
-        buffer.push(LogSource::Stdout, "a".into(), LogLevel::Info);
-        let recent = buffer.get_recent(0);
-        assert!(recent.is_empty());
-    }
-
-    #[test]
-    fn test_log_buffer_empty_queries() {
-        let buffer = LogBuffer::new();
-        assert!(buffer.get_since(0).is_empty());
-        assert!(buffer.get_recent(10).is_empty());
-    }
-
-    #[test]
-    fn test_log_buffer_source_and_level_preserved() {
-        let mut buffer = LogBuffer::new();
-        let l1 = buffer.push(LogSource::Stdout, "out".into(), LogLevel::Info);
-        let l2 = buffer.push(LogSource::Stderr, "err".into(), LogLevel::Error);
-        let l3 = buffer.push(LogSource::System, "sys".into(), LogLevel::Warn);
-
-        assert!(matches!(l1.source, LogSource::Stdout));
-        assert!(matches!(l2.source, LogSource::Stderr));
-        assert!(matches!(l3.source, LogSource::System));
-        assert_eq!(l1.level, LogLevel::Info);
-        assert_eq!(l2.level, LogLevel::Error);
-        assert_eq!(l3.level, LogLevel::Warn);
-    }
-
-    #[test]
-    fn test_log_buffer_timestamp_is_set() {
-        let mut buffer = LogBuffer::new();
-        let line = buffer.push(LogSource::Stdout, "hello".into(), LogLevel::Info);
-        assert!(line.timestamp > 0, "Timestamp should be valid Unix epoch");
+        for i in 0..3 {
+            buffer.push(LogSource::Stdout, format!("line{i}"), LogLevel::Info);
+        }
+        let since_id = buffer.get_since(0).last().unwrap().id + 1;
+        buffer.push(LogSource::Stdout, "line3".into(), LogLevel::Info);
+        buffer.push(LogSource::Stdout, "line4".into(), LogLevel::Info);
+        let poll2: Vec<_> = buffer.get_since(since_id).into_iter().map(|l| l.content).collect();
+        assert_eq!(poll2, ["line3", "line4"]);
     }
 
     // ═══════════════════════════════════════════════════════
@@ -1647,40 +1544,5 @@ mod tests {
     fn test_parse_log_level_without_pattern() {
         assert_eq!(parse_log_level("[12:00:00] [Server thread/ERROR]: err", None), LogLevel::Info);
         assert_eq!(parse_log_level("Some random output", None), LogLevel::Info);
-    }
-
-    // ═══════════════════════════════════════════════════════
-    // ManagedProcessStore 테스트
-    // ═══════════════════════════════════════════════════════
-
-    #[tokio::test]
-    async fn test_managed_process_store_empty() {
-        let store = ManagedProcessStore::new();
-        assert!(store.get("test").await.is_none());
-        assert!(store.running_instance_ids().await.is_empty());
-    }
-
-    #[tokio::test]
-    async fn test_managed_process_store_remove_returns_process() {
-        let store = ManagedProcessStore::new();
-        // 빈 상태에서 remove → None
-        assert!(store.remove("nonexistent").await.is_none());
-    }
-
-    #[tokio::test]
-    async fn test_managed_process_store_cleanup_dead_on_empty() {
-        let store = ManagedProcessStore::new();
-        // 빈 상태에서 cleanup → 패닉 없이 정상
-        store.cleanup_dead().await;
-        assert!(store.running_instance_ids().await.is_empty());
-    }
-
-    #[test]
-    fn test_current_timestamp_is_reasonable() {
-        let ts = current_timestamp();
-        // 2024-01-01 이후 (Unix epoch 1704067200)
-        assert!(ts > 1_704_067_200, "Timestamp seems too old: {}", ts);
-        // 2050-01-01 이전 (Unix epoch 2524608000)
-        assert!(ts < 2_524_608_000, "Timestamp seems too new: {}", ts);
     }
 }

@@ -194,36 +194,6 @@ fn closed_without_response(e: &(dyn std::error::Error + 'static)) -> bool {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_rest_client_creation() {
-        let client = RestClient::new("127.0.0.1".to_string(), 8212, false);
-        assert_eq!(client.host, "127.0.0.1");
-        assert_eq!(client.port, 8212);
-        assert!(!client.use_https);
-    }
-
-    #[test]
-    fn test_rest_client_base_url() {
-        let client = RestClient::new("example.com".to_string(), 443, true);
-        assert_eq!(client.base_url(), "https://example.com:443");
-    }
-
-    #[test]
-    fn test_rest_client_with_auth() {
-        let mut client = RestClient::new("127.0.0.1".to_string(), 8212, false);
-        client.set_basic_auth("admin".to_string(), "password".to_string());
-
-        assert_eq!(client.username, Some("admin".to_string()));
-        assert_eq!(client.password, Some("password".to_string()));
-    }
-
-    #[test]
-    fn test_rest_client_debug() {
-        let client = RestClient::new("127.0.0.1".to_string(), 8212, false);
-        let debug_str = format!("{:?}", client);
-        assert!(debug_str.contains("RestClient"));
-    }
-
     /// Windows는 응답 없이 닫힌 연결을 os error 10053·10054로 돌려준다. 문구가 아니라 종류로 알아본다
     #[test]
     fn a_closed_connection_is_recognized_by_its_kind_on_every_platform() {

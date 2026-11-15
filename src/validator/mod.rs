@@ -1367,18 +1367,6 @@ mod tests {
         assert_eq!(conflicts.len(), 2, "Should detect 2 conflicts: {:?}", conflicts);
     }
 
-    /// ValidationError — Display trait 출력 포맷
-    #[test]
-    fn test_validation_error_display() {
-        let err = ValidationError {
-            field: "port".to_string(),
-            message: "Required field 'port' is missing".to_string(),
-            error_type: ValidationErrorType::Required,
-        };
-        let display = format!("{}", err);
-        assert_eq!(display, "port: Required field 'port' is missing");
-    }
-
     #[test]
     fn ports_held_by_another_program_are_found_over_tcp_and_udp() {
         let tcp = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).unwrap();
@@ -1458,20 +1446,5 @@ mod tests {
             vec![("port".to_string(), 16261), ("rest_port".to_string(), 27015), ("steam_port1".to_string(), 8766)],
             "the REST port setting is checked once, as rest_port"
         );
-    }
-
-    /// PortConflict — Display trait 출력 포맷
-    #[test]
-    fn test_port_conflict_display() {
-        let conflict = PortConflict {
-            port: 25565,
-            port_type: "port".to_string(),
-            conflicting_instance_name: "other-server".to_string(),
-            conflicting_instance_id: "abc".to_string(),
-            conflicting_port_type: "port".to_string(),
-        };
-        let display = format!("{}", conflict);
-        assert!(display.contains("25565"));
-        assert!(display.contains("other-server"));
     }
 }

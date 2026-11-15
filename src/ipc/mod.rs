@@ -343,7 +343,7 @@ fn yes() -> bool {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ExtensionInfo {
+pub struct ModuleInfo {
     pub name: String,
     pub version: String,
     /// 신뢰 표시: verified(서명된 카탈로그에서 받았고 그대로) · modified · unverified (M12)
@@ -420,8 +420,8 @@ pub struct ExtensionInfo {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ExtensionListResponse {
-    pub modules: Vec<ExtensionInfo>,
+pub struct ModuleListResponse {
+    pub modules: Vec<ModuleInfo>,
     /// 로드하지 못한 모듈과 이유
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub failed: Vec<crate::module_loader::ModuleLoadError>,
@@ -1334,91 +1334,14 @@ mod tests {
         assert!(tracker.get("old-b").is_none() && !tracker.take_creating("old-b"));
     }
 
-    #[tokio::test]
-    async fn test_ipc_handle_request() {
-        // HTTP 엔드포인트 테스트는 integration test로 이동
-        let response = json!({
-            "success": true,
-            "result": "ok"
-        });
-        assert!(response["success"].as_bool().unwrap());
-    }
-
-    #[test]
-    fn test_module_info_serialization_with_commands() {
-        let module_info = ExtensionInfo {
+    fn module_info(commands: Option<crate::module_loader::ModuleCommands>) -> ModuleInfo {
+        ModuleInfo {
             platforms: None,
             platform_supported: true,
             architectures: None,
             unsupported_reason: None,
             trust: saba_chan_updater_lib::integrity::Trust::Unverified,
             name: "palworld".to_string(),
-            version: "1.0.0".to_string(),
-            description: Some("Palworld 서버 관리".to_string()),
-            schema_version: 1,
-            display_name: None,
-            game_name: None,
-            author: None,
-            warnings: Vec::new(),
-            unmet_dependencies: Vec::new(),
-            path: "/modules/palworld".to_string(),
-            executable_path: Some("PalServer.exe".to_string()),
-            server_executable: None,
-            icon: None,
-            interaction_mode: None,
-            protocols: None,
-            settings: None,
-            syntax_highlight: None,
-            install: None,
-            dir_signatures: vec!["PalServer.exe".to_string()],
-            module_aliases: vec![],
-            command_aliases: std::collections::HashMap::new(),
-            presets: Vec::new(),
-            queries: Vec::new(),
-            agreements: Vec::new(),
-            lists: Vec::new(),
-            functions: None,
-            addon: Default::default(),
-            commands: Some(crate::module_loader::ModuleCommands {
-                fields: vec![
-                    crate::module_loader::CommandField {
-                        name: "players".to_string(),
-                        label: "플레이어 목록".to_string(),
-                        description: Some("현재 접속 중인 플레이어 조회".to_string()),
-                        method: Some("rest".to_string()),
-                        http_method: Some("GET".to_string()),
-                        endpoint_template: Some("/v1/api/players".to_string()),
-                        console_template: None,
-                        risk: None,
-                        inputs: vec![],
-                        remote: true,
-                        reply_pattern: None,
-                    },
-                ],
-                hook: false,
-                failure_patterns: Vec::new(),
-            }),
-        };
-
-        let json = serde_json::to_value(&module_info).unwrap();
-        assert!(json.get("commands").is_some(), "commands field should exist");
-        let commands = json.get("commands").unwrap();
-        assert!(commands.get("fields").is_some(), "commands.fields should exist");
-        let fields = commands.get("fields").unwrap().as_array().unwrap();
-        assert_eq!(fields.len(), 1);
-        assert_eq!(fields[0].get("http_method").unwrap().as_str().unwrap(), "GET");
-        assert_eq!(fields[0].get("name").unwrap().as_str().unwrap(), "players");
-    }
-
-    #[test]
-    fn test_module_info_without_commands() {
-        let module_info = ExtensionInfo {
-            platforms: None,
-            platform_supported: true,
-            architectures: None,
-            unsupported_reason: None,
-            trust: saba_chan_updater_lib::integrity::Trust::Unverified,
-            name: "test".to_string(),
             version: "1.0.0".to_string(),
             description: None,
             schema_version: 1,
@@ -1427,7 +1350,7 @@ mod tests {
             author: None,
             warnings: Vec::new(),
             unmet_dependencies: Vec::new(),
-            path: "/modules/test".to_string(),
+            path: "/modules/palworld".to_string(),
             executable_path: None,
             server_executable: None,
             icon: None,
@@ -1445,137 +1368,51 @@ mod tests {
             lists: Vec::new(),
             functions: None,
             addon: Default::default(),
-            commands: None,
-        };
-
-        let json = serde_json::to_value(&module_info).unwrap();
-        assert!(json.get("commands").is_some());
-        assert!(json.get("commands").unwrap().is_null());
-        assert!(json["functions"].is_null(), "unknown functions are sent as null, not left out");
+            commands,
+        }
     }
 
     #[test]
     fn test_module_list_response_includes_commands() {
-        let response = ExtensionListResponse {
-            failed: Vec::new(),
-            modules: vec![
-                ExtensionInfo {
-                    platforms: None,
-                    platform_supported: true,
-                    architectures: None,
-                    unsupported_reason: None,
-                    trust: saba_chan_updater_lib::integrity::Trust::Unverified,
-                    name: "palworld".to_string(),
-                    version: "1.0.0".to_string(),
-                    description: Some("Palworld".to_string()),
-                    schema_version: 1,
-                    display_name: None,
-                    game_name: None,
-                    author: None,
-                    warnings: Vec::new(),
-                    unmet_dependencies: Vec::new(),
-                    path: "/modules/palworld".to_string(),
-                    executable_path: None,
-                    server_executable: None,
-                    icon: None,
-                    interaction_mode: None,
-                    protocols: None,
-                    settings: None,
-                    syntax_highlight: None,
-                    install: None,
-                    dir_signatures: vec![],
-                    module_aliases: vec![],
-                    command_aliases: std::collections::HashMap::new(),
-                    presets: Vec::new(),
-                    queries: Vec::new(),
-                    agreements: Vec::new(),
-                    lists: Vec::new(),
-                    functions: None,
-                    addon: Default::default(),
-                    commands: Some(crate::module_loader::ModuleCommands {
-                        fields: vec![
-                            crate::module_loader::CommandField {
-                                name: "info".to_string(),
-                                label: "서버 정보".to_string(),
-                                description: None,
-                                method: Some("rest".to_string()),
-                                http_method: Some("GET".to_string()),
-                                endpoint_template: Some("/v1/api/info".to_string()),
-                                console_template: None,
-                                risk: None,
-                                inputs: vec![],
-                                remote: true,
-                                reply_pattern: None,
-                            },
-                            crate::module_loader::CommandField {
-                                name: "announce".to_string(),
-                                label: "공지 전송".to_string(),
-                                description: None,
-                                method: Some("rest".to_string()),
-                                http_method: Some("POST".to_string()),
-                                endpoint_template: Some("/v1/api/announce".to_string()),
-                                console_template: None,
-                                risk: None,
-                                inputs: vec![
-                                    crate::module_loader::CommandInput {
-                                        name: "message".to_string(),
-                                        label: Some("메시지".to_string()),
-                                        input_type: Some("string".to_string()),
-                                        required: Some(true),
-                                        placeholder: Some("공지 내용".to_string()),
-                                        default: None,
-                                        min: None,
-                                        max: None,
-                                        options: None,
-                                    },
-                                ],
-                                remote: true,
-                                reply_pattern: None,
-                            },
-                        ],
-                        hook: false,
-                        failure_patterns: Vec::new(),
-                    }),
-                },
-            ],
+        let announce = crate::module_loader::CommandField {
+            name: "announce".to_string(),
+            label: "공지 전송".to_string(),
+            description: None,
+            method: Some("rest".to_string()),
+            http_method: Some("POST".to_string()),
+            endpoint_template: Some("/v1/api/announce".to_string()),
+            console_template: None,
+            risk: None,
+            inputs: vec![crate::module_loader::CommandInput {
+                name: "message".to_string(),
+                label: Some("메시지".to_string()),
+                input_type: Some("string".to_string()),
+                required: Some(true),
+                placeholder: Some("공지 내용".to_string()),
+                default: None,
+                min: None,
+                max: None,
+                options: None,
+            }],
+            remote: true,
+            reply_pattern: None,
         };
+        let commands = crate::module_loader::ModuleCommands { fields: vec![announce], hook: false, failure_patterns: Vec::new() };
+        let response = ModuleListResponse { failed: Vec::new(), modules: vec![module_info(Some(commands))] };
 
         let json = serde_json::to_value(&response).unwrap();
-        let modules = json.get("modules").unwrap().as_array().unwrap();
-        assert_eq!(modules.len(), 1);
-
-        let palworld = &modules[0];
-        let commands = palworld.get("commands").unwrap();
-        let fields = commands.get("fields").unwrap().as_array().unwrap();
-        assert_eq!(fields.len(), 2);
-        assert_eq!(fields[0].get("http_method").unwrap().as_str().unwrap(), "GET");
-        assert_eq!(fields[1].get("http_method").unwrap().as_str().unwrap(), "POST");
-
-        let announce_inputs = fields[1].get("inputs").unwrap().as_array().unwrap();
-        assert_eq!(announce_inputs.len(), 1);
-        assert_eq!(announce_inputs[0].get("name").unwrap().as_str().unwrap(), "message");
-        assert_eq!(announce_inputs[0].get("required").unwrap().as_bool().unwrap(), true);
+        let field = &json["modules"][0]["commands"]["fields"][0];
+        assert_eq!((field["name"].as_str(), field["http_method"].as_str()), (Some("announce"), Some("POST")));
+        assert_eq!(
+            field["inputs"][0],
+            json!({"name": "message", "label": "메시지", "type": "string", "required": true, "placeholder": "공지 내용", "default": null}),
+        );
     }
 
     #[test]
-    fn test_command_input_serialization() {
-        let input = crate::module_loader::CommandInput {
-            name: "user_id".to_string(),
-            label: Some("유저 ID".to_string()),
-            input_type: Some("string".to_string()),
-            required: Some(true),
-            placeholder: Some("steam_xxxxxxxxx".to_string()),
-            default: None,
-            min: None,
-            max: None,
-            options: None,
-        };
-
-        let json = serde_json::to_value(&input).unwrap();
-        assert_eq!(json.get("name").unwrap().as_str().unwrap(), "user_id");
-        assert_eq!(json.get("label").unwrap().as_str().unwrap(), "유저 ID");
-        assert_eq!(json.get("type").unwrap().as_str().unwrap(), "string");
-        assert_eq!(json.get("required").unwrap().as_bool().unwrap(), true);
-        assert_eq!(json.get("placeholder").unwrap().as_str().unwrap(), "steam_xxxxxxxxx");
+    fn test_module_info_without_commands() {
+        let json = serde_json::to_value(module_info(None)).unwrap();
+        assert!(json["commands"].is_null() && json.get("commands").is_some());
+        assert!(json["functions"].is_null(), "unknown functions are sent as null, not left out");
     }
 }

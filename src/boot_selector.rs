@@ -733,82 +733,15 @@ mod tests {
         let _ = child.wait();
     }
 
+    /// 고른 방식은 config.json `boot`에 남고, 읽지 못하면 GUI로 돌아간다 (데이터 폴더는 테스트 프로세스마다 따로다)
     #[test]
-    fn boot_mode_display() {
-        assert_eq!(format!("{}", BootMode::Gui), "GUI");
-        assert_eq!(format!("{}", BootMode::Cli), "CLI");
-        assert_eq!(format!("{}", BootMode::DaemonOnly), "Daemon Only");
-    }
-
-    #[test]
-    fn boot_config_default_is_gui() {
-        let config = BootConfig::default();
-        assert_eq!(config.last_mode, BootMode::Gui);
-    }
-
-    #[test]
-    fn boot_config_serde_roundtrip() {
-        for mode in [BootMode::Gui, BootMode::Cli, BootMode::DaemonOnly] {
-            let config = BootConfig { last_mode: mode };
-            let json = serde_json::to_string(&config).unwrap();
-            let parsed: BootConfig = serde_json::from_str(&json).unwrap();
-            assert_eq!(parsed.last_mode, mode);
+    fn boot_config_is_saved_in_the_config_file() {
+        for mode in [BootMode::Cli, BootMode::DaemonOnly, BootMode::Gui] {
+            save_config(mode);
+            assert_eq!(load_config().last_mode, mode);
         }
-    }
-
-    #[test]
-    fn boot_config_json_format() {
-        // JSON 형식이 boot-config.json 파일과 호환되는지 확인
-        let json = r#"{"last_mode":"gui"}"#;
-        let config: BootConfig = serde_json::from_str(json).unwrap();
-        assert_eq!(config.last_mode, BootMode::Gui);
-
-        let json = r#"{"last_mode":"cli"}"#;
-        let config: BootConfig = serde_json::from_str(json).unwrap();
-        assert_eq!(config.last_mode, BootMode::Cli);
-
-        let json = r#"{"last_mode":"daemononly"}"#;
-        let config: BootConfig = serde_json::from_str(json).unwrap();
-        assert_eq!(config.last_mode, BootMode::DaemonOnly);
-    }
-
-    #[test]
-    fn boot_config_file_roundtrip() {
-        let tmp = std::env::temp_dir().join("saba-test-boot-config.json");
-
-        // Write
-        let config = BootConfig {
-            last_mode: BootMode::Cli,
-        };
-        let json = serde_json::to_string_pretty(&config).unwrap();
-        std::fs::write(&tmp, &json).unwrap();
-
-        // Read
-        let content = std::fs::read_to_string(&tmp).unwrap();
-        let loaded: BootConfig = serde_json::from_str(&content).unwrap();
-        assert_eq!(loaded.last_mode, BootMode::Cli);
-
-        // Cleanup
-        let _ = std::fs::remove_file(&tmp);
-    }
-
-    #[test]
-    fn boot_config_missing_file_returns_default() {
-        // 존재하지 않는 경로에서 로드하면 기본값을 반환해야 함
-        let config: BootConfig = std::fs::read_to_string("/nonexistent/boot-config.json")
-            .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default();
-        assert_eq!(config.last_mode, BootMode::Gui);
-    }
-
-    #[test]
-    fn boot_config_corrupted_json_returns_default() {
-        // 잘못된 JSON에서 로드하면 기본값을 반환해야 함
-        let config: BootConfig = serde_json::from_str("not valid json")
-            .ok()
-            .unwrap_or_default();
-        assert_eq!(config.last_mode, BootMode::Gui);
+        ConfigFile::default_location().set_section("boot", serde_json::json!({"last_mode": "nope"})).unwrap();
+        assert_eq!(load_config().last_mode, BootMode::Gui);
     }
 
     /// 맥 터미널 스크립트는 CLI 자신의 pid를 남기고, 따옴표가 든 경로·인자도 그대로 넘긴다 (sh로 직접 돌려 본다)

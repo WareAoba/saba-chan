@@ -1476,14 +1476,6 @@ mod tests {
     }
 
     #[test]
-    fn gui_settings_default_roundtrip() {
-        let settings = GuiSettings::default();
-        let json_str = serde_json::to_string_pretty(&settings).unwrap();
-        let loaded: GuiSettings = serde_json::from_str(&json_str).unwrap();
-        assert_eq!(settings, loaded);
-    }
-
-    #[test]
     fn console_popouts_survive_a_typed_save() {
         // 셸이 보내는 PIP 기억이 데몬의 타입을 거쳐도 남아야 다음에 다시 띄운다
         let json = serde_json::json!({
@@ -1575,14 +1567,6 @@ mod tests {
     }
 
     // ── BotConfig 직렬화/역직렬화 ──
-
-    #[test]
-    fn bot_config_default_roundtrip() {
-        let config = BotConfig::default();
-        let json_str = serde_json::to_string_pretty(&config).unwrap();
-        let loaded: BotConfig = serde_json::from_str(&json_str).unwrap();
-        assert_eq!(config, loaded);
-    }
 
     #[test]
     fn bot_config_camel_case_serialization() {

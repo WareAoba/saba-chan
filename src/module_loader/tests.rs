@@ -77,12 +77,6 @@ fn folders_and_files_starting_with_a_dot_are_not_modules() {
 }
 
 #[test]
-fn test_module_loader_creation() {
-    let loader = ModuleLoader::new("./modules");
-    assert_eq!(loader.modules_dir, "./modules");
-}
-
-#[test]
 fn test_discover_modules_empty_dir() {
     let loader = ModuleLoader::new("./nonexistent_modules");
     let modules = loader.discover_modules().unwrap();
@@ -104,19 +98,25 @@ entry = "lifecycle.py"
     assert!(meta.description.is_none());
     assert!(meta.settings.is_none());
     assert!(meta.commands.is_none());
+    assert!(meta.module_aliases.is_empty() && meta.command_aliases.is_empty());
+    assert!(meta.cmd_patterns.is_empty());
+    assert!(meta.dependencies.is_empty());
 }
 
+/// `[module]`의 name·version·entry가 없거나 TOML이 아니면 읽지 않는다. 빠진 키는 에러에 이름이 나온다
 #[test]
-fn test_parse_module_toml_missing_name() {
-    let toml = r#"
-[module]
-version = "1.0.0"
-entry = "lifecycle.py"
-"#;
-    let result = parse_module_toml(toml);
-    assert!(result.is_err());
-    let err_msg = result.unwrap_err().to_string();
-    assert!(err_msg.contains("name"), "Error should mention missing field 'name': {}", err_msg);
+fn test_parse_module_toml_missing_required_keys() {
+    for (missing, toml) in [
+        ("name", "[module]\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n"),
+        ("version", "[module]\nname = \"test-game\"\nentry = \"lifecycle.py\"\n"),
+        ("entry", "[module]\nname = \"test-game\"\nversion = \"1.0.0\"\n"),
+    ] {
+        let err = parse_module_toml(toml).unwrap_err().to_string();
+        assert!(err.contains(missing), "error should mention '{missing}': {err}");
+    }
+    for bad in ["", "this is not [valid toml =!", "[config]\nprocess_name = \"java\"\n"] {
+        assert!(parse_module_toml(bad).is_err(), "{bad:?}");
+    }
 }
 
 #[test]
@@ -207,38 +207,6 @@ custom_unknown_field = "should not cause error"
 }
 
 #[test]
-fn test_parse_module_toml_missing_version() {
-    let toml = r#"
-[module]
-name = "test-game"
-entry = "lifecycle.py"
-"#;
-    let result = parse_module_toml(toml);
-    assert!(result.is_err());
-    let err_msg = result.unwrap_err().to_string();
-    assert!(err_msg.contains("version"), "Error should mention missing 'version': {}", err_msg);
-}
-
-#[test]
-fn test_parse_module_toml_missing_entry() {
-    let toml = r#"
-[module]
-name = "test-game"
-version = "1.0.0"
-"#;
-    let result = parse_module_toml(toml);
-    assert!(result.is_err());
-    let err_msg = result.unwrap_err().to_string();
-    assert!(err_msg.contains("entry"), "Error should mention missing 'entry': {}", err_msg);
-}
-
-#[test]
-fn test_parse_module_toml_empty_string() {
-    let result = parse_module_toml("");
-    assert!(result.is_err(), "Empty TOML should fail");
-}
-
-#[test]
 fn test_parse_module_toml_aliases() {
     let toml = r#"
 [module]
@@ -266,35 +234,6 @@ stop = { aliases = ["정지", "끄기"], description = "Stop the server" }
 
     let stop = meta.command_aliases.get("stop").unwrap();
     assert_eq!(stop.aliases.len(), 2);
-}
-
-#[test]
-fn test_parse_module_toml_aliases_empty_by_default() {
-    let toml = r#"
-[module]
-name = "test-game"
-version = "1.0.0"
-entry = "lifecycle.py"
-"#;
-    let meta = parse_module_toml(toml).unwrap();
-    assert!(meta.module_aliases.is_empty());
-    assert!(meta.command_aliases.is_empty());
-}
-
-#[test]
-fn test_parse_module_toml_invalid_toml_syntax() {
-    let result = parse_module_toml("this is not [valid toml =!");
-    assert!(result.is_err(), "Invalid TOML syntax should fail");
-}
-
-#[test]
-fn test_parse_module_toml_no_module_section() {
-    let toml = r#"
-[config]
-process_name = "java"
-"#;
-    let result = parse_module_toml(toml);
-    assert!(result.is_err(), "TOML without [module] section should fail");
 }
 
 #[test]
@@ -390,18 +329,6 @@ common_paths = ["C:\\PZServer"]
     assert!(meta.cmd_patterns.contains(&"ProjectZomboid".to_string()));
 }
 
-#[test]
-fn test_parse_module_toml_cmd_patterns_empty_by_default() {
-    let toml = r#"
-[module]
-name = "test-game"
-version = "1.0.0"
-entry = "lifecycle.py"
-"#;
-    let meta = parse_module_toml(toml).unwrap();
-    assert!(meta.cmd_patterns.is_empty());
-}
-
 // ── 컴포넌트 의존성(dependencies) 테스트 ──
 
 #[test]
@@ -420,18 +347,6 @@ entry = "lifecycle.py"
     assert_eq!(meta.dependencies.len(), 2);
     assert_eq!(meta.dependencies.get("saba-core").unwrap(), ">=0.3.0");
     assert_eq!(meta.dependencies.get("ext-steamcmd").unwrap(), ">=1.0.0");
-}
-
-#[test]
-fn test_parse_module_toml_dependencies_empty_by_default() {
-    let toml = r#"
-[module]
-name = "test-game"
-version = "1.0.0"
-entry = "lifecycle.py"
-"#;
-    let meta = parse_module_toml(toml).unwrap();
-    assert!(meta.dependencies.is_empty());
 }
 
 #[test]

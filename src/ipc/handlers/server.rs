@@ -9,7 +9,7 @@ use serde_json::{json, Value};
 
 use crate::service::lifecycle::{instance_not_found, start, user_restart, user_stop};
 
-use super::super::{ExtensionInfo, ExtensionListResponse, IPCServer, ProtocolsInfo, ServerStopRequest};
+use super::super::{ModuleInfo, ModuleListResponse, IPCServer, ProtocolsInfo, ServerStopRequest};
 
 /// GET /health - 데몬 활성 확인용 경량 ping
 ///
@@ -98,7 +98,7 @@ pub async fn version_handler(State(state): State<IPCServer>) -> impl IntoRespons
 }
 
 /// 모듈 목록 한 줄. 별명은 module.toml(언어 없는 낱말)에 `lang`(앱 언어)의 모듈 locales 별명을 더한다 (`chat::api::locale_aliases`)
-fn module_info(m: crate::module_loader::LoadedModule, versions: &std::collections::BTreeMap<String, String>, lang: &str) -> ExtensionInfo {
+fn module_info(m: crate::module_loader::LoadedModule, versions: &std::collections::BTreeMap<String, String>, lang: &str) -> ModuleInfo {
     let installed: std::collections::HashMap<String, String> = versions.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
     let unmet_dependencies = m
         .metadata
@@ -122,7 +122,7 @@ fn module_info(m: crate::module_loader::LoadedModule, versions: &std::collection
     for (cmd, words) in localized.commands {
         crate::chat::api::push_words(&mut meta.command_aliases.entry(cmd).or_default().aliases, words.into_iter());
     }
-    ExtensionInfo {
+    ModuleInfo {
         platforms: meta.platforms,
         architectures: meta.architectures,
         platform_supported: unsupported_reason.is_none(),
@@ -177,11 +177,11 @@ async fn module_list_response(
         Ok(modules) => {
             // 구현한 함수 목록 (MK1): 캐시에 없으면 짧게만 기다린다(느린 모듈은 null, 묻기는 뒤에서 마저). 데몬 락 밖에서, 모듈끼리 동시에
             let asks: Vec<_> = modules.iter().map(|m| tokio::spawn(crate::plugin::module_functions_for_list(m.entry_path()))).collect();
-            let mut modules: Vec<ExtensionInfo> = modules.into_iter().map(|m| module_info(m, versions, lang)).collect();
+            let mut modules: Vec<ModuleInfo> = modules.into_iter().map(|m| module_info(m, versions, lang)).collect();
             for (info, ask) in modules.iter_mut().zip(asks) {
                 info.functions = ask.await.ok().flatten();
             }
-            (StatusCode::OK, Json(ExtensionListResponse { modules, failed })).into_response()
+            (StatusCode::OK, Json(ModuleListResponse { modules, failed })).into_response()
         }
         Err(e) => {
             super::error(StatusCode::INTERNAL_SERVER_ERROR, "internal_server_error", format!("Failed to list modules: {}", e))
