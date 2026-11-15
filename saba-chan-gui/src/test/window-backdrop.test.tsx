@@ -1,5 +1,5 @@
 /**
- * 창 바탕 반투명 (사용자 11-08): 설정 → 외관에서 켜고 끄고, 재질·진하기·밝기를 고른다.
+ * 창 바탕 반투명: 설정 → 외관에서 켜고 끄고, 재질·진하기·밝기를 고른다.
  * 셸이 OS 효과를 깔았다고 답한 창만 바탕을 비우고(data-backdrop="on"), 그 위에 테마 바탕을 고른 진하기로 덮는다.
  */
 import { act, fireEvent, render, screen } from '@testing-library/react';

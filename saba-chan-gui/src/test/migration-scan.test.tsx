@@ -67,7 +67,7 @@ describe('AddInstanceMigration 폴더 스캔', () => {
         expect(onAddServer.mock.calls[0][0]).toMatchObject({ migration_source: '/srv/old', migration_mode: 'move' });
     });
 
-    // 사용자 11-08: 켜져 있는 서버는 불러오기를 누르기 전에 끄라고 보인다 (데몬 detect `notices`)
+    // 켜져 있는 서버는 불러오기를 누르기 전에 끄라고 보인다 (데몬 detect `notices`)
     it('폴더의 서버가 켜져 있으면 다음으로 가기 전에 경고하고, 불러오기 화면에서 바뀌는 것을 보인다', async () => {
         window.api.openFolderDialog = vi.fn().mockResolvedValue('/srv/old');
         window.api.migrationScanDir = vi

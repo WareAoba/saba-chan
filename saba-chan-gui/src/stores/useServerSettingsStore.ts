@@ -15,7 +15,7 @@ import { failed } from '../utils/apiResult';
 
 /*
  * 서버 설정 (서버 상세의 설정·사바쨩 탭): 연 서버의 칸 값·기준 값·저장·버전 설치·초기화.
- * 다른 서버를 여느라 내려놓은 저장하지 않은 칸은 서버 id로 drafts에 둔다 (메모리에만, 사용자 11-12).
+ * 다른 서버를 여느라 내려놓은 저장하지 않은 칸은 서버 id로 drafts에 둔다 (메모리에만).
  * 서버 목록·모듈은 useServerStore에서 읽고, 저장 뒤 목록 새로고침과 '지금 다시 시작'은 그 스토어 액션을 부른다.
  * (디스코드 호출어는 디스코드 화면 — components/discord/InstanceWordsTab)
  */
@@ -118,7 +118,7 @@ interface ServerSettingsData {
     versionInstalling: boolean;
     resettingServer: boolean;
     savingSettings: boolean;
-    /** 켜진 서버에서 다시 시작해야 적용되는 설정을 저장했다: 저장 막대 위에 [지금 다시 시작][나중에] (사용자 11-06 #5).
+    /** 켜진 서버에서 다시 시작해야 적용되는 설정을 저장했다: 저장 막대 위에 [지금 다시 시작][나중에].
      * 저장한 뒤 탭을 다시 열어도 남도록 연 화면과 따로 둔다 */
     restartPending: RestartPending | null;
     /** 다른 서버를 여느라 내려놓은, 저장하지 않은 칸 (서버 id → 고친 칸 값). 돌아오면 다시 올린다 */
@@ -162,7 +162,7 @@ const initialData = (): ServerSettingsData => ({
 
 /** 화면이 그리지 않는 것: 열기·저장 순서와 칸 표시 */
 const freshInternal = () => ({
-    // 저장 응답을 기다리는 동안 다시 누른 저장은 버린다 (G-U5)
+    // 저장 응답을 기다리는 동안 다시 누른 저장은 버린다
     saving: false,
     // 실제 설정으로 확인하지 못한 칸 (저장된 캐시나 module.toml 기본값). 사용자가 고치지 않으면 저장하지 않는다
     // (그대로 저장하면 게임 안이나 파일에서 바꾼 값을 덮어쓴다)
@@ -214,13 +214,12 @@ export const useServerSettingsStore = create<ServerSettingsState>()((set, get) =
     const setOpenedSettings = (next: Updater<SettingsValues>) =>
         set((s) => ({ openedSettings: typeof next === 'function' ? next(s.openedSettings) : next }));
 
-    // ── handleOpenSettings ──────────────────────────────────
+    // ── handleOpenSettings ──
     // reload: 저장한 뒤 열린 화면 그대로 다시 읽는다 (보던 탭·접힘을 두고, 읽는 사이 고친 칸도 둔다)
     const handleOpenSettings = async (server: Server, reload = false, saved?: SettingsValues) => {
         const { modules } = useServerStore.getState();
         // 첫 await 전에 번호를 매긴다: 그사이 다른 서버를 열면 이 호출의 늦은 결과는 모두 버린다
         const request = ++internal.openRequest;
-        // Fetch latest server data from API
         let latestServer = server;
         let fresh = false;
         try {
@@ -277,7 +276,6 @@ export const useServerSettingsStore = create<ServerSettingsState>()((set, get) =
         set({ unsetSettings: new Set() });
         internal.liveFields = new Set();
 
-        // Initialize settings values from module schema
         // 우선순위: 실제 설정(아래에서 비동기로 덮음) > 저장된 값(savedValue) > 기본값.
         const module = modules.find((m) => m.name === latestServer.module);
         if (module && module.settings && module.settings.fields) {
@@ -399,7 +397,7 @@ export const useServerSettingsStore = create<ServerSettingsState>()((set, get) =
         internal.versionsUnfinished = false;
         // 설치 방식 익스텐션으로 받는 서버의 버전 목록은 브랜치 목록이다 (목록을 밝힌 모듈만)
         const branchMethod = versionBranchMethod(mod);
-        // 버전 목록·설치를 구현한 모듈만 (MK1)
+        // 버전 목록·설치를 구현한 모듈만
         if (
             (installMethod === 'download' || branchMethod) &&
             moduleSupports(mod, 'list_versions') &&
@@ -458,7 +456,7 @@ export const useServerSettingsStore = create<ServerSettingsState>()((set, get) =
         }
     };
 
-    // ── handleSettingChange ─────────────────────────────────
+    // ── handleSettingChange ──
     const handleSettingChange = (fieldName: string, value: unknown) => {
         internal.touchedFields.add(fieldName);
         get().unsetSettings.delete(fieldName);
@@ -493,7 +491,7 @@ export const useServerSettingsStore = create<ServerSettingsState>()((set, get) =
         if (internal.openedUnset.has(name)) get().unsetSettings.add(name);
     };
 
-    // ── handleInstallVersion ────────────────────────────────
+    // ── handleInstallVersion ──
     const handleInstallVersion = async () => {
         const { settingsServer, settingsValues, availableVersions } = get();
         const { servers, modules } = useServerStore.getState();
@@ -582,7 +580,7 @@ export const useServerSettingsStore = create<ServerSettingsState>()((set, get) =
         });
     };
 
-    // ── handleResetServer ───────────────────────────────────
+    // ── handleResetServer ──
     // 서버를 초기화한다. `choice`는 확인 창에서 고른 범위와 "지우기 전에 백업"
     const resetServer = async (choice?: { scope?: string; backup?: boolean }) => {
         const { settingsServer } = get();
@@ -623,7 +621,7 @@ export const useServerSettingsStore = create<ServerSettingsState>()((set, get) =
                             if (updated && request === internal.openRequest) {
                                 setSettingsServer(updated);
                                 internal.revision = updated.revision || null;
-                                // 데몬이 따로 두는 칸은 module_settings 밖이거나 표시 형식이 달라 같이 채운다 (G-U3)
+                                // 데몬이 따로 두는 칸은 module_settings 밖이거나 표시 형식이 달라 같이 채운다
                                 setSettingsValues((prev) => ({
                                     ...prev,
                                     ...updated.module_settings,
@@ -687,7 +685,7 @@ export const useServerSettingsStore = create<ServerSettingsState>()((set, get) =
         });
     };
 
-    // ── handleSaveSettings ──────────────────────────────────
+    // ── handleSaveSettings ──
     const handleSaveSettings = async () => {
         const { settingsServer, settingsValues } = get();
         const { servers, modules } = useServerStore.getState();

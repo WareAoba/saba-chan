@@ -11,7 +11,7 @@ import { useServerStore } from '../stores/useServerStore';
 
 const ServerRow = ServerRowFull as unknown as ComponentType<Partial<ComponentProps<typeof ServerRowFull>>>;
 
-// 설정을 고치다 다른 서버를 눌러도 고친 값은 메모리에 남고, 그 서버 카드에 경고 표시가 붙는다 (사용자 11-12)
+// 설정을 고치다 다른 서버를 눌러도 고친 값은 메모리에 남고, 그 서버 카드에 경고 표시가 붙는다
 const modules = [{ name: 'dl', settings: { fields: [{ name: 'motd', field_type: 'text' }] } }];
 const srvA = { id: 'a', name: 'A', module: 'dl', status: 'stopped', module_settings: { motd: 'a-saved' } };
 const srvB = { id: 'b', name: 'B', module: 'dl', status: 'stopped', module_settings: { motd: 'b-saved' } };

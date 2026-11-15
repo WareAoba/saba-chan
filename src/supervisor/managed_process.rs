@@ -1,10 +1,5 @@
-//! Managed Process - Direct process spawning with stdio capture
-//!
-//! The core daemon can directly manage server processes with:
-//! - Real-time stdout/stderr capture and log buffering
-//! - stdin command injection
-//! - Configurable log level parsing via module log_pattern
-//! - Process lifecycle tracking with running state watch
+//! managed 서버 프로세스: stdout·stderr를 읽어 콘솔 버퍼에 쌓고, stdin으로 명령을 보내고, 실행 상태를 알린다.
+//! 줄의 로그 수준은 모듈 `log_pattern`으로 가른다
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
@@ -24,32 +19,28 @@ pub use runner::{latest_session_log, runner_binary, sessions_dir, DEFAULT_LOG_SE
 #[allow(unused_imports)] // 바이너리에서는 아직 코어 교체 판정을 부르는 곳이 없다
 pub use runner::READS_RUNNER_FORMATS;
 
-/// Console log file name within the instance's logs directory.
 const CONSOLE_LOG_FILENAME: &str = "console.log";
-/// Maximum console log file size before rotation (10 MB).
+/// 이만큼 쌓이면 콘솔 로그 파일을 돌린다
 const CONSOLE_LOG_MAX_BYTES: u64 = 10 * 1024 * 1024;
-/// Number of rotated files to keep.
+/// 돌려 둔 콘솔 로그 파일을 몇 개 남길지
 pub(crate) const CONSOLE_LOG_ROTATIONS: usize = 2;
 
-/// Default maximum number of log lines to keep in the ring buffer.
+/// 콘솔 버퍼가 들고 있는 줄 수
 const DEFAULT_LOG_BUFFER: usize = 10_000;
 /// 디스크 로그에서 콘솔 기록을 되살릴 때 끝에서 읽는 최대 크기 (버퍼 한 벌에 넉넉한 양)
 const LOG_TAIL_MAX_BYTES: u64 = 4 * 1024 * 1024;
 
 // ─── Log Types ───────────────────────────────────────────────
 
-/// A single line of console output from the managed process
+/// 콘솔 한 줄
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogLine {
-    /// Sequential ID for polling (`GET /console?since=<id>`)
+    /// 이어 읽기 번호 (`GET /console?since=<id>`)
     pub id: u64,
-    /// Unix timestamp (seconds)
+    /// 유닉스 초
     pub timestamp: u64,
-    /// Where the line came from
     pub source: LogSource,
-    /// Raw text content
     pub content: String,
-    /// Parsed severity level
     pub level: LogLevel,
     /// 입력 줄(`Input`)을 시킨 쪽: 감사 출처와 그 이름 (`audit::Origin`). 디스크에는 남기지 않는다
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -69,7 +60,7 @@ pub struct InputBy {
 pub enum LogSource {
     Stdout,
     Stderr,
-    /// System messages from saba-chan itself
+    /// 사바쨩이 넣은 안내 줄
     System,
     /// 사바쨩이 서버에 보낸 명령 한 줄 (`send_command`, 화면이 `› 명령`으로 보인다)
     Input,
@@ -93,13 +84,12 @@ pub enum LogLevel {
 
 // ─── Log Buffer ──────────────────────────────────────────────
 
-/// Ring buffer that stores recent log lines with sequential IDs.
-/// Optionally persists every line to a disk log file via an async channel.
+/// 최근 콘솔 줄을 번호와 함께 들고 있는 링버퍼. 디스크 기록을 붙이면 줄마다 파일에도 쓴다
 struct LogBuffer {
     lines: VecDeque<LogLine>,
     next_id: u64,
     max_size: usize,
-    /// Async sender for disk persistence (None = no persistence)
+    /// 디스크 기록 채널 (None이면 파일에 쓰지 않는다)
     file_tx: Option<mpsc::UnboundedSender<String>>,
     /// 이 버퍼의 세대. 줄 번호는 버퍼마다 0부터라, 클라이언트는 세대가 바뀌면 이어 읽던 번호를 버린다
     epoch: u64,
@@ -195,7 +185,6 @@ impl LogBuffer {
         echoed
     }
 
-    /// Push a new log line and return the created `LogLine`.
     fn push(&mut self, source: LogSource, content: String, level: LogLevel) -> LogLine {
         let line = self.push_at(current_timestamp(), source, content, level);
         self.append_own(&line);
@@ -263,7 +252,7 @@ impl LogBuffer {
         self.next_id
     }
 
-    /// Get all lines with id >= `since_id` (for polling).
+    /// `since_id`부터(포함) 모든 줄
     fn get_since(&self, since_id: u64) -> Vec<LogLine> {
         self.lines.iter()
             .filter(|l| l.id >= since_id)
@@ -271,7 +260,6 @@ impl LogBuffer {
             .collect()
     }
 
-    /// Get the most recent `count` lines.
     fn get_recent(&self, count: usize) -> Vec<LogLine> {
         self.lines.iter().rev().take(count).rev().cloned().collect()
     }
@@ -279,26 +267,17 @@ impl LogBuffer {
 
 // ─── Managed Process ─────────────────────────────────────────
 
-/// A server process managed directly by the core daemon.
-///
-/// Provides:
-/// - Async stdin command injection via `send_command()`
-/// - Buffered console output via `get_console_since()` / `get_recent_console()`
-/// - Running state monitoring via `is_running()`
+/// 데몬이 콘솔을 쥔 서버 프로세스
 pub struct ManagedProcess {
-    /// Channel to send commands to stdin
     stdin_tx: mpsc::Sender<StdinLine>,
-    /// Log buffer for recent console output
     log_buffer: Arc<Mutex<LogBuffer>>,
-    /// Process PID
     pub pid: u32,
-    /// Watch channel for running state
     running_rx: watch::Receiver<bool>,
-    /// Abort handle for the background poller task (reattached stubs only)
+    /// 살아 있는지 보는 뒤 작업 (다시 붙은 stub만)
     poller_handle: Option<tokio::task::AbortHandle>,
-    /// Whether stdin is available (false for reattached stubs)
+    /// stdin을 쓸 수 있는가 (다시 붙은 stub은 false)
     stdin_available: bool,
-    /// 끝난 방식. 끝나기 전엔 None, 알 수 없게 끝나도 None (크래시 판정 A1)
+    /// 끝난 방식. 끝나기 전엔 None, 알 수 없게 끝나도 None (크래시 판정)
     exit: Arc<std::sync::Mutex<Option<ProcessExit>>>,
     /// 시작 시각 (unix 초). 이보다 새 크래시 파일만 이번 실행의 것으로 본다
     pub started_at: u64,
@@ -409,18 +388,8 @@ impl ManagedProcess {
         anyhow::bail!("the server was not started through saba-runner; Ctrl+C cannot be sent")
     }
 
-    /// Spawn a new managed process.
-    ///
-    /// # Arguments
-    /// * `program` - Executable to run (e.g., `"java"`)
-    /// * `args` - Command-line arguments
-    /// * `working_dir` - Working directory
-    /// * `env_vars` - Extra environment variables
-    /// * `log_pattern` - Optional regex pattern for extracting log level from output lines.
-    ///   The pattern should have a named capture group `level` matching
-    ///   INFO, WARN, ERROR, DEBUG etc. If None, all lines default to Info.
-    /// * `instance_dir` - Optional instance directory for console log persistence.
-    ///   If provided, all console output is also written to `{instance_dir}/logs/console.log`.
+    /// 서버를 띄운다. `log_pattern`은 `level` 이름 그룹으로 INFO·WARN·ERROR·DEBUG 등을 잡는 정규식이다(없으면 모두 Info).
+    /// `instance_dir`을 주면 콘솔 줄을 `{instance_dir}/logs/console.log`에도 쓴다
     pub async fn spawn(
         program: &str,
         args: &[String],
@@ -443,7 +412,6 @@ impl ManagedProcess {
             cmd.env(key, value);
         }
 
-        // Windows: hide console window
         crate::utils::apply_creation_flags(&mut cmd);
 
         let mut child = cmd.spawn()
@@ -452,17 +420,15 @@ impl ManagedProcess {
         let pid = child.id()
             .ok_or_else(|| anyhow::anyhow!("Failed to get PID of spawned process"))?;
 
-        // Channels
         let (stdin_tx, stdin_rx) = mpsc::channel::<StdinLine>(256);
         let (running_tx, running_rx) = watch::channel(true);
 
         let log_buffer = console_buffer(instance_dir);
         let running_tx = Arc::new(running_tx);
 
-        // Compile log pattern regex (shared across stdout/stderr readers)
+        // stdout·stderr 읽기가 함께 쓴다
         let log_regex = log_level_regex(log_pattern).map(Arc::new);
 
-        // Take ownership of stdio handles
         let stdout = child.stdout.take();
         let stderr = child.stderr.take();
         let stdin = child.stdin.take();
@@ -517,7 +483,6 @@ impl ManagedProcess {
             });
         }
 
-        // System log entry
         {
             let msg = format!("Process started with PID {}", pid);
             log_buffer.lock().await.push(LogSource::System, msg, LogLevel::Info);
@@ -571,12 +536,8 @@ impl ManagedProcess {
         }
     }
 
-    /// Spawn a log follower that streams an extension-provided command's output
-    /// into the standard LogBuffer infrastructure.
-    ///
-    /// This allows extension-managed processes (e.g. containers) to share
-    /// the same console API (`GET /api/instance/:id/console?since=N`) as native
-    /// managed processes.
+    /// 익스텐션이 준 명령의 출력을 콘솔 버퍼로 따라 읽는다. 익스텐션이 돌리는 서버(컨테이너 등)도
+    /// managed 서버와 같은 콘솔 API(`GET /api/instance/:id/console?since=N`)로 본다
     ///
     /// # Arguments
     /// * `program`       - The executable to run (e.g. container runtime, "wsl")
@@ -615,8 +576,7 @@ impl ManagedProcess {
 
         let pid = child.id().unwrap_or(0);
 
-        // Channels — stdin is not used for container log followers, but we keep the
-        // interface compatible with ManagedProcess.
+        // 따라 읽기는 stdin을 쓰지 않지만 ManagedProcess 모양을 맞춘다
         let (stdin_tx, _stdin_rx) = mpsc::channel::<StdinLine>(1);
         let (running_tx, running_rx) = watch::channel(true);
 
@@ -652,7 +612,6 @@ impl ManagedProcess {
             });
         }
 
-        // System log
         {
             let msg = format!("Log streaming started: '{}'", description_owned);
             tracing::info!("{}", msg);
@@ -677,7 +636,7 @@ impl ManagedProcess {
         })
     }
 
-    /// Get all log lines with `id >= since_id`.
+    /// `since_id`부터(포함) 모든 줄
     pub async fn get_console_since(&self, since_id: u64) -> Vec<LogLine> {
         self.log_buffer.lock().await.get_since(since_id)
     }
@@ -692,12 +651,10 @@ impl ManagedProcess {
         self.log_buffer.lock().await.cursor()
     }
 
-    /// Get the most recent `count` log lines.
     pub async fn get_recent_console(&self, count: usize) -> Vec<LogLine> {
         self.log_buffer.lock().await.get_recent(count)
     }
 
-    /// Whether the process is still running.
     pub fn is_running(&self) -> bool {
         *self.running_rx.borrow()
     }
@@ -712,19 +669,12 @@ impl ManagedProcess {
         *self.exit.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    /// Whether stdin commands can be sent to this process.
     pub fn is_stdin_available(&self) -> bool {
         self.stdin_available
     }
 
-    /// Create a stub ManagedProcess for an orphaned server process.
-    ///
-    /// This is used when the daemon restarts and finds a still-running server.
-    /// The stub:
-    /// - Loads console history from the disk log file
-    /// - Monitors the process liveness via periodic PID polling
-    /// - Cannot send stdin commands (stdio pipes are lost)
-    /// - Continues writing new log lines to disk
+    /// 러너 없이 띄웠던 서버가 데몬을 다시 켠 뒤에도 돌고 있을 때의 stub. 디스크의 콘솔 기록을 읽어 오고,
+    /// PID로 살아 있는지 주기적으로 본다. stdio 파이프를 잃었으므로 stdin 명령은 보내지 못한다
     pub async fn create_reattached_stub(
         pid: u32,
         instance_dir: &Path,
@@ -746,11 +696,9 @@ impl ManagedProcess {
             log_buf.lines.push_back(line);
         }
 
-        // Attach disk writer for any new lines
         let log_path = console_log_path(instance_dir);
         log_buf.file_tx = Some(spawn_disk_writer(log_path));
 
-        // Add system message about reattachment
         let sys_msg = format!(
             "── Daemon restarted. Reattached to running process (PID {}). \
              stdin is unavailable until next restart. ──",
@@ -760,7 +708,6 @@ impl ManagedProcess {
 
         let log_buffer = Arc::new(Mutex::new(log_buf));
 
-        // Spawn a background task to monitor process liveness
         let poller_handle = {
             let running = running_tx.clone();
             let buf = log_buffer.clone();
@@ -800,7 +747,7 @@ impl ManagedProcess {
 
 // ─── Managed Process Store ───────────────────────────────────
 
-/// Central store for all managed processes. Thread-safe.
+/// 인스턴스 id별 managed 프로세스
 pub struct ManagedProcessStore {
     processes: Mutex<HashMap<String, Arc<ManagedProcess>>>,
 }
@@ -812,20 +759,17 @@ impl ManagedProcessStore {
         }
     }
 
-    /// Register a managed process under an instance ID.
     pub async fn insert(&self, instance_id: &str, process: impl Into<Arc<ManagedProcess>>) {
         let mut map = self.processes.lock().await;
         map.insert(instance_id.to_string(), process.into());
         CONSOLE_CHANGED.notify_waiters();
     }
 
-    /// Get a managed process by instance ID.
     pub async fn get(&self, instance_id: &str) -> Option<Arc<ManagedProcess>> {
         let map = self.processes.lock().await;
         map.get(instance_id).cloned()
     }
 
-    /// Remove a managed process (e.g., after it exits).
     pub async fn remove(&self, instance_id: &str) -> Option<Arc<ManagedProcess>> {
         let mut map = self.processes.lock().await;
         let removed = map.remove(instance_id);
@@ -848,8 +792,7 @@ impl ManagedProcessStore {
         map.iter().map(|(id, proc)| (id.clone(), proc.clone())).collect()
     }
 
-    /// Clean up processes that are no longer running.
-    /// Returns the removed processes so the caller can judge how they ended.
+    /// 끝난 프로세스를 빼고 돌려준다 (어떻게 끝났는지는 부른 쪽이 판정한다)
     pub async fn cleanup_dead(&self) -> Vec<(String, Arc<ManagedProcess>)> {
         let mut map = self.processes.lock().await;
         let dead: Vec<String> = map.iter().filter(|(_, p)| !p.is_running()).map(|(id, _)| id.clone()).collect();
@@ -873,13 +816,9 @@ impl Default for ManagedProcessStore {
 
 // ─── Helpers ─────────────────────────────────────────────────
 
-/// Parse the log level from a server log line using an optional regex pattern.
+/// 서버 줄의 로그 수준. 패턴의 `level` 이름 그룹(INFO·WARN·ERROR·DEBUG 등)으로 가르고, 패턴이 없거나 맞지 않으면 Info
 ///
-/// If a pattern is provided, it should contain a named capture group `level`
-/// that matches level keywords (INFO, WARN, ERROR, DEBUG, etc.).
-/// If no pattern is provided, defaults to Info.
-///
-/// Example patterns:
+/// 패턴 예:
 ///   Minecraft: `/(?P<level>INFO|WARN|ERROR|DEBUG|FATAL)\]`
 ///   Generic:   `(?P<level>INFO|WARN|ERROR|DEBUG|TRACE|FATAL)`
 fn parse_log_level(line: &str, pattern: Option<&Regex>) -> LogLevel {
@@ -907,7 +846,7 @@ fn current_timestamp() -> u64 {
 
 // ─── Disk Persistence Helpers ────────────────────────────────
 
-/// Format a log line for disk output:
+/// 디스크에 쓰는 줄 모양:
 /// `[2026-03-05 12:34:56] [STDOUT/INFO] actual content`
 fn format_log_line_for_disk(line: &LogLine) -> String {
     let dt = format_unix_timestamp(line.timestamp);
@@ -926,17 +865,16 @@ fn format_log_line_for_disk(line: &LogLine) -> String {
     format!("[{}] [{}/{}] {}", dt, source, level, line.content)
 }
 
-/// Format a Unix timestamp as `YYYY-MM-DD HH:MM:SS` (UTC).
+/// 유닉스 초 → `YYYY-MM-DD HH:MM:SS` (UTC)
 fn format_unix_timestamp(ts: u64) -> String {
     let secs = ts;
-    // Days since epoch
     let days = secs / 86400;
     let time_of_day = secs % 86400;
     let hours = time_of_day / 3600;
     let minutes = (time_of_day % 3600) / 60;
     let seconds = time_of_day % 60;
 
-    // Civil date from days since 1970-01-01 (Rata Die algorithm)
+    // 1970-01-01부터의 날 수 → 연월일 (Rata Die)
     let z = days as i64 + 719468;
     let era = if z >= 0 { z } else { z - 146096 } / 146097;
     let doe = (z - era * 146097) as u64;
@@ -951,7 +889,7 @@ fn format_unix_timestamp(ts: u64) -> String {
     format!("{:04}-{:02}-{:02} {:02}:{:02}:{:02}", y, m, d, hours, minutes, seconds)
 }
 
-/// Parse `YYYY-MM-DD HH:MM:SS` back to Unix timestamp.
+/// `YYYY-MM-DD HH:MM:SS` → 유닉스 초
 fn parse_datetime_to_unix(s: &str) -> Option<u64> {
     // Expected: "2026-03-05 12:34:56" — 정확히 ASCII 19자 (바이트로 자르므로 비 ASCII면 패닉할 수 있었다)
     let b = s.as_bytes();
@@ -982,7 +920,6 @@ fn parse_datetime_to_unix(s: &str) -> Option<u64> {
     Some(days * 86400 + hh * 3600 + mm * 60 + ss)
 }
 
-/// Resolve the console log path for an instance:
 /// `{instance_dir}/logs/console.log`
 pub fn console_log_path(instance_dir: &Path) -> PathBuf {
     instance_dir.join("logs").join(CONSOLE_LOG_FILENAME)
@@ -1041,7 +978,7 @@ fn spawn_console_reader<R: tokio::io::AsyncRead + Unpin + Send + 'static>(
             let level = parse_log_level(&content, re.as_deref());
             let mut buf = buf.lock().await;
             if source == LogSource::Stderr {
-                // stderr lines default to at least Warn
+                // stderr 줄은 적어도 Warn
                 let effective = if level == LogLevel::Info { LogLevel::Warn } else { level };
                 buf.push(LogSource::Stderr, content, effective);
             } else if !(echo && buf.take_echo(&content)) {
@@ -1051,8 +988,7 @@ fn spawn_console_reader<R: tokio::io::AsyncRead + Unpin + Send + 'static>(
     })
 }
 
-/// Spawn a background task that writes log lines to a file.
-/// Returns an unbounded sender; dropping it cleanly stops the writer.
+/// 줄을 파일에 쓰는 뒤 작업. 돌려준 채널을 놓으면 끝난다
 fn spawn_disk_writer(log_path: PathBuf) -> mpsc::UnboundedSender<String> {
     let (tx, mut rx) = mpsc::unbounded_channel::<String>();
 
@@ -1060,7 +996,6 @@ fn spawn_disk_writer(log_path: PathBuf) -> mpsc::UnboundedSender<String> {
         use tokio::fs::{self, OpenOptions};
         use tokio::io::{AsyncWriteExt as _, BufWriter};
 
-        // Ensure parent directory exists
         if let Some(parent) = log_path.parent() {
             let _ = fs::create_dir_all(parent).await;
         }
@@ -1095,7 +1030,6 @@ fn spawn_disk_writer(log_path: PathBuf) -> mpsc::UnboundedSender<String> {
             }
             bytes_written += data_len;
 
-            // Rotate if needed
             if bytes_written >= CONSOLE_LOG_MAX_BYTES {
                 let _ = file.flush().await;
                 rotate_log_files(&log_path).await;
@@ -1127,7 +1061,7 @@ fn spawn_disk_writer(log_path: PathBuf) -> mpsc::UnboundedSender<String> {
 async fn rotate_log_files(log_path: &Path) {
     use tokio::fs;
     let base = log_path.to_string_lossy().to_string();
-    // Delete the oldest rotated file first (Windows rename fails if dst exists)
+    // 가장 오래된 파일부터 지운다 (Windows는 대상이 있으면 이름 바꾸기가 실패한다)
     let oldest = format!("{}.{}", base, CONSOLE_LOG_ROTATIONS);
     let _ = fs::remove_file(&oldest).await;
     // Shift older files: .1 → .2, current → .1
@@ -1142,8 +1076,7 @@ async fn rotate_log_files(log_path: &Path) {
     }
 }
 
-/// Read the most recent `count` lines from the console log on disk.
-/// Used to restore console history when the daemon restarts.
+/// 디스크 콘솔 로그의 마지막 `count`줄. 데몬을 다시 켰을 때 콘솔 기록을 되살린다
 pub fn read_console_log_from_disk(instance_dir: &Path, count: usize) -> Vec<LogLine> {
     let log_path = latest_console_log(instance_dir);
     let Some((lines, _)) = read_log_tail(&log_path, count, LOG_TAIL_MAX_BYTES) else {
@@ -1174,10 +1107,8 @@ fn read_log_tail(path: &Path, count: usize, max_bytes: u64) -> Option<(Vec<Strin
     Some((lines[first..].iter().map(|l| l.to_string()).collect(), len))
 }
 
-/// Parse a disk log line back into a `LogLine`.
-/// Format: `[2026-03-05 12:34:56] [STDOUT/INFO] actual content`
+/// 디스크 줄 → `LogLine` (`[2026-03-05 12:34:56] [STDOUT/INFO] 내용`, 모양이 다르면 그대로 stdout 줄로)
 fn parse_disk_log_line(id: u64, raw: &str) -> LogLine {
-    // Try to parse the structured format
     let (timestamp, source, level, content) =
         if raw.starts_with('[') {
             parse_structured_disk_line(raw)
@@ -1188,13 +1119,10 @@ fn parse_disk_log_line(id: u64, raw: &str) -> LogLine {
     LogLine { id, timestamp, source, content, level, by: None }
 }
 
-/// Parse `[datetime] [SOURCE/LEVEL] content`
 fn parse_structured_disk_line(raw: &str) -> (u64, LogSource, LogLevel, String) {
-    // Find first `]` for datetime
     let dt_end = raw.find(']').unwrap_or(0);
     let after_dt = &raw[dt_end + 1..];
 
-    // Find `[SOURCE/LEVEL]`
     let trimmed = after_dt.trim_start();
     if let Some(bracket_start) = trimmed.find('[') {
         if let Some(bracket_end) = trimmed[bracket_start..].find(']') {
@@ -1219,7 +1147,6 @@ fn parse_structured_disk_line(raw: &str) -> (u64, LogSource, LogLevel, String) {
                 (LogSource::Stdout, LogLevel::Info)
             };
 
-            // Try parsing timestamp
             let dt_str = raw.get(1..dt_end).unwrap_or("");
             let timestamp = parse_datetime_to_unix(dt_str)
                 .unwrap_or_else(current_timestamp);
@@ -1233,8 +1160,8 @@ fn parse_structured_disk_line(raw: &str) -> (u64, LogSource, LogLevel, String) {
 
 // ─── Tests ───────────────────────────────────────────────────
 
-/// 자식 출력 한 줄. UTF-8이 아닌 줄도 끊지 않고 러너와 같은 방식으로 글자로 바꾼다 (D-S7).
-/// UTF-16LE 출력은 글자 안의 0A 바이트에서 자르지 않는다 (D-S13). 끝(EOF)이나 읽기 오류면 None
+/// 자식 출력 한 줄. UTF-8이 아닌 줄도 끊지 않고 러너와 같은 방식으로 글자로 바꾼다.
+/// UTF-16LE 출력은 글자 안의 0A 바이트에서 자르지 않는다. 끝(EOF)이나 읽기 오류면 None
 pub(crate) async fn next_line<R: tokio::io::AsyncBufRead + Unpin>(reader: &mut R, lines: &mut saba_runner::Lines) -> Option<String> {
     loop {
         if let Some(line) = lines.next_line() {
@@ -1288,7 +1215,7 @@ mod tests {
         drop(tx);
     }
 
-    /// UTF-8이 아닌 줄 하나로 콘솔 읽기가 끝나지 않는다: 끝나면 파이프가 차서 서버가 멈춘다 (D-S7)
+    /// UTF-8이 아닌 줄 하나로 콘솔 읽기가 끝나지 않는다: 끝나면 파이프가 차서 서버가 멈춘다
     #[cfg(unix)]
     #[tokio::test]
     async fn a_line_that_is_not_utf8_does_not_stop_the_console() {
@@ -1358,7 +1285,7 @@ mod tests {
         let _ = proc.force_kill().await;
     }
 
-    /// UTF-16LE로 쓰는 서버의 줄은 0A·00이 낀 글자(上 = 0A 4E, 一 = 00 4E)에서 끊기지 않는다. 읽기가 조각나도 같다 (D-S13)
+    /// UTF-16LE로 쓰는 서버의 줄은 0A·00이 낀 글자(上 = 0A 4E, 一 = 00 4E)에서 끊기지 않는다. 읽기가 조각나도 같다
     #[tokio::test]
     async fn utf16_output_keeps_lines_whole() {
         let bytes: Vec<u8> = "\u{feff}Ready 上\r\n一番 上\r\nend\r\n".encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
@@ -1407,16 +1334,14 @@ mod tests {
         assert_eq!(line.content, "경고");
     }
 
-    /// 러너 파일의 줄은 머리를 떼고 게임 stdout 한 줄 처음부터 콘솔에 들어간다: 모듈 패턴(`^`로 게임 로그 머리부터)이 그대로 맞는다 (R39·MK8)
+    /// 러너 파일의 줄은 머리를 떼고 게임 stdout 한 줄 처음부터 콘솔에 들어간다: 모듈 패턴(`^`로 게임 로그 머리부터)이 그대로 맞는다
     #[test]
     fn a_runner_line_reaches_the_console_as_the_game_wrote_it() {
         let line = parse_disk_log_line(0, "[2026-10-20 20:07:01] [STDOUT/INFO] [20:07:01] [Server thread/INFO]: Steve joined the game");
         assert_eq!((line.source, line.content.as_str()), (LogSource::Stdout, "[20:07:01] [Server thread/INFO]: Steve joined the game"));
     }
 
-    // ═══════════════════════════════════════════════════════
-    // LogBuffer 단위 테스트
-    // ═══════════════════════════════════════════════════════
+    // ── LogBuffer 단위 테스트 ──
 
     /// 명령 직전 커서로 읽으면 명령 뒤의 줄만 온다 (직전 줄이 답에 섞이지 않는다)
     #[test]
@@ -1446,150 +1371,45 @@ mod tests {
         assert_eq!(after, vec!["There are 0 of 20 players online"]);
     }
 
-    #[test]
-    fn test_log_buffer_push_and_query() {
-        let mut buffer = LogBuffer::new();
-        buffer.push(LogSource::Stdout, "line 0".into(), LogLevel::Info);
-        buffer.push(LogSource::Stdout, "line 1".into(), LogLevel::Info);
-        buffer.push(LogSource::Stderr, "err 0".into(), LogLevel::Error);
-
-        assert_eq!(buffer.lines.len(), 3);
-        // get_since(0) → id >= 0 → 전체 3줄 반환
-        assert_eq!(buffer.get_since(0).len(), 3);
-        // get_since(1) → id >= 1 → 2줄 반환 (id=0 제외)
-        assert_eq!(buffer.get_since(1).len(), 2);
-        assert_eq!(buffer.get_recent(2).len(), 2);
-        assert_eq!(buffer.get_recent(100).len(), 3);
-    }
-
+    /// 가득 차면 가장 오래된 줄부터 밀어내고, 줄 번호는 계속 늘어난다
     #[test]
     fn test_log_buffer_ring() {
-        let mut buffer = LogBuffer::new();
-        for i in 0..(DEFAULT_LOG_BUFFER + 100) {
-            buffer.push(LogSource::Stdout, format!("line {}", i), LogLevel::Info);
-        }
-        assert_eq!(buffer.lines.len(), DEFAULT_LOG_BUFFER);
-        assert!(buffer.lines.front().unwrap().id > 0);
-    }
-
-    #[test]
-    fn test_log_buffer_custom_capacity() {
         let mut buffer = LogBuffer::with_capacity(5);
         for i in 0..10 {
             buffer.push(LogSource::Stdout, format!("line {}", i), LogLevel::Info);
         }
-        assert_eq!(buffer.lines.len(), 5);
-        // 가장 오래된 것이 evict되었으므로 첫 라인은 "line 5"
-        assert_eq!(buffer.lines.front().unwrap().content, "line 5");
-        assert_eq!(buffer.lines.back().unwrap().content, "line 9");
+        let kept: Vec<_> = buffer.get_recent(100).into_iter().map(|l| (l.id, l.content)).collect();
+        assert_eq!(kept, (5..10).map(|i| (i, format!("line {i}"))).collect::<Vec<_>>());
     }
 
-    #[test]
-    fn test_log_buffer_ids_are_monotonic() {
-        let mut buffer = LogBuffer::new();
-        let l1 = buffer.push(LogSource::Stdout, "a".into(), LogLevel::Info);
-        let l2 = buffer.push(LogSource::Stdout, "b".into(), LogLevel::Info);
-        let l3 = buffer.push(LogSource::Stdout, "c".into(), LogLevel::Info);
-        assert!(l1.id < l2.id, "IDs must be monotonically increasing");
-        assert!(l2.id < l3.id, "IDs must be monotonically increasing");
-    }
-
+    /// `get_since(id)`는 그 번호부터(포함) 돌려준다. 아직 없는 번호면 빈 목록
     #[test]
     fn test_log_buffer_get_since_returns_from_id_inclusive() {
         let mut buffer = LogBuffer::new();
-        let l1 = buffer.push(LogSource::Stdout, "first".into(), LogLevel::Info);    // id=0
-        let _l2 = buffer.push(LogSource::Stdout, "second".into(), LogLevel::Info);  // id=1
-        let _l3 = buffer.push(LogSource::Stdout, "third".into(), LogLevel::Info);   // id=2
-
-        // get_since(0) → id >= 0 → 모든 라인 반환
-        let since = buffer.get_since(l1.id);
-        assert_eq!(since.len(), 3, "Should return all 3 lines from id {}", l1.id);
-        assert_eq!(since[0].content, "first");
-        assert_eq!(since[1].content, "second");
-        assert_eq!(since[2].content, "third");
-
-        // get_since(1) → id >= 1 → "first" 제외
-        let since_1 = buffer.get_since(1);
-        assert_eq!(since_1.len(), 2);
-        assert_eq!(since_1[0].content, "second");
-        assert_eq!(since_1[1].content, "third");
+        for content in ["first", "second", "third"] {
+            buffer.push(LogSource::Stdout, content.into(), LogLevel::Info);
+        }
+        let contents = |since| buffer.get_since(since).into_iter().map(|l| l.content).collect::<Vec<_>>();
+        assert_eq!(contents(0), ["first", "second", "third"]);
+        assert_eq!(contents(1), ["second", "third"]);
+        assert!(contents(999_999).is_empty());
     }
 
-    /// GUI 폴링 시퀀스 시뮬레이션:
-    /// 1. 초기 폴링: since=0 → 전체 반환
-    /// 2. 이후 폴링: since=last_id+1 → 새 라인만 반환, 누락 없음
+    /// GUI 폴링: 받은 마지막 번호 + 1로 다시 물으면 새 줄만 빠짐없이 온다
     #[test]
     fn test_log_buffer_polling_sequence_no_missing_lines() {
         let mut buffer = LogBuffer::new();
-        buffer.push(LogSource::Stdout, "line0".into(), LogLevel::Info); // id=0
-        buffer.push(LogSource::Stdout, "line1".into(), LogLevel::Info); // id=1
-        buffer.push(LogSource::Stdout, "line2".into(), LogLevel::Info); // id=2
-
-        // Poll 1: since=0 → id >= 0 → 전체 반환 (id=0 포함)
-        let poll1 = buffer.get_since(0);
-        assert_eq!(poll1.len(), 3);
-        assert_eq!(poll1[0].content, "line0");
-        let since_id = poll1.last().unwrap().id + 1; // GUI: sinceId = 2 + 1 = 3
-
-        // 새 라인 추가
-        buffer.push(LogSource::Stdout, "line3".into(), LogLevel::Info); // id=3
-        buffer.push(LogSource::Stdout, "line4".into(), LogLevel::Info); // id=4
-
-        // Poll 2: since=3 → id >= 3 → line3, line4 반환 (line3 누락 없음)
-        let poll2 = buffer.get_since(since_id);
-        assert_eq!(poll2.len(), 2);
-        assert_eq!(poll2[0].content, "line3");
-        assert_eq!(poll2[1].content, "line4");
+        for i in 0..3 {
+            buffer.push(LogSource::Stdout, format!("line{i}"), LogLevel::Info);
+        }
+        let since_id = buffer.get_since(0).last().unwrap().id + 1;
+        buffer.push(LogSource::Stdout, "line3".into(), LogLevel::Info);
+        buffer.push(LogSource::Stdout, "line4".into(), LogLevel::Info);
+        let poll2: Vec<_> = buffer.get_since(since_id).into_iter().map(|l| l.content).collect();
+        assert_eq!(poll2, ["line3", "line4"]);
     }
 
-    #[test]
-    fn test_log_buffer_get_since_future_id_returns_empty() {
-        let mut buffer = LogBuffer::new();
-        buffer.push(LogSource::Stdout, "a".into(), LogLevel::Info);
-        let since = buffer.get_since(999999);
-        assert!(since.is_empty(), "Future ID should return no results");
-    }
-
-    #[test]
-    fn test_log_buffer_get_recent_zero() {
-        let mut buffer = LogBuffer::new();
-        buffer.push(LogSource::Stdout, "a".into(), LogLevel::Info);
-        let recent = buffer.get_recent(0);
-        assert!(recent.is_empty());
-    }
-
-    #[test]
-    fn test_log_buffer_empty_queries() {
-        let buffer = LogBuffer::new();
-        assert!(buffer.get_since(0).is_empty());
-        assert!(buffer.get_recent(10).is_empty());
-    }
-
-    #[test]
-    fn test_log_buffer_source_and_level_preserved() {
-        let mut buffer = LogBuffer::new();
-        let l1 = buffer.push(LogSource::Stdout, "out".into(), LogLevel::Info);
-        let l2 = buffer.push(LogSource::Stderr, "err".into(), LogLevel::Error);
-        let l3 = buffer.push(LogSource::System, "sys".into(), LogLevel::Warn);
-
-        assert!(matches!(l1.source, LogSource::Stdout));
-        assert!(matches!(l2.source, LogSource::Stderr));
-        assert!(matches!(l3.source, LogSource::System));
-        assert_eq!(l1.level, LogLevel::Info);
-        assert_eq!(l2.level, LogLevel::Error);
-        assert_eq!(l3.level, LogLevel::Warn);
-    }
-
-    #[test]
-    fn test_log_buffer_timestamp_is_set() {
-        let mut buffer = LogBuffer::new();
-        let line = buffer.push(LogSource::Stdout, "hello".into(), LogLevel::Info);
-        assert!(line.timestamp > 0, "Timestamp should be valid Unix epoch");
-    }
-
-    // ═══════════════════════════════════════════════════════
-    // LogLevel 파싱 테스트
-    // ═══════════════════════════════════════════════════════
+    // ── LogLevel 파싱 테스트 ──
 
     #[test]
     fn test_parse_log_level_with_pattern() {
@@ -1647,40 +1467,5 @@ mod tests {
     fn test_parse_log_level_without_pattern() {
         assert_eq!(parse_log_level("[12:00:00] [Server thread/ERROR]: err", None), LogLevel::Info);
         assert_eq!(parse_log_level("Some random output", None), LogLevel::Info);
-    }
-
-    // ═══════════════════════════════════════════════════════
-    // ManagedProcessStore 테스트
-    // ═══════════════════════════════════════════════════════
-
-    #[tokio::test]
-    async fn test_managed_process_store_empty() {
-        let store = ManagedProcessStore::new();
-        assert!(store.get("test").await.is_none());
-        assert!(store.running_instance_ids().await.is_empty());
-    }
-
-    #[tokio::test]
-    async fn test_managed_process_store_remove_returns_process() {
-        let store = ManagedProcessStore::new();
-        // 빈 상태에서 remove → None
-        assert!(store.remove("nonexistent").await.is_none());
-    }
-
-    #[tokio::test]
-    async fn test_managed_process_store_cleanup_dead_on_empty() {
-        let store = ManagedProcessStore::new();
-        // 빈 상태에서 cleanup → 패닉 없이 정상
-        store.cleanup_dead().await;
-        assert!(store.running_instance_ids().await.is_empty());
-    }
-
-    #[test]
-    fn test_current_timestamp_is_reasonable() {
-        let ts = current_timestamp();
-        // 2024-01-01 이후 (Unix epoch 1704067200)
-        assert!(ts > 1_704_067_200, "Timestamp seems too old: {}", ts);
-        // 2050-01-01 이전 (Unix epoch 2524608000)
-        assert!(ts < 2_524_608_000, "Timestamp seems too new: {}", ts);
     }
 }

@@ -82,7 +82,7 @@ describe('디스코드 봇 설정 탭', () => {
         expect(window.api.discordSettingsSet).toHaveBeenLastCalledWith('g1', { gameChatAutoOpen: true });
     });
 
-    // 사용자 11-03: 게임 채팅 채널 옵션 — 이모지 업스케일처럼 릴레이가 원본, 값이 있을 때만 보인다
+    // 게임 채팅 채널 옵션 — 이모지 업스케일처럼 릴레이가 원본, 값이 있을 때만 보인다
     it('게임 채팅: 글 막기·꺼지면 채팅 지우기는 릴레이 값이 있을 때만 보이고 바꾼 키만 보낸다', async () => {
         window.api.discordSettingsGet = vi.fn().mockResolvedValue(base) as never;
         const { unmount } = render(<BotSettingsTab node={node} section="bot" />);

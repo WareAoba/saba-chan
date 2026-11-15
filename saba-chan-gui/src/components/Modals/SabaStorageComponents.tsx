@@ -17,10 +17,8 @@ function throwIfRejected(res: ApiBody | null | undefined) {
     if (failed(res)) throw new Error(res?.error || 'failed');
 }
 
-// ─────────────────────────────────────────────────────────────
 // 컴포넌트 탭: 새 버전이 있으면 "업데이트" 하나로 모든 구성요소(모듈·익스텐션 포함)를 올린다.
 // 평소에는 데몬의 자동 업데이트가 하고, 이 버튼은 직접 올릴 때만 쓴다. 받기·적용 순서는 데몬이 정한다
-// ─────────────────────────────────────────────────────────────
 
 // locales는 백그라운드 자동 업데이트 — 다루지 않는다
 const COMPONENT_ICONS: Record<string, string> = {

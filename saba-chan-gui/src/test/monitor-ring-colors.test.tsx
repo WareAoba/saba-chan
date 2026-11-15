@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { MetricRing } from '../components/monitor/MonitorRing';
 import { buildRings } from '../components/monitor/systemMetrics';
 
-// 서버로 나누지 않는 몫은 원 종류의 흐린 바탕색으로, 서버 몫만 계열색으로 덧칠한다 (사용자 11-07)
+// 서버로 나누지 않는 몫은 원 종류의 흐린 바탕색으로, 서버 몫만 계열색으로 덧칠한다
 const t = ((k: string) => k) as never;
 const strokes = (el: HTMLElement) => [...el.querySelectorAll('.monitor-arc')].map((a) => (a as SVGElement).style.stroke);
 

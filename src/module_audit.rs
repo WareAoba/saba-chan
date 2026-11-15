@@ -1,4 +1,4 @@
-//! 모듈 Python 코드 정적 검사 (M12)
+//! 모듈 Python 코드 정적 검사
 //!
 //! 검사 자체는 `modules/saba_audit.py`(AST)가 하고, 여기서는 그 결과를 module.toml
 //! `[permissions]` 선언과 대조한다. 쓰는 곳: `saba-core module audit <폴더>`,
@@ -119,7 +119,7 @@ mod tests {
         std::process::Command::new(python).arg("--version").output().is_ok_and(|o| o.status.success())
     }
 
-    // L25: PATH의 첫 python이 스토어 스텁이면 검사 시험이 건너뛰지 않고 실패했다
+    // PATH의 첫 python이 스토어 스텁이면 검사 시험이 건너뛰지 않고 실패했다
     #[cfg(unix)]
     #[test]
     fn a_python_that_only_prints_an_install_hint_is_not_used() {
@@ -187,7 +187,7 @@ mod tests {
         assert_eq!(perms, vec!["dynamic_code", "env_secrets", "network", "spawn_process", "spawn_process"], "{:?}", found);
     }
 
-    /// 소스 없는 바이트코드와 네이티브 라이브러리도 보고한다 (cloud review 4)
+    /// 소스 없는 바이트코드와 네이티브 라이브러리도 보고한다
     #[tokio::test]
     async fn sourceless_bytecode_and_native_libraries_are_reported() {
         let python = tool_python();
@@ -212,7 +212,7 @@ mod tests {
             "{:?}",
             found
         );
-        // 표준 모듈 이름을 가리는 파일·패키지 (cloud review 5)
+        // 표준 모듈 이름을 가리는 파일·패키지
         std::fs::write(p.join("json.py"), "x = 1\n").unwrap();
         std::fs::create_dir(p.join("socket")).unwrap();
         std::fs::write(p.join("socket/__init__.py"), "").unwrap();
@@ -226,7 +226,7 @@ mod tests {
         assert_eq!(undeclared(&all, &found).len(), 2);
     }
 
-    /// 공용 도우미 이름이나 테스트 파일 뒤에 숨긴 코드도 잡는다 (cloud review 3)
+    /// 공용 도우미 이름이나 테스트 파일 뒤에 숨긴 코드도 잡는다
     #[tokio::test]
     async fn code_hidden_behind_helper_or_test_names_is_still_found() {
         let python = tool_python();

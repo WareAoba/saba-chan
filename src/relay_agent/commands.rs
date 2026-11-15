@@ -8,7 +8,7 @@ pub(super) async fn action_request(server: &crate::ipc::IPCServer, action: &str,
     let instance = payload.get("instance").and_then(Value::as_str);
     let input = payload.get("input").cloned().unwrap_or(Value::Null);
     match action {
-        // 여러 단계 계획 (I1)
+        // 여러 단계 계획
         "plan" if payload.get("steps").is_some() => crate::actions::plan_steps(server, &payload["steps"], caller).await,
         // 문장 명령 ("terra-a 공지 안녕"): 데몬이 해석한다
         "plan" if payload.get("text").is_some() => {

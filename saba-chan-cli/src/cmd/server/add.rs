@@ -612,7 +612,7 @@ pub(super) fn provision_lost(p: &Value) -> bool {
 }
 
 /// 항목이 사라졌는데 그 이름의 서버가 설치 중이 아닌 채로 있으면, 끝난 항목을 다른 곳(GUI 카드)에서 다음 폴링 전에 닫은 것이다.
-/// 실패한 새 설치는 닫을 때 지워지므로 남은 서버는 성공으로 본다 (L65). 새로 만든 서버의 설치에만 쓴다
+/// 실패한 새 설치는 닫을 때 지워지므로 남은 서버는 성공으로 본다. 새로 만든 서버의 설치에만 쓴다
 pub(super) fn closed_after_finish(servers: &Value, name: &str) -> bool {
     servers
         .get("servers")

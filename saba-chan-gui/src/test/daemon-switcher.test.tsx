@@ -32,7 +32,7 @@ describe('상단 바: 다룰 데몬 고르기 (이 PC / 연결한 원격 데몬)
         expect(within(within(again).getByRole('option', { name: /This PC/ })).getByRole('img', { name: 'Main' })).toBeInTheDocument();
     });
 
-    it('이 PC 이름을 알면 이름에 이 PC 표시를 붙여 보인다 (사용자 11-12)', async () => {
+    it('이 PC 이름을 알면 이름에 이 PC 표시를 붙여 보인다', async () => {
         vi.mocked(window.api.remoteDaemons).mockResolvedValue({
             daemons: [{ hostId: 'host-b', name: '게임 PC' }],
             thisName: '작업용',

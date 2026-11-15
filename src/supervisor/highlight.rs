@@ -388,7 +388,7 @@ mod tests {
         assert!(!whole("IPC on 127.0.0.1:57474", "127.0.0.1:57474"), "an address is still an ip");
     }
 
-    /// 실제 데몬 로그에서 틀리던 줄 (사용자 2026-11-12): 띄어쓴 경로·`\\?\` 접두사·경로 속 ID가 한 덩어리,
+    /// 실제 데몬 로그에서 틀리던 줄: 띄어쓴 경로·`\\?\` 접두사·경로 속 ID가 한 덩어리,
     /// `not started`·`StartFailed`·`Unauthorized`는 실패, JSON 키는 실패가 아니고, 시각·오류 코드·긴 ID는 제 토큰이다
     #[test]
     fn daemon_log_real_lines_keep_whole_tokens() {

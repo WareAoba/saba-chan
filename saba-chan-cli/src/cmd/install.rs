@@ -447,7 +447,7 @@ mod tests {
     }
 
     /// 설치 폴더 안에서 도는 CLI로 그 폴더에 다시 깔면, 설치 라이브러리가 그 폴더의 CLI를 모두 끄므로 자신도 꺼진다.
-    /// 그래서 시작하기 전에 거절한다 (#516 리뷰)
+    /// 그래서 시작하기 전에 거절한다
     #[test]
     fn a_cli_running_from_the_target_folder_refuses_to_install_there() {
         let root = tempfile::tempdir().unwrap();
@@ -474,7 +474,7 @@ mod tests {
         assert!(!runs_inside(&root.path().join("new"), &outside));
     }
 
-    /// 실패 때 안내하는 기록 파일에는 이번 CLI 설치의 기록이 실제로 남는다. 열지 못하면 경로를 안내하지 않는다 (#516 리뷰)
+    /// 실패 때 안내하는 기록 파일에는 이번 CLI 설치의 기록이 실제로 남는다. 열지 못하면 경로를 안내하지 않는다
     #[test]
     fn the_install_log_it_points_to_is_written_by_this_run() {
         let dir = tempfile::tempdir().unwrap();
@@ -487,7 +487,7 @@ mod tests {
         assert!(install_log(&dir.path().join("missing").join("x.log")).is_none());
     }
 
-    /// 빈 경로(`--dir "$INSTALL_DIR"`의 빈 변수)는 거절하고, 상대 경로는 절대 경로로 바꿔 쓴다 (#516 리뷰)
+    /// 빈 경로(`--dir "$INSTALL_DIR"`의 빈 변수)는 거절하고, 상대 경로는 절대 경로로 바꿔 쓴다
     #[test]
     fn an_empty_install_dir_is_refused_and_a_relative_one_is_made_absolute() {
         assert_eq!(install_target(Path::new("")), None);
@@ -497,7 +497,7 @@ mod tests {
         assert!(rel.starts_with(std::env::current_dir().unwrap()), "{}", rel.display());
     }
 
-    /// Server Core는 로컬 콘솔(SESSIONNAME=Console)에서도 GUI 셸이 없다: 헤드리스로 깐다 (#516 리뷰)
+    /// Server Core는 로컬 콘솔(SESSIONNAME=Console)에서도 GUI 셸이 없다: 헤드리스로 깐다
     #[test]
     fn server_core_installs_without_the_gui_even_at_its_console() {
         assert_eq!(
@@ -511,7 +511,7 @@ mod tests {
         );
     }
 
-    /// 다음 단계 안내는 기본 경로(`C:\Program Files\…`)처럼 공백이 있어도 복사해 실행할 수 있다 (#516 리뷰)
+    /// 다음 단계 안내는 기본 경로(`C:\Program Files\…`)처럼 공백이 있어도 복사해 실행할 수 있다
     #[test]
     fn the_next_step_can_be_pasted_even_with_spaces_in_the_path() {
         let win = next_command(Path::new(r"C:\Program Files\Saba-chan"), true);

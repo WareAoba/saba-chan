@@ -39,33 +39,6 @@
     opacity: var(--art-blend);
 }
 
-/* 빈 목록 */
-.saba-empty {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-    gap: var(--sp-1-5);
-    padding: var(--sp-6) var(--sp-4);
-}
-.saba-empty .saba-art {
-    margin-bottom: var(--sp-2);
-    animation: saba-art-in 420ms var(--ease) backwards;
-}
-.saba-empty-title {
-    font-size: var(--fs-md);
-    font-weight: 700;
-    color: var(--text-1);
-}
-.saba-empty-body {
-    font-size: var(--fs-sm);
-    color: var(--text-2);
-    max-width: 360px;
-}
-.saba-empty.compact {
-    padding: var(--sp-4) var(--sp-3);
-}
-
 /* 가벼운 실패: 그림을 가운데 크게, 글은 그 아래 */
 .saba-fail {
     display: flex;
@@ -265,7 +238,7 @@
     height: 100%;
     max-height: 240px;
     object-fit: contain;
-    /* 넓은 화면에서는 카드 오른쪽 끝에 붙인다 (사용자 11-07) */
+    /* 넓은 화면에서는 카드 오른쪽 끝에 붙인다 */
     object-position: right center;
     pointer-events: none;
     user-select: none;
@@ -294,7 +267,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .saba-empty .saba-art,
     .saba-fail .saba-art {
         animation: none;
     }

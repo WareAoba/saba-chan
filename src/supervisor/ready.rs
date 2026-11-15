@@ -1,9 +1,9 @@
-//! 서버 준비 알림 (R39): 시작 한 번(자동 재시작 포함)마다 `instance.ready {instanceId, instance, ok, code?}`를 한 번 낸다.
+//! 서버 준비 알림: 시작 한 번(자동 재시작 포함)마다 `instance.ready {instanceId, instance, ok, code?}`를 한 번 낸다.
 //!
 //! - 모듈이 `module.toml`의 `[extensions.saba-core] ready_patterns`를 선언했고 데몬이 콘솔을 읽는 시작(managed)이면, 그 문구가 콘솔에 찍힐 때 `ok:true`.
 //! - 선언이 없거나 콘솔을 읽지 않는 시작(non-managed, 익스텐션)이면 시작이 성공한 때 바로 `ok:true`.
 //! - 준비되기 전에 끝나면 `ok:false`: `start_failed`(시작 실패, 준비 전에 프로세스가 끝남), `stopped_while_starting`(사용자 정지),
-//!   `ready_timeout`(`ready_timeout`초가 지남). 원문·경로·콘솔 줄은 싣지 않는다 (I3).
+//!   `ready_timeout`(`ready_timeout`초가 지남). 원문·경로·콘솔 줄은 싣지 않는다.
 
 use serde_json::{json, Value};
 use std::sync::atomic::{AtomicU64, Ordering};

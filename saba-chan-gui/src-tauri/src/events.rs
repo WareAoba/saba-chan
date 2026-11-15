@@ -132,7 +132,7 @@ pub async fn run_event_stream<F: Fn(SseEvent, Option<&str>), L: Fn(bool)>(
     live: L,
 ) {
     let mut last_id: Option<u64> = None;
-    // 다룰 데몬(G1)이 바뀌어 붙을 데몬이 달라지면 끊고 바로 새 대상에 붙는다. 번호는 데몬마다 따로라 처음부터 받는다
+    // 다룰 데몬이 바뀌어 붙을 데몬이 달라지면 끊고 바로 새 대상에 붙는다. 번호는 데몬마다 따로라 처음부터 받는다
     let mut target = client.watch_target();
     while !stop.load(Ordering::SeqCst) {
         let mut switched = false;
@@ -274,7 +274,7 @@ pub struct UpdateNotice {
     pub payload: Value,
 }
 
-/// GET /api/updates/status 결과 → 알릴 것 (main.js checkForUpdates)
+/// GET /api/updates/status 결과 → 알릴 것
 pub fn update_notice(data: &Value) -> Option<UpdateNotice> {
     let ok = data["success"].as_bool().unwrap_or(false);
     let has_error = data.get("error").is_some_and(|e| !e.is_null() && e != "" && e != false);

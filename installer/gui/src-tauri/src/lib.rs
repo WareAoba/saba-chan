@@ -57,9 +57,7 @@ impl Mode {
     }
 }
 
-// ═══════════════════════════════════════════════════════
 // 창 (설치·제거 창과 업데이트 창이 같이 쓴다)
-// ═══════════════════════════════════════════════════════
 
 /// 창에 띄우는 화면 (`installer/gui/src`)
 #[cfg(feature = "window")]
@@ -114,9 +112,7 @@ async fn get_preferred_language() -> Result<String, String> {
     Ok(saba_chan_installer_core::preferred_language())
 }
 
-// ═══════════════════════════════════════════════════════
 // 엔트리
-// ═══════════════════════════════════════════════════════
 
 pub use saba_chan_installer_core::log_file_path;
 

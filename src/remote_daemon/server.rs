@@ -1,4 +1,4 @@
-//! 원격 포트의 HTTP (D1). 로컬 IPC와 같은 라우트에, 인증층만 짝 맺은 PC 토큰으로 바꿔 씌운다.
+//! 원격 포트의 HTTP. 로컬 IPC와 같은 라우트에, 인증층만 짝 맺은 PC 토큰으로 바꿔 씌운다.
 //!
 //!   POST /remote/pair {ticketId, secret}   토큰 없이 받는다. 릴레이에 연결표를 한 번 확인하고 그 PC 앞으로 토큰을 낸다
 //!   DELETE /remote/self                    부른 PC가 제 짝을 푼다 (그 PC가 이 데몬을 잊을 때, 토큰 필요)
@@ -69,6 +69,11 @@ impl RelaySource {
             Self::Fixed(t) => Some(t.clone()),
         }
     }
+}
+
+/// 설정한 릴레이와 이 PC의 노드 토큰. 노드 토큰이 없으면 None
+pub(crate) async fn relay_target(server: &crate::ipc::IPCServer) -> Option<Target> {
+    RelaySource::Configured(server.clone()).target().await
 }
 
 /// 짝 맺은 PC 목록 (인증층이 요청마다 본다)과, 토큰마다 그 토큰으로 연 응답을 끝낼 표.
@@ -441,7 +446,7 @@ pub(crate) async fn serve(
                 req.extensions_mut().insert(ip);
                 req
             });
-            // 릴레이 터널(T1)은 이 PC 안에서 ALPN h2로, 직접 연결은 `tls::DIRECT_H2`로 HTTP/2 연결 하나에 요청을 여러 개 싣는다.
+            // 릴레이 터널은 이 PC 안에서 ALPN h2로, 직접 연결은 `tls::DIRECT_H2`로 HTTP/2 연결 하나에 요청을 여러 개 싣는다.
             // 그 밖은 HTTP/1.1이다. HTTP/2에는 요청 머리 시간 제한이 없으므로 직접 연결은 연 요청이 없이 `HEADER_TIMEOUT`이 지나면 닫는다
             let alpn = stream.get_ref().1.alpn_protocol();
             let tunnel = ip.0.is_loopback() && alpn == Some(b"h2");
@@ -808,7 +813,7 @@ pub(crate) mod tests {
             assert_eq!((s, body["error_code"].as_str()), (403, Some("remote_local_only")), "{method} {path}");
         }
         // 웹 원격에만 없는 라우트(GUI가 쓰는 것)는 받는다
-        // 그 PC의 봇 연결 상태 읽기: 고른 원격 데몬의 디스코드 탭이 '연결 안 됨'으로 보이지 않게 (사용자 11-12)
+        // 그 PC의 봇 연결 상태 읽기: 고른 원격 데몬의 디스코드 탭이 '연결 안 됨'으로 보이지 않게
         for path in ["/api/onboarding", "/api/runtime/preflight", "/api/config/bot", "/api/system/browse", "/api/relay/agent", "/api/relay/host/h/status"] {
             let (s, body) = call(addr, &pin, "GET", path, Some(&token), None).await.unwrap();
             assert_ne!(body["error_code"].as_str(), Some("remote_local_only"), "{path} {s}");

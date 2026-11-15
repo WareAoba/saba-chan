@@ -56,7 +56,7 @@ fn daemon_env() -> Vec<(&'static str, String)> {
     env
 }
 
-/// 데몬 환경에서 물려받지 않는 변수 이름 (M12 실행 시 제한): 이름에 이 말이 든 것.
+/// 데몬 환경에서 물려받지 않는 변수 이름 (실행 시 제한): 이름에 이 말이 든 것.
 /// 모듈·익스텐션 코드는 데몬이 넣어 주는 값(`daemon_env`)과 평범한 시스템 변수만 본다
 const SECRET_ENV_MARKERS: &[&str] = &["TOKEN", "SECRET", "PASSWORD", "PASSWD", "API_KEY", "APIKEY", "PRIVATE_KEY", "CREDENTIAL", "ACCESS_KEY"];
 
@@ -121,13 +121,13 @@ fn import_guard_dir() -> Option<std::path::PathBuf> {
 }
 
 /// 데몬에 넣어 둔 공용 Python 유틸리티. 모듈 폴더에 이것과 다른 판이 있으면 덮어쓴다.
-/// 설치·업데이트 경로와 상관없이(개발 빌드를 복사만 해도) 모듈이 데몬과 같은 판을 쓴다 (C7)
+/// 설치·업데이트 경로와 상관없이(개발 빌드를 복사만 해도) 모듈이 데몬과 같은 판을 쓴다
 const SHARED_MODULES: [(&str, &str); 4] = [
     ("i18n.py", include_str!("../../modules/i18n.py")),
     // i18n.py가 모듈 locales에 없는 범용 문구를 찾는 곳
     ("common_locales.json", include_str!("../../modules/common_locales.json")),
     ("daemon_rcon.py", include_str!("../../modules/daemon_rcon.py")),
-    // 모듈 코드 검사기 (M12): 적합성 키트가 `--shared-libs`에서 찾는다
+    // 모듈 코드 검사기: 적합성 키트가 `--shared-libs`에서 찾는다
     ("saba_audit.py", crate::module_audit::SCRIPT),
 ];
 
@@ -480,7 +480,7 @@ pub async fn run_plugin_with_timeout(module_path: &str, function: &str, config: 
     PluginCall { host: None, ..PluginCall::new(module_path, function, config) }.timeout(timeout_secs).run().await
 }
 
-/// 데몬 락 안에서 만들고 락을 놓은 뒤 실행하는 모듈 호출 (C12).
+/// 데몬 락 안에서 만들고 락을 놓은 뒤 실행하는 모듈 호출.
 /// Python은 몇 분까지 걸릴 수 있어서, 락을 쥔 채 기다리면 모니터와 다른 요청이 모두 멈춘다.
 pub struct PluginCall {
     entry: String,
@@ -865,7 +865,7 @@ fn explain_unverified_extensions(result: &mut Value, unverified: &[String]) {
     ));
 }
 
-/// 모듈이 구현하지 않아도 되는 lifecycle 함수 (MK1). 모듈이 `functions`로 밝힌 목록에 없으면 데몬은 Python을 띄우지 않고
+/// 모듈이 구현하지 않아도 되는 lifecycle 함수. 모듈이 `functions`로 밝힌 목록에 없으면 데몬은 Python을 띄우지 않고
 /// `not_supported`로 답하고, 클라이언트는 `GET /api/modules`의 `functions`를 보고 그 기능을 숨긴다
 pub const OPTIONAL_MODULE_FUNCTIONS: &[&str] = &[
     "reset_server", "reset_preview", "read_lists", "list_versions", "get_version_details", "get_installed_version", "diagnose_log",
@@ -1133,7 +1133,7 @@ impl Launch {
         tracing::debug!("Using Python: {}", python_exe.display());
 
         let mut cmd = Command::new(&python_exe);
-        // 실행 시 제한 (M12): 비밀값처럼 보이는 변수는 물려주지 않고, 작업 폴더는 모듈·익스텐션 폴더로 고정
+        // 실행 시 제한: 비밀값처럼 보이는 변수는 물려주지 않고, 작업 폴더는 모듈·익스텐션 폴더로 고정
         for (name, _) in std::env::vars_os() {
             if name.to_str().is_some_and(is_secret_env) {
                 cmd.env_remove(&name);
@@ -1164,7 +1164,7 @@ impl Launch {
             }
         });
 
-        // 활성 익스텐션만 import되게 하는 가드 (M6, sitecustomize.py). 공용 모듈처럼 격리 계획보다 먼저 쓴다
+        // 활성 익스텐션만 import되게 하는 가드 (sitecustomize.py). 공용 모듈처럼 격리 계획보다 먼저 쓴다
         let import_guard = import_guard_dir();
 
         // 확인되지 않은 구성요소: AppContainer(Windows)·bubblewrap(리눅스) 안에서 돌린다. 토큰 파일 경로는 주지 않는다
@@ -1636,7 +1636,7 @@ mod tests {
         assert!(stderr.contains("ImportError: no module named game"), "{stderr}");
     }
 
-    /// D4: 데몬이 찾은 런타임 목록은 그 런타임을 경로 설정으로 선언한 모듈의 호출에만 넘긴다.
+    /// 데몬이 찾은 런타임 목록은 그 런타임을 경로 설정으로 선언한 모듈의 호출에만 넘긴다.
     /// 선언 전 모듈(0.1.14-beta.1까지)의 `java_path` 설정은 선언 없이도 Java로 읽는다
     #[tokio::test]
     async fn found_runtimes_go_only_to_modules_that_declare_that_runtime() {
@@ -2188,7 +2188,7 @@ print(json.dumps(codes))
         assert_eq!(std::fs::read_dir(relay.path()).unwrap().count(), 0, "the module removes the reply it read");
     }
 
-    /// stderr의 UTF-8이 아닌 줄 하나로 읽기가 멈추지 않는다: 멈추면 모듈이 다음 stderr 쓰기에서 끊기거나 파이프가 차서 멈춘다 (D-S7)
+    /// stderr의 UTF-8이 아닌 줄 하나로 읽기가 멈추지 않는다: 멈추면 모듈이 다음 stderr 쓰기에서 끊기거나 파이프가 차서 멈춘다
     #[cfg(unix)]
     #[tokio::test]
     async fn a_stderr_line_that_is_not_utf8_does_not_cut_off_the_run() {
@@ -2336,7 +2336,7 @@ print(json.dumps(codes))
         assert!(parse_plugin_output("{\"ok\": 3}\nnot json\n").is_err());
     }
 
-    /// 모듈이 `functions`로 밝힌 목록에 없는 선택 함수는 Python을 띄우지 않고 not_supported로 답한다 (MK1).
+    /// 모듈이 `functions`로 밝힌 목록에 없는 선택 함수는 Python을 띄우지 않고 not_supported로 답한다.
     /// 목록을 모르는 옛 모듈과 필수 함수는 그대로 부른다
     #[test]
     fn optional_functions_a_module_does_not_list_are_refused_without_running_it() {
@@ -2478,7 +2478,7 @@ print(json.dumps(codes))
         );
     }
 
-    /// 리눅스(D3b): 확인되지 않은 모듈은 bubblewrap 안에서 돈다. 서버 폴더는 쓰고, 받지 않은 폴더는 보지 못한다
+    /// 리눅스: 확인되지 않은 모듈은 bubblewrap 안에서 돈다. 서버 폴더는 쓰고, 받지 않은 폴더는 보지 못한다
     #[cfg(target_os = "linux")]
     #[tokio::test]
     async fn an_unverified_module_runs_inside_bubblewrap_on_linux() {

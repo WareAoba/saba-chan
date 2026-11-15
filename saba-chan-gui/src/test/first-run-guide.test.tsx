@@ -15,7 +15,7 @@ const page = (modules: { name: string }[] = []) => (
     <ServersPage servers={[]} modules={modules} onAddServer={vi.fn()} drag={{ cardRefs: { current: {} } }} />
 );
 
-// 사용자 11-08~10: 처음 켜면 디스코드 연결 → 쓰던 서버 불러오기 / 새로 만들기, 모듈이 없으면 모듈 받기를 먼저
+// 처음 켜면 디스코드 연결 → 쓰던 서버 불러오기 / 새로 만들기, 모듈이 없으면 모듈 받기를 먼저
 describe('처음 시작하기 가이드', () => {
     beforeEach(() => {
         window.api = {

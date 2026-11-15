@@ -358,7 +358,7 @@ async fn pair(ctx: &Ctx, relay_url: Option<String>) -> Result<()> {
         ctx.api.save_bot_config(json!({ "cloud": cloud.clone() })).await?;
     }
     let relay = relay_url.or_else(|| relay_of(&cfg).map(str::to_string));
-    // 데몬이 토큰을 저장하지 못했으면(수령 기한이 지났거나 쓰기 실패) 끝나지 않은 페어링이다 (R15)
+    // 데몬이 토큰을 저장하지 못했으면(수령 기한이 지났거나 쓰기 실패) 끝나지 않은 페어링이다
     let claimed = wait_for_claim(ctx, relay.as_deref()).await.and_then(|r| match r {
         Some(r) if !token_saved(&r) => Err(failed(t!("bot.pair_token_not_saved"))),
         r => Ok(r),
@@ -495,7 +495,7 @@ const PAIR_WAIT_LIMIT: Duration = Duration::from_secs(6 * 60);
 /// 상태 조회가 이만큼 연달아 실패하면 마지막 오류로 멈춘다 (2초 간격, 30초 남짓)
 const PAIR_POLL_FAILURES: u32 = 15;
 
-/// 페어링 대기를 끝낼 때를 센다 (R18)
+/// 페어링 대기를 끝낼 때를 센다
 struct PairWait {
     started: std::time::Instant,
     failures: u32,
@@ -738,7 +738,7 @@ fn target_guilds(nodes: &Value, changing: bool) -> Result<Vec<(String, String)>>
     Ok(list)
 }
 
-/// 길드 설정 보기·바꾸기 (I2). 원본은 데몬이고 데몬이 릴레이에 맞춘다
+/// 길드 설정 보기·바꾸기. 원본은 데몬이고 데몬이 릴레이에 맞춘다
 /// 봇 설정의 `newGuildInstances` (없거나 모르는 값이면 데몬 기본 `auto`)
 fn new_guild_mode(cfg: &Value) -> &'static str {
     if cfg.get("newGuildInstances").and_then(Value::as_str) == Some("manual") { "manual" } else { "auto" }
@@ -831,7 +831,7 @@ async fn confirm(ctx: &Ctx, guild: &str, direct: Option<String>, chatbot: Option
     Ok(())
 }
 
-/// `bot tts` 동작 옵션 (2026-11-03): 음성 채널 채팅에서만·읽은 글 남기기·늘 읽을 음성 채널 (빈 목록 = 비우기)
+/// `bot tts` 동작 옵션: 음성 채널 채팅에서만·읽은 글 남기기·늘 읽을 음성 채널 (빈 목록 = 비우기)
 #[derive(Default)]
 struct TtsBehavior {
     voice_chat_only: Option<bool>,
@@ -997,7 +997,7 @@ fn print_channels(r: &Value) {
     }
 }
 
-// ── 서버 관리 (2026-10-31): 앱의 서버 관리 탭과 같은 데몬 API ──
+// ── 서버 관리: 앱의 서버 관리 탭과 같은 데몬 API ──
 
 /// "30m"·"6h"·"7d"·"90"(분) → 분. `forever`(잠금·음소거만)·`off`는 그 글자 그대로
 fn mod_duration(text: &str, forever_ok: bool) -> Result<Value> {
@@ -1224,7 +1224,7 @@ async fn config(ctx: &Ctx, pairs: &[String]) -> Result<()> {
     Ok(())
 }
 
-/// 데몬이 권한 키라 저장하지 않고 이전 값으로 둔 경로(`ignored`, L61)가 있으면 일부 실패다(--json에 응답을 싣는다). 권한은 `perm`으로만 바뀐다
+/// 데몬이 권한 키라 저장하지 않고 이전 값으로 둔 경로(`ignored`)가 있으면 일부 실패다(--json에 응답을 싣는다). 권한은 `perm`으로만 바뀐다
 fn saved(r: &Value) -> Result<()> {
     let ignored: Vec<&str> = r.get("ignored").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).collect();
     if ignored.is_empty() {
@@ -1234,7 +1234,7 @@ fn saved(r: &Value) -> Result<()> {
     Err(crate::error::CliError::Partial { message, data: r.clone() }.into())
 }
 
-/// `bot config` 한 칸의 값 (C14). 키는 데몬 기본값의 모양으로 확인한다: 정해진 칸 아래는 있는 키만,
+/// `bot config` 한 칸의 값. 키는 데몬 기본값의 모양으로 확인한다: 정해진 칸 아래는 있는 키만,
 /// 비어 있는 표(별명 등) 아래는 새 키도. 데몬은 모르는 키를 버리므로 저장했다고 말하기 전에 막는다.
 /// 값은 지금 값(없으면 기본값)의 형식으로, 빈 값은 그 형식의 빈 값(이름이 자유로운 표 아래의 키는 지운다)
 fn bot_value(cfg: &Value, defaults: &Value, key: &str, raw: &str) -> Result<Value> {
@@ -1385,7 +1385,7 @@ mod tests {
         assert_eq!(tts_patch(Some(80), Some(1.25), Some(-3), None, &none), Some(json!({ "tts": { "volume": 80, "speed": 125, "pitch": -3 } })));
         assert_eq!(tts_patch(None, Some(1.2), None, None, &none), Some(json!({ "tts": { "speed": 120 } })));
         assert_eq!(tts_patch(None, None, None, Some("never"), &none), Some(json!({ "tts": { "names": "never" } })));
-        // 동작 (2026-11-03): 음성 채널 채팅에서만·읽은 글 남기기, 늘 읽을 음성 채널은 목록 통째로 (빈 목록 = 비우기)
+        // 동작: 음성 채널 채팅에서만·읽은 글 남기기, 늘 읽을 음성 채널은 목록 통째로 (빈 목록 = 비우기)
         let b = TtsBehavior { voice_chat_only: Some(true), keep_read: Some(false), auto_channels: Some(vec!["1".into(), "2".into()]) };
         assert_eq!(
             tts_patch(None, None, None, None, &b),
@@ -1412,7 +1412,7 @@ mod tests {
         assert_eq!(row(&old, "bot.tts_speed"), Some(t!("bot.tts_speed_value", value = "1")));
     }
 
-    /// 권한 키는 봇 설정 저장으로 바뀌지 않는다(L61, 데몬 #469). 데몬이 `ignored`로 알린 키는 저장했다고 말하지 않고
+    /// 권한 키는 봇 설정 저장으로 바뀌지 않는다(데몬 #469). 데몬이 `ignored`로 알린 키는 저장했다고 말하지 않고
     /// 실패로 끝내 그 키와 권한 명령을 보인다. 목록이 없거나 비면 저장한 것이다
     #[test]
     fn permission_keys_the_daemon_kept_are_not_reported_as_saved() {
@@ -1428,7 +1428,7 @@ mod tests {
         assert_eq!(doc["ignored"], json!(["nodeSettings.g1.defaultLevel", "nodeSettings.g1.members"]), "{doc}");
     }
 
-    /// 페어링 결과: 이 PC에 노드 토큰이 저장됐을 때만 연결됨 (R15)
+    /// 페어링 결과: 이 PC에 노드 토큰이 저장됐을 때만 연결됨
     #[test]
     fn pairing_counts_only_when_the_token_was_saved_on_this_pc() {
         assert!(token_saved(&json!({ "status": "claimed", "nodeToken": "t", "tokenSaved": true })));
@@ -1437,7 +1437,7 @@ mod tests {
         assert!(!token_saved(&json!({ "status": "claimed", "nodeToken": "t", "tokenSaved": false })));
     }
 
-    /// 페어링 대기는 끝이 있다 (R18): 상태 조회가 연달아 실패하거나 코드 유효기간이 지나면 멈춘다
+    /// 페어링 대기는 끝이 있다: 상태 조회가 연달아 실패하거나 코드 유효기간이 지나면 멈춘다
     #[test]
     fn pairing_wait_stops_after_repeated_failures_or_past_the_code_lifetime() {
         let start = std::time::Instant::now();
@@ -1455,7 +1455,7 @@ mod tests {
         assert!(wait.timed_out(start + PAIR_WAIT_LIMIT));
     }
 
-    /// `bot config` 값: 모르는 키는 저장하지 않고, 값은 지금 형식으로 (C14)
+    /// `bot config` 값: 모르는 키는 저장하지 않고, 값은 지금 형식으로
     #[test]
     fn bot_config_keys_are_checked_and_values_follow_the_current_type() {
         let defaults = json!({
@@ -1486,7 +1486,7 @@ mod tests {
         assert_eq!(patch, json!({ "revision": "r1", "nodeSettings": { "g1": { "a": 5 } }, "moduleAliases": { "pal": null } }));
     }
 
-    /// 릴레이가 이 PC를 아는지 한 줄로 (C11)
+    /// 릴레이가 이 PC를 아는지 한 줄로
     #[test]
     fn the_relay_check_says_ok_or_why_not() {
         let line = |r| console::strip_ansi_codes(&relay_line(&r)).to_string();
@@ -1495,7 +1495,7 @@ mod tests {
         assert_eq!(line(Err("timeout".into())), t!("bot.relay_failed", error = "timeout"));
     }
 
-    /// 멤버 표는 이름·사용자 이름·id만 이름순으로 (C7)
+    /// 멤버 표는 이름·사용자 이름·id만 이름순으로
     #[test]
     fn moderation_durations_read_units_and_words() {
         assert_eq!(mod_duration("90", false).unwrap(), json!(90));

@@ -39,9 +39,7 @@ pub const SNAPSHOT_INSTANCE_ROOT_FILES: &[&str] = &["order.json"];
 /// 되돌릴 때 그것까지 되돌리면 켜진 서버에 다시 붙지 못한다
 pub const SNAPSHOT_INSTANCE_FILES: &[&str] = &["instance.json", "settings.json"];
 
-// ═══════════════════════════════════════════════════════
 // 예전 데몬 기다리기
-// ═══════════════════════════════════════════════════════
 
 /// `pid`가 `timeout` 안에 끝나면 true
 pub fn wait_for_exit(pid: u32, timeout: Duration, poll: Duration, is_running: impl Fn(u32) -> bool) -> bool {
@@ -89,9 +87,7 @@ pub fn may_relaunch_unchanged(pid: Option<u32>, timeout: Duration, is_running: i
     false
 }
 
-// ═══════════════════════════════════════════════════════
 // 건강 확인
-// ═══════════════════════════════════════════════════════
 
 /// `/health`의 답 중 판정에 쓰는 것
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -353,9 +349,7 @@ pub fn stop_new_daemons(seen: Option<u32>, old_pid: Option<u32>, holder: impl Fn
     false
 }
 
-// ═══════════════════════════════════════════════════════
 // 감시 중 표시
-// ═══════════════════════════════════════════════════════
 
 /// 감시를 시작한다고 적는다 (이 프로세스의 PID). 적지 못하면 오류: 그러면 새 데몬이 `.old`를 지워 되돌릴 수 없다
 pub fn begin_watch(staging_dir: &Path) -> std::io::Result<()> {
@@ -389,9 +383,7 @@ pub fn watch_in_progress(staging_dir: &Path) -> bool {
         .is_some_and(ProcessChecker::is_pid_running)
 }
 
-// ═══════════════════════════════════════════════════════
 // 데이터 스냅샷
-// ═══════════════════════════════════════════════════════
 
 /// 적용 직전에 뜬 설정·인스턴스 기록 사본. 새 데몬이 형식을 바꾼 뒤 죽어도 이전 데몬이 읽을 수 있게 되돌린다.
 /// 데이터 폴더 안 주인만 여는 폴더에 둔다 (설정 파일에는 토큰이 들어 있다). 건강한 업데이트의 사본은 직전 판으로 다음 업데이트까지
@@ -695,9 +687,7 @@ fn merge_install_record(copy: &[u8], current: &[u8]) -> Option<Vec<u8>> {
     serde_json::to_vec_pretty(&merged).ok()
 }
 
-// ═══════════════════════════════════════════════════════
 // 직전 판 (사용자가 고르는 되돌리기)
-// ═══════════════════════════════════════════════════════
 
 /// 직전 판 기록 (`<데이터 폴더>/update-snapshot/previous.json`)
 const PREVIOUS_FILE: &str = "previous.json";
@@ -792,9 +782,7 @@ impl PreviousVersion {
     }
 }
 
-// ═══════════════════════════════════════════════════════
 // 실패한 판과 보고
-// ═══════════════════════════════════════════════════════
 
 /// 되돌린 판을 업데이트 설정(`config.json`의 `updates.failed_release`)에 적는다. 완료 마커는 읽으면 지워지므로
 /// 같은 판을 다시 자동 적용하지 않게 하는 기록은 여기에 둔다. `user_held`는 사용자가 고른 되돌리기인가(`UpdateConfig::user_held`,
@@ -846,9 +834,7 @@ pub async fn report_rolled_back(relay_url: Option<&str>, version: &str, channel:
     }
 }
 
-// ═══════════════════════════════════════════════════════
 // 한 번의 적용 감시
-// ═══════════════════════════════════════════════════════
 
 /// 코어가 바뀌는 적용 하나. 적용 전에 `prepare`, 새 데몬을 지켜본 뒤 `healthy` 또는 `roll_back`,
 /// 지켜볼 것이 없으면 `skip`으로 끝낸다
@@ -1352,7 +1338,7 @@ mod tests {
         assert_eq!(daemon_lock_holder(tmp.path()), LockHolder::Unknown);
         drop(lock);
         assert_eq!(daemon_lock_holder(tmp.path()), LockHolder::Free);
-        // Codex 4차 점검: 잠금 파일을 열지 못하면(없는 것이 아니라) 쥔 쪽을 모른다고 본다. 비어 있다고 보고 되돌리지 않는다
+        // 잠금 파일을 열지 못하면(없는 것이 아니라) 쥔 쪽을 모른다고 본다. 비어 있다고 보고 되돌리지 않는다
         let odd = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(odd.path().join("daemon.lock")).unwrap();
         assert_eq!(daemon_lock_holder(odd.path()), LockHolder::Unknown);
@@ -1565,7 +1551,7 @@ mod tests {
         assert!(saved.auto_apply);
     }
 
-    // Codex 리뷰: 데이터 스냅샷을 뜨지 못하면 적용하지 않는다. 새 데몬이 데이터를 바꾼 뒤 죽으면 실행 파일만 되돌아가기 때문이다
+    // 데이터 스냅샷을 뜨지 못하면 적용하지 않는다. 새 데몬이 데이터를 바꾼 뒤 죽으면 실행 파일만 되돌아가기 때문이다
     #[test]
     fn a_failed_data_snapshot_stops_the_apply() {
         let tmp = tempfile::tempdir().unwrap();
@@ -1580,7 +1566,7 @@ mod tests {
         assert!(!watch_in_progress(&staging), "nothing to watch when nothing is applied");
     }
 
-    // Codex 리뷰: 되돌리다 데이터 복원이 실패하면 사본을 지우지 않고 남긴다 (손으로 되살릴 수단)
+    // 되돌리다 데이터 복원이 실패하면 사본을 지우지 않고 남긴다 (손으로 되살릴 수단)
     #[test]
     fn a_failed_restore_keeps_the_snapshot() {
         let tmp = tempfile::tempdir().unwrap();
@@ -1601,10 +1587,10 @@ mod tests {
 
         let kept_at = live.roll_back(&manager, &config, &marker, "timeout");
 
-        // Codex 재리뷰: 복원 실패는 따로 알린다 (설치기는 이전 판을 다시 띄우지 않는다)
+        // 복원 실패는 따로 알린다 (설치기는 이전 판을 다시 띄우지 않는다)
         let kept_at = kept_at.expect("the caller learns that the data was not restored");
         assert!(kept_at.copy.dir.join("data").join("config.json").is_file(), "{}", kept_at.copy.dir.display());
-        // Codex 3차 리뷰: 손으로 되살릴 곳은 `data/`→데이터 폴더, `instances/`→인스턴스 폴더 (따로 둔 인스턴스 폴더 포함)
+        // 손으로 되살릴 곳은 `data/`→데이터 폴더, `instances/`→인스턴스 폴더 (따로 둔 인스턴스 폴더 포함)
         assert_eq!((kept_at.copy.data_dir.as_path(), kept_at.copy.instances_dir.as_path()), (data.as_path(), inst.as_path()));
         let m = UpdateCompletionMarker::load_from(&marker).unwrap();
         assert_eq!((m.result.as_deref(), m.reason.as_deref()), (Some("rolled_back"), Some("restore_failed")));
@@ -1619,7 +1605,7 @@ mod tests {
         assert!(files_under(&data.join(SNAPSHOT_DIR)).iter().any(|f| f.ends_with("data/config.json")));
     }
 
-    // Codex 재리뷰: 새 데몬을 끝내지 못해 되돌리지 않고 두면, 새 데몬이 이미 데이터를 바꿨을 수 있으니 사본을 남긴다
+    // 새 데몬을 끝내지 못해 되돌리지 않고 두면, 새 데몬이 이미 데이터를 바꿨을 수 있으니 사본을 남긴다
     #[test]
     fn leaving_the_new_daemon_in_place_keeps_the_snapshot() {
         let tmp = tempfile::tempdir().unwrap();
@@ -1643,11 +1629,11 @@ mod tests {
         let recovery = live.leave_in_place(&manager, &marker, "timeout");
 
         assert!(recovery.copy.dir.join("data").join("config.json").is_file());
-        // Codex 4차 리뷰: 안내는 새 데몬 끝내기 → 실행 파일 되돌리기 → 데이터 차례다
+        // 안내는 새 데몬 끝내기 → 실행 파일 되돌리기 → 데이터 차례다
         assert!(recovery.stop_first);
         assert_eq!(recovery.exes, vec![(recovery.copy.dir.join("exes").join("0").join(core), manager.install_root.join(core))]);
         assert!(!recovery.missing_core);
-        // Codex 3차 리뷰: 적용 성공으로 남지 않는다. 실패와 사본 자리를 적는다
+        // 적용 성공으로 남지 않는다. 실패와 사본 자리를 적는다
         let m = UpdateCompletionMarker::load_from(&marker).unwrap();
         assert!(!m.success);
         assert_eq!((m.result.as_deref(), m.reason.as_deref()), (Some("left_in_place"), Some("timeout")));
@@ -1656,7 +1642,7 @@ mod tests {
         assert!(message.contains("end every saba-core process"), "{message}");
     }
 
-    // Codex 3차 리뷰: 읽지 못한 것(권한·입출력 오류)을 없는 것으로 넘기지 않는다. 없는 것만 건너뛴다
+    // 읽지 못한 것(권한·입출력 오류)을 없는 것으로 넘기지 않는다. 없는 것만 건너뛴다
     #[test]
     fn a_snapshot_that_cannot_read_its_sources_fails() {
         let tmp = tempfile::tempdir().unwrap();
@@ -1683,7 +1669,7 @@ mod tests {
         assert!(snap.restore().is_err());
     }
 
-    // Codex 4차 리뷰: 남긴 사본은 같은 판의 다음 스냅샷이 지우지 않는다. 사본마다 새 이름이고, 끊긴 실행이 남긴 온전한 사본도 남긴다
+    // 남긴 사본은 같은 판의 다음 스냅샷이 지우지 않는다. 사본마다 새 이름이고, 끊긴 실행이 남긴 온전한 사본도 남긴다
     #[test]
     fn snapshots_never_delete_an_earlier_copy() {
         let tmp = tempfile::tempdir().unwrap();
@@ -1701,7 +1687,7 @@ mod tests {
         assert!(first_dir.join("data").join("config.json").is_file());
     }
 
-    // Codex 4차 점검: 감시 표시를 남기지 못하면 새 데몬이 `.old`를 지워 되돌릴 수 없으니 적용하지 않는다
+    // 감시 표시를 남기지 못하면 새 데몬이 `.old`를 지워 되돌릴 수 없으니 적용하지 않는다
     #[test]
     fn an_apply_that_cannot_mark_the_watch_does_not_start() {
         let tmp = tempfile::tempdir().unwrap();
@@ -1712,7 +1698,7 @@ mod tests {
         assert!(LiveApply::start(&staging, ExeBackups::default(), &data, &data.join("instances"), "0.1.13".into(), "0.1.14".into(), None).is_err());
     }
 
-    // Codex 4차 점검: 코어 실행 파일을 되돌리지 못하면 데이터만 되돌린 채 이전 판을 띄우지 않는다.
+    // 코어 실행 파일을 되돌리지 못하면 데이터만 되돌린 채 이전 판을 띄우지 않는다.
     // 남은 실행 파일(백업 → 제자리)을 안내에 싣고, `.old`는 지우지 않게 붙잡아 둔다
     #[test]
     fn a_rollback_without_the_core_backup_needs_a_manual_recovery() {
@@ -1767,7 +1753,7 @@ mod tests {
         assert_eq!(official, ["ext-x", "module-mc", "saba-core"]);
     }
 
-    // Codex 5차 리뷰: 스냅샷을 뜨다 실패하면 반쯤 뜬 사본을 남기지 않는다 (다음 시도는 새 이름이라 쌓인다)
+    // 스냅샷을 뜨다 실패하면 반쯤 뜬 사본을 남기지 않는다 (다음 시도는 새 이름이라 쌓인다)
     #[test]
     fn a_failed_snapshot_leaves_no_partial_copy() {
         let tmp = tempfile::tempdir().unwrap();
@@ -1801,7 +1787,7 @@ mod tests {
         assert!(fresh.exists() && whole.exists());
     }
 
-    // Codex 5차 리뷰: 안내하는 실행 파일 백업은 사본 폴더에 따로 뜬다. 다음 적용이 `.old`를 다시 비켜 두며 덮어도 남는다
+    // 안내하는 실행 파일 백업은 사본 폴더에 따로 뜬다. 다음 적용이 `.old`를 다시 비켜 두며 덮어도 남는다
     #[test]
     fn the_recovery_exes_survive_the_next_apply() {
         let tmp = tempfile::tempdir().unwrap();
@@ -1857,7 +1843,7 @@ mod tests {
     }
 
     // 사본 폴더에 옮기지도 뜨지도 못하면(다른 볼륨 + 공간 부족) 백업 옆의 `update-recovery/`로 옮긴다: 같은 볼륨이라 공간이 들지 않고,
-    // 다음 적용(`.old`를 다시 비킴)과 정리(`cleanup_old_files`)가 건드리지 않는 이름이다 (Codex 7차 리뷰)
+    // 다음 적용(`.old`를 다시 비킴)과 정리(`cleanup_old_files`)가 건드리지 않는 이름이다
     #[test]
     fn exes_that_cannot_reach_the_kept_copy_move_beside_the_backup() {
         let tmp = tempfile::tempdir().unwrap();
@@ -1888,7 +1874,7 @@ mod tests {
         assert_eq!(exes[0].0, backup);
     }
 
-    // Codex 6차 리뷰: 디스크가 차 복사하지 못해도 같은 볼륨이면 옮긴다 (공간이 들지 않는다). 그러면 붙잡을 필요가 없다
+    // 디스크가 차 복사하지 못해도 같은 볼륨이면 옮긴다 (공간이 들지 않는다). 그러면 붙잡을 필요가 없다
     #[test]
     fn recovery_exes_are_moved_into_the_kept_copy() {
         let tmp = tempfile::tempdir().unwrap();

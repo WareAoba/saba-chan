@@ -1871,7 +1871,7 @@ mod tests {
         assert!(p(&["bot", "alias"]).is_err(), "old alias command is gone");
         assert!(matches!(p(&["bot", "channels"]).unwrap().cmd, Some(Cmd::Bot(BotCmd::Channels { guild: None, .. }))));
         assert!(matches!(p(&["bot", "members"]).unwrap().cmd, Some(Cmd::Bot(BotCmd::Members { guild: None }))));
-        // 토큰은 셸 기록에 남지 않게 인자로 받지 않는다 (C15)
+        // 토큰은 셸 기록에 남지 않게 인자로 받지 않는다
         assert!(p(&["bot", "token", "secret-token"]).is_err());
         assert!(matches!(p(&["bot", "token"]).unwrap().cmd, Some(Cmd::Bot(BotCmd::Token))));
         assert!(matches!(p(&["bot", "erase"]).unwrap().cmd, Some(Cmd::Bot(BotCmd::Erase))));
@@ -1964,7 +1964,7 @@ mod tests {
         walk(&Cli::command(), "", &mut missing);
         assert!(missing.is_empty(), "help.cmd keys missing: {:?}", missing);
     }
-    /// `server add --preset`은 게임의 추천 설정 id다. 권한 프리셋(`perm preset`)의 설명을 빌려 쓰면 안 된다 (L73)
+    /// `server add --preset`은 게임의 추천 설정 id다. 권한 프리셋(`perm preset`)의 설명을 빌려 쓰면 안 된다
     #[test]
     fn server_add_preset_is_explained_as_a_game_preset() {
         crate::i18n::init("ko");

@@ -412,7 +412,7 @@ mod tests {
         assert_eq!(decide(PlanInput { deferred_release: Some("0.1.13"), ..input(&pending) }), Decision::Apply(pending.clone()));
     }
 
-    /// 창이 열려 있어도 적용한다 (사용자 결정 2026-11-15: 창을 닫을 때까지 미루지 않는다. 바뀐 GUI는 창 그대로 다시 뜬다).
+    /// 창이 열려 있어도 적용한다 (창을 닫을 때까지 미루지 않는다. 바뀐 GUI는 창 그대로 다시 뜬다).
     /// CLI TUI가 열려 있으면 CLI만 다음으로
     #[test]
     fn an_open_tui_holds_only_the_cli() {

@@ -39,7 +39,7 @@ import { AddServerFrame } from './AddServerFrame';
 import { isImeKey } from '../../utils/ime';
 
 /**
- * AddInstanceNewServer — 새 서버 만들기 (사용자 11-11 A안).
+ * AddInstanceNewServer — 새 서버 만들기.
  *
  * 게임 목록 → 추천값이 채워진 요약 한 장(이름·서버 종류·버전·포트·위치·실행 방식) → 만들기.
  * "상세 설정"은 같은 창을 넓혀 서버 설정 화면과 같은 칸(사바쨩·기본·고급)으로 서버 설정을 미리 정한다 (Ctrl+F 찾기).
@@ -279,9 +279,7 @@ export function AddInstanceNewServer({
         setStep('select-game');
     };
 
-    // ──────────────────────────────────────────
     //  게임 목록 (가져오기·익스텐션 방법·직접 만들기 칸이 같은 줄에)
-    // ──────────────────────────────────────────
     if (step === 'select-game') {
         const wanted = search.trim().toLowerCase();
         const shown = extensions.filter((m) => {
@@ -321,7 +319,7 @@ export function AddInstanceNewServer({
                         const displayName = t(`mod_${m.name}:module.display_name`, {
                             defaultValue: m.game_name || m.name,
                         });
-                        // 이 데몬의 OS·CPU에서 돌아가지 않는 모듈 (`platform_supported`, D3·M1)
+                        // 이 데몬의 OS·CPU에서 돌아가지 않는 모듈 (`platform_supported`)
                         const unsupportedHere = unsupportedText(t, m);
                         const unsupported = unsupportedHere !== null;
                         return (
@@ -368,9 +366,7 @@ export function AddInstanceNewServer({
         );
     }
 
-    // ──────────────────────────────────────────
     //  직접 만들기 (목록에 없는 게임)
-    // ──────────────────────────────────────────
     if (step === 'maker') {
         return (
             <AddServerFrame
@@ -405,9 +401,7 @@ export function AddInstanceNewServer({
         </button>
     );
 
-    // ──────────────────────────────────────────
     //  상세 설정: 서버 설정 화면과 같은 칸
-    // ──────────────────────────────────────────
     if (step === 'detail') {
         const modNs = `mod_${selectedExtension}`;
         const hidden = new Set(hiddenFields(detailFields, detailValues));
@@ -497,10 +491,8 @@ export function AddInstanceNewServer({
         );
     }
 
-    // ──────────────────────────────────────────
     //  요약 한 장: 추천값이 채워져 있다
-    // ──────────────────────────────────────────
-    // 사용자 11-06: 비워 두면 받을 최신 버전을 숫자로 보인다 ("26.3 (최신)"). 모르면 "최신 버전"
+    // 비워 두면 받을 최신 버전을 숫자로 보인다 ("26.3 (최신)"). 모르면 "최신 버전"
     const latestLabel = latest
         ? t('add_server_modal.version_latest_of', { version: latest })
         : t('add_server_modal.version_latest');
@@ -718,7 +710,7 @@ export function AddInstanceNewServer({
                     </div>
                 </section>
 
-                {/* 상세 설정: 서버 설정을 미리 정한다 (사용자 11-11) */}
+                {/* 상세 설정: 서버 설정을 미리 정한다 */}
                 {detailFields.length > 0 && (
                     <section className="dc-card ss-card">
                         <div className="ss-rows">

@@ -9,7 +9,7 @@ import type { Server, ServerState } from './useServerStore';
 
 /** 서버 목록 받기: 상태가 밖에서 바뀌면(멈춤·바깥 켜기·끄기) 알린다 */
 export function serverListActions(set: StoreApi<ServerState>['setState'], get: () => ServerState) {
-    // ── fetchServers ────────────────────────────────────────
+    // ── fetchServers ──
     const fetchServers = async () => {
         const seq = ++internal.fetchSeq.sent;
         try {
@@ -72,7 +72,7 @@ export function serverListActions(set: StoreApi<ServerState>['setState'], get: (
                         const pollNotices = (!eventsLive() || extensionStatus) && !isKnownOp;
                         if (pollNotices && wasRunning && nowStopped) {
                             // Crash / unexpected stop — genuinely important.
-                            // instance.exit 이벤트가 이미 알렸으면 건너뛴다 (G-S6)
+                            // instance.exit 이벤트가 이미 알렸으면 건너뛴다
                             if (claimServerNotice(newServer.id, 'stop', 'poll'))
                                 safeShowToast(t('servers.unexpected_stop_toast', { name: newServer.name }), 'error', 5000);
                         } else if (pollNotices && wasStopped && nowRunning && claimServerNotice(newServer.id, 'start', 'poll')) {

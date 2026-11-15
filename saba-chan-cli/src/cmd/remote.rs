@@ -1,4 +1,4 @@
-//! `remote` — 원격 데몬 포트 (데몬 `/api/remote/*`, D1): 같은 주인의 다른 PC가 이 데몬에 TLS로 직접 붙는다
+//! `remote` — 원격 데몬 포트 (데몬 `/api/remote/*`): 같은 주인의 다른 PC가 이 데몬에 TLS로 직접 붙는다
 
 use crate::cli::RemoteCmd;
 use crate::ctx::Ctx;
@@ -236,7 +236,7 @@ fn yes_no(v: &Value, key: &str) -> String {
 }
 
 /// 준 것만 바꾼다
-/// 붙는 원격 데몬의 주소. 공인 주소가 없는 PC는 릴레이 터널로 붙는다 (T1)
+/// 붙는 원격 데몬의 주소. 공인 주소가 없는 PC는 릴레이 터널로 붙는다
 fn daemon_address(d: &Value) -> String {
     match s(d, "address") {
         "" => t!("remote.via_relay"),

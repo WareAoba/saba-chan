@@ -61,9 +61,7 @@ export const ACCENT_PRESETS = [
     { name: 'teal',   primary: '#0d9488', secondary: '#065f46' },
 ];
 
-// ═══════════════════════════════════════════════════════════════
 // 1. Light/Dark theme (existing)
-// ═══════════════════════════════════════════════════════════════
 
 /**
  * Get the saved theme preference
@@ -137,9 +135,7 @@ export function initTheme() {
     applyCustomTheme(custom);
 }
 
-// ═══════════════════════════════════════════════════════════════
 // 2. Custom theme properties
-// ═══════════════════════════════════════════════════════════════
 
 /**
  * Get saved custom theme config
@@ -186,7 +182,7 @@ export function resetCustomTheme() {
     return { ...THEME_DEFAULTS };
 }
 
-// ── Color utilities ──────────────────────────────────────────
+// ── Color utilities ──
 
 /**
  * Parse hex color to { r, g, b }
@@ -223,7 +219,7 @@ function lightenHex(hex: string, factor: number) {
     return `#${nr.toString(16).padStart(2, '0')}${ng.toString(16).padStart(2, '0')}${nb.toString(16).padStart(2, '0')}`;
 }
 
-// ── WCAG 2.1 contrast utilities ─────────────────────────────
+// ── WCAG 2.1 contrast utilities ──
 
 /**
  * Convert sRGB channel (0-255) to linear RGB
@@ -380,9 +376,7 @@ export function applyCustomTheme(config: ThemeConfig) {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════
 // 3. 창 바탕 반투명 (설정 → 외관, config.json gui.windowBackdrop)
-// ═══════════════════════════════════════════════════════════════
 
 /** 데몬 GuiSettings.windowBackdrop (updater/src/window_backdrop.rs)과 같은 모양·기본값 */
 export interface WindowBackdropConfig {

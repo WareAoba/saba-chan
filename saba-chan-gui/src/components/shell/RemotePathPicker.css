@@ -1,4 +1,4 @@
-/* 원격 경로 고르기 (D2): 공통 Dialog 안. 목록은 파인 우물 */
+/* 원격 경로 고르기: 공통 Dialog 안. 목록은 파인 우물 */
 .remote-picker-bar {
     display: flex;
     gap: var(--sp-2);

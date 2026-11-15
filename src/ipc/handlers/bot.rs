@@ -41,7 +41,7 @@ async fn write_bot_config(state: &IPCServer, mut config: Value, how: crate::conf
             // hostId를 토큰에 맞춘 뒤의 값
             let revision = state.config_store.bot_revision().await;
             let mut body = json!({ "success": true, "message": "Bot config saved", "revision": revision });
-            // 권한 키는 권한 API로만 바뀐다: 바꾸려던 값은 저장하지 않고 알린다 (L61)
+            // 권한 키는 권한 API로만 바뀐다: 바꾸려던 값은 저장하지 않고 알린다
             if !ignored.is_empty() {
                 body["ignored"] = json!(ignored);
             }

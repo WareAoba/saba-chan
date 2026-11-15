@@ -1,5 +1,5 @@
 /**
- * 데몬은 GET /api/modules의 각 모듈에 구현한 lifecycle 함수 목록 `functions`를 싣는다 (MK1).
+ * 데몬은 GET /api/modules의 각 모듈에 구현한 lifecycle 함수 목록 `functions`를 싣는다.
  * 배열이면 빠진 선택 함수의 버튼을 숨기고, null이면(옛 모듈) 지금처럼 모두 보인다.
  * 그래도 불리면 데몬이 {success:false, error_code:"not_supported"}로 답하니 그 이유를 알린다.
  */

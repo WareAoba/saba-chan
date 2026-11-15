@@ -5,7 +5,7 @@ import { ServerSettingsModal } from '../components/ServerSettingsModal';
 import { unsavedServerIds } from '../stores/useServerSettingsStore';
 import { setupSettingsStore } from './serverStore';
 
-// 저장 막대의 "N개 바뀜" 칩: 누르면 칸마다 이전 → 새 값과 칸 하나 되돌리기를 보인다 (사용자 11-12)
+// 저장 막대의 "N개 바뀜" 칩: 누르면 칸마다 이전 → 새 값과 칸 하나 되돌리기를 보인다
 const modules = [
     {
         name: 'dl',

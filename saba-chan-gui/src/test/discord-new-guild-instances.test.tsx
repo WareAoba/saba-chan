@@ -43,7 +43,7 @@ describe('새 디스코드 서버에 서버 열기', () => {
         await waitFor(() => expect(window.api.botConfigSave).toHaveBeenCalledWith({ newGuildInstances: 'auto' }));
     });
 
-    // 사용자 11-15: DM 알림 카드는 사바쨩 설정으로 옮겼다
+    // DM 알림 카드는 사바쨩 설정으로 옮겼다
     it('연결 화면에는 DM 알림 카드가 없다', async () => {
         await act(() => useDiscordStore.getState().loadConfig());
         useDiscordStore.setState({ _settingsReady: true });

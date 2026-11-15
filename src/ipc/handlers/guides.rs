@@ -1,8 +1,9 @@
 //! 가이드 (`crate::guides`): 목록·완료·new!·보던 단계. 화면 강조는 GUI가 한다.
-//! 진행도는 내 PC 모두가 함께 본다 (사용자 11-12): 바뀌면 릴레이(`/api/remote/guides`)에 합치고, 목록을 볼 때 1분에 한 번 받아 합친다
+//! 진행도는 내 PC 모두가 함께 본다: 바뀌면 릴레이(`/api/remote/guides`)에 합치고, 목록을 볼 때 1분에 한 번 받아 합친다
 
 use super::super::IPCServer;
 use super::LooseJson;
+use crate::remote_daemon::server::relay_target;
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -181,10 +182,6 @@ fn adopt(state: &IPCServer, shared: &crate::guides::State) {
         Ok(_) => crate::events::emit("guides.updated", json!({ "count": 0 })),
         Err(e) => tracing::warn!("Could not save the shared guide progress: {}", e),
     }
-}
-
-async fn relay_target(state: &IPCServer) -> Option<crate::remote_daemon::relay::Target> {
-    crate::remote_daemon::server::RelaySource::Configured(state.clone()).target().await
 }
 
 /// 이 PC에서 바뀐 진행도를 릴레이에 합치고, 합친 값을 이 PC에 맞춘다 (디스코드에 연결하지 않았으면 이 PC에만 남는다)

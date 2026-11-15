@@ -663,8 +663,8 @@ mod tests {
         assert!(upcoming_rows(&json!({ "upcoming": [] })).is_empty());
     }
 
-    /// 작업 하나를 지우지 않고 고친다. 준 것만 바뀌고 켜짐 여부는 그대로 (C19)
-    /// 고치기 전에 읽은 일정의 revision을 실어 보낸다: 그사이 바뀌었으면 데몬이 409로 거절해 엉뚱한 작업을 지우지 않는다 (L51)
+    /// 작업 하나를 지우지 않고 고친다. 준 것만 바뀌고 켜짐 여부는 그대로
+    /// 고치기 전에 읽은 일정의 revision을 실어 보낸다: 그사이 바뀌었으면 데몬이 409로 거절해 엉뚱한 작업을 지우지 않는다
     #[test]
     fn a_save_carries_the_revision_it_read() {
         let read = json!({ "schedule": [], "backup_keep": 10, "revision": "ab12" });

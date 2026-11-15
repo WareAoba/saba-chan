@@ -110,7 +110,7 @@ fn status_dot_at(status: &str, on: bool) -> (&'static str, Color) {
     let blink = if on { "●" } else { "○" };
     match status {
         "running" => ("●", Color::Green),
-        // 진행 중은 떠나온 상태의 색으로 깜빡인다 (사용자 11-11): 켜는 중·설치 중은 꺼짐 회색, 끄는 중은 켜짐 초록
+        // 진행 중은 떠나온 상태의 색으로 깜빡인다: 켜는 중·설치 중은 꺼짐 회색, 끄는 중은 켜짐 초록
         "starting" | "provisioning" => (blink, Color::DarkGray),
         "stopping" => (blink, Color::Green),
         "crashed" | "error" => ("●", Color::Red),
@@ -1599,7 +1599,7 @@ mod tests {
     use ratatui::Terminal;
     use serde_json::json;
 
-    /// 사용자 11-11: 진행 중 표시는 떠나온 상태의 색 — 켜는 중·설치 중은 꺼짐 회색, 끄는 중은 켜짐 초록
+    /// 진행 중 표시는 떠나온 상태의 색 — 켜는 중·설치 중은 꺼짐 회색, 끄는 중은 켜짐 초록
     #[test]
     fn transitional_dot_takes_the_color_it_left() {
         assert_eq!(status_dot("starting").1, status_dot("stopped").1);

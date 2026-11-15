@@ -94,7 +94,7 @@ pub async fn validate_instance_handler(
     }
 }
 
-/// POST /api/instance/:id/query/:name `{args?: {입력: 값}}` — 모듈 `[[queries]]` 읽기 전용 조회 (X-2).
+/// POST /api/instance/:id/query/:name `{args?: {입력: 값}}` — 모듈 `[[queries]]` 읽기 전용 조회.
 /// 입력은 명령 입력과 같은 규칙으로 검사한다. lifecycle 결과 `{success, data?, message?}` → `{success, data, error?}`
 /// (`data`가 없으면 `success`·`message`를 뺀 나머지). 읽기만 하므로 감사에 남기지 않는다
 pub async fn query_instance_handler(
@@ -236,7 +236,7 @@ pub async fn chat_handler(Path(id): Path<String>, State(state): State<IPCServer>
         let Some(function) = sup.module_loader.get_module(&instance.module_name).ok().and_then(|m| m.metadata.chat_send_function) else {
             return fail(StatusCode::NOT_IMPLEMENTED, "not_supported", "This server's module cannot send chat".into());
         };
-        if sup.tracker.get_pid(&id).is_err() {
+        if sup.tracker.get_pid(&id).is_none() {
             return fail(StatusCode::CONFLICT, "server_not_running", "The server is not running".into());
         }
         sup.instance_call(&id, &function)
@@ -286,7 +286,7 @@ pub async fn chat_link_handler(Path((id, guild)): Path<(String, String)>, State(
         let module = sup.module_loader.get_module(&instance.module_name).ok();
         let reads = module.as_ref().is_some_and(|m| !m.metadata.chat_patterns.is_empty());
         let sends = module.as_ref().is_some_and(|m| m.metadata.chat_send_function.is_some());
-        (reads, sends, sup.tracker.get_pid(&id).is_ok(), sup.runtime.clone())
+        (reads, sends, sup.tracker.get_pid(&id).is_some(), sup.runtime.clone())
     };
     let result = chat_link::toggle(&id, &guild, channel, direction, |d| {
         if (d.to_discord() && !reads_chat) || (d.to_game() && !sends_chat) {
@@ -646,7 +646,7 @@ pub async fn get_installed_version_handler(
     match result {
         Ok(result) => {
             // Phase 2: 감지 성공 시 write lock으로 인스턴스에 버전 저장.
-            // 설치·업데이트가 인스턴스를 잡고 있으면 파일이 바뀌는 중이라 저장하지 않는다 (D-S12)
+            // 설치·업데이트가 인스턴스를 잡고 있으면 파일이 바뀌는 중이라 저장하지 않는다
             if result.get("success").and_then(|s| s.as_bool()) == Some(true) {
                 if let Some(version) = result.get("version").and_then(|v| v.as_str()) {
                     if !crate::instance::lock::InstanceLock::held(&id) {
@@ -744,7 +744,7 @@ mod tests {
         assert_eq!(saved.status, StatusCode::OK, "{}", saved.body);
         assert_eq!(port().await, Some(25580), "the instance port follows the written file");
 
-        state.supervisor.read().await.tracker.track("props", std::process::id()).unwrap();
+        state.supervisor.read().await.tracker.track("props", std::process::id());
         assert_eq!(reset().await.body["error_code"], "server_running");
         let _ = state.supervisor.read().await.tracker.untrack("props");
         assert_eq!(port().await, Some(25580));
@@ -814,7 +814,7 @@ mod tests {
 
         let off = players("with").await;
         assert_eq!((off.status, off.body["error_code"].as_str()), (StatusCode::CONFLICT, Some("server_not_running")), "{}", off.body);
-        state.supervisor.read().await.tracker.track("with", std::process::id()).unwrap();
+        state.supervisor.read().await.tracker.track("with", std::process::id());
         let on = players("with").await;
         assert_eq!(on.body, json!({ "success": true, "online": 2, "max": 20, "players": [{ "name": "Steve" }, { "name": "Alex" }, { "name": "x".repeat(64) }] }));
         let _ = state.supervisor.read().await.tracker.untrack("with");
@@ -873,7 +873,7 @@ mod tests {
             ] })
         );
         // 켜진 서버: 모듈이 받는 명령은 보낼 수 있고, 콘솔 명령은 콘솔·RCON 길이 있어야 한다
-        state.supervisor.read().await.tracker.track("with", std::process::id()).unwrap();
+        state.supervisor.read().await.tracker.track("with", std::process::id());
         let on = lists("with").await;
         assert_eq!((on.body["lists"][0]["editable"].as_bool(), on.body["lists"][1]["editable"].as_bool()), (Some(true), Some(false)), "{}", on.body);
         let _ = state.supervisor.read().await.tracker.untrack("with");
@@ -883,7 +883,7 @@ mod tests {
         assert_eq!(lists("missing").await.status, StatusCode::NOT_FOUND);
     }
 
-    /// 디스코드 → 게임 채팅 (사용자 요청 2026-10-30): 모듈 `chat_send`가 한 줄로 다듬은 이름·본문을 받는다
+    /// 디스코드 → 게임 채팅: 모듈 `chat_send`가 한 줄로 다듬은 이름·본문을 받는다
     #[tokio::test]
     async fn chat_goes_to_the_module_as_one_line() {
         let tmp = tempfile::tempdir().unwrap();
@@ -916,7 +916,7 @@ mod tests {
         let msg = json!({ "name": " 김치 ", "text": "안녕\nstop" });
 
         assert_eq!(chat("chat-with", msg.clone()).await.body["error_code"], "server_not_running");
-        state.supervisor.read().await.tracker.track("chat-with", std::process::id()).unwrap();
+        state.supervisor.read().await.tracker.track("chat-with", std::process::id());
         let sent = chat("chat-with", msg.clone()).await;
         assert_eq!(sent.body, json!({ "success": true }), "the newline never reaches the console");
         assert!(crate::supervisor::game_chat::is_echo("chat-with", "Server", "김치: 안녕 stop"), "its echo is not sent back to Discord");
@@ -925,7 +925,7 @@ mod tests {
         assert_eq!(chat("chat-without", msg).await.body["error_code"], "not_supported");
     }
 
-    /// 채팅 연동 (사용자 요청 2026-11-01): 접속자가 있을 때만 켜지고, 끄기는 늘 된다. 모듈이 못 하는 방향은 거절한다
+    /// 채팅 연동: 접속자가 있을 때만 켜지고, 끄기는 늘 된다. 모듈이 못 하는 방향은 거절한다
     #[tokio::test]
     async fn chat_link_turns_on_only_with_players_and_off_always() {
         let tmp = tempfile::tempdir().unwrap();
@@ -956,7 +956,7 @@ mod tests {
         let on = json!({ "channel": "200000000000000001" });
 
         assert_eq!(link("link-game", on.clone()).await.body["error_code"], "server_not_running");
-        state.supervisor.read().await.tracker.track("link-game", std::process::id()).unwrap();
+        state.supervisor.read().await.tracker.track("link-game", std::process::id());
         assert_eq!(link("link-game", on.clone()).await.body["error_code"], "players_unknown", "players must be counted from join/leave lines");
         let rt = state.supervisor.read().await.runtime.clone();
         let roster = crate::supervisor::players::roster_start(&rt, "link-game");
@@ -1010,7 +1010,7 @@ mod tests {
         }
     }
 
-    // 실사용(L23): GUI "새로 설치"가 버전을 직접 골라 인스턴스 설정 없이 보내, 종류가 다른 서버(예: 다른 배포판)의
+    // 실사용: GUI "새로 설치"가 버전을 직접 골라 인스턴스 설정 없이 보내, 종류가 다른 서버(예: 다른 배포판)의
     // 파일을 받을 수 있었다. 버전을 비우면 데몬이 그 인스턴스 설정으로 최신을 고르고, 설치에도 그 설정을 넘긴다
     #[tokio::test]
     async fn an_install_without_a_version_takes_the_latest_for_the_instance_settings() {
@@ -1067,7 +1067,7 @@ mod tests {
         assert_eq!(pinned.status, StatusCode::UNPROCESSABLE_ENTITY, "{}", pinned.body);
     }
 
-    /// 본체를 서비스로 옮겨도 거절·실패 응답(상태·본문)이 한 글자도 바뀌지 않는다 (D9 고정 시험)
+    /// 본체를 서비스로 옮겨도 거절·실패 응답(상태·본문)이 한 글자도 바뀌지 않는다 (고정 시험)
     #[tokio::test]
     async fn install_refusals_answer_with_the_same_bodies() {
         let tmp = tempfile::tempdir().unwrap();
@@ -1113,7 +1113,7 @@ mod tests {
         );
     }
 
-    // Codex 리뷰 #539 P1: 확인되지 않은 모듈이 돌려준 `install_path`(없으면 실행 파일의 폴더)를 그대로 작업 폴더로 저장해,
+    // 확인되지 않은 모듈이 돌려준 `install_path`(없으면 실행 파일의 폴더)를 그대로 작업 폴더로 저장해,
     // 다음 격리 실행에서 인스턴스 밖 폴더가 쓰기를 받았다. 인스턴스 폴더 안이 아니면 설치 폴더를 둔다
     #[cfg(windows)]
     #[tokio::test]
@@ -1149,7 +1149,7 @@ mod tests {
         assert_eq!(saved_dir(&sup), nested.to_string_lossy(), "a folder inside the instance is kept");
     }
 
-    // 외부 감사 P1: 업데이트 전 백업이 모듈 `server_executable`(server.jar)만 담아, 모듈이 인스턴스의 실제 실행 파일
+    // 업데이트 전 백업이 모듈 `server_executable`(server.jar)만 담아, 모듈이 인스턴스의 실제 실행 파일
     // (예: Fabric 런처)을 바꾸다 실패하면 그 파일은 되돌리지 못했다. 인스턴스 실행 파일도 함께 백업하고 되돌린다
     #[tokio::test]
     async fn a_failed_install_puts_back_the_instance_executable_too() {
@@ -1265,7 +1265,7 @@ mod tests {
         let done = install(&inside, "break").await;
         assert_eq!(done.body["success"], false, "{}", done.body);
         assert_eq!(done.body["restore_failed"], json!(["PalServer"]), "{}", done.body);
-        // 어느 .bak이 이번 시도 직전 사본인지도 알린다 (607 P3-2)
+        // 어느 .bak이 이번 시도 직전 사본인지도 알린다
         assert_eq!(done.body["kept_backups"], json!(["PalServer.1.bak"]), "{}", done.body);
         assert_eq!(backups(), ["PalServer.1.bak", "PalServer.bak"]);
         assert_eq!(std::fs::read_to_string(files.join("PalServer.1.bak")).unwrap(), "old");
@@ -1307,7 +1307,7 @@ mod tests {
             assert_eq!(backups(), ["PalServer.1.bak", "PalServer.2.bak", "PalServer.bak"], "only the failed restores keep a backup");
         }
 
-        // 모듈 오류와 되돌리지 못한 백업은 구조화된 오류 응답의 각 칸으로 남긴다 (600 P3-2)
+        // 모듈 오류와 되돌리지 못한 백업은 구조화된 오류 응답의 각 칸으로 남긴다
         let reset = || {
             let exe = files.join("PalServer");
             let _ = std::fs::remove_dir_all(&exe);
@@ -1323,10 +1323,10 @@ mod tests {
         assert!(error.contains("install_server"), "{}", done.body);
         assert_eq!(done.body["error_code"], "module_crashed");
         assert!(done.body["stderr_tail"].as_array().unwrap().iter().any(|line| line.as_str().is_some_and(|line| line.contains("RuntimeError: boom"))), "{}", done.body);
-        // 422와 같은 칸으로도 알린다: 클라이언트가 원문을 풀지 않고 현지화 문구를 고른다 (리뷰 631 P3-1)
+        // 422와 같은 칸으로도 알린다: 클라이언트가 원문을 풀지 않고 현지화 문구를 고른다
         assert_eq!((&done.body["restore_failed"], &done.body["kept_backups"]), (&json!(["PalServer"]), &json!(kept)), "{}", done.body);
 
-        // 백업할 이름이 모두 차 있으면 설치하지 않고 어느 파일을 백업하지 못했는지 알린다 (607 P3-3)
+        // 백업할 이름이 모두 차 있으면 설치하지 않고 어느 파일을 백업하지 못했는지 알린다
         reset();
         for n in 1..100 {
             std::fs::write(files.join(format!("PalServer.{n}.bak")), "x").unwrap();
@@ -1336,7 +1336,7 @@ mod tests {
         assert_eq!(std::fs::read_to_string(files.join("PalServer")).unwrap(), "old", "the module never ran");
     }
 
-    // 0.1.10 결정 3: 버전 설치는 뒤에서 돌고(GUI 요청 한도에 걸리지 않게) 설치 전에 백업한다. 실패하면 그 백업으로
+    // 버전 설치는 뒤에서 돌고(GUI 요청 한도에 걸리지 않게) 설치 전에 백업한다. 실패하면 그 백업으로
     // 되돌리고, 성공하면 데몬이 버전·실행 파일·작업 폴더를 함께 저장한다(클라이언트가 따로 맞추지 않는다)
     #[tokio::test]
     async fn a_background_version_install_backs_up_first_and_puts_it_back_on_failure() {
@@ -1461,7 +1461,7 @@ mod tests {
         assert_eq!(std::fs::read_to_string(files.join("branch.txt")).unwrap(), "unstable");
     }
 
-    // D-S12: 설치 버전 감지는 모듈 호출 동안 잠금을 쥐지 않아, 그사이 저장된 새 버전(설치·업데이트 뒤 설정)을
+    // 설치 버전 감지는 모듈 호출 동안 잠금을 쥐지 않아, 그사이 저장된 새 버전(설치·업데이트 뒤 설정)을
     // 감지가 끝난 뒤 옛 값으로 덮을 수 있었다. 감지 사이에 값이 바뀌었거나 인스턴스가 작업 중이면 저장하지 않는다
     #[tokio::test]
     async fn a_version_detected_while_the_server_changes_does_not_overwrite_it() {

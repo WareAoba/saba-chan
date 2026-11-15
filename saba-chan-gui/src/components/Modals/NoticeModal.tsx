@@ -121,7 +121,7 @@ function formatTime(isoString: string, t: TFunction) {
     );
 }
 
-// ─── 알림 모달 본체 ─────────────────────────────────────
+// ── ─ 알림 모달 본체 ──
 
 interface NoticeModalProps {
     isOpen: boolean;

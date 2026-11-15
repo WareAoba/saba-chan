@@ -124,14 +124,14 @@ impl Publisher {
                     }
                     published |= outcome == Some(Published::Done);
                     self.0.done.send_replace(Done { applied, published });
-                    let (mut outcome, mut wait) = (outcome, RETRY_FIRST);
+                    let (mut outcome, mut failures) = (outcome, 0);
                     while outcome == Some(Published::Failed) {
+                        failures += 1;
                         tokio::select! {
                             _ = stop.cancelled() => return,
                             _ = wanted.changed() => continue 'follow,
-                            _ = tokio::time::sleep(wait) => {}
+                            _ = tokio::time::sleep(crate::utils::exp_backoff(RETRY_FIRST, RETRY_MAX, failures)) => {}
                         }
-                        wait = (wait * 2).min(RETRY_MAX);
                         // 그새 릴레이 연결이 없어졌으면 다음 간격에 다시 본다
                         outcome = publish(&relay, ep).await.or(Some(Published::Failed));
                         if outcome == Some(Published::Done) {

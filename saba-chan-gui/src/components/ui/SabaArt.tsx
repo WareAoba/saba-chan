@@ -32,27 +32,6 @@ export function SabaArt({ kind, className, size, alt = '' }: SabaArtProps) {
     );
 }
 
-/** 빈 목록: 청소하는 사바쨩 + "아직 추가하지 않았어요" + 목록별 안내 */
-interface SabaEmptyProps {
-    body?: ReactNode;
-    title?: ReactNode;
-    size?: number;
-    compact?: boolean;
-    children?: ReactNode;
-}
-
-export function SabaEmpty({ body, title, size = 180, compact, children }: SabaEmptyProps) {
-    const { t } = useTranslation('gui');
-    return (
-        <div className={clsx('saba-empty', { compact })}>
-            <SabaArt kind="cleaning" size={size} />
-            <p className="saba-empty-title">{title || t('saba.empty_title')}</p>
-            {body && <p className="saba-empty-body">{body}</p>}
-            {children}
-        </div>
-    );
-}
-
 /** 가벼운 실패 (불러오기 실패 등): 고개를 갸웃하는 사바쨩 + 이유 + 다시 시도 */
 interface SabaFailProps {
     message?: ReactNode;

@@ -1,7 +1,7 @@
 /**
  * Tauri 셸에서 window.api를 만든다.
  * window.__TAURI__가 있고 window.api가 아직 없을 때만 설치한다 (테스트·개발 mock은 그대로).
- * src/index.js가 가장 먼저 import한다.
+ * src/index.tsx가 가장 먼저 import한다.
  */
 import { createApi } from './createApi';
 import { createEventHub } from './events';

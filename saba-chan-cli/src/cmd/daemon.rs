@@ -47,7 +47,7 @@ fn is_down(e: &anyhow::Error) -> bool {
     matches!(e.downcast_ref::<CliError>(), Some(CliError::DaemonDown { .. }))
 }
 
-/// 데몬이 자신을 띄운 프로그램과 함께 끝날 수 있으면 그 경고 (`/health` `stops_with_launcher`, L46)
+/// 데몬이 자신을 띄운 프로그램과 함께 끝날 수 있으면 그 경고 (`/health` `stops_with_launcher`)
 pub(crate) fn launcher_warning(health: &Value) -> Option<String> {
     (health.get("stops_with_launcher") == Some(&Value::Bool(true))).then(|| t!("daemon.stops_with_launcher"))
 }
@@ -247,7 +247,7 @@ fn diagnostics_rows(d: &Value) -> Vec<(String, String)> {
 mod tests {
     use super::*;
 
-    /// 데몬이 자신을 띄운 프로그램과 함께 끝날 수 있으면 GUI와 같은 뜻으로 알린다 (L46)
+    /// 데몬이 자신을 띄운 프로그램과 함께 끝날 수 있으면 GUI와 같은 뜻으로 알린다
     #[test]
     fn a_daemon_tied_to_its_launcher_is_called_out() {
         crate::i18n::init("ko");
@@ -255,7 +255,7 @@ mod tests {
         assert_eq!(launcher_warning(&json!({ "stops_with_launcher": false })), None);
     }
 
-    /// 데몬의 종료 hook 한도(30초)가 지나기 전에 강제 종료를 묻지 않는다 (L59)
+    /// 데몬의 종료 hook 한도(30초)가 지나기 전에 강제 종료를 묻지 않는다
     #[test]
     fn stop_waits_longer_than_the_daemon_shutdown_hooks() {
         assert!(bootstrap::STOP_TIMEOUT > Duration::from_secs(30));

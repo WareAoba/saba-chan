@@ -36,7 +36,7 @@ describe('보낸 명령', () => {
         const text = (sel: string) => [...document.querySelectorAll(sel)].map((el) => el.textContent);
         expect(text('.console-sent .console-echo')).toEqual(['list', 'say hi']);
         expect(text('.console-sent .console-echo-by')).toEqual(['App', 'Discord · jace']);
-        // 보낸 줄이 입력칸 이름(.console-input)을 달면 입력칸 테두리·배경이 묻는다 (사용자 11-13)
+        // 보낸 줄이 입력칸 이름(.console-input)을 달면 입력칸 테두리·배경이 묻는다
         expect(document.querySelector('.console-line.console-input')).toBeNull();
     });
 

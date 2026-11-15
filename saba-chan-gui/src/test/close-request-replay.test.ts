@@ -1,6 +1,6 @@
 /**
  * 닫기 요청이 App이 구독하기 전에 오면(로드 중 Alt+F4) 버리지 않고 첫 구독자에게 넘긴다.
- * 그래야 받음 확인(ack)이 가고, 셸이 정상 렌더러를 멈춘 것으로 보지 않는다 (#477 리뷰).
+ * 그래야 받음 확인(ack)이 가고, 셸이 정상 렌더러를 멈춘 것으로 보지 않는다.
  */
 import { describe, expect, it, vi } from 'vitest';
 import { createEventHub } from '../api/events';

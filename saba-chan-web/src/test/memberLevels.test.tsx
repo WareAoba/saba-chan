@@ -4,7 +4,7 @@ import { GuildPermissions } from '../components/PermissionsTab';
 import { initI18n } from '../i18n';
 import { mockApi } from './mocks';
 
-// 사용자 지정(2026-11-07, 앱 멤버 탭과 같다): 레벨 칸마다 사람 칩, 윗줄 닉네임 찾기(10명씩, 끌어서 레벨에 넣기),
+// 앱 멤버 탭과 같다: 레벨 칸마다 사람 칩, 윗줄 닉네임 찾기(10명씩, 끌어서 레벨에 넣기),
 // 사람 추가는 닉네임 찾기로, 소유자 칩은 강조
 const flush = () => act(async () => {});
 const many = Array.from({ length: 14 }, (_, i) => ({

@@ -19,7 +19,7 @@ import { setLanguage } from '../i18n';
 import { applyScreenFonts, applyTheme, readConsoleFonts, readMonitorItems, readPref, THEMES, writeMonitorItems, writePref } from '../prefs';
 import { sizeText } from './BackupsPanel';
 import { Dropdown } from './Dropdown';
-import { startPoll } from '@gui/utils/poll';
+import { connectStream, STREAM_RETRY_MS, startPoll } from '@gui/utils/poll';
 import { Icon } from './icons';
 import { Button, Card, Empty, Loading, Section, Segments } from './ui';
 import { useStickToBottom } from './useStickToBottom';
@@ -82,7 +82,7 @@ function Metrics({ api }: { api: WebApi }) {
             </Button>
         </div>
     );
-    // 시안 (사용자 2026-11-12): 원·서버별 사용량을 한 카드에, 원마다 칸, 긴 안내는 ⓘ를 눌러 본다
+    // 시안: 원·서버별 사용량을 한 카드에, 원마다 칸, 긴 안내는 ⓘ를 눌러 본다
     return (
         <Card icon="monitor" tone="3" title={t('more.metrics')} action={action}>
             {picking && (
@@ -141,9 +141,6 @@ function Metrics({ api }: { api: WebApi }) {
     );
 }
 
-/** 데몬 로그 스트림을 열지 못했거나 끊긴 뒤 다시 열어 보기까지 (ms). 그동안은 주기 조회로 읽는다 */
-const STREAM_RETRY_MS = 30_000;
-
 function DaemonLog({ api }: { api: WebApi }) {
     const { t, i18n } = useTranslation();
     const [lines, setLines] = useState<DaemonLogEntry[] | null>(null);
@@ -168,25 +165,20 @@ function DaemonLog({ api }: { api: WebApi }) {
         /** 받은 다음부터 스트림으로 받는다 (릴레이·PC가 스트림을 모르면 주기 조회를 이어 간다) */
         const openStream = async () => {
             opening = true;
-            const close = await Promise.resolve()
-                .then(() =>
-                    api.daemonConsoleStream(
-                        { since: next.current, epoch },
-                        (res) => {
-                            if (stopped) return;
-                            if (typeof res?.epoch === 'number') epoch = res.epoch;
-                            if (Array.isArray(res?.lines)) add(res.lines, res.reset === true);
-                        },
-                        () => {
-                            closeStream = null;
-                            streamRetryAt = Date.now() + STREAM_RETRY_MS;
-                        },
-                    ),
-                )
-                .then(
-                    (c) => (typeof c === 'function' ? c : null),
-                    () => null,
-                );
+            const close = await connectStream(() =>
+                api.daemonConsoleStream(
+                    { since: next.current, epoch },
+                    (res) => {
+                        if (stopped) return;
+                        if (typeof res?.epoch === 'number') epoch = res.epoch;
+                        if (Array.isArray(res?.lines)) add(res.lines, res.reset === true);
+                    },
+                    () => {
+                        closeStream = null;
+                        streamRetryAt = Date.now() + STREAM_RETRY_MS;
+                    },
+                ),
+            );
             opening = false;
             if (stopped || document.hidden) return close?.();
             if (close) closeStream = close;

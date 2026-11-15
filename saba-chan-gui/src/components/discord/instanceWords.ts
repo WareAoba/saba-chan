@@ -19,7 +19,7 @@ const BUILTIN_LABEL: Record<string, string> = {
     status: 'gui:discord.iw_cmd_status',
 };
 
-/** 명령의 화면 이름: 내장 명령은 앱 문구, 모듈 명령은 모듈 번역 (다른 화면과 같다, 사용자 11-06 #9) */
+/** 명령의 화면 이름: 내장 명령은 앱 문구, 모듈 명령은 모듈 번역 (다른 화면과 같다) */
 export function wordsCommandName(t: TFunction, moduleName: string, c: InstanceWordsCommand) {
     if (c.builtin && !c.label && BUILTIN_LABEL[c.name]) return t(BUILTIN_LABEL[c.name]);
     return commandText(t, moduleName, c).label;
@@ -45,7 +45,7 @@ export const WORD_COMMAS = /[,，、､]/;
 
 /**
  * 친 글자를 낱말로 나눈다: 쉼표로 나누고, 앞뒤 공백을 떼고 사이 공백은 한 칸으로 (데몬 `tidy`와 같다).
- * 서버를 부르는 말은 띄어 써도 되고 쉼표는 못 쓴다 (사용자 11-06 #2)
+ * 서버를 부르는 말은 띄어 써도 되고 쉼표는 못 쓴다
  */
 export function splitWords(text: string) {
     return text

@@ -262,7 +262,7 @@ pub fn api_hint(code: &str, body: &Value) -> Option<String> {
         "rcon_timeout" => Some(t!("err.hint.rcon_timeout")),
         "rcon_failed" => Some(t!("err.hint.rcon_failed")),
         "node_token_missing" | "not_paired" | "node_not_found" | "missing_token" | "invalid_token" | "invalid_token_format" => Some(t!("err.hint.node_token_missing")),
-        // 모듈이 실행 파일을 못 찾음: executable_not_found (MK7), 옛 모듈은 server_jar_not_found
+        // 모듈이 실행 파일을 못 찾음: executable_not_found, 옛 모듈은 server_jar_not_found
         "executable_missing" | "executable_not_found" | "server_jar_not_found" => Some(t!("err.hint.executable_missing")),
         "update_unsupported" => Some(t!("err.hint.update_unsupported")),
         // 모듈·익스텐션 판 고르기 (`update pin`·`unpin`)
@@ -369,7 +369,7 @@ pub fn classify(err: &anyhow::Error) -> std::borrow::Cow<'_, CliError> {
 mod tests {
     use super::*;
 
-    /// F8: 0.1.14-beta.2~ 데몬은 요구 버전을 `required_core`로 싣는다. 문구 꼴과 상관없이 안내한다
+    /// 0.1.14-beta.2~ 데몬은 요구 버전을 `required_core`로 싣는다. 문구 꼴과 상관없이 안내한다
     #[test]
     fn update_required_reads_the_required_core_version() {
         crate::i18n::init("en");
@@ -455,7 +455,7 @@ mod tests {
         assert!(hint.contains("executable_path java_path") && !hint.contains("{{"), "{hint}");
     }
 
-    /// 데몬이 거절한 릴레이 주소는 쓸 수 있는 주소를 알려 준다 (R31)
+    /// 데몬이 거절한 릴레이 주소는 쓸 수 있는 주소를 알려 준다
     #[test]
     fn a_refused_relay_url_says_which_addresses_are_allowed() {
         crate::i18n::init("en");

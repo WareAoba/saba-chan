@@ -257,7 +257,7 @@ static LABEL_GATE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 /// 서버 실행 전: 격리 실행이 서버 폴더에 남긴 낮은 수준 표시를 그 안 실행 파일에서 덮는다 (Windows). 그 표시가 걸린
 /// 실행 파일로 띄운 서버는 낮은 무결성으로 돌아 뜨지 못한다. 신뢰 표시와 상관없이 한다: 0.1.6까지는 공식 모듈도 격리되어 표시가
 /// 남아 있을 수 있다. 한 폴더에서 실패해도 나머지를 마저 보고, 낮은 수준이 남은 실행 파일이 있으면 `server_folder_label`로 막는다
-/// `program`: 띄울 파일. 서버 폴더 안에 있으면 확장자와 상관없이 그 파일의 표시도 덮는다 (L38)
+/// `program`: 띄울 파일. 서버 폴더 안에 있으면 확장자와 상관없이 그 파일의 표시도 덮는다
 async fn restore_server_folders(dirs: Vec<PathBuf>, program: Option<PathBuf>) -> Result<(), Blocked> {
     #[cfg(windows)]
     {
@@ -1416,7 +1416,7 @@ mod tests {
         assert!(wrapped.get_envs().any(|(k, v)| k == "SABA_X" && v == Some("1".as_ref())));
     }
 
-    // 백로그 M7 (사용자 결정: 동기화 폴더 아래 서버는 계속 막는다). 막되 원인과 할 일을 알린다
+    // 동기화 폴더 아래 서버는 계속 막는다. 막되 원인과 할 일을 알린다
     #[test]
     fn a_server_folder_in_a_sync_folder_is_blocked_with_its_own_reason() {
         let synced = PathBuf::from(r"C:\Users\me\OneDrive\server\PalServer.exe");

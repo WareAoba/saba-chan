@@ -39,7 +39,7 @@ function useMemberChoices() {
     return useMemo(() => memberChoices({ ...loaded, ...cached }), [loaded, cached]);
 }
 
-/** 전용 멤버 명단: 전용 멤버 모드에서 이 인스턴스의 모든 조작·명령을 하는 사람 (사용자 지정 2026-11-08) */
+/** 전용 멤버 명단: 전용 멤버 모드에서 이 인스턴스의 모든 조작·명령을 하는 사람 */
 export function ControllersTab({ server }: { server: Server }) {
     const { t } = useTranslation('gui');
     const [list, setList] = useState<Controller[]>(server.controllers || []);

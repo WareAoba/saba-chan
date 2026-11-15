@@ -13,7 +13,7 @@ COLORS = {
     "daemon": "#7c3aed",  # 데몬 (purple)
     "addon": "#3b82f6",  # 모듈·익스텐션 (blue)
     "game": "#22c55e",  # 게임 서버 (green)
-    "discord": "#5865F2",  # 디스코드·릴레이 (R6)
+    "discord": "#5865F2",  # 디스코드·릴레이
 }
 
 THEMES = {
@@ -48,8 +48,6 @@ THEMES = {
 FONTS = {
     "ko": "Pretendard, 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', sans-serif",
     "ja": "'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Yu Gothic UI', Meiryo, 'Noto Sans JP', sans-serif",
-    "zh-CN": "'PingFang SC', 'Microsoft YaHei UI', 'Microsoft YaHei', 'Noto Sans SC', sans-serif",
-    "zh-TW": "'PingFang TC', 'Microsoft JhengHei UI', 'Microsoft JhengHei', 'Noto Sans TC', sans-serif",
     "latin": "Inter, 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, 'Helvetica Neue', Arial, sans-serif",
 }
 MONO = "'Cascadia Code', Consolas, 'SFMono-Regular', Menlo, monospace"
@@ -211,40 +209,20 @@ class Svg:
             self.lines(x + w / 2, cy + hh / 2, ls, sz, wt, fill, mono=mono, fit_w=inner)
             cy += hh + 6
 
-    def pill(self, cx, cy, label, maxw, num=None, size=12, mono=False, color=None):
-        """화살표 이름표. num이 있으면 왼쪽에 번호 동그라미를 붙인다."""
+    def pill(self, cx, cy, label, maxw, size=12, mono=False):
+        """화살표 이름표."""
         t = self.t
-        badge = 22 if num is not None else 0
-        sz, ls = fit(label, maxw - 16 - badge, size, 10, 3, mono)
+        sz, ls = fit(label, maxw - 16, size, 10, 3, mono)
         tw = max(text_width(l, sz, mono) for l in ls)
-        pw = tw + 16 + badge
+        pw = tw + 16
         ph = len(ls) * sz * 1.3 + 10
         x0 = cx - pw / 2
         self.add(
             f'<rect x="{x0:.1f}" y="{cy - ph / 2:.1f}" width="{pw:.1f}" height="{ph:.1f}" rx="{min(ph / 2, 10):.1f}" '
             f'fill="{t["pill"]}" stroke="{t["pill_stroke"]}"/>'
         )
-        if num is not None:
-            bc = color or COLORS["daemon"]
-            self.add(f'<circle cx="{x0 + 8 + 9:.1f}" cy="{cy:.1f}" r="9" fill="{bc}"/>')
-            self.text(x0 + 17, cy + 4, str(num), 11, 700, "#ffffff")
-        self.lines(x0 + 8 + badge + tw / 2, cy, ls, sz, 500, t["text"], mono=mono, fit_w=maxw - 16 - badge)
+        self.lines(x0 + 8 + tw / 2, cy, ls, sz, 500, t["text"], mono=mono, fit_w=maxw - 16)
         return ph
-
-    def note(self, cx, cy, w, label, num, role):
-        """생명선 위에 얹는 처리 단계(점선 상자 + 번호)."""
-        t, c = self.t, COLORS[role]
-        sz, ls = fit(label, w - 48, 12, 11, 3)
-        h = len(ls) * sz * 1.3 + 18
-        x0 = cx - w / 2
-        self.add(
-            f'<rect x="{x0:.1f}" y="{cy - h / 2:.1f}" width="{w:.1f}" height="{h:.1f}" rx="10" fill="{t["bg"]}"/>'
-            f'<rect x="{x0:.1f}" y="{cy - h / 2:.1f}" width="{w:.1f}" height="{h:.1f}" rx="10" fill="{c}" '
-            f'fill-opacity="{t["fill_op"]}" stroke="{c}" stroke-width="1.2" stroke-dasharray="4 3"/>'
-        )
-        self.add(f'<circle cx="{x0 + 20:.1f}" cy="{cy:.1f}" r="9" fill="{c}"/>')
-        self.text(x0 + 20, cy + 4, str(num), 11, 700, "#ffffff")
-        self.lines(cx + 12, cy, ls, sz, 500, t["text"], fit_w=w - 48)
 
     def arrow(self, pts, dashed=False, both=False, color=None, width=1.6):
         color = color or self.t["line"]

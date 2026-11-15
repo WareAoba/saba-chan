@@ -1,11 +1,9 @@
 import { useEffect, useState } from 'react';
 import type { CatalogModule } from './moduleSupport';
 
-// ─────────────────────────────────────────────────────────────
 // 사바 스토리지 목록·아이콘을 앱이 켜져 있는 동안 기억한다.
 // 받아 두기는 데몬이 한다(`/api/modules/manifest`·`/api/store/icons`). 여기서는 창을 다시 열 때
 // 목록과 그림을 다시 그리지 않고 바로 보이도록 마지막 답을 쥐고 있기만 한다.
-// ─────────────────────────────────────────────────────────────
 
 let moduleCatalog: CatalogModule[] | null = null;
 

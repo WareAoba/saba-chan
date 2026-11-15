@@ -34,7 +34,7 @@ describe('디스코드 호출어 (서버 상세 › 사바쨩)', () => {
         expect(screen.queryByRole('button', { name: 'Save words' })).toBeNull();
     });
 
-    // 사용자 11-06 #2: 띄어 쓴 말은 그대로 받고 쉼표(전각·일본식 포함)로 나눈다
+    // 띄어 쓴 말은 그대로 받고 쉼표(전각·일본식 포함)로 나눈다
     it('띄어 쓴 말은 한 낱말이고 쉼표로 나눈다', async () => {
         const api = {
             instanceWords: vi.fn().mockResolvedValue(ITEM),

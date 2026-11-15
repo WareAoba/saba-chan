@@ -1,14 +1,14 @@
 pub mod supervisor;
 pub mod module_loader;  // module.toml 계약: 메타데이터 타입·TOML 읽기·모듈 폴더 로더
-pub mod plugin;  // Keep - used for Python lifecycle integration
+pub mod plugin;  // 모듈 lifecycle.py·익스텐션 Python 실행
 pub mod python_env;  // Python 가상환경 관리 (venv 부트스트랩, pip)
-pub mod protocol;  // 새로운 프로토콜 통신 모듈
+pub mod protocol;  // 게임 서버 프로토콜 클라이언트 (REST·RCON)
 pub mod ipc;
 pub mod config_store;  // 중앙 설정 저장소 (타입 안전 JSON 관리)
 pub mod instance;
-pub mod backup;  // 월드·세이브 백업 (A2)
+pub mod backup;  // 월드·세이브 백업
 pub mod module_paths;
-pub mod scheduler;  // 인스턴스 예약 작업 (A3)
+pub mod scheduler;  // 인스턴스 예약 작업
 pub mod process_monitor;
 pub mod system_monitor;
 pub mod storage;  // 설정 › 저장 공간: 내장 디스크·사바쨩 파일 크기, 서버 폴더 옮기기
@@ -16,24 +16,24 @@ pub mod utils;
 pub mod archive;  // 내려받은 ZIP(모듈·익스텐션)을 안전하게 풀기
 pub mod extension;  // 범용 익스텐션 시스템
 pub mod validator;  // 설정값 타입 검증 및 포트 충돌 검사
-pub mod boot_selector;  // BIOS 스타일 부트 선택기
+pub mod boot_selector;  // 시작할 때 GUI·CLI·데몬만 중 고르는 선택기
 pub mod daemon_log;  // 데몬 로그 버퍼 + tracing Layer
 pub mod instance_lock;  // 데몬 단일 인스턴스 잠금
 pub mod chat;  // 채팅 명령 처리기 (릴레이 에이전트)
 pub mod commands;  // 게임 명령 해석 (/api/instance/:id/command)
-pub mod module_audit;  // 모듈 Python 코드 정적 검사 (M12)
+pub mod module_audit;  // 모듈 Python 코드 정적 검사
 pub mod audit;
 pub mod notices;  // 알림함: 크래시·실패·업데이트 결과를 데몬이 보관 (notices.json)
-pub mod events;  // 데몬 이벤트 스트림 (P4, GET /api/events)
+pub mod events;  // 데몬 이벤트 스트림 (GET /api/events)
 pub mod sandbox;  // 확인되지 않은 모듈·익스텐션 실행 제한 (Windows)
-pub mod actions;  // 데몬 액션 카탈로그 (P2): 모든 표면이 읽는 기능 목록
+pub mod actions;  // 데몬 액션 카탈로그: 모든 표면이 읽는 기능 목록
 pub mod launch_args;  // 실행 인자 미리보기: 추가 인자 ↔ 설정 필드
 pub mod relay_agent;  // 클라우드 릴레이 ↔ 데몬 에이전트
 pub mod relay_client;  // 릴레이 클라이언트: 주소·노드 토큰·서명
 pub mod service;  // 서비스 계층: 핸들러·채팅·예약·릴레이가 같이 부르는 기능 본체
 pub(crate) mod component_lock;  // 모듈·익스텐션 폴더 쓰기와 폴더 옮기기를 가르는 잠금
 pub mod remote;  // 사바쨩 웹: 릴레이 웹소켓으로 받는 원격 요청과 문지기
-pub mod remote_daemon;  // 원격 데몬 (D1): 같은 주인의 PC가 TLS로 직접 붙는 원격 포트
+pub mod remote_daemon;  // 원격 데몬: 같은 주인의 PC가 TLS로 직접 붙는 원격 포트
 pub mod tray_host;  // 상주 GUI(트레이) 감독: 화면이 있을 때만 띄우고 죽으면 되살린다
 pub mod controllers;  // 조작 가능: 인스턴스를 조작하는 사람 명단과 명단 밖 접속 내보내기
 pub mod guides;  // 가이드: 폴더 하나 = 가이드 하나, 완료·new!는 데몬이 판단

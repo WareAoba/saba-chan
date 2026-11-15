@@ -1,11 +1,11 @@
-//! 데몬 액션 카탈로그 (P2): 데몬이 할 수 있는 일을 한 곳에 선언하고 모든 표면(GUI·CLI·디스코드·챗봇)이 읽는다
+//! 데몬 액션 카탈로그: 데몬이 할 수 있는 일을 한 곳에 선언하고 모든 표면(GUI·CLI·디스코드·챗봇)이 읽는다
 //!
 //! 액션은 기존 HTTP 라우트를 데몬 안에서 부르는 얇은 층이다 (`IPCServer::router`를 직접 부른다. 새 로직은 없다).
 //! - 목록: [`list`]. 인스턴스를 주면 모듈·익스텐션 명령이 `server.command:<이름>`으로, 모듈 `[[queries]]`가
 //!   `server.query:<이름>`(읽기 전용, 모든 표면)으로 펼쳐진다.
 //! - 계획: [`plan`]은 입력을 검증하고 요약만 만든다(부작용 없음). planId는 요청자·길드·via에 묶이고 10분 산다.
 //! - 실행: [`run`]은 밑 라우트를 불러 `{success, result}`로 감싼다.
-//! - 여러 단계 계획(I1): [`plan_steps`]가 단계마다 검증·판정해 planId 하나로 묶는다 (`steps.rs`).
+//! - 여러 단계 계획: [`plan_steps`]가 단계마다 검증·판정해 planId 하나로 묶는다 (`steps.rs`).
 //! - 원격 설정 변경은 바꾸기 전 값을 요약에 싣고, 실행 뒤 되돌리는 계획(`undoPlanId`)을 하나 더 만든다.
 //! - 원격 관리 실행은 길드당 시간당 횟수를 넘으면 `rate_limited` (`nodeSettings[guild].adminRunsPerHour`, 기본 10).
 //! - 표면: `surfaces`는 코드 상수다. 챗봇 경로는 여기 없는 액션을 레벨 판정 전에 거부한다(설정으로 풀 수 없다).
@@ -115,7 +115,7 @@ pub struct Def {
     /// 디스코드 작업 메뉴에 싣는가 (heartbeat `surfaces`에 discord를 넣는가). 전용 명령이 같은 액션을 부르는
     /// 것(길드 설정은 "/사바쨩")과 메뉴에서 뺀 것은 false다. 챗봇 목록에는 그대로 남고, 액션 자체도 디스코드에서 계속 부를 수 있다
     pub remote_menu: bool,
-    /// 디스코드 서버 주인도 `discord_level` 주인으로 본다 (길드 공통 설정, 원격 데몬 R2b). 챗봇 경로는 아니다
+    /// 디스코드 서버 주인도 `discord_level` 주인으로 본다 (길드 공통 설정, 원격 데몬). 챗봇 경로는 아니다
     pub guild_owner: bool,
     /// 부른 사람만 보면 되는 조회 (진단·관리용). 길드 설정 "조회 결과 나만 보기"가 켜지면 디스코드 답을 부른 사람에게만 보인다.
     /// 서버 상태·접속자처럼 다 같이 보는 조회는 false
@@ -157,11 +157,11 @@ const fn def(id: &'static str, kind: Kind, risk: &'static str, surfaces: &'stati
 }
 
 /// 첫 판 액션. 새 기능은 여기 한 줄을 더하면 모든 표면에 퍼진다.
-/// 챗봇 범위(사용자 결정): 관리 액션은 설치·생성·설정·예약·복원만. 삭제·종료·업데이트·권한·비밀값은 열지 않는다
+/// 챗봇 범위: 관리 액션은 설치·생성·설정·예약·복원만. 삭제·종료·업데이트·권한·비밀값은 열지 않는다
 pub static ACTIONS: &[Def] = &[
     def("instance.list", Kind::Query, "safe", ALL, false, "GET", "/api/servers"),
     def("server.status", Kind::Query, "safe", ALL, true, "GET", "/api/instance/:id/status"),
-    // 시작·정지·재시작·백업 만들기는 위험도가 아니라 조작 가능 명단(`crate::controllers`)과 유저 이상이 한다 (사용자 지정 2026-11-06, 기본 유저 2026-11-07)
+    // 시작·정지·재시작·백업 만들기는 위험도가 아니라 조작 가능 명단(`crate::controllers`)과 유저 이상이 한다 (기본 유저)
     Def { discord_level: Some(crate::chat::permissions::USER), level_movable: true, ..def("server.start", Kind::Command, "safe", ALL, true, "POST", "/api/instance/:id/start") },
     Def { discord_level: Some(crate::chat::permissions::USER), level_movable: true, ..def("server.stop", Kind::Command, "safe", ALL, true, "POST", "/api/instance/:id/stop") },
     Def { discord_level: Some(crate::chat::permissions::USER), level_movable: true, ..def("server.restart", Kind::Command, "safe", ALL, true, "POST", "/api/instance/:id/restart") },
@@ -181,8 +181,8 @@ pub static ACTIONS: &[Def] = &[
         ..def("server.chat_link", Kind::Command, "safe", &[Discord], true, "POST", "/api/instance/:id/chat-link/:guild")
     },
     // 포트포워딩 확인: 릴레이가 밖에서 게임 포트에 접속해 본다. 공인 주소가 결과에 있어 챗봇에는 열지 않는다 (디스코드는 요약만 보인다)
-    // 서버 주소 (사용자 요청 2026-11-05): 릴레이가 본 이 PC의 접속 주소 + 밖에 여는 포트. 공인 주소라 부른 사람에게만 보이고 챗봇에는 열지 않는다.
-    // 기본은 유저(Lv1) 이상이고 길드가 명령별로 옮길 수 있다 (사용자 결정 2026-11-07: 게스트에게 PC 공인 IP를 보이지 않는다)
+    // 서버 주소: 릴레이가 본 이 PC의 접속 주소 + 밖에 여는 포트. 공인 주소라 부른 사람에게만 보이고 챗봇에는 열지 않는다.
+    // 기본은 유저(Lv1) 이상이고 길드가 명령별로 옮길 수 있다 (게스트에게 PC 공인 IP를 보이지 않는다)
     Def { secret: true, discord_level: Some(crate::chat::permissions::USER), level_movable: true, ..def("server.address", Kind::Query, "safe", LOCAL_AND_DISCORD, true, "GET", "/api/instance/:id/address") },
     Def { private: true, ..def("server.port_check", Kind::Query, "safe", LOCAL_AND_DISCORD, true, "POST", "/api/instance/:id/port-check") },
     // 시작·정지 기록은 디스코드에서 쓰지 않는다 (사용자 디스코드 검수 3번)
@@ -230,7 +230,7 @@ pub static ACTIONS: &[Def] = &[
     Def { fields: &[path_field("module")], ..def("module.install", Kind::Admin, "caution", LOCAL_AND_CHATBOT, false, "POST", "/api/modules/manifest/:module/install") },
     Def { fields: &[path_field("extension")], ..def("extension.enable", Kind::Admin, "caution", LOCAL, false, "POST", "/api/extensions/:extension/enable") },
     Def { fields: &[path_field("extension")], ..def("extension.disable", Kind::Admin, "caution", LOCAL, false, "POST", "/api/extensions/:extension/disable") },
-    // 챗봇 설정 (I2-b). 디스코드에서는 소유자만, 그 길드 것만. 키는 받지 않고 챗봇 자신은 못 바꾼다(확인을 끄지 못하게)
+    // 챗봇 설정. 디스코드에서는 소유자만, 그 길드 것만. 키는 받지 않고 챗봇 자신은 못 바꾼다(확인을 끄지 못하게)
     Def { fields: &[path_field("guild")], discord_level: Some(crate::chat::permissions::OWNER), level_movable: true, remote_menu: false, ..def("chatbot.settings.get", Kind::Query, "safe", LOCAL_AND_DISCORD, false, "GET", "/api/chatbot/guilds/:guild") },
     Def {
         fields: &[
@@ -261,7 +261,7 @@ pub static ACTIONS: &[Def] = &[
         remote_menu: false,
         ..def("chatbot.common.set", Kind::Admin, "caution", LOCAL_AND_DISCORD, false, "PATCH", "/api/chatbot/common")
     },
-    // 디스코드 길드 설정 (I2). 원격에서는 요청이 온 길드만 (`guild`를 그 길드로 고정한다)
+    // 디스코드 길드 설정. 원격에서는 요청이 온 길드만 (`guild`를 그 길드로 고정한다)
     Def {
         fields: &[path_field("guild"), field("locale", "string", false), field("sleeping", "boolean", false), field("sleepBlocks", "array", false), field("bedtime", "object", false), field("music", "object", false), field("tts", "object", false), field("confirmLevel", "string", false), field("commandRisks", "object", false)],
         discord_level: Some(crate::chat::permissions::OWNER),
@@ -361,7 +361,7 @@ const LAUNCH_KEYS: &[&str] = &[
     "extension_data",
     "rest_host",
     "memory_limit_mb",
-    // 사용 모드와 그 명단·자동 강퇴: PC 앱·웹에서만 바꾼다 (디스코드·말하는 사바쨩 불가, 사용자 지정 2026-11-08)
+    // 사용 모드와 그 명단·자동 강퇴: PC 앱·웹에서만 바꾼다 (디스코드·말하는 사바쨩 불가)
     "access",
     "controllers",
     "controllers_only",
@@ -423,7 +423,7 @@ fn strip_secrets(v: &mut Value, password_fields: &[String]) {
     }
 }
 
-/// 원격으로 나가는 결과에서 PC의 로컬 정보를 어느 깊이에서든 뺀다 (I3, 알림 push 경로와 같은 기준):
+/// 원격으로 나가는 결과에서 PC의 로컬 정보를 어느 깊이에서든 뺀다 (알림 push 경로와 같은 기준):
 /// 실행 파일·폴더·인자 키, 콘솔 줄이 든 종료 근거, 자동 재시작 실패 원문, 그리고 문자열 안의 절대 경로
 pub(crate) fn strip_local_details(v: &mut Value) {
     const LOCAL_KEYS: [&str; 6] = ["working_dir", "executable_path", "extra_args", "extension_data", "install_path", "stderr_tail"];
@@ -571,7 +571,7 @@ fn cli_args(required: &[&str]) -> String {
     required.iter().map(|n| format!(" {}=<{}>", n, n)).collect()
 }
 
-/// 같은 일을 하는 CLI 한 줄 (I4-c "CLI로 보기"). `<server>`·`<필드>` 자리는 화면이 채운다
+/// 같은 일을 하는 CLI 한 줄 ("CLI로 보기"). `<server>`·`<필드>` 자리는 화면이 채운다
 fn cli_line(def: &Def) -> String {
     let mut line = format!("{} do {}", CLI_STEM, def.id);
     if def.instance {
@@ -804,7 +804,7 @@ pub async fn permission_board(server: &IPCServer, guild_id: &str, locale: &str) 
                     let level = perms.required(id, cmd, risk);
                     let keys = vec![format!("{}/{}", id, cmd)];
                     let mut item = entry(id, a["id"].as_str().unwrap_or_default(), cmd, &a["title"], "command", risk, level, perms.preset_need(risk), false, keys);
-                    // 게임(모듈·플러그인) 명령: 화면은 칩에 명령 원문을, 번역 이름은 말풍선에 쓴다 (사용자 지정 2026-11-07)
+                    // 게임(모듈·플러그인) 명령: 화면은 칩에 명령 원문을, 번역 이름은 말풍선에 쓴다
                     item["module"] = json!(true);
                     items.push(item);
                 }
@@ -1147,7 +1147,7 @@ async fn resolve_in(server: &IPCServer, id: &str, instance: Option<&str>, input:
         (true, Some(i)) => Some(i.to_string()),
         (false, _) => None,
     };
-    // 원격 요청이 다루는 길드는 그 요청이 온 길드뿐이다. 길드 없이 오는 원격 MCP(PC 주인)는 앱처럼 길드를 고른다 (사용자 결정 2026-11-05)
+    // 원격 요청이 다루는 길드는 그 요청이 온 길드뿐이다. 길드 없이 오는 원격 MCP(PC 주인)는 앱처럼 길드를 고른다
     if let Some(who) = caller.remote.as_ref().filter(|w| !(w.guild_id.is_none() && caller.origin.via.as_deref() == Some(MCP_VIA))) {
         if def.fields.iter().any(|f| f.in_path && f.name == GUILD_FIELD) {
             let Some(own) = who.guild_id.clone() else { return Err(bad_input(GUILD_FIELD, "required")) };
@@ -1370,7 +1370,7 @@ async fn authorize_in(server: &IPCServer, r: &Resolved, caller: &Caller, new_ser
     // 실행이 안에서 부르는 라우터도 같은 규칙 층(`remote_daemon::server::rules`)을 지나지만, 여러 단계 계획이
     // 앞 단계만 돌고 뒤 단계에서 멈추지 않게 계획 때 거절한다
     // 원격 MCP도 웹 원격·짝 맺은 PC와 같이 PC에서만 하는 일과 PC 전용 칸을 막는다
-    // 원격 MCP는 계정 주인의 개인 에이전트라 앱 업데이트와 게임 설정 원문은 연다 (사용자 결정 2026-11-05, `MCP_UNLOCKED`)
+    // 원격 MCP는 계정 주인의 개인 에이전트라 앱 업데이트와 게임 설정 원문은 연다 (`MCP_UNLOCKED`)
     let mcp = caller.origin.via.as_deref() == Some(MCP_VIA);
     let remote_rules = (caller.remote.is_none() && caller.origin.source == "remote") || (mcp && !MCP_UNLOCKED.contains(&r.id.as_str()));
     if remote_rules {
@@ -1498,13 +1498,13 @@ fn builtin_command(action: &str) -> Option<&'static str> {
     }
 }
 
-/// 원격 MCP가 바꾸는 사용 모드·전용 멤버 명단·자동 강퇴 목록 (`LAUNCH_KEYS` 중, 사용자 2026-11-15). 디스코드·챗봇은 그대로 못 바꾼다
+/// 원격 MCP가 바꾸는 사용 모드·전용 멤버 명단·자동 강퇴 목록 (`LAUNCH_KEYS` 중). 디스코드·챗봇은 그대로 못 바꾼다
 const MCP_ACCESS_KEYS: &[&str] = &["access", "controllers", "controllers_only", "kick_players"];
 
-/// 원격 MCP가 웹 원격·짝 맺은 PC의 PC 전용 규칙(라우트·칸)을 받지 않는 액션 (사용자 결정 2026-11-05)
+/// 원격 MCP가 웹 원격·짝 맺은 PC의 PC 전용 규칙(라우트·칸)을 받지 않는 액션
 const MCP_UNLOCKED: &[&str] = &["update.check", "update.apply", "instance.properties.get", "instance.properties.set"];
 
-/// 원격 결과에서 비밀값을 지우는가. 원격 MCP의 게임 설정 원문 읽기만 그대로 준다 (사용자 결정 2026-11-05)
+/// 원격 결과에서 비밀값을 지우는가. 원격 MCP의 게임 설정 원문 읽기만 그대로 준다
 pub(crate) fn strips_secrets(id: &str, caller: &Caller) -> bool {
     caller.remote.is_some() && !(id == "instance.properties.get" && caller.origin.via.as_deref() == Some(MCP_VIA))
 }
@@ -1522,7 +1522,7 @@ pub fn level_asks(level: &str, risk: &str) -> bool {
     }
 }
 
-/// 되묻기는 두 길뿐이다 (사용자 결정 2026-10-28).
+/// 되묻기는 두 길뿐이다.
 /// - 디스코드(릴레이): 요청자만 누르는 버튼. 직접 요청은 길드 디스코드 설정 `confirmLevel`, 말하는 사바쨩은 챗봇 설정
 ///   `confirmLevel`을 따른다. 말하는 사바쨩이 고른 관리 액션은 단계와 상관없이 늘 묻는다
 /// - 앱·웹·CLI·원격 MCP(`origin.via = "mcp"`): 그 화면의 확인. 길드와 상관없이 위험과 서버 정지·재시작을 묻는다
@@ -1552,7 +1552,7 @@ pub async fn needs_confirm(server: &IPCServer, action: &str, instance: Option<&s
     if caller.surface == Chatbot || who.via_chatbot {
         let cfg = server.config_store.get_chatbot().effective(guild);
         let level = cfg.get("confirmLevel").and_then(Value::as_str).unwrap_or("all");
-        // 정지·재시작은 저장하지 못하는 서버도 바로 끝내므로(MK10) 챗봇은 "묻지 않음"이 아니면 늘 묻는다 (사용자 2026-11-13)
+        // 정지·재시작은 저장하지 못하는 서버도 바로 끝내므로 챗봇은 "묻지 않음"이 아니면 늘 묻는다
         return kind == Kind::Admin || (fixed() && level != "none") || level_asks(level, risk);
     }
     level_asks(&settings.confirm_level, risk)
@@ -1719,7 +1719,7 @@ fn named_action(reply: &crate::chat::Reply, surface: Surface) -> Option<(&'stati
 }
 
 /// 모르는 명령 낱말이 비밀 액션(부른 사람에게만 답하는 것, 서버 주소)의 이름이면 슬래시 명령으로 다시 부르라는 안내.
-/// 문장 명령의 답은 채널 모두가 보므로 비밀 액션은 문장으로 실행하지 않는다 (사용자 지정 2026-11-06)
+/// 문장 명령의 답은 채널 모두가 보므로 비밀 액션은 문장으로 실행하지 않는다
 fn slash_only(reply: &crate::chat::Reply, cat: &crate::chat::i18n::Catalog) -> Option<crate::chat::Reply> {
     let (d, _) = action_by_word(reply, |d| d.instance && d.secret && d.surfaces.contains(&Discord))?;
     let command = ["name", "title"].iter().find_map(|k| translated(cat, &format!("actions.{}.{}", d.id, k))).unwrap_or_else(|| d.id.to_string());
@@ -2041,7 +2041,7 @@ async fn localize_port_labels(server: &IPCServer, instance: &str, result: &mut V
     }
 }
 
-/// PC 주인이 디스코드에 주소를 알려 주지 않게 했으면(`shareAddress:false`, 사용자 결정 2026-11-10) 디스코드에는 주소·포트를 빼고 `hidden`만 준다
+/// PC 주인이 디스코드에 주소를 알려 주지 않게 했으면(`shareAddress:false`) 디스코드에는 주소·포트를 빼고 `hidden`만 준다
 fn hide_address(surface: Surface, result: &mut Value) {
     if surface == Discord && result.get("shareAddress").and_then(Value::as_bool) == Some(false) {
         *result = json!({ "instanceId": result.get("instanceId").cloned().unwrap_or(Value::Null), "hidden": true });

@@ -1,4 +1,4 @@
-//! 디스코드 명령 권한 설정 (P1): GUI·CLI가 `nodeSettings[guildId]`의 권한 키를 바꾼다
+//! 디스코드 명령 권한 설정: GUI·CLI가 `nodeSettings[guildId]`의 권한 키를 바꾼다
 //!
 //! 판정은 `crate::chat::permissions`가 한다. 봇 설정 저장(`PATCH /api/config/bot`)은 이 키들을 바꾸지 않는다.
 

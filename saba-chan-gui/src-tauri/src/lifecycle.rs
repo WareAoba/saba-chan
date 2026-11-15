@@ -50,7 +50,7 @@ pub struct Lifecycle {
     open_server: Mutex<Option<String>>,
     /// 렌더러가 리스너를 달았다 (app_ready를 한 번 받았다). open_server 잠금 안에서만 바꾼다
     renderer_ready: AtomicBool,
-    /// 데몬 재시작은 한 번에 하나만. 겹치면 child가 이미 죽은 프로세스를 가리킬 수 있다 (G-U10)
+    /// 데몬 재시작은 한 번에 하나만. 겹치면 child가 이미 죽은 프로세스를 가리킬 수 있다
     restart_lock: tokio::sync::Mutex<()>,
 }
 
@@ -451,7 +451,7 @@ pub fn start_daemon(app: &AppHandle) {
 }
 
 /// GUI가 꺼져도 데몬이 살아 있게 떼어 놓는다. 콘솔 창은 띄우지 않는다.
-/// `breakaway`: GUI를 띄운 쪽이 kill-on-close job에 넣었어도 데몬은 빠져나온다 (C14)
+/// `breakaway`: GUI를 띄운 쪽이 kill-on-close job에 넣었어도 데몬은 빠져나온다
 fn detach(cmd: &mut Command, breakaway: bool) {
     #[cfg(windows)]
     {
@@ -1127,7 +1127,7 @@ fn plugin_notification(app: &AppHandle, title: &str, body: &str) {
 
 // ── 재시작 ──
 
-/// main.js daemon:restart
+/// 데몬 다시 시작
 pub async fn daemon_restart(app: &AppHandle) -> Value {
     let state = app.state::<AppState>();
     let _turn = state.life.restart_lock.lock().await;
@@ -1324,7 +1324,7 @@ mod tests {
 
     #[test]
     fn a_tray_stop_clears_only_when_the_daemon_comes_back_after_it_was_gone() {
-        // 끄는 중인 데몬은 잠시 heartbeat에 답한다: 그것은 다시 뜬 것이 아니다 (Codex 리뷰)
+        // 끄는 중인 데몬은 잠시 heartbeat에 답한다: 그것은 다시 뜬 것이 아니다
         let s = tray_stop_after_heartbeat(TRAY_STOP_ASKED, true);
         assert_eq!(s, TRAY_STOP_ASKED);
         let s = tray_stop_after_heartbeat(s, false);
@@ -1453,7 +1453,7 @@ mod tests {
     fn an_init_that_never_finished_is_finished_once_by_a_retry() {
         let life = Lifecycle::default();
         life.begin_init();
-        // 초기화가 데몬 단계에서 끊겨도(M11) 다시 시도가 나머지를 한 번만 마친다
+        // 초기화가 데몬 단계에서 끊겨도 다시 시도가 나머지를 한 번만 마친다
         assert!(life.init_unfinished());
         assert!(life.claim_init_finish());
         assert!(!life.init_unfinished());

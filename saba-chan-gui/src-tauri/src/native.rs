@@ -1,4 +1,4 @@
-//! 렌더러가 부르는 Rust 명령 (계약 §2). 결과 모양은 main.js 각 핸들러와 같다
+//! 렌더러가 부르는 Rust 명령
 
 use crate::daemon::{is_allowed_request, parse_method, DaemonClient};
 use crate::{lifecycle, settings, tray, window, AppState};
@@ -235,7 +235,7 @@ pub async fn overlay_sync(app: AppHandle) {
     crate::overlay::sync(&app).await;
 }
 
-/// 업데이트 적용 — 업데이터는 데몬이 띄운다 (U7). GUI는 다시 띄울 자기 경로만 알려 주고 종료한다
+/// 업데이트 적용 — 업데이터는 데몬이 띄운다. GUI는 다시 띄울 자기 경로만 알려 주고 종료한다
 #[tauri::command]
 pub async fn updater_launch_apply(app: AppHandle) -> Value {
     launch_updater_via(&app, "/api/updates/launch-updater").await
@@ -433,11 +433,6 @@ pub fn settings_get_path(app: AppHandle) -> String {
 }
 
 #[tauri::command]
-pub fn refresh_ipc_base(app: AppHandle) {
-    app.state::<AppState>().refresh_ipc_base();
-}
-
-#[tauri::command]
 pub fn language_get(app: AppHandle) -> String {
     settings::language(&app.state::<AppState>().settings())
 }
@@ -453,7 +448,7 @@ pub async fn language_set(app: AppHandle, language: String) -> Value {
     json!({ "success": success, "language": language })
 }
 
-/// 다룰 데몬 (G1): 고른 원격 데몬 hostId, 없으면 이 PC
+/// 다룰 데몬: 고른 원격 데몬 hostId, 없으면 이 PC
 #[tauri::command]
 pub fn daemon_target_get(app: AppHandle) -> Value {
     json!({ "target": app.state::<AppState>().client.target() })
@@ -755,7 +750,7 @@ mod tests {
         );
     }
 
-    /// 데몬이 알려 주는 `stops_with_launcher`로 GUI를 띄운 프로그램과 함께 끝날 수 있는지 알린다 (L46)
+    /// 데몬이 알려 주는 `stops_with_launcher`로 GUI를 띄운 프로그램과 함께 끝날 수 있는지 알린다
     #[test]
     fn the_daemons_own_answer_decides_whether_it_stops_with_its_launcher() {
         let health = |stops: Value| Ok(json!({ "ok": true, "token": "valid", "stops_with_launcher": stops }));

@@ -10,7 +10,7 @@ import { useDiscordStore } from '../stores/useDiscordStore';
 import { useServerStore } from '../stores/useServerStore';
 import { useUIStore } from '../stores/useUIStore';
 
-// ── 공통 헬퍼 ───────────────────────────────────────────────
+// ── 공통 헬퍼 ──
 
 function mockApi(overrides = {}) {
     window.api = new Proxy<Record<string | symbol, unknown>>(
@@ -50,9 +50,7 @@ beforeEach(() => {
     mockApi();
 });
 
-// ═════════════════════════════════════════════════════════════
 // 1. useSettingsStore
-// ═════════════════════════════════════════════════════════════
 
 describe('useSettingsStore', () => {
     it('GUI 설정 초기화 뒤에는 예전 브라우저 테마 대신 auto', async () => {
@@ -321,9 +319,7 @@ describe('useSettingsStore', () => {
     });
 });
 
-// ═════════════════════════════════════════════════════════════
 // 2. useUIStore
-// ═════════════════════════════════════════════════════════════
 
 describe('useUIStore', () => {
     it('초기 상태 검증', () => {
@@ -373,9 +369,7 @@ describe('useUIStore', () => {
     });
 });
 
-// ═════════════════════════════════════════════════════════════
 // 3. useServerStore
-// ═════════════════════════════════════════════════════════════
 
 describe('useServerStore', () => {
     it('초기 상태 — loading=true, servers 비어있음', () => {
@@ -493,9 +487,7 @@ describe('useServerStore', () => {
     });
 });
 
-// ═════════════════════════════════════════════════════════════
 // 4. useDiscordStore
-// ═════════════════════════════════════════════════════════════
 
 describe('useDiscordStore', () => {
     it('초기 상태 검증', () => {
@@ -556,7 +548,7 @@ describe('useDiscordStore', () => {
         });
 
         // 패닉이나 unhandled rejection 없어야 함
-        await useDiscordStore.getState().loadConfig();
+        await useDiscordStore.getState().loadConfig({ attempts: 1 });
         // 상태는 기본값 그대로
         expect(useDiscordStore.getState().discordPrefixes).toEqual([]);
     });
@@ -577,9 +569,7 @@ describe('useDiscordStore', () => {
     });
 });
 
-// ═════════════════════════════════════════════════════════════
 // 5. 크로스 스토어 동기화
-// ═════════════════════════════════════════════════════════════
 
 describe('bot-config 저장 계약', () => {
     it('settings save payload에는 디스코드 필드가 없다', async () => {
@@ -605,9 +595,7 @@ describe('bot-config 저장 계약', () => {
     });
 });
 
-// ═════════════════════════════════════════════════════════════
 // 6. 에지 케이스
-// ═════════════════════════════════════════════════════════════
 
 describe('에지 케이스', () => {
     it('여러 스토어 동시 리셋 후 서로 독립적이어야 한다', () => {

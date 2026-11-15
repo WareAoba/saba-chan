@@ -254,7 +254,7 @@ impl Session {
                 };
                 action_result(result)
             }
-            // 액션 카탈로그 (P2·P3): 계획·확인한 계획 실행·읽기 전용 조회·확인 전 권한 검사
+            // 액션 카탈로그: 계획·확인한 계획 실행·읽기 전용 조회·확인 전 권한 검사
             "plan" | "run_plan" | "query" | "check" => {
                 let guild_id = cmd.get("guildId").and_then(|v| v.as_str()).map(str::to_string);
                 let user_id = cmd.get("requestedBy").and_then(|v| v.as_str()).map(str::to_string);
@@ -280,7 +280,7 @@ impl Session {
                 crate::remote::link::ensure(self.server.clone(), &self.base, &self.token);
                 json!({ "success": true, "data": { "connecting": true } })
             }
-            // 원격 데몬 터널 (T1): 같은 주인의 PC가 릴레이를 거쳐 이 PC의 원격 포트에 붙는다
+            // 원격 데몬 터널: 같은 주인의 PC가 릴레이를 거쳐 이 PC의 원격 포트에 붙는다
             "remote_tunnel" => {
                 let id = payload.get("tunnelId").and_then(Value::as_str).unwrap_or("");
                 if !crate::remote_daemon::relay::valid_ticket_id(id) {

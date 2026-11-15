@@ -386,7 +386,7 @@ export function PeopleView({
                 </div>
             )}
 
-            {/* 윗줄 (사용자 지정 2026-11-07): 기본 레벨 · 멤버 찾기 · 새로고침(아이콘) · 레벨 편집 */}
+            {/* 윗줄: 기본 레벨 · 멤버 찾기 · 새로고침(아이콘) · 레벨 편집 */}
             <div className="dc-toolbar dc-people-bar">
                 <span className="dc-field-inline" data-tooltip={t('discord.perm_default_level_hint')}>
                     <strong className="dc-bar-label">{t('discord.perm_default_level_label')}</strong>

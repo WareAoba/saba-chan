@@ -11,10 +11,5 @@ import denied from './assets/denied-900.webp';
 
 export const art = { favicon, icon, relay, sleep, denied };
 
-/** 공식 글자 로고 (GUI AppBar 와 같은 규칙: 한국어·일본어·영어, 나머지는 영어). ratio = 가로/세로 */
-export function wordmarkFor(lang?: string | null) {
-    const l = String(lang || 'en').toLowerCase();
-    if (l.startsWith('ko')) return { src: logoKr, ratio: 996 / 300 };
-    if (l.startsWith('ja')) return { src: logoJp, ratio: 1459 / 300 };
-    return { src: logoEn, ratio: 2236 / 300 };
-}
+/** 공식 글자 로고 그림 (고르는 규칙은 @gui/utils/wordmark) */
+export const wordmarks = { ko: logoKr, ja: logoJp, en: logoEn };

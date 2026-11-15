@@ -416,7 +416,7 @@ mod tests {
         }
     }
 
-    /// 공백·작은따옴표가 든 경로, JSON에 담긴 경로, `~/` 경로도 끝까지 가린다 (Codex #775)
+    /// 공백·작은따옴표가 든 경로, JSON에 담긴 경로, `~/` 경로도 끝까지 가린다
     #[test]
     fn activity_log_hides_paths_with_spaces_and_quotes() {
         let args = json!({ "path": "/home/My Games/private/world", "win": "C:\\Users\\O'Brien\\srv", "home": "~/games/mc" }).to_string();

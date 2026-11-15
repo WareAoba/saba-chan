@@ -69,7 +69,7 @@ pub async fn get_instance(
             // 모듈 약관과 동의 여부 (`agreements`)를 붙인다
             let mut body = serde_json::to_value(instance).unwrap_or_default();
             body["agreements"] = json!(supervisor.agreement_views(instance, &language));
-            // 06 §8.2: 저장된 값 기준으로 지금 숨겨진 설정 (CLI가 쓴다)
+            // 저장된 값 기준으로 지금 숨겨진 설정 (CLI가 쓴다)
             let fields = supervisor.module_loader.get_module(&instance.module_name).ok().and_then(|m| m.metadata.settings.clone()).map(|s| s.fields).unwrap_or_default();
             // 설치된 버전에 없는 설정 (`versions` 밖). 숨긴 설정이므로 `hidden`에도 든다
             let version_hidden = crate::validator::version_hidden(&fields, instance.server_version.as_deref());

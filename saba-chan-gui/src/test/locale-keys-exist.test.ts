@@ -1,5 +1,5 @@
 /**
- * 코드가 부르는 고정 번역 키는 en·ko 파일에 있어야 한다 (locales 점검 2026-10-19).
+ * 코드가 부르는 고정 번역 키는 en·ko 파일에 있어야 한다.
  * 키가 없으면 화면에 키 이름이 그대로 나오거나, 코드에 적힌 기본 문구(한국어 또는 영어)가 모든 언어에 보인다.
  */
 import fs from 'node:fs';
@@ -29,7 +29,7 @@ function sourceFiles(dir: string): string[] {
     });
 }
 
-// createApi는 main.js처럼 common 네임스페이스를 기본으로 쓴다
+// createApi는 common 네임스페이스를 기본으로 쓴다
 const DEFAULT_NS: Record<string, string> = { 'api/createApi': 'common' };
 
 describe('고정 번역 키', () => {

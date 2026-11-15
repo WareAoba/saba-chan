@@ -26,7 +26,7 @@ const list = () => [
     guide('going', { step: 1 }),
 ];
 
-describe('가이드 카드 (사용자 11-11)', () => {
+describe('가이드 카드', () => {
     beforeEach(() => {
         window.api = { guideUpdate: vi.fn().mockResolvedValue({ ok: true }), guides: vi.fn() } as unknown as typeof window.api;
         useUIStore.getState()._resetForTest();
@@ -39,7 +39,7 @@ describe('가이드 카드 (사용자 11-11)', () => {
 
     it('평소에는 "가이드" 한 줄, 누르면 세 개까지 펼치고 new!는 글자로만', () => {
         const { container } = render(<GuideCard />);
-        // 접힌 동안 목록은 높이 0으로 접혀 누를 수도 읽을 수도 없다 (펼침 움직임 때문에 그려 둔다, 사용자 11-13)
+        // 접힌 동안 목록은 높이 0으로 접혀 누를 수도 읽을 수도 없다 (펼침 움직임 때문에 그려 둔다)
         const head = screen.getByRole('button', { name: /Guides/ });
         expect(head.getAttribute('aria-expanded')).toBe('false');
         expect(container.querySelector('.guide-dock-wrap')?.hasAttribute('inert')).toBe(true);

@@ -44,7 +44,7 @@ export function screenPath(screen: ScreenAddress, t: TFunction): string[] {
 }
 
 /**
- * 안내 문구 속 화면 링크 (사용자 11-06 #19): 가는 길을 보이고, 누르면 그 화면을 연다.
+ * 안내 문구 속 화면 링크: 가는 길을 보이고, 누르면 그 화면을 연다.
  * 읽지 못한 주소면 아무것도 그리지 않는다.
  */
 export function ScreenLink({ to }: { to: string }) {

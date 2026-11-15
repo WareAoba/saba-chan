@@ -289,7 +289,7 @@ export function ExtensionProvider({ children, surface = 'main' }: { children: Re
     const askedGuiRef = useRef(new Set<string>());
     const modalOpen = useUIStore((s) => Boolean(s.modal));
 
-    // ── 익스텐션 스토어 (사바 스토리지 익스텐션 탭) ─────────────────
+    // ── 익스텐션 스토어 (사바 스토리지 익스텐션 탭) ──
     // 화면을 떠났다 돌아와도 설치 중 표시와 받아 둔 매니페스트가 남도록 Provider에 둔다
     /** 원격 매니페스트에서 받아온 가용 익스텐션 목록 */
     const [manifestExtensions, setManifestExtensions] = useState<ApiBody[]>([]);

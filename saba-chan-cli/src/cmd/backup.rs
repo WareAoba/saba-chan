@@ -278,7 +278,7 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    /// 복원은 끝났어도 되살리지 못한 링크가 있으면 그 수를 알린다. 경로는 데몬 로그에만 있다 (D-B14)
+    /// 복원은 끝났어도 되살리지 못한 링크가 있으면 그 수를 알린다. 경로는 데몬 로그에만 있다
     #[test]
     fn a_restore_that_missed_links_says_how_many() {
         crate::i18n::init("ko");
@@ -301,7 +301,7 @@ mod tests {
         assert!(warn.contains('1') && !warn.contains("backup.unreadable"), "{warn}");
         assert_eq!(unreadable_warning(&items[..1]), None);
         assert_eq!(unreadable_warning(&[items[2].clone()]), None);
-        // 복원은 서버를 끄기 전에 거절한다 (리뷰 631 P3-2)
+        // 복원은 서버를 끄기 전에 거절한다
         assert!(refuse_unreadable(&items, "b.zip").is_err());
         assert!(refuse_unreadable(&items, "a.zip").is_ok() && refuse_unreadable(&items, "c.zip").is_ok());
     }
@@ -326,7 +326,7 @@ mod tests {
         assert_eq!(one("latest").as_deref(), Some("a-10"));
     }
 
-    /// 증분 백업(MK16)은 담은 크기와 새로 저장한 크기가 다르면 둘 다 보인다. 0.1.8 백업은 크기만
+    /// 증분 백업은 담은 크기와 새로 저장한 크기가 다르면 둘 다 보인다. 0.1.8 백업은 크기만
     #[test]
     fn an_incremental_backup_shows_what_it_newly_stored() {
         let ko = |b: &Value| {

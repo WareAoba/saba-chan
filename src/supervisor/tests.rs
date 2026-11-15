@@ -19,7 +19,7 @@ fn origin_fields_carry_the_discord_server_name_but_no_ids() {
     assert_eq!(Value::Object(origin_fields(&crate::audit::Origin::new("gui"))), json!({"source": "gui"}));
 }
 
-/// D3·A-09: 0.1.14-beta.1까지 instance.json에 있던 REST 접속값은 모듈이 선언한 설정으로 옮겨 저장한다.
+/// 0.1.14-beta.1까지 instance.json에 있던 REST 접속값은 모듈이 선언한 설정으로 옮겨 저장한다.
 /// 모듈을 아직 모르는 인스턴스의 값은 파일에 그대로 둔다 (모듈이 생긴 뒤 옮긴다)
 #[tokio::test]
 async fn rest_values_of_old_instance_files_move_to_the_declared_settings_on_load() {
@@ -55,7 +55,7 @@ async fn rest_values_of_old_instance_files_move_to_the_declared_settings_on_load
     assert_eq!(moved.module_settings, saved("old-pal", "settings.json").as_object().unwrap().clone().into_iter().collect());
     assert_eq!(saved("old-pal", "settings.json"), json!({ "api_host": "127.0.0.1", "api_port": 8242, "admin_pw": "pw" }), "the port the daemon used wins over a stale setting");
     assert!(saved("old-pal", "instance.json").get("rest_port").is_none());
-    // A-09: 인스턴스에 복사해 두던 `[install]` 값은 지우고, 설치 방식 표시와 사용자가 고른 브랜치만 남긴다
+    // 인스턴스에 복사해 두던 `[install]` 값은 지우고, 설치 방식 표시와 사용자가 고른 브랜치만 남긴다
     assert_eq!(saved("old-pal", "instance.json")["extension_data"], json!({ "install_method_steamcmd": true, "steamcmd_beta": "unstable" }));
     let module = sup.module_loader.get_module("pal").unwrap();
     assert_eq!((module.metadata.rest_host(moved), module.metadata.rest_port(moved), module.metadata.rest_password(moved)), (Some("127.0.0.1".into()), Some(8242), Some("pw")));
@@ -64,7 +64,7 @@ async fn rest_values_of_old_instance_files_move_to_the_declared_settings_on_load
     assert_eq!(saved("old-gone", "settings.json"), json!({ "api_port": 8212 }));
 }
 
-/// A-06: 모듈에 `status`가 없으면 데몬이 추적하는 PID가 살아 있는지로 답한다 (PID만 보던 모듈 status 세 개를 대신한다)
+/// 모듈에 `status`가 없으면 데몬이 추적하는 PID가 살아 있는지로 답한다 (PID만 보던 모듈 status 세 개를 대신한다)
 #[tokio::test]
 async fn a_module_without_status_is_answered_from_the_tracked_pid() {
     let tmp = tempfile::tempdir().unwrap();
@@ -87,12 +87,12 @@ async fn a_module_without_status_is_answered_from_the_tracked_pid() {
 
     let stopped = Supervisor::get_server_status(&sup, &id, "game").await.unwrap();
     assert_eq!((stopped["status"].as_str(), stopped["pid"].as_u64()), (Some("stopped"), None), "{stopped}");
-    sup.read().await.tracker.track(&id, std::process::id()).unwrap();
+    sup.read().await.tracker.track(&id, std::process::id());
     let running = Supervisor::get_server_status(&sup, &id, "game").await.unwrap();
     assert_eq!((running["status"].as_str(), running["pid"].as_u64()), (Some("running"), Some(std::process::id() as u64)), "{running}");
     assert!(running["start_time"].is_number(), "{running}");
     // 추적표에 남았지만 이미 끝난 프로세스는 꺼진 것이다
-    sup.read().await.tracker.track(&id, 4_000_001).unwrap();
+    sup.read().await.tracker.track(&id, 4_000_001);
     let gone = Supervisor::get_server_status(&sup, &id, "game").await.unwrap();
     assert_eq!(gone["status"], "stopped", "{gone}");
 }
@@ -163,13 +163,13 @@ async fn an_instance_call_carries_the_tracked_server_pid() {
     let id = inst.id.clone();
     sup.instance_store.add(inst).unwrap();
     assert_eq!(sup.instance_call(&id, "status").unwrap().server(), None);
-    sup.tracker.track(&id, 4_000_001).unwrap();
+    sup.tracker.track(&id, 4_000_001);
     let call = sup.instance_call(&id, "status").unwrap();
     assert_eq!(call.server(), Some(4_000_001));
     assert_eq!(call.config()["running"], true);
 }
 
-/// 데몬이 모듈에 넘기는 값은 범용 키뿐이다: 실행 파일은 `server_executable`, 폴더는 `working_dir` (MK7).
+/// 데몬이 모듈에 넘기는 값은 범용 키뿐이다: 실행 파일은 `server_executable`, 폴더는 `working_dir`.
 /// 설치된 버전 확인도 시작·점검과 같은 값을 받는다
 #[tokio::test]
 async fn module_calls_carry_only_generic_keys() {
@@ -204,7 +204,7 @@ async fn module_calls_carry_only_generic_keys() {
     }
 }
 
-/// D-S11: 모듈 함수(설치 버전 확인 등)도 시작과 같은 실행 파일을 받는다. 옛 인스턴스의 module_settings 경로,
+/// 모듈 함수(설치 버전 확인 등)도 시작과 같은 실행 파일을 받는다. 옛 인스턴스의 module_settings 경로,
 /// 작업 폴더와 모듈의 server_executable로 정해지는 경로를 시작만 보고 이쪽은 보지 않았다
 #[test]
 fn module_calls_get_the_executable_the_start_uses() {
@@ -258,7 +258,7 @@ fn module_failure_reads_as_the_module_message() {
     assert_eq!(crate::plugin::error_response(&error), value);
 }
 
-/// 서버 점검은 저장된 설정이 선언한 타입·범위·선택지에 맞는지도 본다 (숨긴 칸·빈 값은 빼고). 사용자 지정 2026-11-08
+/// 서버 점검은 저장된 설정이 선언한 타입·범위·선택지에 맞는지도 본다 (숨긴 칸·빈 값은 빼고)
 #[test]
 fn the_server_check_reports_settings_that_do_not_match_their_declared_type() {
     let tmp = tempfile::tempdir().unwrap();
@@ -296,7 +296,7 @@ fn the_server_check_reports_settings_that_do_not_match_their_declared_type() {
     let issues = sup.setting_issues("g");
     let fields: Vec<&str> = issues.iter().filter_map(|i| i["field"].as_str()).collect();
     assert_eq!(fields, ["players", "mode", "admin_pass", "api_token"], "note is hidden, hard is fine: {issues:?}");
-    // 리뷰 P2 (2026-11-08): 비밀 칸(password 타입·이름에 pass·token 등)은 값과 원문 메시지를 싣지 않는다 (원격 웹도 점검을 부른다)
+    // 비밀 칸(password 타입·이름에 pass·token 등)은 값과 원문 메시지를 싣지 않는다 (원격 웹도 점검을 부른다)
     let text = serde_json::to_string(&issues).unwrap();
     assert!(!text.contains("hunter2") && !text.contains("tok-secret"), "{text}");
     assert!(issues[2].get("value").is_none() && issues[3].get("value").is_none());
@@ -308,7 +308,7 @@ fn the_server_check_reports_settings_that_do_not_match_their_declared_type() {
     assert_eq!(with_setting_issues(json!({ "success": true }), issues)["issues"].as_array().unwrap().len(), 4);
 }
 
-/// 06 §2: 1분 접속자 수 갱신에 사용자 설정 `players_detail`이 따라가지 않는다
+/// 1분 접속자 수 갱신에 사용자 설정 `players_detail`이 따라가지 않는다
 #[test]
 fn a_module_setting_never_stands_in_for_a_daemon_call_key() {
     let mut inst = crate::instance::ServerInstance::new("mc", "minecraft");
@@ -321,7 +321,7 @@ fn a_module_setting_never_stands_in_for_a_daemon_call_key() {
 
 // PC [A]: 미확인 좀보이드의 데이터 폴더(<인스턴스>/zomboid)가 서버 폴더 옆이라 격리 실행이 쓰지 못했다.
 // 인스턴스 폴더 안을 가리키는 모듈 설정 폴더만 쓰기 대상으로 싣고, 데몬 파일(instance.json 등)과 인스턴스
-// 폴더 자체는 싣지 않는다. 모듈 설정에서 온 폴더 키(리뷰 312: import_settings로 아무 경로나)는 config에 넣지 않는다
+// 폴더 자체는 싣지 않는다. 모듈 설정에서 온 폴더 키(import_settings로 아무 경로나)는 config에 넣지 않는다
 #[test]
 fn modules_get_write_folders_only_inside_their_instance() {
     let root = std::path::Path::new("/data/instances/pz");
@@ -360,7 +360,7 @@ fn modules_get_write_folders_only_inside_their_instance() {
     assert_eq!(cfg["cache_dir"], json!(at("zomboid")), "the setting itself still reaches the module");
 }
 
-/// 시작 경로 정책 (C8): 인스턴스 설정 > 모듈이 콘솔 없음을 밝혔는지 > managed 기본
+/// 시작 경로 정책: 인스턴스 설정 > 모듈이 콘솔 없음을 밝혔는지 > managed 기본
 #[test]
 fn managed_start_policy() {
     let tmp = tempfile::tempdir().unwrap();
@@ -396,7 +396,7 @@ fn managed_start_policy() {
     assert!(!supervisor.uses_managed_start(&inst("api-game", Some(json!(false)))));
 }
 
-/// 크래시 직후(모니터가 치우기 전) 들어온 정지는 크래시로 기록하되 다시 켜지 않는다 (D-S6)
+/// 크래시 직후(모니터가 치우기 전) 들어온 정지는 크래시로 기록하되 다시 켜지 않는다
 /// 모듈·익스텐션 자동 교체가 문을 쥔 동안 서버 시작은 기다린다: 교체 직전의 사용 확인과 교체 사이에 서버가 켜지지 않는다
 #[tokio::test]
 async fn starts_wait_while_addons_are_being_swapped() {
@@ -588,7 +588,7 @@ async fn starts_and_stops_say_who_asked() {
     assert_eq!(exits.iter().map(|e| e["kind"].clone()).collect::<Vec<_>>(), vec![json!("crash")]);
 }
 
-/// managed 모드에서는 모듈이 stdin을 지원할 때만 명령을 stdin으로 보낸다 (M3)
+/// managed 모드에서는 모듈이 stdin을 지원할 때만 명령을 stdin으로 보낸다
 #[cfg(unix)]
 #[tokio::test]
 async fn commands_route_to_stdin_only_for_managed_stdin_modules() {
@@ -715,7 +715,7 @@ async fn console_input_follows_the_module_protocols() {
     assert_eq!(stdin["stdin_available"], true, "{stdin}");
 }
 
-/// 데몬을 다시 켜도 알림 번호는 앞 실행보다 크다: 클라이언트가 들고 있는 번호 뒤의 새 알림을 놓치지 않는다 (L50)
+/// 데몬을 다시 켜도 알림 번호는 앞 실행보다 크다: 클라이언트가 들고 있는 번호 뒤의 새 알림을 놓치지 않는다
 #[test]
 fn notice_ids_keep_growing_across_a_daemon_restart() {
     let tmp = tempfile::tempdir().unwrap();

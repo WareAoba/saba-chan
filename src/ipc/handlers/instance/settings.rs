@@ -268,7 +268,7 @@ mod tests {
         let saved = patch(json!({ "motd": "hi", "auto_restart": false, "enable_rcon": true })).await;
         assert!(saved.status.is_success(), "{:?}", saved.body);
         assert_eq!(saved.body["synced"], false);
-        // Codex 리뷰 #550: 모듈 실패 칸을 합치면서 저장 성공 표시를 false로 덮어 GUI가 저장 실패로 보였다
+        // 모듈 실패 칸을 합치면서 저장 성공 표시를 false로 덮어 GUI가 저장 실패로 보였다
         assert_eq!(saved.body["success"], true, "the settings were saved");
         assert_eq!(saved.body["sync_error"], "server.properties is read-only");
         assert_eq!(saved.body["ignored"], json!(["enable_rcon"]));
@@ -276,7 +276,7 @@ mod tests {
         assert_eq!(instance.module_settings["motd"], json!("hi"), "the setting is kept even when the game file write fails");
     }
 
-    /// 설정 저장에 GET의 revision을 실으면, 그사이 다른 곳에서 바뀐 인스턴스에는 쓰지 않는다 (0.1.10 결정 1)
+    /// 설정 저장에 GET의 revision을 실으면, 그사이 다른 곳에서 바뀐 인스턴스에는 쓰지 않는다
     #[tokio::test]
     async fn a_settings_save_with_a_stale_revision_is_refused() {
         use axum::extract::{Path, State};
@@ -384,7 +384,7 @@ mod tests {
         assert_eq!(list["servers"][0]["memory_limit_supported"], json!(cfg!(windows)));
     }
 
-    /// 06 §8.1·8.2 (스키마 2): 옛 문자열 값은 목록으로 읽고, 숨긴 설정은 required를 보지 않으며 `hidden`에 실린다.
+    /// 스키마 2: 옛 문자열 값은 목록으로 읽고, 숨긴 설정은 required를 보지 않으며 `hidden`에 실린다.
     /// 켜져 있을 때 바꾼 restart_required 설정은 응답 `restart_required`에 실린다
     #[tokio::test]
     async fn schema_v2_settings_migrate_hide_and_ask_for_a_restart() {
@@ -433,7 +433,7 @@ mod tests {
         let shown = patch(json!({ "pvp": true, "damage": "" })).await;
         assert_eq!(shown.status.as_u16(), 400, "shown again, it is required: {:?}", shown.body);
 
-        state.supervisor.read().await.tracker.track(&id, std::process::id()).unwrap();
+        state.supervisor.read().await.tracker.track(&id, std::process::id());
         let running = patch(json!({ "admins": ["Steve"], "motd": "x" })).await;
         assert_eq!(running.body["restart_required"], json!([]), "unchanged values ask for nothing");
         let running = patch(json!({ "admins": ["Alex"], "motd": "y" })).await;
@@ -443,7 +443,7 @@ mod tests {
         assert_eq!(running.body["restart_required"], json!(["port"]));
         let running = patch(json!({ "port": 25570 })).await;
         assert_eq!(running.body["restart_required"], json!([]), "saving the same value again asks for nothing");
-        state.supervisor.read().await.tracker.untrack(&id).unwrap();
+        state.supervisor.read().await.tracker.untrack(&id);
         let stored = std::fs::read_to_string(state.supervisor.read().await.instance_store.instance_dir(&id).join("settings.json")).unwrap();
         assert!(stored.contains("\"Alex\""), "{stored}");
     }
@@ -501,7 +501,7 @@ mod tests {
         assert_eq!(get().await["version_hidden"], json!([]));
     }
 
-    /// 리뷰 554: 숨김 조건은 인스턴스 칸에 저장되는 설정(port 등)의 지금 값을 보고, list 기본값은 만들 때 채우며,
+    /// 숨김 조건은 인스턴스 칸에 저장되는 설정(port 등)의 지금 값을 보고, list 기본값은 만들 때 채우며,
     /// list에 빈 문자열은 받지 않는다. 모듈을 다시 읽어 문자열 설정이 list가 되면 그때 옮긴다
     #[tokio::test]
     async fn list_defaults_instance_field_conditions_and_refresh_follow_the_contract() {
@@ -552,7 +552,7 @@ mod tests {
     }
 
     /// 게임 설정 파일로 넘기는 값(configure)에서 사바쨩 설정(`group = "saba-chan"`)과 데몬 필드는 뺀다.
-    /// 어느 키가 사바쨩 설정인지는 모듈 선언이 정한다: 데몬은 게임별 키 이름을 모른다 (MK6)
+    /// 어느 키가 사바쨩 설정인지는 모듈 선언이 정한다: 데몬은 게임별 키 이름을 모른다
     #[tokio::test]
     async fn only_game_settings_are_passed_to_configure() {
         use axum::extract::{Path, State};
@@ -619,7 +619,7 @@ mod tests {
         let stored = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();
         assert_eq!((stored.controllers[0].name.as_str(), stored.controllers_only), ("Steve", true));
         assert_eq!(patch(json!({ "controllers": [] })).await.status, axum::http::StatusCode::BAD_REQUEST, "emptying the list keeps the gate on");
-        // 서버 공용으로 바꾸면 명단 밖 자동 강퇴(전용 멤버의 스위치)는 꺼진다 (리뷰 P1: access 없는 예전 파일과 가려진다)
+        // 서버 공용으로 바꾸면 명단 밖 자동 강퇴(전용 멤버의 스위치)는 꺼진다 (access 없는 예전 파일과 가려진다)
         assert!(patch(json!({ "access": "shared" })).await.status.is_success());
         let stored = state.supervisor.read().await.instance_store.get(&id).cloned().unwrap();
         assert_eq!((stored.access, stored.controllers_only), (crate::controllers::Access::Shared, false));

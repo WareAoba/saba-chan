@@ -1,5 +1,5 @@
 /**
- * 우클릭 메뉴 규칙 (2026-10-31 시안):
+ * 우클릭 메뉴 규칙:
  * 대상이 있는 곳은 그 대상의 메뉴, 입력칸은 편집 메뉴, 글자를 고르면 복사, 그 밖은 아무것도 뜨지 않는다.
  */
 import { act, fireEvent, render, screen } from '@testing-library/react';

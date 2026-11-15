@@ -477,7 +477,7 @@ mod tests {
         assert!(typed("maybe", "boolean").is_err());
     }
 
-    /// 스키마 2 `list`는 문자열 배열로 (쉼표로 나누거나 JSON 배열), `multiline`은 `\\n`을 줄바꿈으로 보낸다 (06 §8.1)
+    /// 스키마 2 `list`는 문자열 배열로 (쉼표로 나누거나 JSON 배열), `multiline`은 `\\n`을 줄바꿈으로 보낸다
     #[test]
     fn list_and_multiline_values_take_their_shape() {
         assert_eq!(typed(" a, b ,,c", "list").unwrap(), json!(["a", "b", "c"]));

@@ -206,7 +206,7 @@ pub static ROUTES: &[Route] = &[
     deny("POST", "/api/migration/import"),
     deny("PUT", "/api/config/node-token"),
     deny("DELETE", "/api/config/node-token"),
-    // 원격 데몬 포트와 짝 맺은 PC (D1)
+    // 원격 데몬 포트와 짝 맺은 PC
     deny("GET", "/api/remote/settings"),
     deny("PUT", "/api/remote/settings"),
     // 이 PC의 공개 주소: 짝 맺은 PC의 GUI(내 PC 카드)가 원격 데몬 것도 고친다. 웹에는 칸이 없다
@@ -218,7 +218,7 @@ pub static ROUTES: &[Route] = &[
     deny("PUT", "/api/remote/peers/{host_id}/name"),
     deny("GET", "/api/remote/daemons"),
     deny("GET", "/api/remote/servers"),
-    // 데몬 PC의 폴더 보기 (원격 경로 고르기 D2, CLI `config browse --daemon`). 웹은 경로를 고르지 않는다
+    // 데몬 PC의 폴더 보기 (원격 경로 고르기, CLI `config browse --daemon`). 웹은 경로를 고르지 않는다
     not_on_web("GET", "/api/system/browse"),
     deny("POST", "/api/remote/daemons"),
     deny("DELETE", "/api/remote/daemons/{host_id}"),
@@ -282,7 +282,7 @@ pub static ROUTES: &[Route] = &[
     allow("POST", "/api/relay/node/{guild_id}/moderation/channels/{channel_id}/clear"),
     allow("POST", "/api/relay/node/{guild_id}/moderation/channels/{channel_id}/clear/check"),
     allow("PUT", "/api/relay/node/{guild_id}/moderation/mutes/{user_id}"),
-    // 디스코드 서버 설정(언어·코코낸내·노래·읽어주기·명령 모양)과 서버별 말하는 사바쨩: 릴레이 연결과 API 키는 건드리지 않는다 (사용자 결정 2026-11-03)
+    // 디스코드 서버 설정(언어·코코낸내·노래·읽어주기·명령 모양)과 서버별 말하는 사바쨩: 릴레이 연결과 API 키는 건드리지 않는다
     allow("GET", "/api/discord/{guild_id}/settings"),
     allow("PATCH", "/api/discord/{guild_id}/settings"),
     allow("GET", "/api/chatbot/guilds/{guild}"),
@@ -309,7 +309,7 @@ pub static ROUTES: &[Route] = &[
     deny("POST", "/api/relay/agent/stop"),
     // ── 챗봇: API 키가 오간다 ──
     deny("GET", "/api/chatbot"),
-    // 이 PC의 말하는 사바쨩 API 키를 넣거나 지우기만 한다 (`FIELD_RULES`가 다른 칸을 막고, 응답에는 키가 없다. 사용자 결정 2026-11-03)
+    // 이 PC의 말하는 사바쨩 API 키를 넣거나 지우기만 한다 (`FIELD_RULES`가 다른 칸을 막고, 응답에는 키가 없다)
     allow("PUT", "/api/chatbot"),
     deny("DELETE", "/api/chatbot"),
     deny("PATCH", "/api/chatbot/common"),
@@ -704,7 +704,7 @@ mod tests {
 
     #[test]
     fn allows_discord_guild_settings() {
-        // 이 PC에 붙은 디스코드 서버의 언어·코코낸내·노래·읽어주기·말하는 사바쨩 (사용자 결정 2026-11-03)
+        // 이 PC에 붙은 디스코드 서버의 언어·코코낸내·노래·읽어주기·말하는 사바쨩
         assert!(decide("GET", "/api/discord/1/settings").is_ok());
         assert!(decide("PATCH", "/api/discord/1/settings").is_ok());
         assert!(decide("GET", "/api/chatbot/guilds/1").is_ok());

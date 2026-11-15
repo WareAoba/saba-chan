@@ -20,7 +20,7 @@ describe('TaskIndicator', () => {
         expect(screen.queryByText(/%/)).toBeNull();
     });
 
-    it('링은 강조색 두 색 그라데이션으로 칠한다 (사용자 11-13). 알약이 여럿이어도 그라데이션 이름이 겹치지 않는다', () => {
+    it('링은 강조색 두 색 그라데이션으로 칠한다. 알약이 여럿이어도 그라데이션 이름이 겹치지 않는다', () => {
         render(
             <>
                 <TaskIndicator />

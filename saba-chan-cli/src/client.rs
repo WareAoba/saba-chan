@@ -15,7 +15,7 @@ const QUICK: Duration = Duration::from_secs(10);
 const SLOW: Duration = Duration::from_secs(60);
 /// 설치·다운로드
 const LONG: Duration = Duration::from_secs(30 * 60);
-/// 정지·재시작: 데몬은 인스턴스 `stop_timeout`(최대 3600초)까지 저장 후 종료를 기다린 뒤 답한다 (MK14, L74)
+/// 정지·재시작: 데몬은 인스턴스 `stop_timeout`(최대 3600초)까지 저장 후 종료를 기다린 뒤 답한다
 const STOP: Duration = Duration::from_secs(3600 + 10 * 60);
 
 #[derive(Clone)]
@@ -31,7 +31,7 @@ pub struct Api {
     pub lang: Option<String>,
     /// 고른 원격 데몬 (`--daemon`, hostId 또는 저장한 이름). 이 PC의 데몬이 그 데몬에 중계한다 (01 §1.4.2 7)
     pub target: Option<String>,
-    /// 이 실행에서 마지막으로 보인 포트 충돌 정지 알림 id (L50)
+    /// 이 실행에서 마지막으로 보인 포트 충돌 정지 알림 id
     /// 데몬(대상)마다 따로: 알림 id는 그 PC의 시각으로 만든다
     notices_seen: Arc<std::sync::Mutex<std::collections::HashMap<String, Arc<std::sync::atomic::AtomicU64>>>>,
 }
@@ -128,7 +128,7 @@ impl Api {
         if let Some(t) = self.token.read().ok().and_then(|t| t.clone()) {
             req = req.header("X-Saba-Token", t);
         }
-        // 감사 로그의 출처 (A10)
+        // 감사 로그의 출처
         req = self.targeted(req.header("X-Saba-Client", client_name()), path);
         if let Some(b) = body {
             req = req.json(b);
@@ -279,7 +279,6 @@ impl Api {
     pub async fn system_metrics(&self) -> Result<Value> {
         self.get("/api/system/metrics").await
     }
-    /// POST /api/daemon/shutdown
     pub async fn shutdown(&self) -> Result<Value> {
         self.post("/api/daemon/shutdown", json!({})).await
     }
@@ -287,7 +286,6 @@ impl Api {
     pub async fn clients(&self) -> Result<Value> {
         self.get("/api/clients").await
     }
-    /// GET /api/daemon/console?since=&count=
     pub async fn daemon_console(&self, since: Option<u64>, count: Option<usize>) -> Result<Value> {
         self.daemon_console_tokens(since, count, false).await
     }
@@ -333,7 +331,6 @@ impl Api {
         self.post_long(&format!("/api/instance/{}/start", seg(id)), json!({}))
             .await
     }
-    /// POST /api/instance/:id/stop
     pub async fn stop(&self, id: &str, force: bool) -> Result<Value> {
         self.call(Method::POST, &format!("/api/instance/{}/stop", seg(id)), Some(json!({ "force": force })), STOP)
             .await
@@ -352,14 +349,13 @@ impl Api {
     pub async fn instance_commands(&self, id: &str) -> Result<Value> {
         self.get(&format!("/api/instance/{}/commands", seg(id))).await
     }
-    /// GET /api/instance/:id/events — 종료 기록 (A1)
+    /// GET /api/instance/:id/events — 종료 기록
     pub async fn exit_events(&self, id: &str) -> Result<Value> {
         self.get(&format!("/api/instance/{}/events", seg(id))).await
     }
 
     // ── 인스턴스 (설정) ──
 
-    /// GET /api/instances
     pub async fn instances(&self) -> Result<Vec<Value>> {
         Ok(self
             .get("/api/instances")
@@ -389,7 +385,6 @@ impl Api {
     pub async fn reorder(&self, ids: &[String]) -> Result<Value> {
         self.put("/api/instances/reorder", json!({ "order": ids })).await
     }
-    /// GET /api/provision-progress/:name
     pub async fn provision_progress(&self, name: &str) -> Result<Value> {
         self.get(&format!("/api/provision-progress/{}", seg(name))).await
     }
@@ -397,17 +392,14 @@ impl Api {
     pub async fn dismiss_provision(&self, name: &str) -> Result<Value> {
         self.delete(&format!("/api/provision-progress/{}", seg(name))).await
     }
-    /// GET /api/instance/:id/check-update
     pub async fn check_server_update(&self, id: &str) -> Result<Value> {
         // SteamCMD 확인은 데몬의 hook 한도(120초)까지 걸릴 수 있다: 그 한도는 데몬이 지킨다
         self.call(Method::GET, &format!("/api/instance/{}/check-update", seg(id)), None, LONG).await
     }
-    /// POST /api/instance/:id/apply-update
     pub async fn apply_server_update(&self, id: &str) -> Result<Value> {
         self.post_long(&format!("/api/instance/{}/apply-update", seg(id)), json!({}))
             .await
     }
-    /// GET /api/instance/:id/installed-version
     pub async fn installed_version(&self, id: &str) -> Result<Value> {
         self.get_slow(&format!("/api/instance/{}/installed-version", seg(id)))
             .await
@@ -727,7 +719,7 @@ impl Api {
         self.post_long("/api/audit/export", json!({ "path": path, "instance": instance, "since": since, "until": until }))
             .await
     }
-    /// GET /api/events — 데몬 이벤트 스트림 (P4, SSE). `since`는 마지막으로 받은 번호
+    /// GET /api/events — 데몬 이벤트 스트림 (SSE). `since`는 마지막으로 받은 번호
     pub async fn events(&self, since: Option<u64>) -> Result<Events> {
         let mut resp = self.open_events(since).await?;
         // 데몬이 다시 뜨면 토큰이 바뀐다 → 한 번 다시 읽고 재시도 (`call`과 같다)
@@ -770,7 +762,6 @@ impl Api {
             }
         })
     }
-    /// GET /api/permissions/:guildId
     pub async fn permissions(&self, guild: &str) -> Result<Value> {
         self.get(&format!("/api/permissions/{}", seg(guild))).await
     }
@@ -803,7 +794,7 @@ impl Api {
             self.delete(&path).await
         }
     }
-    /// GET·PUT /api/remote/settings — 원격 데몬 포트 (D1)
+    /// GET·PUT /api/remote/settings — 원격 데몬 포트
     pub async fn remote_settings(&self) -> Result<Value> {
         self.get("/api/remote/settings").await
     }
@@ -814,7 +805,6 @@ impl Api {
     pub async fn remote_clients(&self) -> Result<Value> {
         self.get("/api/remote/clients").await
     }
-    /// DELETE /api/remote/clients/:hostId
     pub async fn revoke_remote_client(&self, host_id: &str) -> Result<Value> {
         self.delete(&format!("/api/remote/clients/{}", seg(host_id))).await
     }
@@ -838,7 +828,6 @@ impl Api {
     pub async fn rename_pc(&self, host_id: &str, name: &str) -> Result<Value> {
         self.put(&format!("/api/remote/peers/{}/name", seg(host_id)), json!({ "name": name })).await
     }
-    /// DELETE /api/remote/daemons/:hostId
     pub async fn forget_remote_daemon(&self, host_id: &str) -> Result<Value> {
         self.delete(&format!("/api/remote/daemons/{}", seg(host_id))).await
     }
@@ -854,7 +843,6 @@ impl Api {
     pub async fn start_remote_install(&self, body: Value) -> Result<Value> {
         self.post("/api/remote/install", body).await
     }
-    /// GET /api/remote/install/:id?since=N
     pub async fn remote_install(&self, id: &str, since: u64) -> Result<Value> {
         self.get(&format!("/api/remote/install/{}?since={since}", seg(id))).await
     }
@@ -862,7 +850,6 @@ impl Api {
     pub async fn answer_remote_install(&self, id: &str, text: &str) -> Result<Value> {
         self.post(&format!("/api/remote/install/{}/input", seg(id)), json!({ "text": text })).await
     }
-    /// DELETE /api/remote/install/:id
     pub async fn cancel_remote_install(&self, id: &str) -> Result<Value> {
         self.delete(&format!("/api/remote/install/{}", seg(id))).await
     }
@@ -873,7 +860,6 @@ impl Api {
         let timeout = if method == Method::POST { LONG } else { SLOW };
         api.call(method, "/api/daemon/update", body, timeout).await
     }
-    /// GET /api/actions?surface=cli&instance&locale (P2)
     pub async fn actions(&self, instance: Option<&str>) -> Result<Value> {
         let mut path = "/api/actions?surface=cli".to_string();
         if let Some(i) = instance {
@@ -1126,7 +1112,7 @@ impl Api {
         )
         .await
     }
-    /// GET /api/discord/:guild/settings — `{guildId, locale, sleeping, music}` (I2)
+    /// GET /api/discord/:guild/settings — `{guildId, locale, sleeping, music}`
     pub async fn discord_settings(&self, guild_id: &str) -> Result<Value> {
         self.get(&format!("/api/discord/{}/settings", seg(guild_id))).await
     }
@@ -1352,7 +1338,7 @@ fn remember_notices(seen: &std::sync::atomic::AtomicU64, body: &mut Value) {
     list.retain(|n| n.get("id").and_then(Value::as_u64).is_some_and(|id| id > before));
 }
 
-/// `update last`는 다른 클라이언트(GUI)가 이미 확인한 결과도 다시 본다: 패치노트를 CLI로 다시 읽는 길 (L70)
+/// `update last`는 다른 클라이언트(GUI)가 이미 확인한 결과도 다시 본다: 패치노트를 CLI로 다시 읽는 길
 fn last_result_path(lang: &str) -> String {
     with_query("/api/updates/last-result", &[("lang", Some(lang.to_string())), ("include_seen", Some("true".into()))])
 }
@@ -1453,7 +1439,7 @@ pub fn check(status: u16, body: Value) -> Result<Value> {
 mod tests {
     use super::*;
 
-    /// GUI가 패치노트를 열어 확인한 뒤에도 `update last`가 결과와 노트를 보인다 (L70)
+    /// GUI가 패치노트를 열어 확인한 뒤에도 `update last`가 결과와 노트를 보인다
     #[test]
     fn the_last_result_includes_one_already_seen_elsewhere() {
         assert_eq!(last_result_path("ko"), "/api/updates/last-result?lang=ko&include_seen=true");
@@ -1464,7 +1450,7 @@ mod tests {
     }
 
     /// 포트 충돌 정지 알림은 본 것 뒤만 받는다: 다른 클라이언트(GUI)가 읽어도 사라지지 않고,
-    /// 셸에서 `status`를 다시 불러도 이미 보인 알림을 또 보이지 않는다 (L50)
+    /// 셸에서 `status`를 다시 불러도 이미 보인 알림을 또 보이지 않는다
     #[test]
     fn port_conflict_notices_are_read_after_the_last_one_seen() {
         let seen = std::sync::atomic::AtomicU64::new(0);
@@ -1482,7 +1468,7 @@ mod tests {
         assert_eq!(servers_path(true, &seen), "/api/servers?notices=keep");
     }
 
-    /// 정지·재시작 요청은 데몬이 가장 긴 정지 대기(인스턴스 stop_timeout 최대 3600초)를 다 기다릴 때까지 끊지 않는다 (L74)
+    /// 정지·재시작 요청은 데몬이 가장 긴 정지 대기(인스턴스 stop_timeout 최대 3600초)를 다 기다릴 때까지 끊지 않는다
     #[test]
     fn a_stop_request_outlasts_the_longest_stop_timeout() {
         assert!(STOP > Duration::from_secs(3600 + 5), "{STOP:?}");
@@ -1611,7 +1597,7 @@ mod tests {
         assert_eq!(partial(check(200, json!({ "ok": true }))).unwrap(), json!({ "ok": true }));
     }
 
-    /// 모듈이 실행 파일을 못 찾은 시작 실패(`action_required`)는 그 코드로 다루고 다시 설치하라고 안내한다 (MK7, 옛 server_jar_not_found 포함)
+    /// 모듈이 실행 파일을 못 찾은 시작 실패(`action_required`)는 그 코드로 다루고 다시 설치하라고 안내한다 (옛 server_jar_not_found 포함)
     #[test]
     fn a_missing_executable_is_reported_by_its_action_code() {
         crate::i18n::init("en");
@@ -1644,7 +1630,7 @@ mod tests {
         // 확인한 뒤 그 디스코드 서버가 다른 PC로 옮겨 갔다 (릴레이 409, 감사 R6)
         let moved = api_err(check(409, json!({ "error": "NODE_MOVED" })));
         assert_eq!(moved.to_string(), crate::i18n::try_t("err.relay.node_moved").unwrap_or_default(), "{}", moved);
-        // 새 데몬은 릴레이 본문에 `success: false`와 `error`를 옮긴 error_code를 더한다 (D7): 같은 문장이 나온다
+        // 새 데몬은 릴레이 본문에 `success: false`와 `error`를 옮긴 error_code를 더한다: 같은 문장이 나온다
         let relayed = |status, error: &str| api_err(check(status, json!({ "success": false, "error": error, "error_code": error })));
         assert_eq!((relayed(409, "NODE_MOVED").code(), relayed(409, "NODE_MOVED").to_string()), ("node_moved".to_string(), moved.to_string()));
         assert_eq!(relayed(429, "Too Many Requests").code(), "rate_limited");
@@ -1835,7 +1821,7 @@ mod route_coverage {
         ("/api/instance/{id}/chat-link/{guild}", "디스코드 채널과 게임 채팅을 잇는 원격(디스코드 `/채팅연동`) 전용 (잇는 채널이 디스코드에만 있다)"),
         ("/api/guides", "GUI 가이드 카드·화면 강조 (GUI 화면을 짚는 안내라 CLI에는 그릴 곳이 없다)"),
         ("/api/guides/{id}", "GUI 가이드를 열었음·보던 단계·끝까지 봄"),
-        ("/api/instance/{id}/console/stream", "콘솔 스트림(SSE): 앱·웹용 (사용자 11-12). CLI는 `/api/instance/{id}/console`을 주기 조회한다"),
+        ("/api/instance/{id}/console/stream", "콘솔 스트림(SSE): 앱·웹용. CLI는 `/api/instance/{id}/console`을 주기 조회한다"),
         ("/api/daemon/console/stream", "데몬 로그 스트림(SSE): 앱·웹용. CLI는 `/api/daemon/console`을 주기 조회한다"),
         ("/api/remote/daemons/{host_id}/proxy/{*rest}", "원격 데몬 중계: 데몬 API 전체를 그 데몬으로 넘기는 길 (원격 데몬 고르기는 G1)"),
     ];

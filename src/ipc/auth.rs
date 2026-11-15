@@ -131,7 +131,7 @@ pub async fn auth_middleware(
         return Ok(next.run(req).await);
     }
 
-    // 최소 상태(`/health`)는 토큰 없이: 토큰이 어긋났을 때도 클라이언트가 데몬이 떠 있는지 알 수 있게 (A6)
+    // 최소 상태(`/health`)는 토큰 없이: 토큰이 어긋났을 때도 클라이언트가 데몬이 떠 있는지 알 수 있게
     if req.uri().path() == "/health" {
         return Ok(next.run(req).await);
     }
@@ -215,7 +215,7 @@ mod tests {
         Request::builder().uri("/api/servers").header("host", host).body(Body::empty()).unwrap()
     }
 
-    /// A6: 토큰 없이도 `/health`만은 답한다. 나머지는 그대로 막는다
+    /// 토큰 없이도 `/health`만은 답한다. 나머지는 그대로 막는다
     #[tokio::test]
     async fn health_answers_without_a_token_but_nothing_else_does() {
         use tower::ServiceExt;

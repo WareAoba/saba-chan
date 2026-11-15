@@ -101,7 +101,7 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
-    // 사용자 요청(2026-10-26): 켜짐 알림은 인스턴스마다 길드마다 정하고, 기본은 알리지 않으며, 길드가 쓰기로 한 서버만 켤 수 있다
+    // 켜짐 알림은 인스턴스마다 길드마다 정하고, 기본은 알리지 않으며, 길드가 쓰기로 한 서버만 켤 수 있다
     #[tokio::test]
     async fn start_notice_is_off_by_default_and_set_per_guild_and_instance() {
         let tmp = tempfile::tempdir().unwrap();

@@ -167,9 +167,7 @@ pub fn preflight_snapshot() -> serde_json::Value {
     })
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  Public API
-// ═══════════════════════════════════════════════════════════════
+// ── Public API ──
 
 /// venv가 존재하고 유효한지 확인합니다. 없으면 전체 부트스트랩을 수행합니다.
 /// 반환값: venv 내부 Python 실행 파일의 절대 경로
@@ -243,9 +241,7 @@ pub async fn detect_system_python() -> Result<String> {
     ))
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  Internal: Python 탐색 & 포터블 다운로드
-// ═══════════════════════════════════════════════════════════════
+// ── Internal: Python 탐색 & 포터블 다운로드 ──
 
 /// Python 인터프리터를 찾습니다: 포터블 → 시스템 → 자동 다운로드
 async fn find_base_python(data_dir: &Path) -> Result<String> {
@@ -271,7 +267,7 @@ async fn find_base_python(data_dir: &Path) -> Result<String> {
     Ok(exe.to_string_lossy().into_owned())
 }
 
-/// 포터블 Python 받기 → 추출 → 검증 (`python_runtime::install_portable`). 고정 해시와 다르면 풀지 않는다 (C6)
+/// 포터블 Python 받기 → 추출 → 검증 (`python_runtime::install_portable`). 고정 해시와 다르면 풀지 않는다
 async fn download_portable_python(data_dir: &Path) -> Result<PathBuf> {
     runtime::install_portable(&Preparing, data_dir, &|_, _| {}).await.with_context(|| {
         format!(
@@ -281,9 +277,7 @@ async fn download_portable_python(data_dir: &Path) -> Result<PathBuf> {
     })
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  Internal: 경로 & 유틸리티
-// ═══════════════════════════════════════════════════════════════
+// ── Internal: 경로 & 유틸리티 ──
 
 /// 런타임 폴더 (`python_runtime::runtime_dir`: `SABA_DATA_DIR` → 데몬 옆 → 플랫폼 앱 데이터)
 fn resolve_data_dir() -> Result<PathBuf> {
@@ -300,10 +294,6 @@ pub fn venv_python() -> Option<PathBuf> {
 async fn verify_python(exe: &Path) -> bool {
     runtime::verify(&Preparing, exe).await
 }
-
-// ═══════════════════════════════════════════════════════════════
-//  Tests
-// ═══════════════════════════════════════════════════════════════
 
 #[cfg(test)]
 mod tests {
@@ -388,19 +378,5 @@ mod tests {
         assert!(url.contains("python-build-standalone"));
         assert!(url.contains(PYTHON_VERSION));
         assert!(url.ends_with(".tar.gz"));
-    }
-
-    #[test]
-    fn test_resolve_data_dir_no_panic() {
-        let _ = resolve_data_dir();
-    }
-
-    #[tokio::test]
-    async fn test_detect_system_python() {
-        // CI/개발 환경에 따라 성공 또는 실패 가능
-        match detect_system_python().await {
-            Ok(cmd) => println!("시스템 Python: {}", cmd),
-            Err(e) => println!("시스템 Python 없음 (정상): {}", e),
-        }
     }
 }

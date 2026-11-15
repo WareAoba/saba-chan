@@ -437,7 +437,7 @@ pub async fn push_all(state: &IPCServer, cfg: &ChatbotConfig, previous: Option<&
 }
 
 /// 길드마다 `new`를 보낸다. 한 길드가 값을 거절(400)하면 거기서 멈추고, 이미 받은 길드에 `old`를 다시 보낸다.
-/// 거절되면 데몬은 저장하지 않으므로 받은 길드만 새 값으로 남지 않게 한다 (D-F7)
+/// 거절되면 데몬은 저장하지 않으므로 받은 길드만 새 값으로 남지 않게 한다
 async fn push_or_restore<F, Fut>(guilds: impl IntoIterator<Item = String>, new: &ChatbotConfig, old: &ChatbotConfig, put: F) -> Vec<(String, PushOutcome)>
 where
     F: Fn(String, Map<String, Value>) -> Fut,
@@ -614,7 +614,7 @@ pub(crate) async fn delete(state: &IPCServer) -> Outcome {
     Ok(json!({ "success": true, "sync": rows, "pendingRelayDelete": !done }))
 }
 
-/// 길드 하나의 챗봇 설정 (I2-b, 디스코드 `/사바쨩 설정`이 액션으로 부른다): 릴레이 기본값 위에 실제 값, 키는 `hasApiKey`만
+/// 길드 하나의 챗봇 설정 (디스코드 `/사바쨩 설정`이 액션으로 부른다): 릴레이 기본값 위에 실제 값, 키는 `hasApiKey`만
 fn guild_view(cfg: &ChatbotConfig, guild: &str) -> Value {
     let mut settings = relay_defaults();
     settings.extend(merged(cfg, guild));
@@ -635,7 +635,7 @@ pub(crate) fn guild(state: &IPCServer, guild: &str) -> Value {
     guild_view(&state.config_store.get_chatbot(), guild)
 }
 
-/// `PATCH /api/chatbot/guilds/:guild` `{설정 키: 값|null}`: 그 길드 값만 합친다. 키(`apiKey`)와 모르는 키는 받지 않는다
+/// 그 길드 값만 합친다. 키(`apiKey`)와 모르는 키는 받지 않는다
 pub(crate) async fn patch_guild(state: &IPCServer, guild: &str, mut patch: Map<String, Value>) -> Outcome {
     drop_retired(&mut patch);
     let known = relay_defaults();
@@ -762,7 +762,7 @@ mod tests {
         assert_eq!(res.unwrap_err().status, StatusCode::BAD_REQUEST);
     }
 
-    /// D-F7: 길드 하나가 값을 거절하면 저장하지 않으므로, 이미 받은 길드도 옛 값으로 되돌려 데몬과 어긋나지 않게 한다
+    /// 길드 하나가 값을 거절하면 저장하지 않으므로, 이미 받은 길드도 옛 값으로 되돌려 데몬과 어긋나지 않게 한다
     #[tokio::test]
     async fn a_value_one_guild_rejects_is_rolled_back_on_the_guilds_that_took_it() {
         let old = ChatbotConfig::default();

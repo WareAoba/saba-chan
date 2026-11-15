@@ -38,3 +38,16 @@ export function startPoll(
         document.removeEventListener('visibilitychange', onVisible);
     };
 }
+
+/** 스트림을 열지 못했거나 끊긴 뒤 다시 열어 보기까지 (ms). 그동안은 조회로 읽는다 (앱·웹 공용) */
+export const STREAM_RETRY_MS = 30_000;
+
+/** 스트림을 연다. 닫는 함수를 주고, 열지 못했으면(던짐·거절·스트림이 없는 브리지) null */
+export function connectStream(open: () => unknown): Promise<(() => void) | null> {
+    return Promise.resolve()
+        .then(open)
+        .then(
+            (c) => (typeof c === 'function' ? (c as () => void) : null),
+            () => null,
+        );
+}

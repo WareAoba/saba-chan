@@ -31,7 +31,7 @@ pub struct RemoteExtensionInfo {
     /// 최소 앱 버전 요구사항
     #[serde(default)]
     pub min_app_version: Option<String>,
-    /// 이 데몬에서 설치할 수 없으면 그 이유 (`min_app_version` 미달). 데몬이 채운다 (M9)
+    /// 이 데몬에서 설치할 수 없으면 그 이유 (`min_app_version` 미달). 데몬이 채운다
     #[serde(default, skip_deserializing)]
     pub incompatible: Option<String>,
     /// 에셋 파일명 (예: "extension-docker.zip")
@@ -70,7 +70,7 @@ pub struct ExtensionUpdateInfo {
     pub installed_version: String,
     pub latest_version: String,
     pub download_url: String,
-    /// 새 버전이 이 데몬에서 돌지 않으면 그 이유 (M9)
+    /// 새 버전이 이 데몬에서 돌지 않으면 그 이유
     pub incompatible: Option<String>,
 }
 
@@ -98,8 +98,8 @@ pub(super) fn unpack_package(
 }
 
 impl ExtensionManager {
-    /// 받을 수 있는 익스텐션 목록: 최신 릴리즈의 서명된 manifest에 든 `ext-*` 컴포넌트 (U9e).
-    /// 네트워크 요청이므로 매니저 락을 놓고 부른다 (C12)
+    /// 받을 수 있는 익스텐션 목록: 최신 릴리즈의 서명된 manifest에 든 `ext-*` 컴포넌트.
+    /// 네트워크 요청이므로 매니저 락을 놓고 부른다
     pub async fn fetch_remote() -> Result<Vec<RemoteExtensionInfo>> {
         let catalog = saba_chan_updater_lib::relay::latest_catalog(None, &crate::ipc::updates::load_updater_config().channel)
             .await

@@ -1,5 +1,5 @@
 /**
- * G-U3: 서버 초기화 뒤 설정 폼을 module_settings만으로 다시 채워 램 상한·정지 대기 칸이 비어 보였다.
+ * 서버 초기화 뒤 설정 폼을 module_settings만으로 다시 채워 램 상한·정지 대기 칸이 비어 보였다.
  */
 import { act } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';

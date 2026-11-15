@@ -1,4 +1,4 @@
-//! 예약 작업 API (A3). 실행기는 `scheduler::runner`
+//! 예약 작업 API. 실행기는 `scheduler::runner`
 //!
 //! - `GET/PUT /api/instance/:id/schedule` — `{schedule: [...], backup_keep}`
 //! - `GET /api/schedules/upcoming` — 모든 인스턴스의 다가오는 예약
@@ -29,7 +29,7 @@ pub struct ScheduleBody {
     schedule: Vec<ScheduledTask>,
     #[serde(default)]
     backup_keep: Option<u32>,
-    /// GET에서 받은 `revision`. 있으면 그사이 일정이 바뀌었을 때 덮어쓰지 않고 409로 거절한다 (L51)
+    /// GET에서 받은 `revision`. 있으면 그사이 일정이 바뀌었을 때 덮어쓰지 않고 409로 거절한다
     #[serde(default)]
     revision: Option<String>,
 }
@@ -178,7 +178,7 @@ pub async fn put_schedule(Path(id): Path<String>, State(state): State<IPCServer>
         }
     }
     // 원격(디스코드·챗봇)은 새로 넣거나 바꾸는 작업만 제한한다 (이 PC에서 정한 작업은 그대로 다시 보낼 수 있다).
-    // 원격 MCP(계정 주인의 개인 에이전트)는 앱과 같다: 액션 계획이 저장 전에 늘 주인에게 묻는다 (사용자 결정 2026-11-05)
+    // 원격 MCP(계정 주인의 개인 에이전트)는 앱과 같다: 액션 계획이 저장 전에 늘 주인에게 묻는다
     let origin = crate::audit::current();
     if origin.is_relay() && origin.source != crate::actions::MCP_VIA {
         for (i, task) in body.schedule.iter().enumerate() {
@@ -315,7 +315,7 @@ mod tests {
 
         assert_eq!(remote(json!({ "schedule": [update] })).await, StatusCode::BAD_REQUEST);
         assert_eq!(remote(json!({ "schedule": [restart(1)] })).await, StatusCode::BAD_REQUEST);
-        // 원격 MCP(계정 주인의 개인 에이전트)는 앱처럼 무엇이든 예약한다 (액션 계획이 늘 주인에게 묻는다, 사용자 결정 2026-11-05)
+        // 원격 MCP(계정 주인의 개인 에이전트)는 앱처럼 무엇이든 예약한다 (액션 계획이 늘 주인에게 묻는다)
         let mcp = |body: Value| crate::audit::with_origin(crate::audit::Origin::new(crate::actions::MCP_VIA), put(body));
         assert_eq!(mcp(json!({ "schedule": [update, restart(1)], "backup_keep": 1000 })).await, StatusCode::OK);
         assert_eq!(put(json!({ "schedule": [], "backup_keep": 10 })).await, StatusCode::OK);
@@ -408,7 +408,7 @@ mod tests {
     }
 
     /// 챗봇은 백업을 더 자주 돌려 옛 백업이 더 빨리 밀려 지워지게 하지도 못한다: 보관 수가 덮는 기간이 줄면 거절한다.
-    /// 하루 한 번까지는 새로 넣을 수 있고, 보관 수를 함께 올려 기간을 지키면 된다 (L49)
+    /// 하루 한 번까지는 새로 넣을 수 있고, 보관 수를 함께 올려 기간을 지키면 된다
     #[tokio::test]
     async fn the_chatbot_cannot_make_backups_push_old_ones_out_sooner() {
         let toml = format!("{NO_BACKUP}\n[backup]\npaths = [\"world\"]\n");
@@ -463,7 +463,7 @@ mod tests {
     }
 
     /// 목록 전체를 다시 보내는 편집이 그사이 다른 곳에서 바꾼 일정을 덮어쓰지 않는다: 읽을 때 받은 revision이
-    /// 지금 일정과 다르면 409 `schedule_changed`로 거절하고, revision을 보내지 않으면 예전처럼 받는다 (L51)
+    /// 지금 일정과 다르면 409 `schedule_changed`로 거절하고, revision을 보내지 않으면 예전처럼 받는다
     #[tokio::test]
     async fn a_schedule_edit_from_a_stale_read_is_refused() {
         let (state, id, _tmp) = server_with(NO_BACKUP, None).await;

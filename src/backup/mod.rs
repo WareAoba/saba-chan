@@ -1,7 +1,7 @@
-//! 월드·세이브 백업 (A2)
+//! 월드·세이브 백업
 //!
 //! 모듈 `[backup] paths`가 가리키는 폴더·파일을 `<인스턴스 폴더>/backups/<시각>-<종류>.zip` 하나로 적는다.
-//! 판 2(MK16, 0.1.9~)는 증분이다: 파일 내용은 `backups/objects/<해시 앞 두 글자>/<sha256>`에 한 번만 두고(deflate),
+//! 판 2(0.1.9~)는 증분이다: 파일 내용은 `backups/objects/<해시 앞 두 글자>/<sha256>`에 한 번만 두고(deflate),
 //! zip에는 `saba-backup-v2.json`(항목 번호 → 원래 절대 경로, 파일마다 상대 경로·해시·크기·수정 시각)만 담는다.
 //! 지난 백업과 크기·수정 시각이 같은 파일은 다시 읽지 않는다. 백업을 지우면 어느 백업도 쓰지 않는 내용을 치운다.
 //! 판 1(0.1.8까지)은 zip 안에 `saba-backup.json`과 `<번호>/...` 파일을 담는다. 읽기·복원은 두 판 모두 한다.
@@ -73,7 +73,7 @@ pub struct BackupInfo {
     /// 가져온 백업이면 그 백업을 만든 서버의 이름
     #[serde(skip_serializing_if = "Option::is_none")]
     pub imported_from: Option<String>,
-    /// 만든 시각 (유닉스 나노초, 판 2는 요약의 시작 시각, 판 1은 파일 수정 시각). 이름은 지역 시각이라 서머타임 끝에 뒤바뀔 수 있어 순서는 이것으로 정한다 (D-B12)
+    /// 만든 시각 (유닉스 나노초, 판 2는 요약의 시작 시각, 판 1은 파일 수정 시각). 이름은 지역 시각이라 서머타임 끝에 뒤바뀔 수 있어 순서는 이것으로 정한다
     #[serde(skip)]
     made: u64,
 }
@@ -82,7 +82,7 @@ pub struct BackupInfo {
 struct Manifest {
     version: u32,
     paths: Vec<ManifestEntry>,
-    /// 백업한 폴더 안의 심볼릭 링크. 가리키는 곳은 담지 않고 링크만 되살린다 (D-B13)
+    /// 백업한 폴더 안의 심볼릭 링크. 가리키는 곳은 담지 않고 링크만 되살린다
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     links: Vec<LinkEntry>,
 }
@@ -284,7 +284,7 @@ pub fn create_from(dir: &Path, kind: BackupKind, entries: &[(PathBuf, PathBuf)],
     info(&final_path).context("read new backup")
 }
 
-/// 강제 종료로 남은 반쪽 백업 파일을 지운다 (D-B13)
+/// 강제 종료로 남은 반쪽 백업 파일을 지운다
 fn clear_stale_partials(dir: &Path) {
     for entry in fs::read_dir(dir).into_iter().flatten().flatten() {
         let path = entry.path();
@@ -1185,7 +1185,7 @@ fn open(dir: &Path, name: &str) -> Result<Opened> {
 pub struct Restored {
     /// 돌려놓은 경로
     pub paths: Vec<PathBuf>,
-    /// 되살리지 못한 링크 수 (Windows 권한 등). 나머지 복원은 끝났다 (D-B14)
+    /// 되살리지 못한 링크 수 (Windows 권한 등). 나머지 복원은 끝났다
     pub links_missed: usize,
 }
 
@@ -1762,7 +1762,7 @@ mod tests {
         assert_eq!(got, vec![tmp.path().join("world"), tmp.path().join("world_nether")]);
     }
 
-    // D-B13: 강제 종료로 남은 반쪽 파일(`*.zip.partial`)은 다음 백업 때 지운다. 지금 쓰는 중일 수 있는 새 것은 둔다
+    // 강제 종료로 남은 반쪽 파일(`*.zip.partial`)은 다음 백업 때 지운다. 지금 쓰는 중일 수 있는 새 것은 둔다
     #[test]
     fn a_new_backup_clears_partial_files_left_by_a_crash() {
         let tmp = tempfile::tempdir().unwrap();
@@ -1780,7 +1780,7 @@ mod tests {
         assert!(fresh.exists(), "a partial file that may still be written stays");
     }
 
-    // D-B13: 백업할 폴더 안의 심볼릭 링크를 말없이 빼면, 복원이 폴더를 바꿔 넣은 뒤 링크가 사라졌다
+    // 백업할 폴더 안의 심볼릭 링크를 말없이 빼면, 복원이 폴더를 바꿔 넣은 뒤 링크가 사라졌다
     #[cfg(unix)]
     #[test]
     fn links_inside_a_backed_up_folder_come_back_on_restore() {
@@ -1831,7 +1831,7 @@ mod tests {
         assert_eq!(restored.links_missed, 1);
     }
 
-    /// 되살리지 못한 링크는 경고만 남기고 끝나지 않는다: 복원 결과에 그 수를 실어 사용자가 안다 (D-B14)
+    /// 되살리지 못한 링크는 경고만 남기고 끝나지 않는다: 복원 결과에 그 수를 실어 사용자가 안다
     #[cfg(unix)]
     #[test]
     fn a_link_that_cannot_come_back_is_counted_in_the_result() {
@@ -1877,7 +1877,7 @@ mod tests {
     }
 
     /// 다른 자리에서 읽은 백업(게임 스냅샷)의 크기·시각은 복원 자리 파일의 재사용 기록이 아니다:
-    /// 다음 백업이 지금 파일 대신 스냅샷 내용을 적으면 안전 백업으로도 되돌릴 수 없다 (Codex P1)
+    /// 다음 백업이 지금 파일 대신 스냅샷 내용을 적으면 안전 백업으로도 되돌릴 수 없다
     #[test]
     fn a_backup_read_from_elsewhere_is_not_reused_for_the_live_file() {
         let tmp = tempfile::tempdir().unwrap();
@@ -1899,7 +1899,7 @@ mod tests {
         assert_eq!(fs::read(w.join("level.dat")).unwrap(), b"LIVE!");
     }
 
-    /// 다른 자리에서 읽은 폴더 안의 링크도 복원 자리에 되살린다 (Codex P2)
+    /// 다른 자리에서 읽은 폴더 안의 링크도 복원 자리에 되살린다
     #[cfg(windows)]
     #[test]
     fn links_inside_a_folder_read_from_elsewhere_come_back_at_the_restore_place() {
@@ -1916,7 +1916,7 @@ mod tests {
         assert!(fs::symlink_metadata(live.join("latest")).is_ok(), "the link comes back under the restore place");
     }
 
-    /// 링크가 같은 스냅샷의 다른 항목을 가리키면 그 대상도 그 항목의 복원 자리로 옮긴다 (스냅샷을 지워도 끊기지 않게, Codex 재검토 P2)
+    /// 링크가 같은 스냅샷의 다른 항목을 가리키면 그 대상도 그 항목의 복원 자리로 옮긴다 (스냅샷을 지워도 끊기지 않게)
     #[cfg(windows)]
     #[test]
     fn a_link_to_another_entry_of_the_same_snapshot_points_to_its_restore_place() {
@@ -2332,7 +2332,7 @@ mod tests {
         assert!(create(tmp.path(), BackupKind::Manual, &[]).is_err());
     }
 
-    /// MK16: 바뀌지 않은 파일은 다시 쓰지 않고, 어느 백업이든 그때 내용으로 돌아온다. 0.1.8은 판 2를 백업으로 보지 않는다
+    /// 바뀌지 않은 파일은 다시 쓰지 않고, 어느 백업이든 그때 내용으로 돌아온다. 0.1.8은 판 2를 백업으로 보지 않는다
     #[test]
     fn unchanged_files_are_stored_once_and_every_backup_restores_its_own_content() {
         let tmp = tempfile::tempdir().unwrap();
@@ -2453,7 +2453,7 @@ mod tests {
         assert_eq!(backed_up_paths(&dir, &b.name).unwrap(), vec![w]);
     }
 
-    /// D-B12: 이름은 지역 시각이라 서머타임이 끝나는 시간에는 나중 백업의 이름이 앞설 수 있다. 순서는 만든 시각으로 정한다
+    /// 이름은 지역 시각이라 서머타임이 끝나는 시간에는 나중 백업의 이름이 앞설 수 있다. 순서는 만든 시각으로 정한다
     #[test]
     fn backups_are_ordered_by_when_they_were_made_not_by_name() {
         let tmp = tempfile::tempdir().unwrap();
@@ -2468,7 +2468,7 @@ mod tests {
         assert_eq!(prune(&dir, 1, &[]), vec![earlier]);
     }
 
-    /// 리뷰 603: 열지 못하는 백업이 있으면 그 백업이 쓰는 내용을 지우지 않는다
+    /// 열지 못하는 백업이 있으면 그 백업이 쓰는 내용을 지우지 않는다
     #[cfg(unix)]
     #[test]
     fn a_backup_that_cannot_be_opened_keeps_its_content() {
@@ -2490,7 +2490,7 @@ mod tests {
         assert_eq!(fs::read(w.join("level.dat")).unwrap(), b"level");
     }
 
-    /// 리뷰 603: 망가진 내용 파일은 같은 내용을 다시 읽는 다음 백업이 바꿔 넣는다 (그대로 물려받지 않는다)
+    /// 망가진 내용 파일은 같은 내용을 다시 읽는 다음 백업이 바꿔 넣는다 (그대로 물려받지 않는다)
     #[test]
     fn a_damaged_content_file_is_replaced_by_the_next_backup() {
         let tmp = tempfile::tempdir().unwrap();
@@ -2587,7 +2587,7 @@ mod tests {
         assert_eq!(fs::read(w.join("level.dat")).unwrap(), b"level");
     }
 
-    /// 리뷰 603: 판 1은 모두 0.1.8까지 만든 것이다. 수정 시각이 새로 찍힌 사본도 이름의 시각보다 새것으로 보지 않는다
+    /// 판 1은 모두 0.1.8까지 만든 것이다. 수정 시각이 새로 찍힌 사본도 이름의 시각보다 새것으로 보지 않는다
     #[test]
     fn a_copied_back_old_backup_does_not_push_out_newer_ones() {
         let tmp = tempfile::tempdir().unwrap();
@@ -2623,7 +2623,7 @@ mod tests {
         assert_eq!(backup_names(&dir).unwrap(), vec![made]);
     }
 
-    /// 603 P3-7: 백업 폴더가 백업할 폴더 안에 있으면 지난 백업(내용 파일·zip)을 다시 담아 백업마다 커졌다
+    /// 백업 폴더가 백업할 폴더 안에 있으면 지난 백업(내용 파일·zip)을 다시 담아 백업마다 커졌다
     #[test]
     fn the_backup_folder_inside_a_backed_up_folder_is_left_out() {
         let tmp = tempfile::tempdir().unwrap();
@@ -2636,7 +2636,7 @@ mod tests {
         assert_eq!(second.stored, 0);
     }
 
-    /// 603 P3-8·619 P3-1: 열지 못하는 백업은 쓰지 않는 내용의 정리를 멈춘다. 목록에 표시해 사용자가 알고 지울 수 있게 한다.
+    /// 열지 못하는 백업은 쓰지 않는 내용의 정리를 멈춘다. 목록에 표시해 사용자가 알고 지울 수 있게 한다.
     /// 백업 이름을 단 폴더는 백업이 아니다: 목록에도 없고 정리를 막지도 않는다
     #[test]
     fn backups_that_cannot_be_opened_are_marked_and_folders_are_not_backups() {
@@ -2656,7 +2656,7 @@ mod tests {
         assert!(objects(&dir).is_empty(), "a folder named like a backup must not keep unused content");
     }
 
-    /// 리뷰 630 P3-2: 매니페스트가 없는 zip과 대상이 없는 링크도 정리를 멈추거나 복원할 수 없으니 열 수 없다고 표시한다
+    /// 매니페스트가 없는 zip과 대상이 없는 링크도 정리를 멈추거나 복원할 수 없으니 열 수 없다고 표시한다
     #[test]
     fn a_zip_without_a_manifest_and_a_dangling_link_are_marked_unreadable() {
         let tmp = tempfile::tempdir().unwrap();

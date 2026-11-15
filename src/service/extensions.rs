@@ -284,28 +284,33 @@ pub(crate) async fn dispatch_startup(state: &IPCServer, ext_id: &str) -> bool {
         tokio::spawn(async move {
             init_tracker.mark_started(&ext_id_clone, "Initializing...").await;
             // 방금 켠 익스텐션에만 보낸다 (다른 익스텐션의 startup을 다시 돌리지 않게)
-            let result = crate::extension::run_hook_to(&ext_mgr, &ext_id_clone, "daemon.startup", serde_json::json!({})).await;
-            let rid = ext_id_clone;
-            match result {
-                Some(Ok(val)) => {
-                    let success = val.get("success").and_then(|s| s.as_bool()).unwrap_or(true);
-                    let msg = val.get("message").and_then(|m| m.as_str()).unwrap_or("OK");
-                    if success {
-                        tracing::info!("Extension '{}' post-enable startup complete: {}", rid, msg);
-                    } else {
-                        let err = val.get("error").and_then(|e| e.as_str()).unwrap_or("unknown");
-                        tracing::warn!("Extension '{}' post-enable startup failed: {}", rid, err);
-                    }
-                    init_tracker.mark_finished(&rid, success, msg).await;
-                }
-                Some(Err(e)) => {
-                    tracing::error!("Extension '{}' post-enable startup error: {}", rid, e);
-                    init_tracker.mark_finished(&rid, false, &e.to_string()).await;
-                }
+            match crate::extension::run_hook_to(&ext_mgr, &ext_id_clone, "daemon.startup", serde_json::json!({})).await {
+                Some(result) => record_startup(&init_tracker, &ext_id_clone, result).await,
                 // 조건이 맞지 않아 실행하지 않았다
-                None => init_tracker.mark_finished(&rid, true, "OK").await,
+                None => init_tracker.mark_finished(&ext_id_clone, true, "OK").await,
             }
         });
     }
     has_startup_hook
+}
+
+/// daemon.startup 훅 결과 하나를 로그와 초기화 상태(`/api/extensions/init-status`)에 남긴다
+pub async fn record_startup(init_tracker: &crate::ipc::ExtensionInitTracker, ext_id: &str, result: anyhow::Result<serde_json::Value>) {
+    match result {
+        Ok(val) => {
+            let success = val.get("success").and_then(|s| s.as_bool()).unwrap_or(true);
+            let msg = val.get("message").and_then(|m| m.as_str()).unwrap_or("OK");
+            if success {
+                tracing::info!("Extension '{}' startup complete: {}", ext_id, msg);
+            } else {
+                let err = val.get("error").and_then(|e| e.as_str()).unwrap_or("unknown");
+                tracing::warn!("Extension '{}' startup failed: {}", ext_id, err);
+            }
+            init_tracker.mark_finished(ext_id, success, msg).await;
+        }
+        Err(e) => {
+            tracing::error!("Extension '{}' startup error: {}", ext_id, e);
+            init_tracker.mark_finished(ext_id, false, &e.to_string()).await;
+        }
+    }
 }

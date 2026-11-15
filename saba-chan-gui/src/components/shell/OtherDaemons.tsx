@@ -59,7 +59,7 @@ export function OtherDaemons({
         if (loading.current) return;
         loading.current = true;
         try {
-            const res = await window.api.remoteServers().catch(() => null);
+            const res = await window.api.remoteServers();
             if (Array.isArray(res?.daemons)) setDaemons(res.daemons);
         } finally {
             loading.current = false;

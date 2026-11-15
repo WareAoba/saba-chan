@@ -59,7 +59,7 @@ afterEach(() => {
     check.mockClear();
 });
 
-describe('새 서버 만들기 — 요약 한 장 (사용자 11-11)', () => {
+describe('새 서버 만들기 — 요약 한 장', () => {
     it('게임을 고르면 이름·버전·위치·실행 방식·포트가 한 장에 있고, 고른 것만 보낸다', async () => {
         const onAddServer = open();
         await toNameStep();
@@ -185,7 +185,7 @@ describe('새 서버 만들기 — 요약 한 장 (사용자 11-11)', () => {
         expect(createButton()).toBeDisabled();
     });
 
-    // 사용자 11-06 #2: 디스코드에서 부르는 말을 쉼표로 나누므로 서버 이름에 쉼표를 받지 않는다 (띄어쓰기는 된다)
+    // 디스코드에서 부르는 말을 쉼표로 나누므로 서버 이름에 쉼표를 받지 않는다 (띄어쓰기는 된다)
     it('쉼표가 든 이름은 알리고 만들기를 막는다', async () => {
         open();
         const name = screen.getByLabelText(/Server Name/i);
@@ -196,7 +196,7 @@ describe('새 서버 만들기 — 요약 한 장 (사용자 11-11)', () => {
         await waitFor(() => expect(screen.queryByText(/comma/)).toBeNull());
     });
 
-    // 사용자 11-06 #13: 버전은 "숫자 (최신)"으로 보인다
+    // 버전은 "숫자 (최신)"으로 보인다
     it('모듈이 알려 준 최신 버전 숫자를 "(latest)"와 함께 보인다', async () => {
         window.api.instanceCheck = check;
         window.api.moduleListVersions = vi.fn().mockResolvedValue({
@@ -222,7 +222,7 @@ describe('새 서버 만들기 — 요약 한 장 (사용자 11-11)', () => {
     });
 });
 
-/* 상세 설정: 서버 설정 화면과 같은 칸으로 서버 설정을 미리 정한다 (사용자 11-11) */
+/* 상세 설정: 서버 설정 화면과 같은 칸으로 서버 설정을 미리 정한다 */
 const withSettings = {
     ...minecraft,
     presets: [{ id: 'friends', label: 'Friends', settings: { max_players: 10 } }],
@@ -292,7 +292,7 @@ describe('새 서버 만들기 — 상세 설정', () => {
         expect(onAddServer.mock.calls[0][0]).toMatchObject({ preset: 'friends', module_settings: {} });
     });
 
-    // 리뷰 #944: 데몬 확인이 설정 값을 거절하면 그 줄에 알리고 만들기를 막는다
+    // 데몬 확인이 설정 값을 거절하면 그 줄에 알리고 만들기를 막는다
     it('데몬이 받지 않는 설정 값은 그 줄에 알리고 만들기를 막는다', async () => {
         await openDetail();
         await act(async () => fireEvent.click(screen.getByRole('button', { name: /Detailed settings/ })));
@@ -323,7 +323,7 @@ describe('새 서버 만들기 — 상세 설정', () => {
         await act(async () => fireEvent.click(screen.getByRole('button', { name: /Detailed settings/ })));
         await act(async () => fireEvent.keyDown(window, { key: 'f', ctrlKey: true }));
         expect(screen.getByRole('search')).toBeTruthy();
-        // 칠하는 층은 body에 그려진다: 창(Dialog) 위에 오도록 창 안 찾기 표시를 단다 (Codex 리뷰 #13, 공통 .modal 스타일과 겹치지 않는 이름)
+        // 칠하는 층은 body에 그려진다: 창(Dialog) 위에 오도록 창 안 찾기 표시를 단다 (공통 .modal 스타일과 겹치지 않는 이름)
         expect(document.querySelector('.page-find-layer--modal')).toBeTruthy();
         expect(document.querySelector('.page-find-layer.modal')).toBeNull();
     });

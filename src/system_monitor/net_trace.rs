@@ -6,7 +6,7 @@
 //!   (Microsoft StartTrace 문서). 데몬은 보통 권한이므로, 옵션을 켤 때 관리자 확인 한 번으로 지금 사용자를
 //!   그 그룹에 넣는다(`saba-core net-trace grant <SID>`). 그룹은 다음 Windows 로그인부터 토큰에 들어간다.
 //! - 부하: 옵션이 켜져 있고 누군가 모니터를 펼쳐 둔 동안(`sizes=true` 요청)만 세션을 연다.
-//!   `IDLE_STOP` 동안 펼친 요청이 없으면 닫는다. 실측(2026-11-06, 16코어 PC, 초당 이벤트 약 1,450개):
+//!   `IDLE_STOP` 동안 펼친 요청이 없으면 닫는다. 실측(16코어 PC, 초당 이벤트 약 1,450개):
 //!   코어 하나 기준 CPU 0.08%.
 //! - 주소·내용은 남기지 않는다. (PID, 프로토콜, 로컬 포트)별 바이트 합만 들고 있다가 표본을 뜰 때 비운다.
 
@@ -1070,7 +1070,7 @@ mod tests {
 
     #[test]
     fn revoke_removes_only_the_users_ace() {
-        // PC에서 읽은 실제 값 (주인님 계정 허용을 더한 뒤)
+        // PC에서 읽은 실제 값 (주인 계정 허용을 더한 뒤)
         let granted = "O:BAG:BAD:(A;;0x120fff;;;SY)(A;;LO;;;LS)(A;;0x1207ff;;;BA)(A;;LO;;;S-1-5-21-1-2-3-1001)";
         let original = "O:BAG:BAD:(A;;0x120fff;;;SY)(A;;LO;;;LS)(A;;0x1207ff;;;BA)";
         assert_eq!(strip_sid_aces(granted, "S-1-5-21-1-2-3-1001"), original);

@@ -1,16 +1,5 @@
-//! ═══════════════════════════════════════════════════════════════════
-//! 업데이터 통합 테스트
-//! ═══════════════════════════════════════════════════════════════════
-//!
-//! 전체 업데이트 파이프라인을 테스트합니다:
-//!
-//! 1. **버전 파싱/비교** — SemVer 유효성, 순서 비교
-//! 2. **파일 덮어쓰기** — zip 해제, 모듈 교체, 바이너리 교체
-//! 3. **설정 변경** — UpdateConfig round-trip
-//!
+//! 업데이터 통합 테스트: 임시 폴더의 `UpdateManager`로 zip 해제·모듈·바이너리 교체를 본다.
 //! 릴레이 check → download → apply 전체 흐름은 `updater_relay_e2e.rs`.
-//!
-//! 모든 테스트는 `tempdir`을 사용해 파일시스템을 격리합니다.
 
 use std::path::Path;
 use tempfile::TempDir;
@@ -21,9 +10,7 @@ use saba_chan_updater_lib::{
 };
 use saba_chan_updater_lib::version::SemVer;
 
-// ═══════════════════════════════════════════════════════
-// 테스트 유틸리티
-// ═══════════════════════════════════════════════════════
+// ── 테스트 유틸리티 ──
 
 /// UpdateManager를 테스트 환경으로 생성 (staging, install_root, modules 모두 tempdir)
 fn create_test_manager(tmpdir: &TempDir) -> UpdateManager {
@@ -41,157 +28,17 @@ fn create_test_manager(tmpdir: &TempDir) -> UpdateManager {
     UpdateManager::new(config, &modules_dir.to_string_lossy())
 }
 
-// ═══════════════════════════════════════════════════════
-// 1. 버전 파싱/비교 테스트
-// ═══════════════════════════════════════════════════════
-
+/// 두 자리 버전은 patch 0으로 읽고, 숫자가 아닌 것과 한 자리는 버전으로 보지 않는다 (나머지 SemVer 규칙은 updater/src/version.rs)
 #[test]
-fn test_semver_parse_basic() {
-    let v = SemVer::parse("1.2.3").unwrap();
-    assert_eq!((v.major, v.minor, v.patch), (1, 2, 3));
-    assert!(v.prerelease.is_none());
-}
-
-#[test]
-fn test_semver_parse_v_prefix() {
-    let v = SemVer::parse("v0.1.0").unwrap();
-    assert_eq!((v.major, v.minor, v.patch), (0, 1, 0));
-}
-
-#[test]
-fn test_semver_parse_prerelease() {
-    let v = SemVer::parse("2.0.0-rc.1").unwrap();
-    assert!(v.is_prerelease());
-    assert_eq!(v.prerelease, Some("rc.1".to_string()));
-}
-
-#[test]
-fn test_semver_parse_two_part() {
+fn semver_reads_two_parts_and_rejects_the_rest() {
     let v = SemVer::parse("1.0").unwrap();
     assert_eq!((v.major, v.minor, v.patch), (1, 0, 0));
-}
-
-#[test]
-fn test_semver_invalid() {
-    assert!(SemVer::parse("").is_none());
-    assert!(SemVer::parse("abc").is_none());
-    assert!(SemVer::parse("1").is_none());
-}
-
-#[test]
-fn test_semver_comparison_patch() {
-    let v1 = SemVer::parse("1.0.0").unwrap();
-    let v2 = SemVer::parse("1.0.1").unwrap();
-    assert!(v2.is_newer_than(&v1));
-    assert!(!v1.is_newer_than(&v2));
-}
-
-#[test]
-fn test_semver_comparison_minor() {
-    let v1 = SemVer::parse("1.0.9").unwrap();
-    let v2 = SemVer::parse("1.1.0").unwrap();
-    assert!(v2.is_newer_than(&v1));
-}
-
-#[test]
-fn test_semver_comparison_major() {
-    let v1 = SemVer::parse("1.99.99").unwrap();
-    let v2 = SemVer::parse("2.0.0").unwrap();
-    assert!(v2.is_newer_than(&v1));
-}
-
-#[test]
-fn test_semver_prerelease_less_than_release() {
-    let pre = SemVer::parse("1.0.0-beta.1").unwrap();
-    let rel = SemVer::parse("1.0.0").unwrap();
-    assert!(rel.is_newer_than(&pre));
-    assert!(!pre.is_newer_than(&rel));
-}
-
-#[test]
-fn test_semver_equal() {
-    let v1 = SemVer::parse("1.0.0").unwrap();
-    let v2 = SemVer::parse("1.0.0").unwrap();
-    assert!(!v1.is_newer_than(&v2));
-    assert!(!v2.is_newer_than(&v1));
-    assert_eq!(v1, v2);
-}
-
-#[test]
-fn test_semver_display() {
-    assert_eq!(SemVer::parse("1.2.3").unwrap().to_string(), "1.2.3");
-    assert_eq!(SemVer::parse("0.1.0-alpha").unwrap().to_string(), "0.1.0-alpha");
-}
-
-// ═══════════════════════════════════════════════════════
-// 2. Component 타입 테스트
-// ═══════════════════════════════════════════════════════
-
-#[test]
-fn test_component_manifest_key_roundtrip() {
-    let cases = vec![
-        Component::CoreDaemon,
-        Component::Cli,
-        Component::Gui,
-        Component::Module("minecraft".into()),
-        Component::Module("palworld".into()),
-    ];
-
-    for comp in cases {
-        let key = comp.manifest_key();
-        let restored = Component::from_manifest_key(&key);
-        assert_eq!(comp, restored, "Roundtrip failed for {:?}", comp);
+    for bad in ["", "abc", "1"] {
+        assert!(SemVer::parse(bad).is_none(), "{bad:?}");
     }
 }
 
-#[test]
-fn test_component_display_name() {
-    assert_eq!(Component::CoreDaemon.display_name(), "Saba-Core");
-    assert_eq!(Component::Cli.display_name(), "CLI");
-    assert_eq!(Component::Gui.display_name(), "GUI");
-    assert_eq!(Component::Module("minecraft".into()).display_name(), "Module: minecraft");
-}
-
-// ═══════════════════════════════════════════════════════
-// 3. UpdateConfig 테스트
-// ═══════════════════════════════════════════════════════
-
-#[test]
-fn test_update_config_default() {
-    let cfg = UpdateConfig::default();
-    assert!(cfg.enabled);
-    assert_eq!(cfg.check_interval_hours, 3);
-    // 앱 업데이트는 묻지 않고 적용한다
-    assert!(cfg.auto_download && cfg.auto_apply);
-    assert!(cfg.install_root.is_none());
-    assert!(cfg.relay_url.is_none());
-}
-
-#[test]
-fn test_update_config_serialization() {
-    let cfg = UpdateConfig {
-        enabled: true,
-        check_interval_hours: 6,
-        auto_download: true,
-        channel: "beta".into(),
-        ..Default::default()
-    };
-
-    let json = serde_json::to_string(&cfg).unwrap();
-    let restored: UpdateConfig = serde_json::from_str(&json).unwrap();
-    assert_eq!(restored.check_interval_hours, 6);
-    assert!(restored.auto_download);
-    assert_eq!(restored.channel, "beta");
-}
-
-// ═══════════════════════════════════════════════════════
-// 5. ReleaseManifest 파싱 테스트
-// ═══════════════════════════════════════════════════════
-
-
-// ═══════════════════════════════════════════════════════
-// 6. UpdateManager 단위 테스트 (파일시스템)
-// ═══════════════════════════════════════════════════════
+// ── UpdateManager 단위 테스트 (파일시스템) ──
 
 #[test]
 fn test_manager_core_always_installed() {
@@ -236,7 +83,6 @@ fn test_manager_initial_status_empty() {
     assert!(status.error.is_none());
 }
 
-
 #[test]
 fn test_manager_config_roundtrip() {
     let tmp = TempDir::new().unwrap();
@@ -253,10 +99,7 @@ fn test_manager_config_roundtrip() {
     assert!(mgr.get_config().auto_download);
 }
 
-// ═══════════════════════════════════════════════════════
-// 11. 에지 케이스 테스트
-// ═══════════════════════════════════════════════════════
-
+// ── 에지 케이스 테스트 ──
 
 #[tokio::test]
 async fn test_download_without_check_fails() {
@@ -282,7 +125,6 @@ async fn test_apply_without_downloaded_returns_empty() {
     assert!(applied.is_empty() && failed.is_empty(), "Should apply nothing if nothing downloaded: {applied:?} {failed:?}");
 }
 
-
 #[test]
 fn test_single_file_copy_instead_of_zip() {
     let tmp = TempDir::new().unwrap();
@@ -303,9 +145,7 @@ fn test_single_file_copy_instead_of_zip() {
     assert_eq!(content, "Hello from single file");
 }
 
-// ═══════════════════════════════════════════════════════
-// 12. 백업 & 복구 테스트
-// ═══════════════════════════════════════════════════════
+// ── 백업 & 복구 테스트 ──
 
 #[test]
 fn test_module_backup_before_update() {
@@ -353,45 +193,4 @@ fn copy_dir_recursive(src: &Path, dst: &Path) {
             std::fs::copy(&src_path, &dst_path).unwrap();
         }
     }
-}
-
-// ═══════════════════════════════════════════════════════
-// 14. 다중 릴리스 필터링 테스트
-// ═══════════════════════════════════════════════════════
-
-
-// ═══════════════════════════════════════════════════════
-// 15. 대몬 재시작 스크립트 생성 테스트
-// ═══════════════════════════════════════════════════════
-
-#[test]
-fn test_daemon_update_script_content() {
-    // 재시작 스크립트의 내용 패턴 검증 (실제 파일 생성 없이)
-    let exe_path = "C:\\saba-chan\\saba-core.exe";
-    let staged_path = "C:\\saba-chan\\updates\\core.zip";
-
-    let script = format!(
-        r#"Start-Sleep -Seconds 2
-$exePath = "{}"
-$stagedPath = "{}"
-"#, exe_path, staged_path);
-
-    assert!(script.contains("Start-Sleep"));
-    assert!(script.contains(exe_path));
-    assert!(script.contains(staged_path));
-}
-
-// ═══════════════════════════════════════════════════════
-// 16. 시간 유틸 테스트
-// ═══════════════════════════════════════════════════════
-
-#[test]
-fn test_timestamp_format() {
-    // UpdateManager 내부의 chrono_now_iso가 올바른 ISO 8601 형식인지
-    // (내부 함수이므로 패턴 검증만)
-    let pattern = regex::Regex::new(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$").unwrap();
-
-    // 검증을 위해 수동 구성
-    let ts = format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z", 2026, 2, 13, 10, 30, 0);
-    assert!(pattern.is_match(&ts));
 }

@@ -22,7 +22,6 @@
     "allow-settings-local-load",
     "allow-settings-local-save",
     "allow-settings-get-path",
-    "allow-refresh-ipc-base",
     "allow-language-get",
     "allow-language-set",
     "allow-daemon-target-get",

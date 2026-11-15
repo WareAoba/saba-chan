@@ -1,4 +1,4 @@
-//! saba-runner — 게임 서버 하나를 띄우고 콘솔을 지킨다 (C8b)
+//! saba-runner — 게임 서버 하나를 띄우고 콘솔을 지킨다
 //!
 //! 사용법: `saba-runner --run-dir <dir> --log <file> [--cwd <dir>] [--console pipe|pty] [--tail <pattern>]... [--memory-limit <MiB>]
 //!   [--line-start <regex>] [--progress <regex>]... -- <program> [args...]`
@@ -304,7 +304,7 @@ fn pump(
         }
     });
     std::thread::spawn(move || {
-        // UTF-16LE 출력은 글자 안의 0A 바이트에서 자르지 않는다 (D-S13)
+        // UTF-16LE 출력은 글자 안의 0A 바이트에서 자르지 않는다
         let mut lines = Lines::default();
         let mut fold = Fold { patterns: progress, run: None };
         let emit = |line: &[u8], lines: &Lines, fold: &mut Fold| {
@@ -835,7 +835,7 @@ mod tests {
         }
     }
 
-    // EE6: 인증 전 첫 줄은 길이와 시간에 상한이 있다. 맞는 토큰 뒤의 줄만 서버 stdin으로 간다
+    // 인증 전 첫 줄은 길이와 시간에 상한이 있다. 맞는 토큰 뒤의 줄만 서버 stdin으로 간다
     #[test]
     fn stdin_connections_must_send_the_token_quickly_and_briefly() {
         use std::io::Write;

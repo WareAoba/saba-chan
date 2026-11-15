@@ -38,17 +38,17 @@ pub struct ModuleMetadata {
     /// [config] stop_signal — 일반 정지에 콘솔 명령 대신 보낼 신호 (`interrupt` = Ctrl+C)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stop_signal: Option<StopSignal>,
-    /// [config] announce_command — 게임 안 공지에 쓰는 `[commands.fields]` 이름 (`message` 입력 하나). 예약 재시작 예고·공지(A3)용
+    /// [config] announce_command — 게임 안 공지에 쓰는 `[commands.fields]` 이름 (`message` 입력 하나). 예약 재시작 예고·공지용
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub announce_command: Option<String>,
     /// [config] kick_command — 플레이어를 내보내는 `[commands.fields]` 이름 (첫 입력 닉네임, 둘째 입력이 있으면 이유).
     /// 조작 가능한 사람만 접속(`crate::controllers`)이 쓴다
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kick_command: Option<String>,
-    /// [backup] 월드·세이브 백업 선언 (A2). 없으면 이 모듈은 백업을 지원하지 않는다
+    /// [backup] 월드·세이브 백업 선언. 없으면 이 모듈은 백업을 지원하지 않는다
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub backup: Option<ModuleBackup>,
-    /// [permissions] 모듈 코드가 쓰는 능력 (M12). 코드 검사 결과와 대조한다
+    /// [permissions] 모듈 코드가 쓰는 능력. 코드 검사 결과와 대조한다
     #[serde(default)]
     pub permissions: ModulePermissions,
     #[serde(default)]
@@ -112,19 +112,19 @@ pub struct ModuleMetadata {
     /// [launch] line_start — 줄바꿈 없이 이어 쓴 출력을 나눌 줄 머리 (정규식). saba-runner `--line-start`
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub line_start: Option<String>,
-    /// [detection] graceful_exit_patterns — 정상 종료 때 콘솔에 찍히는 문구 (정규식). A1 크래시 판정용
+    /// [detection] graceful_exit_patterns — 정상 종료 때 콘솔에 찍히는 문구 (정규식). 크래시 판정용
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub graceful_exit_patterns: Vec<String>,
-    /// [detection] crash_artifacts — 크래시 때 생기는 파일 (작업 디렉터리 기준, 마지막 칸만 `*` `?`). A1용
+    /// [detection] crash_artifacts — 크래시 때 생기는 파일 (작업 디렉터리 기준, 마지막 칸만 `*` `?`). 크래시 판정용
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub crash_artifacts: Vec<String>,
-    /// [extensions.saba-core] ready_patterns — 서버가 접속을 받기 시작할 때 콘솔에 찍히는 문구 (정규식). R39 `instance.ready`용
+    /// [extensions.saba-core] ready_patterns — 서버가 접속을 받기 시작할 때 콘솔에 찍히는 문구 (정규식). `instance.ready`용
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub ready_patterns: Vec<String>,
     /// [extensions.saba-core] progress_patterns — 갱신마다 새 줄로 찍히는 진행 표시 (정규식). 러너가 단계마다 첫·마지막 줄로 접는다
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub progress_patterns: Vec<String>,
-    /// [extensions.saba-core] platforms — 이 모듈이 돌아가는 OS (`std::env::consts::OS` 이름: windows·linux·macos). 없으면 막지 않는다 (D3·M1)
+    /// [extensions.saba-core] platforms — 이 모듈이 돌아가는 OS (`std::env::consts::OS` 이름: windows·linux·macos). 없으면 막지 않는다
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub platforms: Option<Vec<String>>,
     /// [extensions.saba-core] architectures — 이 모듈이 돌아가는 CPU (`std::env::consts::ARCH` 이름: x86_64·aarch64). 없으면 막지 않는다
@@ -133,7 +133,7 @@ pub struct ModuleMetadata {
     /// [extensions.saba-core] ready_timeout — 준비 문구를 기다리는 시간(초). 없으면 600
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ready_timeout: Option<u64>,
-    /// [extensions.saba-core] player_join_patterns·player_leave_patterns — 접속·퇴장 때 콘솔에 찍히는 문구 (정규식, `(?P<name>…)` 필수). MK8 `instance.player`용
+    /// [extensions.saba-core] player_join_patterns·player_leave_patterns — 접속·퇴장 때 콘솔에 찍히는 문구 (정규식, `(?P<name>…)` 필수). `instance.player`용
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub player_join_patterns: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -146,10 +146,10 @@ pub struct ModuleMetadata {
     pub chat_send_function: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub data_roots: Vec<String>,
-    /// [[presets]] 서버를 만들 때 고르는 추천 설정 묶음 (I1-b)
+    /// [[presets]] 서버를 만들 때 고르는 추천 설정 묶음
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub presets: Vec<ModulePreset>,
-    /// [[queries]] 읽기 전용 조회 (X-2). 액션 `server.query:<name>`이 된다
+    /// [[queries]] 읽기 전용 조회. 액션 `server.query:<name>`이 된다
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub queries: Vec<ModuleQuery>,
     /// [[agreements]] 서버를 켜기 전에 사용자가 동의해야 하는 약관 (예: 게임 EULA)
@@ -158,7 +158,7 @@ pub struct ModuleMetadata {
     /// [[lists]] 플레이어 목록 (화이트리스트·관리자·밴 같은 이름 명단). `GET /api/instance/:id/lists`가 읽어 보인다
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub lists: Vec<ModuleList>,
-    /// [status] players — 켜진 서버의 접속자 수를 돌려주는 lifecycle 함수 (Q-5, `supervisor::players`)
+    /// [status] players — 켜진 서버의 접속자 수를 돌려주는 lifecycle 함수 (`supervisor::players`)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub players_function: Option<String>,
     /// [[diagnose]] 로그 진단 규칙. 데몬은 검사만 하고, 모듈 `diagnose_log()`가 공용 도우미
@@ -256,7 +256,7 @@ pub struct DiagnoseRule {
 /// `[[diagnose]] severity`로 받는 값
 pub const DIAGNOSE_SEVERITIES: &[&str] = &["critical", "error", "warning", "info"];
 
-/// `[permissions]` — 모듈 Python 코드가 쓰는 능력 (M12). 선언하지 않은 능력을 코드에서 찾으면
+/// `[permissions]` — 모듈 Python 코드가 쓰는 능력. 선언하지 않은 능력을 코드에서 찾으면
 /// `saba-core module audit`과 `GET /api/module/:name/audit`이 알린다. 새 권한은 여기와
 /// `PERMISSIONS`, `modules/saba_audit.py` 표에 한 줄씩 더한다
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
@@ -628,7 +628,7 @@ pub struct SettingField {
     pub runtime: Option<String>,
 }
 
-/// `visible_when = { field, equals }` 또는 `{ field, in = [...] }` (06 §8.2)
+/// `visible_when = { field, equals }` 또는 `{ field, in = [...] }`
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[schemars(deny_unknown_fields)]
 pub struct VisibleWhen {
@@ -667,7 +667,7 @@ impl OneOrMany {
 pub const SETTING_FORMATS: &[&str] = &["memory_size", "port", "integer", "path"];
 /// 설정 필드 `type`으로 받는 값 (GUI·CLI가 그리는 것)
 pub const SETTING_TYPES: &[&str] = &["text", "password", "number", "file", "select", "boolean"];
-/// 스키마 2에서 더한 설정 `type` (06 §8.1)
+/// 스키마 2에서 더한 설정 `type`
 pub const SETTING_TYPES_V2: &[&str] = &["list", "multiline"];
 /// `visible_when`이 가리킬 수 없는 설정 타입 (값을 하나로 비교할 수 없다)
 pub(crate) const NOT_A_CONDITION: &[&str] = &["list", "multiline", "password", "file"];
@@ -711,7 +711,7 @@ impl LoadedModule {
         Path::new(&self.path).join(&self.metadata.entry).to_string_lossy().to_string()
     }
 
-    /// 데몬이 이 모듈을 쓸 수 있는가: 진입 파일이 있고, `[module.dependencies] saba-core`를 만족한다 (M9)
+    /// 데몬이 이 모듈을 쓸 수 있는가: 진입 파일이 있고, `[module.dependencies] saba-core`를 만족한다
     pub(crate) fn check_loadable(&self) -> Result<()> {
         if !Path::new(&self.entry_path()).is_file() {
             anyhow::bail!("module.entry '{}' not found in {}", self.metadata.entry, self.path);
@@ -834,9 +834,9 @@ pub struct UnmetCoreDependency {
 // 내보내는 JSON Schema(saba-chan-modules/schema/module.schema.json)도 같이 바뀐다.
 // 모르는 키: 로드는 하고 경고만 남긴다 (JSON Schema는 모듈을 쓰는 쪽을 위해 모르는 키를 막는다).
 
-/// 이 데몬이 아는 가장 새 module.toml 스키마 버전. 1과 2를 받는다 (2는 1에 06 §8의 설정 타입·키를 더한 것)
+/// 이 데몬이 아는 가장 새 module.toml 스키마 버전. 1과 2를 받는다 (2는 1에 설정 타입·키를 더한 것)
 pub const MODULE_SCHEMA_VERSION: u32 = 2;
-/// 스키마 표시가 없는 모듈에게 권하는 버전. 0.1.8 데몬도 읽는 1이다 (06 §7)
+/// 스키마 표시가 없는 모듈에게 권하는 버전. 0.1.8 데몬도 읽는 1이다
 pub(crate) const BASE_SCHEMA_VERSION: u32 = 1;
 
 /// 이 데몬이 받는 module.toml 스키마 버전들 (모듈 메이커 안내 `GET /api/maker`)

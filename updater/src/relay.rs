@@ -995,7 +995,7 @@ mod tests {
         assert!(matches!(got, Ok(None)), "{:?}", got.map(|r| r.map(|v| v.manifest.version)));
     }
 
-    // U-11: 최신이라는 답에 다른 버전이 붙어 와도, 고른 채널이 받지 않는 채널의 그 버전 manifest는 받지 않는다
+    // 최신이라는 답에 다른 버전이 붙어 와도, 고른 채널이 받지 않는 채널의 그 버전 manifest는 받지 않는다
     #[tokio::test]
     async fn an_up_to_date_answer_does_not_bring_another_channels_newer_version() {
         let base = fake_relay(r#"{"upToDate":true,"latest":{"version":"0.1.1"}}"#.into(), PRODUCTION_0_1_1.into()).await;
@@ -1003,7 +1003,7 @@ mod tests {
         assert!(matches!(got, Err(RelayError::WrongChannel { .. })), "{:?}", got.map(|r| r.map(|v| v.manifest.version)));
     }
 
-    // EE3: 아무것도 깔리지 않은 확인(카탈로그·설치기)도 이 빌드보다 옛 릴리즈는 받지 않는다
+    // 아무것도 깔리지 않은 확인(카탈로그·설치기)도 이 빌드보다 옛 릴리즈는 받지 않는다
     #[tokio::test]
     async fn a_catalog_check_refuses_a_release_older_than_this_build() {
         let check = r#"{"upToDate":false,"latest":{"version":"0.1.1"}}"#.to_string();
@@ -1115,7 +1115,7 @@ mod tests {
         assert_eq!(picked(vec![release("0.1.14-beta.2", "beta", 100)]), None);
     }
 
-    /// 베타 채널은 같은 번호의 RC와 정식까지 이어 받는다: beta.N → rc.N → 정식 → 다음 번호의 베타 (사용자 규칙 2026-11-14)
+    /// 베타 채널은 같은 번호의 RC와 정식까지 이어 받는다: beta.N → rc.N → 정식 → 다음 번호의 베타
     #[test]
     fn a_beta_client_follows_betas_rcs_and_the_release_of_the_same_number() {
         let picked = |current: &str, list: Vec<LatestRelease>| select_release("beta", current, "c", list).map(|r| r.version);
@@ -1420,7 +1420,7 @@ mod tests {
         assert!(list.find("0.1.11").is_none(), "a yanked version cannot be picked");
     }
 
-    // L16: 키·파일 이름·install_dir가 폴더 밖을 가리키면 서명이 맞아도 manifest를 받지 않는다
+    // 키·파일 이름·install_dir가 폴더 밖을 가리키면 서명이 맞아도 manifest를 받지 않는다
     #[test]
     fn manifest_paths_must_stay_inside_their_folders() {
         let with = |key: &str, field: &str, value: &str| {

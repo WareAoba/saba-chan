@@ -16,7 +16,6 @@ const COMMANDS: &[&str] = &[
     "settings_local_load",
     "settings_local_save",
     "settings_get_path",
-    "refresh_ipc_base",
     "language_get",
     "language_set",
     "daemon_target_get",

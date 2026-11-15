@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApi } from '../api/createApi';
 import { setupServerStore } from './serverStore';
 
-// 첫 시작은 데몬이 준비하느라 몇 분이 걸릴 수 있다 (L35: 105초): 그동안 실패로 보이면 안 된다
+// 첫 시작은 데몬이 준비하느라 몇 분이 걸릴 수 있다 (105초): 그동안 실패로 보이면 안 된다
 describe('오래 걸리는 서버 시작', () => {
     it('instanceStart는 CLI처럼 30분까지 기다린다', async () => {
         const invoke = vi.fn().mockResolvedValue({ status: 200, data: { success: true } });

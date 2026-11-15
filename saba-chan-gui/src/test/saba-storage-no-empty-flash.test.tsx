@@ -1,5 +1,5 @@
 /**
- * 사바 스토리지 (사용자 10-26):
+ * 사바 스토리지:
  * - 탭을 옮길 때 목록을 받기 전에 "없음" 그림을 잠깐 띄우지 않는다.
  * - 열 때마다 순서가 바뀌지 않는다 (컴포넌트는 정한 순서, 모듈·익스텐션은 이름순).
  */
@@ -42,7 +42,7 @@ afterEach(() => {
 
 // 설치됨 묶음의 "없음" 줄 (받을 수 있는 목록의 받는 중 줄은 세지 않는다)
 const empty = () =>
-    document.querySelector('.saba-art, .saba-empty') ??
+    document.querySelector('.saba-art') ??
     document.querySelector('[data-spot$=".installed"] .ss-empty');
 
 describe('받기 전에는 없음 그림을 띄우지 않는다', () => {

@@ -14,9 +14,7 @@ import { TrustBadge } from '../ui/TrustBadge';
 import { type AddonCard, useAddonVersions } from './AddonVersions';
 import { QuestionModal } from './Modals';
 
-// ─────────────────────────────────────────────────────────────
 // 익스텐션 탭
-// ─────────────────────────────────────────────────────────────
 type Described = Parameters<typeof localizedDescription>[0];
 
 export function ExtensionsTab() {
@@ -48,7 +46,7 @@ export function ExtensionsTab() {
         if (firstLanguage.current === i18n.language) return;
         firstLanguage.current = i18n.language;
         refreshExtensions?.();
-    }, [i18n.language]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [i18n.language]);
 
     // 익스텐션 디렉토리 재스캔 + 목록 갱신
     const handleRescan = useCallback(async () => {

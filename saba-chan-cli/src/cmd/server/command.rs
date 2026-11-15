@@ -25,7 +25,6 @@ pub async fn run_command(ctx: &Ctx, a: RunArgs) -> Result<()> {
     exec(ctx, &sv, &cat, &name, &a.args).await
 }
 
-/// 명령 하나 실행 (콘솔 입력에서도 쓴다)
 /// 콘솔에 친 한 줄. 정의된 명령이면 인자를 나눠 묶고, 아니면 친 그대로 보낸다
 /// (따옴표·JSON이 든 게임 명령을 다시 이어 붙이면 모양이 바뀐다)
 pub async fn exec_line(ctx: &Ctx, sv: &Server, cat: &Catalog, text: &str) -> Result<()> {
@@ -40,6 +39,7 @@ pub async fn exec_line(ctx: &Ctx, sv: &Server, cat: &Catalog, text: &str) -> Res
     exec(ctx, sv, cat, &name, &rest).await
 }
 
+/// 명령 하나 실행 (콘솔 입력에서도 쓴다)
 pub async fn exec(ctx: &Ctx, sv: &Server, cat: &Catalog, name: &str, words: &[String]) -> Result<()> {
     let Some(def) = cat.find(name) else {
         if !cat.accepts_raw() {
@@ -159,7 +159,7 @@ pub(super) fn ask_input(ask: &crate::prompt::Prompt, def: &Command, input: &Inpu
     }
 }
 
-/// `add --set` 저장 응답이 `synced: false`면 끝에 알릴 문구. 설정은 저장했으므로 "저장하지 못했다"가 아니다 (L63)
+/// `add --set` 저장 응답이 `synced: false`면 끝에 알릴 문구. 설정은 저장했으므로 "저장하지 못했다"가 아니다
 pub(super) fn add_settings_failure(name: &str, r: &Value) -> Option<String> {
     (r.get("synced").and_then(Value::as_bool) == Some(false))
         .then(|| t!("add.created_settings_unsynced", name = name, error = s(r, "sync_error")))

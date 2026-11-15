@@ -1,4 +1,4 @@
-//! 백업·복원 본체 (A2): 저장 뒤 백업, 게임 스냅샷 보관, 내보내기·가져오기, 복원.
+//! 백업·복원 본체: 저장 뒤 백업, 게임 스냅샷 보관, 내보내기·가져오기, 복원.
 //! HTTP 핸들러(`ipc/handlers/backup.rs`)·예약·서버 업데이트·액션이 같이 쓴다
 
 use super::{Failure, Outcome};
@@ -10,7 +10,7 @@ use crate::ipc::{CommandRequest, IPCServer};
 use crate::backup::{self, BackupInfo, BackupKind};
 
 pub(crate) const DEFAULT_KEEP: usize = 10;
-/// 원격(디스코드·챗봇)이 만드는 백업의 종류별 상한. 원격 백업은 정리하지 않으므로(D-B11) 끝없이 쌓이지 않게 막는다 (D-B7)
+/// 원격(디스코드·챗봇)이 만드는 백업의 종류별 상한. 원격 백업은 정리하지 않으므로 끝없이 쌓이지 않게 막는다
 const REMOTE_BACKUP_CAP: usize = 50;
 
 pub(crate) use crate::instance::lock::{InstanceLock, Purpose};
@@ -170,7 +170,7 @@ struct Plan {
     paths: Vec<PathBuf>,
     /// 패턴이 가리키는 경로 전부 (지금 없는 것 포함). 복원이 되살려도 되는 범위
     targets: Vec<PathBuf>,
-    /// 훅이 더 돌려준 복원 허용 범위 (`restore_roots`). 백업 대상은 아니다 (MA3)
+    /// 훅이 더 돌려준 복원 허용 범위 (`restore_roots`). 백업 대상은 아니다
     restore_roots: Vec<PathBuf>,
     /// 켜진 서버에서의 저장·자동 저장 멈춤 명령과 뺄 파일 (`[backup]`, 선언이 없으면 빈 값)
     spec: crate::module_loader::ModuleBackup,
@@ -346,14 +346,14 @@ async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, prote
     // 정지·재시작은 작업 잠금을 기다리지 않는다: 묶는 사이 꺼지거나 다시 켜졌는지 프로세스를 추적하기 시작한 시각으로 가린다.
     // 실행 세대는 정지를 요청하는 순간 오르므로(정지가 실패해도) 쓰지 않는다. PID는 런처가 끝나고 진짜 서버로 넘어갈 때
     // 같은 실행에서도 바뀐다(`replace_pid`, 시작 시각은 그대로)
-    let started = state.supervisor.read().await.tracker.get_start_time(id).ok();
+    let started = state.supervisor.read().await.tracker.get_start_time(id);
     let saved = if live {
         save_for_backup(state, id, &plan.spec, &failures).await
     } else {
         Ok(())
     };
     let Plan { dir, paths, keep, boundary, module_name, spec, .. } = plan;
-    // 원격(디스코드·챗봇)은 백업을 지우지 못한다: 원격 복원을 거듭해 앞서 남긴 안전 백업을 밀어내지 않게, 정리는 이 PC의 다음 백업에 맡긴다 (D-B11)
+    // 원격(디스코드·챗봇)은 백업을 지우지 못한다: 원격 복원을 거듭해 앞서 남긴 안전 백업을 밀어내지 않게, 정리는 이 PC의 다음 백업에 맡긴다
     let result = if let Err(e) = saved {
         tracing::warn!("Not backing up '{}': {}", id, e);
         Err(e.into())
@@ -372,7 +372,7 @@ async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, prote
         .and_then(|r| r)
     };
     // 묶는 사이 서버가 꺼졌으면 종료 저장이 쓰는 중인 파일을 읽었을 수 있다: 백업을 남기지 않고, 오래된 백업도 정리하지 않는다
-    let stopped = live && (!is_running(state, id).await || state.supervisor.read().await.tracker.get_start_time(id).ok() != started);
+    let stopped = live && (!is_running(state, id).await || state.supervisor.read().await.tracker.get_start_time(id) != started);
     let mut result = match result {
         Ok(made) if stopped => {
             tracing::warn!("'{}' stopped while it was being backed up; discarding {}", id, made.name);
@@ -909,7 +909,7 @@ pub(crate) async fn restore_held(state: &IPCServer, id: &str, name: &str, _guard
     match tokio::task::spawn_blocking(move || backup::restore(&dir, &name)).await {
         // 되살리지 못한 링크는 수만 알린다 (경로는 데몬 로그에 남는다)
         Ok(Ok(done)) => {
-            // 되돌린 게임 설정 파일(포트 등)을 다시 읽어 인스턴스 값과 맞춘다. 실패해도 복원은 끝난 것이다 (MK17)
+            // 되돌린 게임 설정 파일(포트 등)을 다시 읽어 인스턴스 값과 맞춘다. 실패해도 복원은 끝난 것이다
             let refreshed = match super::settings::refresh_from_files(state, id).await {
                 Ok(r) => r.get("success").and_then(Value::as_bool) == Some(true),
                 Err(e) => {
@@ -994,7 +994,7 @@ pub(crate) mod tests {
     }
 
     /// 모듈 호출이 끝나기를 기다리는 한도. 여기서 재는 것은 "끝나면 풀린다"이지 빠르기가 아니다: Windows 전체 실행에서는
-    /// 첫 격리 호출(venv 만들기)과 병렬 시험 부하로 Python이 10초 넘게 걸리기도 한다 (L24)
+    /// 첫 격리 호출(venv 만들기)과 병렬 시험 부하로 Python이 10초 넘게 걸리기도 한다
     pub(crate) const WORK_DEADLINE: std::time::Duration = std::time::Duration::from_secs(180);
 
     /// 잠금이 풀릴 때까지 (WORK_DEADLINE까지) 기다린다. 풀려서 잡았으면 true
@@ -1515,7 +1515,7 @@ else:
         assert_eq!(backup::list(&dir).iter().map(|b| b.kind).collect::<Vec<_>>(), [BackupKind::Manual], "the world was backed up before it was deleted");
     }
 
-    /// 복원은 지금 서버 폴더·인스턴스 폴더 밖에 쓰지 않고, 복원 전 안전 백업은 백업이 덮을 경로까지 담는다 (D-B1)
+    /// 복원은 지금 서버 폴더·인스턴스 폴더 밖에 쓰지 않고, 복원 전 안전 백업은 백업이 덮을 경로까지 담는다
     #[tokio::test]
     async fn a_restore_keeps_what_it_overwrites_and_stays_inside_the_server_folders() {
         let toml = format!("{NO_BACKUP}\n[backup]\npaths = [\"{{level_name}}\"]\n");
@@ -1561,7 +1561,7 @@ else:
     }
 
     /// 게임이 스스로 만든 자동 백업(스냅샷)을 `[backup] snapshots`의 `backup_snapshots()`가 알려 준다.
-    /// 백업 목록에 함께 보이고, 사바쨩 백업으로 보관할 수 있고, 바로 복원할 수 있다 (사용자 2026-10-24)
+    /// 백업 목록에 함께 보이고, 사바쨩 백업으로 보관할 수 있고, 바로 복원할 수 있다
     const SNAPSHOT_HOOK: &str = r#"import json, os, sys
 c = json.load(sys.stdin)
 w = os.path.join(c['working_dir'], 'world')
@@ -1617,7 +1617,7 @@ print(json.dumps({'success': True, 'snapshots': [{'id': 'S1', 'created': 1792800
         assert!(matches!(create_from(&state, &id, Source::Snapshot(Some("nope".into()))).await, Err(_)));
     }
 
-    /// 게임 자동 백업도 사바쨩에서 지운다: 스냅샷 폴더(`folder`)만 지우고 월드는 그대로 둔다 (사용자 2026-11-13)
+    /// 게임 자동 백업도 사바쨩에서 지운다: 스냅샷 폴더(`folder`)만 지우고 월드는 그대로 둔다
     #[tokio::test]
     async fn a_game_snapshot_folder_is_deleted_and_the_world_stays() {
         let toml = format!("{NO_BACKUP}\n[backup]\npaths = [\"world\"]\nsnapshots = true\n");
@@ -1729,7 +1729,7 @@ print(json.dumps({'success': True, 'snapshots': [{'id': 'startup/backup_1', 'cre
         assert_eq!(code(err).await, "module_path_outside");
     }
 
-    /// 훅이 `restore_roots`로 넓힌 폴더 안의 옛 백업은 복원된다. 그 폴더는 새 백업 대상이 되지 않는다 (MA3)
+    /// 훅이 `restore_roots`로 넓힌 폴더 안의 옛 백업은 복원된다. 그 폴더는 새 백업 대상이 되지 않는다
     #[tokio::test]
     async fn restore_roots_let_an_older_backup_of_the_whole_data_folder_come_back() {
         let toml = format!("{NO_BACKUP}\n[backup]\npaths = []\nhook = true\n\n[[settings.fields]]\nname = 'data_home'\ntype = 'file'\n\n[extensions.saba-core]\ndata_roots = ['{{data_home}}']\n");
@@ -1791,7 +1791,7 @@ print(json.dumps({'success': True, 'snapshots': [{'id': 'startup/backup_1', 'cre
         assert_eq!(p.targets, vec![tmp.path().join("server/world2")]);
     }
 
-    /// 복원은 게임 설정 파일도 되돌린다: 복원 뒤 모듈 `import_settings`로 다시 읽어 인스턴스 값(포트 등)을 파일과 맞춘다 (MK17)
+    /// 복원은 게임 설정 파일도 되돌린다: 복원 뒤 모듈 `import_settings`로 다시 읽어 인스턴스 값(포트 등)을 파일과 맞춘다
     #[tokio::test]
     async fn a_restore_reads_the_restored_game_settings_back() {
         let toml = format!("{NO_BACKUP}\n[backup]\npaths = [\"server.properties\"]\n");
@@ -1905,14 +1905,14 @@ print(json.dumps({'success': True, 'snapshots': [{'id': 'startup/backup_1', 'cre
         assert_eq!(reset().await, "instance_busy");
         drop(guard);
 
-        state.supervisor.read().await.tracker.track(&id, std::process::id()).unwrap();
+        state.supervisor.read().await.tracker.track(&id, std::process::id());
         assert_eq!(install().await, "server_running");
         assert_eq!(reset().await, "server_running");
         assert!(InstanceLock::take(&id).is_some(), "refused calls must not keep the lock");
     }
 
     /// 원격(디스코드·챗봇)은 백업을 지우지 못한다: 복원을 거듭해도 앞서 남긴 복원 전 안전 백업이 보관 수만큼 밀려 지워지지 않는다.
-    /// 이 PC에서 한 작업은 그대로 보관 수만큼 정리한다 (D-B11)
+    /// 이 PC에서 한 작업은 그대로 보관 수만큼 정리한다
     #[tokio::test]
     async fn remote_restores_do_not_push_out_earlier_safety_backups() {
         let toml = format!("{NO_BACKUP}\n[backup]\npaths = [\"world\"]\n");
@@ -1945,7 +1945,7 @@ print(json.dumps({'success': True, 'snapshots': [{'id': 'startup/backup_1', 'cre
     }
 
     /// 원격은 백업을 지우지 못하므로 원격이 쌓는 백업에는 종류마다 상한이 있다: 넘으면 409 `backup_limit`로 거절하고
-    /// 이 PC에서는 그대로 만든다 (D-B7)
+    /// 이 PC에서는 그대로 만든다
     #[tokio::test]
     async fn remote_backups_stop_at_a_cap_because_remote_cannot_delete_them() {
         let toml = format!("{NO_BACKUP}\n[backup]\npaths = [\"world\"]\n");
@@ -2051,7 +2051,7 @@ print(json.dumps({'success': True, 'snapshots': [{'id': 'startup/backup_1', 'cre
             let mut inst = sup.instance_store.get(&id).cloned().unwrap();
             inst.module_settings.insert("managed_start".into(), json!(false));
             sup.instance_store.update(&id, inst.clone()).unwrap();
-            sup.tracker.track(&id, std::process::id()).unwrap();
+            sup.tracker.track(&id, std::process::id());
             sup.ensure_rcon_access(&inst).unwrap();
             crate::protocol::rcon::load(&sup.instance_store.instance_dir(&id)).unwrap()
         };
@@ -2169,12 +2169,12 @@ print(json.dumps({'success': True, 'snapshots': [{'id': 'startup/backup_1', 'cre
     async fn a_live_backup_is_kept_when_only_the_launcher_pid_is_replaced() {
         let (state, id, tmp) = server_with(&live_module(None), None).await;
         run_fake_server(&state, &id, &tmp, "save-all) sleep 1; echo 'ok save-all';;").await;
-        state.supervisor.read().await.tracker.track(&id, 4_000_100).unwrap();
+        state.supervisor.read().await.tracker.track(&id, 4_000_100);
         let swap = {
             let (state, id) = (state.clone(), id.clone());
             tokio::spawn(async move {
                 tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-                state.supervisor.read().await.tracker.replace_pid(&id, 4_000_101).unwrap();
+                state.supervisor.read().await.tracker.replace_pid(&id, 4_000_101);
             })
         };
         let made = take_backup(&state, &id, BackupKind::Manual).await;

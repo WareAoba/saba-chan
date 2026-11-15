@@ -17,7 +17,7 @@ const GAP = 2.5;
 
 /**
  * 서버로 나누지 않는 몫(전체·나머지 프로세스)은 원 종류마다 채도를 크게 낮춘 바탕색으로 칠하고,
- * 서버 몫만 계열색으로 덧칠한다 (사용자 11-07). 바탕색은 MonitorRing.css의 `--ring-base`다.
+ * 서버 몫만 계열색으로 덧칠한다. 바탕색은 MonitorRing.css의 `--ring-base`다.
  */
 const BASE_KEYS = new Set(['__all', '__others']);
 
@@ -161,7 +161,7 @@ export function MonitorPicker({ groups, items, onChange, t }: MonitorPickerProps
     );
 }
 
-/** 요약 줄의 작은 원 (사용자 11-07): 큰 원과 같은 270° 호와 색 조각, 글자·말풍선 없이 */
+/** 요약 줄의 작은 원: 큰 원과 같은 270° 호와 색 조각, 글자·말풍선 없이 */
 export function MiniRing({ ring, size = 20 }: { ring: Ring; size?: number }) {
     const total = ring.total > 0 ? ring.total : 1;
     const segs = ring.segments.filter((s) => s.value > 0 && s.color !== IDLE_COLOR);

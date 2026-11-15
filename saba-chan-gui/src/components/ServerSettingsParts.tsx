@@ -183,7 +183,7 @@ export function SettingsField({ field, value, modNs, onChange, validationError, 
             />
         );
     } else if (fieldType === 'boolean') {
-        // 스위치 옆에 화면 언어의 켜짐·꺼짐 (사용자 11-06 #5)
+        // 스위치 옆에 화면 언어의 켜짐·꺼짐
         const on = value === true || value === 'true';
         control = (
             <span className="ss-inline">
@@ -239,7 +239,7 @@ export function SettingsField({ field, value, modNs, onChange, validationError, 
                 <>
                     {fieldLabel}
                     {field.required ? ' *' : ''}
-                    {/* 서버 설정은 다시 시작해야 적용되는 게 보통이라, 바꾼 칸에만 표시한다 (사용자 11-07) */}
+                    {/* 서버 설정은 다시 시작해야 적용되는 게 보통이라, 바꾼 칸에만 표시한다 */}
                     {changed && field.restart_required && <span className="ss-chip">{t('server_settings.restart_badge')}</span>}
                 </>
             }

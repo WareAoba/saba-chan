@@ -18,7 +18,7 @@ describe('AI 에이전트 연결', () => {
     it('연결된 에이전트를 보이고, 끊으면 연결 없음으로 바뀐다', async () => {
         await act(async () => render(<AgentLink />));
         expect(screen.getByText(/Claude/)).toBeInTheDocument();
-        // 끊기 버튼은 줄을 눌러야 나온다 (사용자 요청 2026-11-08)
+        // 끊기 버튼은 줄을 눌러야 나온다
         expect(screen.queryByText(i18n.t('gui:discord.agent_revoke'))).not.toBeInTheDocument();
         await act(async () => fireEvent.click(screen.getByRole('button', { name: /Claude/ })));
         await act(async () => fireEvent.click(screen.getByText(i18n.t('gui:discord.agent_revoke'))));
@@ -36,7 +36,7 @@ describe('AI 에이전트 연결', () => {
         expect(screen.getByText(i18n.t('gui:discord.agent_revoke')).closest('button')).toBeEnabled();
     });
 
-    // 사용자 요청(2026-11-08): 여러 에이전트를 목록으로 보이고 하나씩 끊는다
+    // 여러 에이전트를 목록으로 보이고 하나씩 끊는다
     it('여러 에이전트를 목록으로 보이고, 고른 에이전트만 그 id로 끊는다', async () => {
         window.api.relayMcpGrant = vi.fn().mockResolvedValue({
             grants: [
@@ -48,7 +48,7 @@ describe('AI 에이전트 연결', () => {
         await act(async () => render(<AgentLink />));
         expect(screen.getByText('Claude')).toBeInTheDocument();
         expect(screen.getByText('ChatGPT')).toBeInTheDocument();
-        // PC 카드처럼 에이전트마다 카드 하나 (사용자 요청 2026-11-08)
+        // PC 카드처럼 에이전트마다 카드 하나
         expect(screen.getByRole('list', { name: i18n.t('gui:discord.agent_title') }).children).toHaveLength(2);
         expect(screen.getAllByText(i18n.t('gui:discord.agent_created'))).toHaveLength(2);
         await act(async () => fireEvent.click(screen.getByRole('button', { name: /ChatGPT/ })));

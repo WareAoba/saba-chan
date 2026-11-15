@@ -1,5 +1,5 @@
 /**
- * 배경 팝오버에서 데몬 재시작이 실패하면 콘솔에만 남기지 않고 알린다 (G-U7, DaemonDown과 같은 문구).
+ * 배경 팝오버에서 데몬 재시작이 실패하면 콘솔에만 남기지 않고 알린다 (DaemonDown과 같은 문구).
  */
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import i18n from 'i18next';

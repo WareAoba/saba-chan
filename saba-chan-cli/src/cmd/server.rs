@@ -336,7 +336,7 @@ pub async fn start(ctx: &Ctx, a: StartArgs) -> Result<()> {
 }
 
 /// 시작 요청의 결과를 마무리한다: 점검 실패·약관 안내, 켜질 때까지 기다리고 바로 꺼지지 않는지 본다.
-/// 데몬이 켜기 전에 점검한다 (약관 미동의 등). 막히면 409 `preflight_failed`와 문제 목록·해결법. `start`와 `restart`가 같이 쓴다 (L56)
+/// 데몬이 켜기 전에 점검한다 (약관 미동의 등). 막히면 409 `preflight_failed`와 문제 목록·해결법. `start`와 `restart`가 같이 쓴다
 async fn finish_start(ctx: &Ctx, sv: &Server, res: Result<Value>, no_wait: bool, done: String) -> Result<()> {
     let r = match res {
         Err(e) if api_code(&e) == Some("preflight_failed") => {
@@ -638,7 +638,7 @@ mod tests {
         assert_eq!(field_lines(fields.as_array().unwrap()), vec!["서버 FPS  59", "uptime    7234"]);
     }
 
-    /// 설치 진행 항목이 끝(done)을 보이기 전에 사라지면(데몬 재시작, 다른 곳에서 이름 바꾸기·삭제) 성공이 아니다 (L52)
+    /// 설치 진행 항목이 끝(done)을 보이기 전에 사라지면(데몬 재시작, 다른 곳에서 이름 바꾸기·삭제) 성공이 아니다
     #[test]
     fn a_vanished_install_is_not_reported_as_finished() {
         assert!(provision_lost(&json!({ "active": false })));
@@ -700,7 +700,7 @@ mod tests {
         assert!(removed_message("mv", &json!({ "success": true, "settings_restore_failed": 1 })).1.is_some());
     }
 
-    /// 끝난 설치 카드를 GUI가 다음 폴링 전에 닫으면 항목은 사라져도 서버는 설치 중이 아닌 채로 남는다 (L65)
+    /// 끝난 설치 카드를 GUI가 다음 폴링 전에 닫으면 항목은 사라져도 서버는 설치 중이 아닌 채로 남는다
     #[test]
     fn an_install_closed_elsewhere_after_it_finished_counts_as_finished() {
         let list = json!({ "servers": [
@@ -730,7 +730,7 @@ mod tests {
         }
     }
 
-    /// 게임 명령의 비밀번호 칸은 화면에 보이지 않게 묻는다 (L54)
+    /// 게임 명령의 비밀번호 칸은 화면에 보이지 않게 묻는다
     #[test]
     fn a_password_input_is_asked_without_echo() {
         let cat = Catalog::from_module(
@@ -750,7 +750,7 @@ mod tests {
         assert_eq!(ask_input(&ask, def, &def.inputs[1]).unwrap(), json!("shown"));
     }
 
-    /// 게임 설정 파일에 쓰지 못한 저장(`synced: false`)은 실패로 알린다 (L57)
+    /// 게임 설정 파일에 쓰지 못한 저장(`synced: false`)은 실패로 알린다
     #[test]
     fn an_unsynced_save_is_a_failure() {
         let why = sync_failure(&json!({ "success": true, "synced": false, "sync_error": "locked" })).unwrap();
@@ -759,7 +759,7 @@ mod tests {
         assert!(sync_failure(&json!({ "success": true })).is_none());
     }
 
-    /// 데몬이 비우지 않는 칸에 빈 값을 주면 성공으로 알리지 않고 거절한다 (L33)
+    /// 데몬이 비우지 않는 칸에 빈 값을 주면 성공으로 알리지 않고 거절한다
     #[test]
     fn an_empty_value_is_refused_where_the_daemon_keeps_the_old_one() {
         let inst = json!({ "module_settings": {} });
@@ -769,7 +769,7 @@ mod tests {
         assert_eq!(typed_setting(&[], &inst, "working_dir", "C:/srv").unwrap().1, json!("C:/srv"));
     }
 
-    /// `server settings`가 선택형 설정의 선택지를 함께 보인다 (C4)
+    /// `server settings`가 선택형 설정의 선택지를 함께 보인다
     #[test]
     fn choices_are_shown_for_a_select_setting() {
         let select = json!({ "name": "difficulty", "field_type": "select", "options": ["easy", "normal", "hard"] });
@@ -778,7 +778,7 @@ mod tests {
         assert_eq!(options_line(&json!({ "name": "x", "options": [] })), None);
     }
 
-    /// `add --set`이 저장은 했지만 게임 설정 파일에 못 썼으면 "저장하지 못했다"고 하지 않는다 (L63)
+    /// `add --set`이 저장은 했지만 게임 설정 파일에 못 썼으면 "저장하지 못했다"고 하지 않는다
     #[test]
     fn an_add_whose_settings_were_saved_but_not_synced_says_so() {
         let msg = add_settings_failure("srv", &json!({ "success": true, "synced": false, "sync_error": "locked" })).unwrap();
@@ -788,7 +788,7 @@ mod tests {
         assert!(add_settings_failure("srv", &json!({ "success": true, "synced": true })).is_none());
     }
 
-    /// 선택형 설정은 대소문자를 가리지 않고 받되, 데몬에는 모듈이 정한 선택지 그대로 보낸다 (L58)
+    /// 선택형 설정은 대소문자를 가리지 않고 받되, 데몬에는 모듈이 정한 선택지 그대로 보낸다
     #[test]
     fn a_select_setting_is_sent_as_the_option_it_matched() {
         let fields = [json!({ "name": "difficulty", "field_type": "select", "options": ["easy", "Normal", "hard"] })];
@@ -798,7 +798,7 @@ mod tests {
         assert!(typed_setting(&fields, &inst, "difficulty", "peaceful").is_err());
     }
 
-    /// 초기화 확인에 무엇이 지워지는지(모듈 `reset.description`)를 붙인다 (C5)
+    /// 초기화 확인에 무엇이 지워지는지(모듈 `reset.description`)를 붙인다
     #[test]
     fn the_reset_question_says_what_the_module_wipes() {
         let locales = json!({ "reset": { "description": "월드 세이브만 지워요." } });
@@ -876,7 +876,7 @@ mod tests {
         assert!(restart_required(&json!({})).is_empty());
     }
 
-    /// 새 서버(아직 값이 없음)에서도 데몬이 읽는 설정(auto_restart 등)과 공통 칸을 받는다 (C1)
+    /// 새 서버(아직 값이 없음)에서도 데몬이 읽는 설정(auto_restart 등)과 공통 칸을 받는다
     #[test]
     fn daemon_settings_are_accepted_on_a_new_server() {
         let fields = vec![json!({ "name": "max_players", "field_type": "number" })];
@@ -1068,7 +1068,7 @@ mod tests {
         assert_eq!(warnings, vec![t!("add.port_in_use", port = 25565, servers = "lobby"), t!("add.port_reserved", port = 50000)]);
         let clear = json!({ "name": { "taken": false }, "folder": { "custom": false }, "ports": [] });
         assert_eq!(check_problems(&clear, None), (vec![], vec![]));
-        // 쉼표가 든 이름 (디스코드에서 부르는 말을 쉼표로 나눈다, 사용자 11-06 #2)
+        // 쉼표가 든 이름 (디스코드에서 부르는 말을 쉼표로 나눈다)
         let comma = json!({ "name": { "value": "a,b", "taken": false, "invalid": "comma" }, "folder": { "custom": false }, "ports": [] });
         assert_eq!(check_problems(&comma, None).0, vec![t!("add.name_comma")]);
         assert!(has_comma("우리，마크") && has_comma("a、b") && !has_comma("우리 마크"));
@@ -1119,7 +1119,7 @@ mod tests {
         assert!(module_agreements(&json!({}), None).is_empty());
     }
 
-    /// 만들 때·`server agree`가 묻는 약관은 아직 동의하지 않은 것만 (C2)
+    /// 만들 때·`server agree`가 묻는 약관은 아직 동의하지 않은 것만
     #[test]
     fn only_unaccepted_agreements_are_asked() {
         let inst = json!({ "agreements": [
@@ -1132,7 +1132,7 @@ mod tests {
     }
 
     /// 약관은 `--accept`로 이름을 댄 것만 바로 동의하고, 나머지는 사람에게 물을 수 있을 때만 묻는다.
-    /// `--yes`나 `--json`은 동의가 아니다 (리뷰 315)
+    /// `--yes`나 `--json`은 동의가 아니다
     #[test]
     fn agreements_are_accepted_only_by_name_or_asked() {
         let pending = vec![json!({ "id": "eula", "label": "EULA" }), json!({ "id": "tos", "label": "ToS" })];

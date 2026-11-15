@@ -780,7 +780,7 @@ mod tests {
         let inst = crate::instance::ServerInstance::new("srv", "plain");
         let id = inst.id.clone();
         sup.instance_store.add(inst.clone()).unwrap();
-        sup.tracker.track(&id, std::process::id()).unwrap();
+        sup.tracker.track(&id, std::process::id());
         sup.ensure_rcon_access(&inst).unwrap();
         let access = crate::protocol::rcon::load(&sup.instance_store.instance_dir(&id)).unwrap();
         let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
@@ -857,7 +857,7 @@ mod tests {
             }
             let id = inst.id.clone();
             sup.instance_store.add(inst.clone()).unwrap();
-            sup.tracker.track(&id, std::process::id()).unwrap();
+            sup.tracker.track(&id, std::process::id());
             // 시작이 하는 준비: 접속 정보를 만들고 모듈 config에 싣는다
             sup.ensure_rcon_access(&inst).unwrap();
             let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
@@ -892,7 +892,7 @@ mod tests {
         assert!(!reply.to_string().contains(&access.password));
 
         // 꺼진 서버에 직접 부른 /rcon: 접속을 시도하지 않고 409
-        state.supervisor.read().await.tracker.untrack(&id).unwrap();
+        state.supervisor.read().await.tracker.untrack(&id);
         let (status, reply) = body(rcon_for(&state.supervisor, &id, &json!({ "command": "say hi" })).await).await;
         assert_eq!(status, StatusCode::CONFLICT);
         assert_eq!(reply["error_code"], "server_not_running");

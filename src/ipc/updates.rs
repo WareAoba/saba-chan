@@ -12,7 +12,7 @@
 //! - `POST /api/updates/download`            — 선택 컴포넌트 다운로드 (본문 없으면 전부)
 //! - `POST /api/updates/apply`               — 모듈 등은 데몬이 바로 적용, 재시작이 필요한 것은
 //!   `requires_updater`로 돌려주고 실제 적용은 `launch-updater`가 한다 (본문 없으면 전부)
-//! - `POST /api/updates/launch-updater`      — 데몬이 업데이터를 띄우고 스스로 종료 (U7)
+//! - `POST /api/updates/launch-updater`      — 데몬이 업데이터를 띄우고 스스로 종료
 //! - `POST /api/updates/install`             — 확인 → 전부 받기 → 적용 → 필요하면 업데이터 띄우기를 한 번에 (액션 `update.apply`, 디스코드 `/사바쨩 업데이트`)
 //! - `GET  /api/updates/last-result`         — 마지막 업데이트 적용 결과 (DELETE로 확인 처리)
 //! - `GET  /api/updates/config`              — 업데이트 설정 조회
@@ -46,9 +46,7 @@ use saba_chan_updater_lib::{
 
 use super::update_phase::{self, Decision, LiveState, Phase, PhaseState, ReadyReason};
 
-// ═══════════════════════════════════════════════════════
-// 공유 상태
-// ═══════════════════════════════════════════════════════
+// ── 공유 상태 ──
 
 /// heartbeat `latestReleases` 중 이 데몬이 보는 채널별 릴리즈 id
 type ReleaseIds = std::collections::BTreeMap<String, u64>;
@@ -307,9 +305,7 @@ impl Default for UpdateState {
     }
 }
 
-// ═══════════════════════════════════════════════════════
-// 라우터
-// ═══════════════════════════════════════════════════════
+// ── 라우터 ──
 
 /// `/api/updates/*` 라우트를 포함하는 axum Router 생성
 pub fn updates_router(state: UpdateState) -> Router {
@@ -336,9 +332,7 @@ pub fn updates_router(state: UpdateState) -> Router {
         .with_state(state)
 }
 
-// ═══════════════════════════════════════════════════════
-// 핸들러
-// ═══════════════════════════════════════════════════════
+// ── 핸들러 ──
 
 /// GET /api/updates/status — 캐시된 상태 반환 (네트워크 없음)
 ///
@@ -500,7 +494,7 @@ async fn check_and_follow_up_hinted(state: &UpdateState, hint: Option<u64>) -> a
     announce_new_updates(state, &status);
     state.status_may_have_changed();
 
-    // 모듈·익스텐션은 묻지 않고 바꿔 끼운다 (사용자 결정 2026-11-09). 확인을 끈 설정이면 주기 확인 자체가 돌지 않는다
+    // 모듈·익스텐션은 묻지 않고 바꿔 끼운다. 확인을 끈 설정이면 주기 확인 자체가 돌지 않는다
     if status.components.iter().any(|c| c.update_available && is_addon(&c.component)) {
         spawn_addon_replace(state.clone());
     }
@@ -1056,7 +1050,7 @@ async fn put_daemon_update(State(state): State<UpdateState>, Json(body): Json<Da
     Json(json!({ "success": true, "auto": body.auto }))
 }
 
-/// 데몬 기동 후 업데이트를 주기적으로 확인한다 (U6). 24시간마다.
+/// 데몬 기동 후 업데이트를 주기적으로 확인한다. 24시간마다.
 /// 설정은 매 회 다시 읽는다. 꺼져 있으면(`enabled=false`) 확인하지 않고 설정만 다시 본다.
 pub fn spawn_update_scheduler(state: UpdateState, shutdown: tokio_util::sync::CancellationToken) {
     /// 기동 직후에는 다른 초기화가 먼저 끝나도록 잠깐 기다린다
@@ -1166,7 +1160,7 @@ pub fn on_latest_releases(state: &UpdateState, ids: &Value, shutdown: tokio_util
     });
 }
 
-/// 사용자에게 보이는 업데이트가 지난번 알린 것과 달라졌을 때만 `update.available` (P4)
+/// 사용자에게 보이는 업데이트가 지난번 알린 것과 달라졌을 때만 `update.available`
 fn announce_new_updates(state: &UpdateState, status: &saba_chan_updater_lib::UpdateStatus) {
     let visible: Vec<_> = status.components.iter()
         .filter(|c| c.update_available && !matches!(c.component, Component::Locales))
@@ -1316,7 +1310,6 @@ async fn download_components_with(state: UpdateState, body: DownloadRequest) -> 
         .into_response()
     }
 }
-
 
 /// POST /api/updates/apply — 다운로드된 업데이트 적용
 ///
@@ -1529,7 +1522,7 @@ async fn install_updates(State(state): State<UpdateState>) -> axum::response::Re
     Json(applied).into_response()
 }
 
-/// POST /api/updates/launch-updater — 데몬이 업데이터를 띄우고 스스로 종료한다 (U7)
+/// POST /api/updates/launch-updater — 데몬이 업데이터를 띄우고 스스로 종료한다
 ///
 /// `apply`가 `requires_updater: true`를 돌려준 뒤 부른다. 어느 클라이언트가 떠 있든
 /// 적용 경로가 하나가 되도록 업데이터 실행은 데몬만 한다.
@@ -2240,7 +2233,7 @@ async fn set_config(
     if let Some(v) = body.get("auto_apply").and_then(|v| v.as_bool()) {
         cfg.auto_apply = v;
     }
-    // 업데이트 출처는 앱에서 바꾸지 않는다 (D7): config.json의 updates.relay_url로만.
+    // 업데이트 출처는 앱에서 바꾸지 않는다: config.json의 updates.relay_url로만.
     // 모의 릴레이를 믿는 개발 빌드만 앱(개발 옵션)에서 바꿀 수 있다. 비우기(기본 릴레이로 되돌리기)는 늘 된다
     if let Some(v) = body.get("relay_url").and_then(|v| v.as_str()) {
         if !v.is_empty() && !cfg!(feature = "mock-relay") {
@@ -2295,9 +2288,7 @@ async fn set_config(
     .into_response()
 }
 
-// ═══════════════════════════════════════════════════════
-// 설정 유틸리티
-// ═══════════════════════════════════════════════════════
+// ── 설정 유틸리티 ──
 
 /// 저장된 업데이트 설정 (`config.json`의 `updates`). 없거나 깨졌으면 기본값.
 pub(crate) fn load_updater_config() -> UpdateConfig {
@@ -2316,7 +2307,7 @@ fn load_updater_config_from(file: &ConfigFile) -> UpdateConfig {
                 tracing::warn!("[Updates] Ignoring invalid 'updates' config: {}", e);
                 UpdateConfig::default()
             });
-            // 앱 업데이트는 묻지 않고 적용한다 (사용자 결정 2026-11-09): 옛 설정은 한 번만 켠다. 그 뒤 고른 값은 그대로 둔다
+            // 앱 업데이트는 묻지 않고 적용한다: 옛 설정은 한 번만 켠다. 그 뒤 고른 값은 그대로 둔다
             if !cfg.live_update_migrated {
                 cfg.auto_apply = true;
                 cfg.auto_download = true;
@@ -2338,9 +2329,7 @@ fn save_updater_config_to(file: &ConfigFile, cfg: &UpdateConfig) -> std::io::Res
     file.set_section("updates", serde_json::to_value(cfg).map_err(std::io::Error::other)?)
 }
 
-// ═══════════════════════════════════════════════════════
-// 판 고르기 (모듈·익스텐션)
-// ═══════════════════════════════════════════════════════
+// ── 판 고르기 (모듈·익스텐션) ──
 
 /// 판 고르기가 받는 키 (`module-<이름>`, `ext-<id>`)
 fn addon_component(key: &str) -> Option<Component> {
@@ -3064,7 +3053,7 @@ mod tests {
 
     use super::*;
 
-    /// D7: 릴리즈 빌드에서는 앱이 업데이트 출처를 바꿀 수 없다 (거부는 저장 전에 끝난다)
+    /// 릴리즈 빌드에서는 앱이 업데이트 출처를 바꿀 수 없다 (거부는 저장 전에 끝난다)
     #[cfg(not(feature = "mock-relay"))]
     #[tokio::test]
     async fn the_update_source_cannot_be_changed_from_the_app() {
@@ -3255,7 +3244,7 @@ mod tests {
         assert!(SELECTABLE_CHANNELS.iter().all(|c| saba_chan_updater_lib::relay::CHANNELS.contains(c)));
     }
 
-    /// A5: 적용 결과에 릴리즈 버전과 고른 언어의 패치노트가 붙는다. 예전 마커(릴리즈 없음)는 null
+    /// 적용 결과에 릴리즈 버전과 고른 언어의 패치노트가 붙는다. 예전 마커(릴리즈 없음)는 null
     #[test]
     fn last_result_carries_the_version_and_notes_in_the_asked_language() {
         use saba_chan_updater_lib::marker::ReleaseSummary;
@@ -3607,7 +3596,7 @@ mod tests {
     async fn set_running(state: &UpdateState, id: &str, on: bool) {
         let sup = state.supervisor.as_ref().unwrap().read().await;
         if on {
-            sup.tracker.track(id, std::process::id()).unwrap();
+            sup.tracker.track(id, std::process::id());
         } else {
             let _ = sup.tracker.untrack(id);
         }
