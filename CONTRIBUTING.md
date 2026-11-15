@@ -6,12 +6,12 @@
 <종류>(<범위>): <요약>
 ```
 
-- 종류: `feat` 새 기능, `fix` 버그 수정, `perf` 성능, `refactor` 동작이 같은 정리, `docs` 문서, `test` `build` `ci` `chore` (릴리즈 노트에 안 나온다)
-- 범위(선택): 로드맵 ID(`A1`, `C12`) 또는 부품(`daemon` `gui` `cli` `updater` `runner` `module` `ext`)
+- 종류: `feat` 새 기능, `fix` 버그 수정, `perf` 성능, `refactor` 동작이 같은 정리, `docs` 문서, `test` `build` `ci` `chore`
+- 범위(선택): 부품(`daemon` `gui` `cli` `updater` `runner` `module` `ext`)
 - 호환이 깨지면 종류 뒤에 `!`: `feat(api)!: GET /api/module/:name이 raw toml을 주지 않는다`
 - 요약은 사용자가 보는 변화를 쓴다. 본문에 이유와 방법을 적는다.
 
-릴리즈 노트는 이 제목으로 만든다(`python scripts/changelog.py`, 릴리즈 워크플로가 `CHANGELOG.md`를 릴리즈에 붙인다). 규칙을 따르지 않은 제목은 "기타"로 들어간다.
+릴리즈 노트는 `release-notes/<버전>.json`(`{언어: 본문}`)에 사람이 쓴다. 발행 워크플로가 이 파일을 manifest와 GitHub Release에 싣는다(없으면 발행이 멈춘다).
 
 ## 버전
 
