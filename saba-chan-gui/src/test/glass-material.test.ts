@@ -120,12 +120,36 @@ describe('콘솔 유리', () => {
 
     // 창 투명도를 낮추면 바탕이 거의 다 비친다: 상단바 오른쪽 아이콘은 유리 칸 위에 두고,
     // 숫자 배지는 카드 색 테두리 대신 그림자로 띄운다
-    it('반투명에서 상단바 아이콘은 유리 칸·캡슐 위에, 배지는 바탕색 테두리 없이', () => {
+    it('반투명에서 숫자 배지는 바탕색 테두리 없이', () => {
         const css = read('styles/backdrop.css');
-        expect(bodyFor(css, ':root[data-backdrop="on"] .appbar .appbar-window')).toMatch(/var\(--inset\)/);
-        expect(bodyFor(css, ':root[data-backdrop="on"] .appbar-status .icon-btn')).toMatch(/var\(--inset\)/);
         const badge = bodyFor(css, ':root[data-backdrop="on"] .badge-count');
         expect(badge).toMatch(/box-shadow/);
         expect(badge).not.toMatch(/--bg-\d/);
+    });
+});
+
+// 상단바 오른쪽 아이콘·창 버튼은 두 모드 모두 알약 칸 위에 둔다. 뉴모피즘에서는 홈이 살짝 파이고(탭 묶음과 같은 안쪽 그림자),
+// 반투명에서는 파임 없이 유리 홈만
+describe('상단바 알약', () => {
+    it('창 버튼 홈과 아이콘 칸은 모드와 상관없이 알약이다', () => {
+        const shell = read('styles/shell.css');
+        for (const sel of ['.appbar-window', '.appbar-status .icon-btn']) {
+            const body = bodyFor(shell, sel);
+            expect(body).toMatch(/var\(--inset\)/);
+            expect(body).toMatch(/var\(--r-pill\)/);
+        }
+        expect(bodyFor(shell, '.win-btn')).toMatch(/var\(--r-pill\)/);
+        // 반투명 전용으로 같은 모양을 두 번 정의하지 않는다
+        const backdrop = read('styles/backdrop.css');
+        expect(backdrop).not.toMatch(/\.appbar-window|\.win-btn|\.appbar-status \.icon-btn/);
+    });
+
+    it('홈은 뉴모피즘에서만 파인다', () => {
+        const shell = read('styles/shell.css');
+        expect(bodyFor(shell, '.appbar')).toMatch(/--appbar-groove:\s*var\(--shadow-inset\)/);
+        for (const sel of ['.conn-rail', '.appbar-window', '.appbar-status .icon-btn', '.pip-pill']) {
+            expect(bodyFor(shell, sel)).toMatch(/box-shadow:\s*var\(--appbar-groove\)/);
+        }
+        expect(bodyFor(read('styles/backdrop.css'), ':root[data-backdrop="on"] .appbar')).toMatch(/--appbar-groove:\s*none/);
     });
 });

@@ -23,6 +23,8 @@
     padding-left: var(--sp-4);
     background: var(--appbar-gradient);
     border-bottom: 1px solid var(--line);
+    /* 알약 홈의 파임: 뉴모피즘은 탭 묶음과 같은 안쪽 그림자, 반투명은 없음 (backdrop.css) */
+    --appbar-groove: var(--shadow-inset);
 }
 .appbar-brand {
     display: flex;
@@ -104,6 +106,7 @@
     border-radius: var(--r-pill);
     border: 1px solid var(--line);
     background: var(--inset);
+    box-shadow: var(--appbar-groove);
 }
 .conn-node {
     --btn-height: 24px;
@@ -162,21 +165,36 @@
         background-position: 8px 0;
     }
 }
-/* 창 버튼: 둥근 사각형 칸. 닫기는 옅은 빨강 칸에 빨간 X */
+/* 상단바 오른쪽 아이콘은 각자 알약 칸에, 창 버튼 셋은 알약 홈 하나에 묶어 연결 알약(.conn-rail)과 같은 홈 위에 둔다.
+   두 모드 같은 모양이다. 닫기는 옅은 빨강 알약에 빨간 X */
+.appbar-status .icon-btn {
+    --btn-height: 30px;
+    width: 30px;
+    border-radius: var(--r-pill);
+    border: 1px solid var(--line);
+    background: var(--inset);
+    box-shadow: var(--appbar-groove);
+    color: var(--text-1);
+}
 .appbar-window {
     display: flex;
     align-items: center;
-    gap: var(--sp-0-5);
-    height: 100%;
+    align-self: center;
+    height: 30px;
+    padding: 0 var(--sp-0-5);
     margin-left: var(--sp-2);
-    padding-right: var(--sp-1-5);
+    margin-right: var(--sp-1-5);
+    border-radius: var(--r-pill);
+    border: 1px solid var(--line);
+    background: var(--inset);
+    box-shadow: var(--appbar-groove);
 }
 .win-btn {
-    --btn-height: 30px;
-    width: 34px;
+    --btn-height: 26px;
+    width: 32px;
     padding: 0;
-    border-radius: 9px;
-    color: var(--text-2);
+    border-radius: var(--r-pill);
+    color: var(--text-1);
 }
 .win-btn:hover {
     background: var(--bg-3);
@@ -1113,6 +1131,7 @@
     border-radius: var(--r-pill);
     border: 1px solid var(--line);
     background: var(--inset);
+    box-shadow: var(--appbar-groove);
     min-width: 0;
 }
 .pip-title {
