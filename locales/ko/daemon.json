@@ -113,7 +113,7 @@
     "server": {
       "status": {
         "title": "서버 상태",
-        "description": "서버 하나의 상태",
+        "description": "서버 상태",
         "name": "상태"
       },
       "start": {
@@ -218,7 +218,7 @@
         "title": "설치된 모듈"
       },
       "available": {
-        "title": "받을 수 있는 모듈"
+        "title": "설치 가능한 모듈"
       }
     },
     "extension": {
@@ -304,11 +304,11 @@
       "memo": "서버 프롬프트",
       "effort": "대화 추론 강도",
       "ambient": "끼어들기",
-      "ambientMinutes": "끼어들기 주기(분)",
+      "ambientMinutes": "자발 발언 주기(분)",
       "ambientEffort": "끼어들기 판단 추론 강도",
       "confirmLevel": "실행 전 확인 단계",
       "memory": "기억",
-      "tools": "켠 도구",
+      "tools": "사용 도구",
       "step": "단계",
       "from_snapshot": "게임 자동 백업에서",
       "text": "본문",
