@@ -730,7 +730,7 @@ async fn config(ctx: &Ctx, pairs: &[String]) -> Result<()> {
         }
         // 문자열 칸은 숫자처럼 보여도 문자열로 (channel 등)
         let v = match k.as_str() {
-            "install_root" | "source" | "relay_url" | "channel" => Value::String(raw),
+            "source" | "relay_url" | "channel" => Value::String(raw),
             _ => guess(&raw),
         };
         patch.insert(k, v);

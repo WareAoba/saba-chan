@@ -616,7 +616,6 @@ async fn ensure_daemon(app: &AppHandle) -> bool {
             tracing::info!("Existing daemon identity verified on IPC port.");
             status_t(app, "daemon", "daemon.existing_running");
             state.life.attached_daemon.store(true, Ordering::SeqCst);
-            sync_install_root(app).await;
             true
         }
         // 401 = 예전 데몬이 떠 있지만 토큰이 맞지 않음 (이전 세션 토큰)
@@ -625,7 +624,6 @@ async fn ensure_daemon(app: &AppHandle) -> bool {
             if !reload_token_until_valid(app).await { return false; }
             status_t(app, "daemon", "daemon.existing_running");
             state.life.attached_daemon.store(true, Ordering::SeqCst);
-            sync_install_root(app).await;
             true
         }
         Err(e) if e.status.is_none() && (e.code == "ECONNREFUSED" || e.code == "ETIMEDOUT") => {
@@ -636,7 +634,6 @@ async fn ensure_daemon(app: &AppHandle) -> bool {
             if wait_for_new_daemon(app).await {
                 tracing::info!("Daemon is now running");
                 status_t(app, "daemon", "daemon.started");
-                sync_install_root(app).await;
                 return true;
             }
             tracing::warn!("Daemon did not respond after startup");
@@ -649,20 +646,6 @@ async fn ensure_daemon(app: &AppHandle) -> bool {
             send_status(app, "daemon", &msg);
             state.client.identity_valid(1000).await
         }
-    }
-}
-
-/// 데몬에 install_root 동기화 (portable 모드에서도 실제 배포 경로를 알린다)
-async fn sync_install_root(app: &AppHandle) {
-    let state = app.state::<AppState>();
-    let root = state.install_root.to_string_lossy().to_string();
-    match state
-        .client
-        .put("/api/updates/config", &json!({ "install_root": root }), 3000)
-        .await
-    {
-        Ok(_) => tracing::info!("[InstallRoot] Synced to daemon: {}", root),
-        Err(e) => tracing::warn!("[InstallRoot] Failed to sync: {}", e.message),
     }
 }
 
@@ -1106,7 +1089,6 @@ pub async fn daemon_restart(app: &AppHandle) -> Value {
     }
     // 기동 실패로 멈춘 초기화가 있으면 이어서 끝낸다 (렌더러는 ready를 받고 메인 화면으로 간다)
     if state.life.init_unfinished() {
-        sync_install_root(app).await;
         tray::update_menu(app);
         let app2 = app.clone();
         tauri::async_runtime::spawn(async move { finish_background_init(&app2).await });
