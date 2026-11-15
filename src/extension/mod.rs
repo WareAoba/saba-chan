@@ -27,9 +27,7 @@ pub use remote::*;
 
 pub use saba_chan_updater_lib::component_dirs::extension_dir;
 
-// ═══════════════════════════════════════════════════════════════
-//  API 응답용 타입
-// ═══════════════════════════════════════════════════════════════
+// ── API 응답용 타입 ──
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExtensionListItem {
@@ -81,9 +79,7 @@ pub fn gui_allowed(key: &str, dir: &std::path::Path) -> bool {
         || crate::sandbox::consented(crate::sandbox::Consent::ExtensionGui, key, dir)
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  ExtensionManager
-// ═══════════════════════════════════════════════════════════════
+// ── ExtensionManager ──
 
 pub struct ExtensionManager {
     extensions_dir: PathBuf,
@@ -141,9 +137,7 @@ impl ExtensionManager {
         mgr
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    //  의존성 검증
-    // ═══════════════════════════════════════════════════════════════
+    // ── 의존성 검증 ──
 
     /// 활성 여부 확인
     #[cfg(test)]
@@ -254,10 +248,6 @@ impl ExtensionManager {
     }
 
 }
-
-// ═══════════════════════════════════════════════════════════════
-//  Tests
-// ═══════════════════════════════════════════════════════════════
 
 #[cfg(test)]
 mod tests;

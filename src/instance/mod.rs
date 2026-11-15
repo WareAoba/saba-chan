@@ -48,9 +48,7 @@ pub const DAEMON_ENTRIES: &[&str] = &["instance.json", "settings.json", "setting
 /// 설정 저장의 422 `memory_limit_unsupported`와 클라이언트에 주는 `memory_limit_supported`가 이 값 하나를 본다
 pub const MEMORY_LIMIT_ENFORCED: bool = cfg!(windows);
 
-// ═══════════════════════════════════════════════════════════════
-//  ServerInstance — 인스턴스 메타데이터
-// ═══════════════════════════════════════════════════════════════
+// ── ServerInstance — 인스턴스 메타데이터 ──
 
 /// 서버 인스턴스 정의 — `instance.json`에 저장되는 메타데이터
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -361,9 +359,7 @@ pub fn generate_random_password() -> String {
     saba_chan_updater_lib::constants::generate_random_password()
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  InstanceStore — 디렉토리 기반 저장소
-// ═══════════════════════════════════════════════════════════════
+// ── InstanceStore — 디렉토리 기반 저장소 ──
 
 pub struct InstanceStore {
     /// 인스턴스 루트 디렉토리 (예: %APPDATA%/saba-chan/instances/)
@@ -539,7 +535,6 @@ impl InstanceStore {
         self.save_order()?;
         Ok(())
     }
-
 
     /// 인스턴스 디렉토리의 절대 경로를 반환합니다.
     pub fn instance_dir(&self, id: &str) -> PathBuf {
@@ -778,10 +773,6 @@ impl InstanceStore {
         Ok(())
     }
 }
-
-// ═══════════════════════════════════════════════════════════════
-//  Tests
-// ═══════════════════════════════════════════════════════════════
 
 /// RCON은 보안상 쓰지 않는다 (2026-10-17). 그 전에 만든 인스턴스 파일에 남은 키
 const LEGACY_RCON_KEYS: &[&str] = &[

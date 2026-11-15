@@ -13,10 +13,6 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::time::Duration;
 
-// ══════════════════════════════════════════════════════
-//  Types
-// ══════════════════════════════════════════════════════
-
 /// 부트 모드 선택지
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -50,10 +46,6 @@ impl Default for BootConfig {
     }
 }
 
-// ══════════════════════════════════════════════════════
-//  Config Persistence
-// ══════════════════════════════════════════════════════
-
 /// 디스크에서 부트 설정 로드 (`config.json`의 `boot`, 실패 시 기본값)
 pub fn load_config() -> BootConfig {
     serde_json::from_value(ConfigFile::default_location().section("boot")).unwrap_or_default()
@@ -69,10 +61,6 @@ pub fn save_config(mode: BootMode) {
     }
 }
 
-// ══════════════════════════════════════════════════════
-//  Key Input Types
-// ══════════════════════════════════════════════════════
-
 // 비 Windows에서는 키 입력을 읽지 않으므로 Delete 외 변형이 만들어지지 않는다.
 #[cfg_attr(not(windows), allow(dead_code))]
 #[derive(Debug, PartialEq)]
@@ -83,10 +71,6 @@ enum Key {
     Down,
     Char(char),
 }
-
-// ══════════════════════════════════════════════════════
-//  Windows Console FFI
-// ══════════════════════════════════════════════════════
 
 #[cfg(windows)]
 mod win32 {
@@ -174,10 +158,6 @@ mod win32 {
     }
 }
 
-// ══════════════════════════════════════════════════════
-//  Key Polling (Platform-specific)
-// ══════════════════════════════════════════════════════
-
 /// 주어진 타임아웃 내에 키 입력을 폴링. None = 타임아웃
 fn poll_key(timeout: Duration) -> Option<Key> {
     #[cfg(windows)]
@@ -245,10 +225,6 @@ fn poll_key_fallback(timeout: Duration) -> Option<Key> {
     std::thread::sleep(timeout);
     None
 }
-
-// ══════════════════════════════════════════════════════
-//  Terminal Rendering
-// ══════════════════════════════════════════════════════
 
 /// 스피너 프레임 — npm install 스타일
 const SPINNER: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
@@ -348,10 +324,6 @@ fn render_menu(selected: usize) {
     let _ = std::io::stdout().flush();
 }
 
-// ══════════════════════════════════════════════════════
-//  Selection Menu (interactive)
-// ══════════════════════════════════════════════════════
-
 fn show_selection_menu(current: BootMode) -> BootMode {
     let modes = [BootMode::Gui, BootMode::Cli, BootMode::DaemonOnly];
 
@@ -386,10 +358,6 @@ fn show_selection_menu(current: BootMode) -> BootMode {
     }
 }
 
-// ══════════════════════════════════════════════════════
-//  Main Entry Point
-// ══════════════════════════════════════════════════════
-
 /// 인터랙티브 부트 선택기 실행. 선택된 BootMode를 반환합니다.
 pub fn run() -> BootMode {
     setup_terminal();
@@ -423,10 +391,6 @@ pub fn run() -> BootMode {
     clear_screen();
     default_mode
 }
-
-// ══════════════════════════════════════════════════════
-//  Post-Boot Actions
-// ══════════════════════════════════════════════════════
 
 /// 데몬 온리(또는 폴백) 진입 시 화면 정리 + 안내 출력
 pub fn clear_for_daemon_only(port: u16) {
@@ -683,10 +647,6 @@ pub async fn wait_for_ipc_port(port: u16, timeout: Duration) -> bool {
     }
     false
 }
-
-// ══════════════════════════════════════════════════════
-//  Tests
-// ══════════════════════════════════════════════════════
 
 #[cfg(test)]
 mod tests {

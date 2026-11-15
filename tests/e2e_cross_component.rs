@@ -10,9 +10,7 @@ use tokio::time::{sleep, Duration};
 use std::fs;
 use serde_json::{json, Value};
 
-// ═══════════════════════════════════════════════════════
-// 테스트 인프라
-// ═══════════════════════════════════════════════════════
+// ── 테스트 인프라 ──
 
 /// E2E 테스트 전용 fixture 모듈 디렉토리를 임시 위치에 세팅합니다.
 /// 기존 test-module 외에 e2e-mock-module도 복사합니다.
@@ -219,9 +217,7 @@ fn find_python() -> Option<String> {
     None
 }
 
-// ═══════════════════════════════════════════════════════
-// 1. 데몬 → 모듈 발견 → 메타데이터 스키마 계약 (E2E)
-// ═══════════════════════════════════════════════════════
+// ── 데몬 → 모듈 발견 → 메타데이터 스키마 계약 (E2E) ──
 
 #[tokio::test]
 async fn e2e_module_discovery_and_metadata_schema() {
@@ -302,9 +298,7 @@ async fn e2e_module_patterns_reach_the_api_expanded() {
     cleanup_dirs(&m_dir, &i_dir, &d_dir);
 }
 
-// ═══════════════════════════════════════════════════════
-// 2. 인스턴스 CRUD → Python lifecycle 호출 검증
-// ═══════════════════════════════════════════════════════
+// ── 인스턴스 CRUD → Python lifecycle 호출 검증 ──
 
 #[tokio::test]
 async fn e2e_instance_lifecycle_with_python_module() {
@@ -417,9 +411,7 @@ async fn e2e_instance_lifecycle_with_python_module() {
     cleanup_dirs(&m_dir, &i_dir, &d_dir);
 }
 
-// ═══════════════════════════════════════════════════════
-// 4. 설정 API 라운드트립 (GUI config + Bot config)
-// ═══════════════════════════════════════════════════════
+// ── 설정 API 라운드트립 (GUI config + Bot config) ──
 
 #[tokio::test]
 async fn e2e_config_roundtrip() {
@@ -480,9 +472,7 @@ async fn e2e_config_roundtrip() {
     cleanup_dirs(&m_dir, &i_dir, &d_dir);
 }
 
-// ═══════════════════════════════════════════════════════
-// 5. 클라이언트 등록/하트비트 프로토콜
-// ═══════════════════════════════════════════════════════
+// ── 클라이언트 등록/하트비트 프로토콜 ──
 
 #[tokio::test]
 async fn e2e_launch_preview_binds_typed_args_and_saves_extra_args() {
@@ -599,9 +589,7 @@ async fn e2e_client_registration_heartbeat() {
     cleanup_dirs(&m_dir, &i_dir, &d_dir);
 }
 
-// ═══════════════════════════════════════════════════════
-// 6. 크로스 컴포넌트: 인스턴스 운영 중 상태 조회
-// ═══════════════════════════════════════════════════════
+// ── 크로스 컴포넌트: 인스턴스 운영 중 상태 조회 ──
 
 #[tokio::test]
 async fn e2e_cross_component_simultaneous_operation() {
@@ -674,9 +662,7 @@ async fn e2e_cross_component_simultaneous_operation() {
     cleanup_dirs(&m_dir, &i_dir, &d_dir);
 }
 
-// ═══════════════════════════════════════════════════════
-// 7. 모듈 Python lifecycle 직접 호출 검증
-// ═══════════════════════════════════════════════════════
+// ── 모듈 Python lifecycle 직접 호출 검증 ──
 
 #[test]
 fn e2e_python_sdk_contract() {
@@ -825,9 +811,7 @@ async fn e2e_python_lifecycle_direct_call() {
     }
 }
 
-// ═══════════════════════════════════════════════════════
-// 8. API 스키마 계약: 에러 응답 일관성
-// ═══════════════════════════════════════════════════════
+// ── API 스키마 계약: 에러 응답 일관성 ──
 
 /// 없는 인스턴스에 대한 요청은 404와 `error` 칸으로 답한다
 #[tokio::test]
@@ -1005,9 +989,7 @@ async fn extension_gui_assets_are_served_from_the_manifest_folder() {
     cleanup_dirs(&m_dir, &i_dir, &d_dir);
 }
 
-// ═══════════════════════════════════════════════════════
-// 9. 버전 관리 — 자동 감지·저장·백업·복원 (E2E)
-// ═══════════════════════════════════════════════════════
+// ── 버전 관리 — 자동 감지·저장·백업·복원 (E2E) ──
 
 #[tokio::test]
 async fn e2e_version_auto_detect_and_persist() {
@@ -1182,9 +1164,7 @@ async fn e2e_version_backfill_on_startup() {
     cleanup_dirs(&m_dir, &i_dir, &d_dir);
 }
 
-// ═══════════════════════════════════════════════════════
-// 게임 명령 단일 경로 (C7)
-// ═══════════════════════════════════════════════════════
+// ── 게임 명령 단일 경로 (C7) ──
 
 /// D3: REST 접속값은 모듈이 `[protocols.rest]`로 가리킨 설정(`module_settings`)에만 있다. 데몬은 그 선언으로 서버 목록의
 /// 접속값을 만들고, 인스턴스 최상위에는 `rest_*` 칸을 두지 않는다

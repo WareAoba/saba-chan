@@ -1414,9 +1414,7 @@ mod tests {
         assert_eq!((line.source, line.content.as_str()), (LogSource::Stdout, "[20:07:01] [Server thread/INFO]: Steve joined the game"));
     }
 
-    // ═══════════════════════════════════════════════════════
-    // LogBuffer 단위 테스트
-    // ═══════════════════════════════════════════════════════
+    // ── LogBuffer 단위 테스트 ──
 
     /// 명령 직전 커서로 읽으면 명령 뒤의 줄만 온다 (직전 줄이 답에 섞이지 않는다)
     #[test]
@@ -1484,9 +1482,7 @@ mod tests {
         assert_eq!(poll2, ["line3", "line4"]);
     }
 
-    // ═══════════════════════════════════════════════════════
-    // LogLevel 파싱 테스트
-    // ═══════════════════════════════════════════════════════
+    // ── LogLevel 파싱 테스트 ──
 
     #[test]
     fn test_parse_log_level_with_pattern() {

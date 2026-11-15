@@ -46,9 +46,7 @@ use saba_chan_updater_lib::{
 
 use super::update_phase::{self, Decision, LiveState, Phase, PhaseState, ReadyReason};
 
-// ═══════════════════════════════════════════════════════
-// 공유 상태
-// ═══════════════════════════════════════════════════════
+// ── 공유 상태 ──
 
 /// heartbeat `latestReleases` 중 이 데몬이 보는 채널별 릴리즈 id
 type ReleaseIds = std::collections::BTreeMap<String, u64>;
@@ -294,9 +292,7 @@ impl Default for UpdateState {
     }
 }
 
-// ═══════════════════════════════════════════════════════
-// 라우터
-// ═══════════════════════════════════════════════════════
+// ── 라우터 ──
 
 /// `/api/updates/*` 라우트를 포함하는 axum Router 생성
 pub fn updates_router(state: UpdateState) -> Router {
@@ -323,9 +319,7 @@ pub fn updates_router(state: UpdateState) -> Router {
         .with_state(state)
 }
 
-// ═══════════════════════════════════════════════════════
-// 핸들러
-// ═══════════════════════════════════════════════════════
+// ── 핸들러 ──
 
 /// GET /api/updates/status — 캐시된 상태 반환 (네트워크 없음)
 ///
@@ -1310,7 +1304,6 @@ async fn download_components_with(state: UpdateState, body: DownloadRequest) -> 
     }
 }
 
-
 /// POST /api/updates/apply — 다운로드된 업데이트 적용
 ///
 /// - 모듈: 데몬이 직접 적용 (파일 교체)
@@ -2285,9 +2278,7 @@ async fn set_config(
     .into_response()
 }
 
-// ═══════════════════════════════════════════════════════
-// 설정 유틸리티
-// ═══════════════════════════════════════════════════════
+// ── 설정 유틸리티 ──
 
 /// 저장된 업데이트 설정 (`config.json`의 `updates`). 없거나 깨졌으면 기본값.
 pub(crate) fn load_updater_config() -> UpdateConfig {
@@ -2328,9 +2319,7 @@ fn save_updater_config_to(file: &ConfigFile, cfg: &UpdateConfig) -> std::io::Res
     file.set_section("updates", serde_json::to_value(cfg).map_err(std::io::Error::other)?)
 }
 
-// ═══════════════════════════════════════════════════════
-// 판 고르기 (모듈·익스텐션)
-// ═══════════════════════════════════════════════════════
+// ── 판 고르기 (모듈·익스텐션) ──
 
 /// 판 고르기가 받는 키 (`module-<이름>`, `ext-<id>`)
 fn addon_component(key: &str) -> Option<Component> {

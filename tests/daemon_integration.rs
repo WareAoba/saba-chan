@@ -9,9 +9,7 @@ use tokio::sync::RwLock;
 use std::fs;
 use serde_json::Value;
 
-// ═══════════════════════════════════════════════════════
-// 테스트 유틸리티
-// ═══════════════════════════════════════════════════════
+// ── 테스트 유틸리티 ──
 
 /// 테스트 종료 시 인스턴스 디렉토리에서 테스트 데이터 자동 제거
 fn cleanup_test_instances() {
@@ -98,9 +96,7 @@ async fn boot_ipc() -> (String, Arc<RwLock<Supervisor>>, tokio::task::JoinHandle
     (base_url, supervisor, server_task)
 }
 
-// ═══════════════════════════════════════════════════════
-// 1. Supervisor 초기화 & 모듈 발견
-// ═══════════════════════════════════════════════════════
+// ── Supervisor 초기화 & 모듈 발견 ──
 
 #[tokio::test]
 async fn test_module_discovery_returns_known_modules() {
@@ -131,9 +127,7 @@ async fn test_module_discovery_returns_known_modules() {
     }
 }
 
-// ═══════════════════════════════════════════════════════
-// 3. Python 플러그인 graceful 에러
-// ═══════════════════════════════════════════════════════
+// ── Python 플러그인 graceful 에러 ──
 
 #[tokio::test]
 async fn test_run_plugin_with_nonexistent_file_returns_error() {
@@ -152,9 +146,7 @@ async fn test_run_plugin_with_nonexistent_file_returns_error() {
     );
 }
 
-// ═══════════════════════════════════════════════════════
-// 5. IPC 인스턴스 CRUD 전체 라이프사이클
-// ═══════════════════════════════════════════════════════
+// ── IPC 인스턴스 CRUD 전체 라이프사이클 ──
 
 #[tokio::test]
 async fn test_ipc_instance_full_lifecycle() {
@@ -248,11 +240,9 @@ async fn test_ipc_instance_full_lifecycle() {
     cleanup_test_instances();
 }
 
-// ═══════════════════════════════════════════════════════
-// 8. 인스턴스 생성·삭제·재생성 독립성 검증
-//    네이티브 인스턴스는 모듈당 1개 제한이므로,
-//    생성→삭제→재생성 사이클로 독립성을 검증한다.
-// ═══════════════════════════════════════════════════════
+// ── 인스턴스 생성·삭제·재생성 독립성 검증 ──
+// 네이티브 인스턴스는 모듈당 1개 제한이므로,
+// 생성→삭제→재생성 사이클로 독립성을 검증한다.
 
 #[tokio::test]
 async fn test_ipc_multiple_instances_are_independent() {
@@ -372,9 +362,7 @@ async fn test_ipc_create_instance_saves_extension_data() {
     cleanup_test_instances();
 }
 
-// ═══════════════════════════════════════════════════════
-// 7. 서버 업데이트 확인 API
-// ═══════════════════════════════════════════════════════
+// ── 서버 업데이트 확인 API ──
 
 /// GET /api/instance/:id/check-update — 존재하지 않는 인스턴스 → 404
 #[tokio::test]

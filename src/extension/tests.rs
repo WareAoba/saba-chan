@@ -853,10 +853,6 @@ fn test_unmount_blocked_by_dependent() {
     assert!(result.unwrap_err().to_string().contains("child_ext"));
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  추가 심층 테스트
-// ═══════════════════════════════════════════════════════════════
-
 /// 조건 평가 — 숫자 0 → false, 비제로 → true
 #[test]
 fn test_evaluate_condition_number_values() {
@@ -1477,11 +1473,7 @@ fn test_component_version_unsatisfied_not_installed() {
     assert!(err.message.contains("not installed"));
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  원격 manifest.json 파싱 호환성 테스트
-// ═══════════════════════════════════════════════════════════════
-
-
+// ── 원격 manifest.json 파싱 호환성 테스트 ──
 
 /// 실제 manifest.json (로컬 설치용) 파싱 호환성 테스트
 /// 릴리즈 manifest의 `ext-*` 컴포넌트가 익스텐션 목록이 된다 (U9e)

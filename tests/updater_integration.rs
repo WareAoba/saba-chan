@@ -10,9 +10,7 @@ use saba_chan_updater_lib::{
 };
 use saba_chan_updater_lib::version::SemVer;
 
-// ═══════════════════════════════════════════════════════
-// 테스트 유틸리티
-// ═══════════════════════════════════════════════════════
+// ── 테스트 유틸리티 ──
 
 /// UpdateManager를 테스트 환경으로 생성 (staging, install_root, modules 모두 tempdir)
 fn create_test_manager(tmpdir: &TempDir) -> UpdateManager {
@@ -40,9 +38,7 @@ fn semver_reads_two_parts_and_rejects_the_rest() {
     }
 }
 
-// ═══════════════════════════════════════════════════════
-// 6. UpdateManager 단위 테스트 (파일시스템)
-// ═══════════════════════════════════════════════════════
+// ── UpdateManager 단위 테스트 (파일시스템) ──
 
 #[test]
 fn test_manager_core_always_installed() {
@@ -87,7 +83,6 @@ fn test_manager_initial_status_empty() {
     assert!(status.error.is_none());
 }
 
-
 #[test]
 fn test_manager_config_roundtrip() {
     let tmp = TempDir::new().unwrap();
@@ -104,10 +99,7 @@ fn test_manager_config_roundtrip() {
     assert!(mgr.get_config().auto_download);
 }
 
-// ═══════════════════════════════════════════════════════
-// 11. 에지 케이스 테스트
-// ═══════════════════════════════════════════════════════
-
+// ── 에지 케이스 테스트 ──
 
 #[tokio::test]
 async fn test_download_without_check_fails() {
@@ -133,7 +125,6 @@ async fn test_apply_without_downloaded_returns_empty() {
     assert!(applied.is_empty() && failed.is_empty(), "Should apply nothing if nothing downloaded: {applied:?} {failed:?}");
 }
 
-
 #[test]
 fn test_single_file_copy_instead_of_zip() {
     let tmp = TempDir::new().unwrap();
@@ -154,9 +145,7 @@ fn test_single_file_copy_instead_of_zip() {
     assert_eq!(content, "Hello from single file");
 }
 
-// ═══════════════════════════════════════════════════════
-// 12. 백업 & 복구 테스트
-// ═══════════════════════════════════════════════════════
+// ── 백업 & 복구 테스트 ──
 
 #[test]
 fn test_module_backup_before_update() {
@@ -204,45 +193,4 @@ fn copy_dir_recursive(src: &Path, dst: &Path) {
             std::fs::copy(&src_path, &dst_path).unwrap();
         }
     }
-}
-
-// ═══════════════════════════════════════════════════════
-// 14. 다중 릴리스 필터링 테스트
-// ═══════════════════════════════════════════════════════
-
-
-// ═══════════════════════════════════════════════════════
-// 15. 대몬 재시작 스크립트 생성 테스트
-// ═══════════════════════════════════════════════════════
-
-#[test]
-fn test_daemon_update_script_content() {
-    // 재시작 스크립트의 내용 패턴 검증 (실제 파일 생성 없이)
-    let exe_path = "C:\\saba-chan\\saba-core.exe";
-    let staged_path = "C:\\saba-chan\\updates\\core.zip";
-
-    let script = format!(
-        r#"Start-Sleep -Seconds 2
-$exePath = "{}"
-$stagedPath = "{}"
-"#, exe_path, staged_path);
-
-    assert!(script.contains("Start-Sleep"));
-    assert!(script.contains(exe_path));
-    assert!(script.contains(staged_path));
-}
-
-// ═══════════════════════════════════════════════════════
-// 16. 시간 유틸 테스트
-// ═══════════════════════════════════════════════════════
-
-#[test]
-fn test_timestamp_format() {
-    // UpdateManager 내부의 chrono_now_iso가 올바른 ISO 8601 형식인지
-    // (내부 함수이므로 패턴 검증만)
-    let pattern = regex::Regex::new(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$").unwrap();
-
-    // 검증을 위해 수동 구성
-    let ts = format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z", 2026, 2, 13, 10, 30, 0);
-    assert!(pattern.is_match(&ts));
 }
