@@ -1,6 +1,6 @@
 //! 원격 데몬 설정과 짝 맺은 PC (config.json `remote` 한 곳).
 //!
-//!   enabled·port·address·transport   원격 포트를 열지, 어느 포트로, 이 PC의 공개 주소, 연결 방식
+//!   port                             원격 포트 번호
 //!   address                          이 PC의 공개 주소(도메인·IP) 한 칸: 원격 데몬 직접 연결과 게임 서버 주소가 함께 쓴다 (사용자 결정 2026-11-10).
 //!                                    비면 릴레이가 본 공인 IP
 //!   shareAddress 기본 켬              디스코드 `/<서버> 주소`로 이 PC 서버의 주소를 알려 줄지 (사용자 결정 2026-11-10)
@@ -14,21 +14,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 
-/// 연결 방식. 지금은 직접 연결뿐이다 (공인 주소가 있는 PC). 릴레이 터널은 나중에 이 자리에 더한다
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Transport {
-    #[default]
-    Direct,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Settings {
     pub enabled: bool,
     pub port: u16,
     pub address: String,
-    pub transport: Transport,
     pub share_address: bool,
 }
 
@@ -38,7 +29,6 @@ impl Default for Settings {
             enabled: true,
             port: saba_chan_updater_lib::constants::DEFAULT_REMOTE_PORT,
             address: String::new(),
-            transport: Transport::Direct,
             share_address: true,
         }
     }
@@ -301,11 +291,10 @@ mod tests {
         assert!(!settings_in(&f).enabled, "a saved off stays off");
         assert_eq!(Settings::default().port, saba_chan_updater_lib::constants::DEFAULT_REMOTE_PORT);
         assert!(settings_in(&f).share_address, "the address is shared unless turned off");
-        let s = Settings { enabled: true, port: 7443, address: "saba.example.com".into(), transport: Transport::Direct, share_address: false };
+        let s = Settings { enabled: true, port: 7443, address: "saba.example.com".into(), share_address: false };
         save_settings_in(&f, &s).unwrap();
         assert_eq!(settings_in(&f), s);
         assert_eq!(f.section("node")["token"], "sbn_x.y");
-        assert_eq!(f.section("remote")["transport"], "direct");
     }
 
     /// 원격 구역을 읽지 못하면(값 하나가 깨짐) 기본값(켜짐)으로 포트를 열지 않고 꺼 둔다

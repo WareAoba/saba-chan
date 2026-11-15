@@ -389,18 +389,4 @@ mod tests {
         assert!(url.contains(PYTHON_VERSION));
         assert!(url.ends_with(".tar.gz"));
     }
-
-    #[test]
-    fn test_resolve_data_dir_no_panic() {
-        let _ = resolve_data_dir();
-    }
-
-    #[tokio::test]
-    async fn test_detect_system_python() {
-        // CI/개발 환경에 따라 성공 또는 실패 가능
-        match detect_system_python().await {
-            Ok(cmd) => println!("시스템 Python: {}", cmd),
-            Err(e) => println!("시스템 Python 없음 (정상): {}", e),
-        }
-    }
 }

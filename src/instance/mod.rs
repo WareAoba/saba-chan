@@ -233,12 +233,6 @@ impl ServerInstance {
             .unwrap_or(false)
     }
 
-    /// extension_data에서 문자열 값을 읽습니다.
-    #[cfg(test)]
-    pub fn ext_str(&self, key: &str) -> Option<&str> {
-        self.extension_data.get(key).and_then(|v| v.as_str())
-    }
-
     /// 설치 방식 익스텐션으로 받는 서버라는 표시와, 그 인스턴스만의 값(사용자가 고른 브랜치)을 extension_data에 적는다.
     /// 모듈 `[install]`의 값(앱 ID 등)은 적지 않는다: 익스텐션은 hook ctx의 `install`이나 module.toml에서 읽는다.
     ///
@@ -1432,8 +1426,8 @@ mod tests {
             inst.extension_data.get("steamcmd_anonymous").and_then(|v| v.as_bool()),
             Some(true)
         );
-        assert_eq!(inst.ext_str("steamcmd_platform"), Some("windows"));
-        assert!(inst.ext_str("steamcmd_beta").is_none());
+        assert_eq!(inst.extension_data.get("steamcmd_platform").and_then(|v| v.as_str()), Some("windows"));
+        assert!(inst.extension_data.get("steamcmd_beta").and_then(|v| v.as_str()).is_none());
     }
 
     #[test]
@@ -1442,7 +1436,7 @@ mod tests {
         let changed = inst.apply_install_extension_data("steamcmd", &steam(Some(380870), Some("unstable"), None));
         assert!(changed);
         assert!(inst.ext_enabled("install_method_steamcmd"));
-        assert_eq!(inst.ext_str("steamcmd_beta"), Some("unstable"));
+        assert_eq!(inst.extension_data.get("steamcmd_beta").and_then(|v| v.as_str()), Some("unstable"));
     }
 
     #[test]
@@ -1488,7 +1482,7 @@ mod tests {
             deserialized.extension_data.get("steamcmd_app_id").and_then(|v| v.as_u64()),
             Some(2394010)
         );
-        assert_eq!(deserialized.ext_str("steamcmd_beta"), Some("beta-branch"));
-        assert_eq!(deserialized.ext_str("steamcmd_platform"), Some("windows"));
+        assert_eq!(deserialized.extension_data.get("steamcmd_beta").and_then(|v| v.as_str()), Some("beta-branch"));
+        assert_eq!(deserialized.extension_data.get("steamcmd_platform").and_then(|v| v.as_str()), Some("windows"));
     }
 }

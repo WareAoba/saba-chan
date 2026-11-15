@@ -826,12 +826,6 @@ impl ConfigStore {
         Ok(self.write_gui(json, Apply::Overlay, None).await?.0)
     }
 
-    /// GUI 설정의 지금 revision (GET 응답은 같은 읽기에서 계산한다)
-    #[cfg(test)]
-    pub async fn gui_revision(&self) -> String {
-        patch::revision(&serde_json::to_value(&*self.gui_settings.read().await).unwrap_or_default())
-    }
-
     /// GUI 설정 저장. `revision`을 주면 그사이 바뀌었을 때 `RevisionConflict`로 거절한다. 저장한 설정과 새 revision을 돌려준다
     pub async fn write_gui(&self, json: Value, how: Apply, revision: Option<&str>) -> Result<(GuiSettings, String), ConfigStoreError> {
         // 읽기·병합·저장 동안 쓰기 잠금을 잡아 동시 저장이 서로 덮지 않게
@@ -1761,7 +1755,7 @@ mod tests {
         let (_, ignored, _) = store.write_bot(json!({"nodeSettings": {"g2": {"defaultLevel": 3}}}), Apply::MergePatch, None).await.unwrap();
         assert_eq!(ignored, ["nodeSettings.g2.defaultLevel"]);
 
-        let gui_seen = store.gui_revision().await;
+        let gui_seen = patch::revision(&store.get_gui_settings_json().await);
         store.write_gui(json!({"language": "ja"}), Apply::MergePatch, Some(&gui_seen)).await.unwrap();
         assert!(matches!(store.write_gui(json!({"language": "ko"}), Apply::MergePatch, Some(&gui_seen)).await, Err(ConfigStoreError::RevisionConflict(_))));
         assert_eq!(store.get_gui_settings().await.language.as_deref(), Some("ja"));
