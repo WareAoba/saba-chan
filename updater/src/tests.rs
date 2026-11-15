@@ -1,17 +1,6 @@
-//! 업데이터 통합 테스트
-//!
-//! ## 테스트 시나리오
-//! 1. 버전 페치: Mock 서버에서 릴리스 정보 가져오기
+//! 업데이터 단위 테스트
 
 use crate::{Component, UpdateConfig, UpdateManager};
-
-// ═══════════════════════════════════════════════════════
-// 테스트 4: 백그라운드 워커
-// ═══════════════════════════════════════════════════════
-
-// ═══════════════════════════════════════════════════════
-// 테스트 5: 유틸리티
-// ═══════════════════════════════════════════════════════
 
 #[test]
 fn test_component_manifest_key() {
@@ -44,13 +33,9 @@ fn test_component_manifest_key() {
     // display_name 확인
     assert_eq!(Component::CoreDaemon.display_name(), "Saba-Core");
     assert_eq!(Component::Extension("docker".to_string()).display_name(), "Extension: docker");
-    
-    println!("✓ 컴포넌트 매니페스트 키 테스트 통과");
 }
 
-// ═══════════════════════════════════════════════════════
-// 테스트 8: 의존성 구조체 및 검증
-// ═══════════════════════════════════════════════════════
+// 의존성 구조체와 검증
 
 #[test]
 fn test_dependency_check_satisfied() {
@@ -162,9 +147,7 @@ fn test_component_info_requires_empty_by_default() {
     assert!(info.requires.is_none());
 }
 
-// ═══════════════════════════════════════════════════════
-// 테스트: 모듈/익스텐션 핫로드 (재시작 불필요)
-// ═══════════════════════════════════════════════════════
+// 모듈/익스텐션 핫로드 (재시작 불필요)
 
 #[test]
 fn test_module_extension_no_restart_in_apply_result() {
@@ -199,8 +182,6 @@ fn test_module_extension_no_restart_in_apply_result() {
         restart_needed: true,
     };
     assert!(daemon_result.restart_needed, "코어 데몬 업데이트는 재시작 필요");
-
-    println!("✓ 모듈/익스텐션 핫로드 (restart_needed=false) 테스트 통과");
 }
 
 #[test]
@@ -239,30 +220,6 @@ fn test_component_apply_priority_categories() {
         UpdateManager::component_apply_priority(&module),
         "CoreDaemon은 모듈보다 먼저 적용"
     );
-
-    println!("✓ 컴포넌트 적용 우선순위 카테고리 테스트 통과");
-}
-
-#[cfg(test)]
-mod run_all {
-    use super::*;
-
-    /// 유닛 테스트만 실행 (mock 서버 불필요)
-    #[test]
-    fn run_unit_tests() {
-        test_component_manifest_key();
-        test_dependency_check_satisfied();
-        test_dependency_check_unsatisfied();
-        test_dependency_issue_not_installed();
-        test_dependency_check_serde_roundtrip();
-        test_component_info_requires_field();
-        test_component_info_requires_empty_by_default();
-        test_module_extension_no_restart_in_apply_result();
-        test_component_apply_priority_categories();
-        println!("\n═══════════════════════════════════════");
-        println!("✓ 모든 유닛 테스트 통과!");
-        println!("═══════════════════════════════════════\n");
-    }
 }
 
 /// 설치기는 받은 zip을 적용 전에 확인한다. 확인은 풀어 쓰지 않고 읽기만 해서, 깨진 내용(CRC)과 밖으로 나가는 경로를 잡는다
