@@ -659,7 +659,7 @@ describe('설정 에러 핸들링', () => {
             botConfigLoad: vi.fn().mockRejectedValue(new Error('corrupt JSON')),
         });
 
-        await useDiscordStore.getState().loadConfig();
+        await useDiscordStore.getState().loadConfig({ attempts: 1 });
 
         expect(useDiscordStore.getState().discordPrefixes).toEqual([]); // default
     });

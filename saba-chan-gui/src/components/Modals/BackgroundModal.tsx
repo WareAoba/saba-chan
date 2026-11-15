@@ -60,9 +60,7 @@ function BackgroundModal({ onClose, isClosing, ipcPort }: BackgroundModalProps) 
         useSabaBubble.getState().markWoken();
         try {
             const result = await window.api.daemonRestart();
-            if (result?.success) {
-                console.log('Daemon restarted successfully');
-            } else {
+            if (!result?.success) {
                 useSabaBubble.getState().markWoken(false);
                 restore();
                 console.error('Failed to restart daemon:', result?.error);

@@ -40,14 +40,12 @@ export function ModulesTab() {
 
     // 설치된 모듈 로드
     const loadInstalledModules = useCallback(async () => {
-        try {
-            const res = await window.api?.moduleList?.();
-            if (res?.modules) {
-                clearModuleAuditCache();
-                setInstalledModules(res.modules);
-                return;
-            }
-        } catch (_) {}
+        const res = await window.api?.moduleList?.();
+        if (res?.modules) {
+            clearModuleAuditCache();
+            setInstalledModules(res.modules);
+            return;
+        }
         // 받지 못하면 빈 목록으로 (계속 받는 중으로 두지 않는다)
         setInstalledModules((prev) => prev ?? []);
     }, []);
@@ -55,13 +53,11 @@ export function ModulesTab() {
     // 모듈 캐시 새로고침 (디스크 재스캔)
     const handleRefreshModules = useCallback(async () => {
         setRefreshingModules(true);
-        try {
-            const res = await window.api?.moduleRefresh?.();
-            if (res?.modules) {
-                clearModuleAuditCache();
-                setInstalledModules(res.modules);
-            }
-        } catch (_) {}
+        const res = await window.api?.moduleRefresh?.();
+        if (res?.modules) {
+            clearModuleAuditCache();
+            setInstalledModules(res.modules);
+        }
         setRefreshingModules(false);
     }, []);
 

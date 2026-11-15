@@ -556,7 +556,7 @@ describe('useDiscordStore', () => {
         });
 
         // 패닉이나 unhandled rejection 없어야 함
-        await useDiscordStore.getState().loadConfig();
+        await useDiscordStore.getState().loadConfig({ attempts: 1 });
         // 상태는 기본값 그대로
         expect(useDiscordStore.getState().discordPrefixes).toEqual([]);
     });

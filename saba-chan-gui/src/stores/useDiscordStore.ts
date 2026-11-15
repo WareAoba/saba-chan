@@ -252,8 +252,7 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
     },
 
     loadConfig: async ({ attempts } = {}) => {
-        const isTest = process.env.NODE_ENV === 'test' || 'jest' in globalThis;
-        const maxAttempts = attempts ?? (isTest ? 1 : 5);
+        const maxAttempts = attempts ?? 5;
         const retryDelay = 800;
 
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -296,7 +295,7 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
                 if (attempt === maxAttempts) {
                     console.error('Failed to load bot config after retries:', err);
                 } else {
-                    if (!isTest) console.warn(`[Settings] Bot config load attempt ${attempt} failed, retrying...`);
+                    console.warn(`[Settings] Bot config load attempt ${attempt} failed, retrying...`);
                     await new Promise((r) => setTimeout(r, retryDelay));
                 }
             }

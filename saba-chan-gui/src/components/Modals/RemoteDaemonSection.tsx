@@ -142,7 +142,7 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
         setThisName((n) => ({ ...n, saved: res.thisName || '' }));
         if (!res.daemons?.length || typeof window.api.remoteServers !== 'function') return;
         // 그 PC의 데몬이 지워졌거나 다시 설치돼 짝을 잊었는지 본다 (닿지 않는 데몬은 늦게 답한다)
-        const all = await window.api.remoteServers().catch(() => null);
+        const all = await window.api.remoteServers();
         const next: Record<string, string> = {};
         for (const d of (all?.daemons || []) as ApiBody[]) if (d.hostId) next[d.hostId] = d.ok ? 'ok' : d.error_code || 'remote_unreachable';
         setReach(next);

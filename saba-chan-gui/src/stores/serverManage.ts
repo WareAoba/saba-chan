@@ -104,7 +104,6 @@ export function serverManageActions(get: () => ServerState, fetchServers: () => 
                 }
             }
 
-            console.log('Adding instance:', instanceData);
             const result = await window.api.instanceCreate(instanceData);
 
             // ── 켜진 익스텐션 파일이 바뀌어 확인되지 않음 (다시 설치·되돌리기 안내) ──
@@ -334,7 +333,6 @@ export function serverManageActions(get: () => ServerState, fetchServers: () => 
                 const errorMsg = translateError(result.error);
                 setModal({ type: 'failure', title: t('servers.delete_failed_title'), message: errorMsg });
             } else {
-                console.log(`Instance "${server.name}" (ID: ${server.id}) deleted`);
                 const message = result.linked_folder
                     ? t('server_actions.server_unlinked', { name: server.name, path: result.linked_folder }) +
                       (result.settings_restore_failed ? '\n' + unrestoredNote(result) : '')

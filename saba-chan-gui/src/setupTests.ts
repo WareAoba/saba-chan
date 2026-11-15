@@ -44,25 +44,8 @@ const initializeTestI18n = async () => {
 // 동기 초기화 (테스트 시작 전)
 initializeTestI18n();
 
-// 테스트 환경에서 디버깅 로그 억제 (에러는 유지)
-const originalConsoleLog = console.log;
+// 테스트 환경에서 재시도 경고 억제 (에러는 유지)
 const originalConsoleWarn = console.warn;
-
-// 특정 패턴의 로그만 억제
-console.log = (...args) => {
-    const msg = args.join(' ');
-    // 중요 테스트 결과는 표시, 디버깅 로그는 억제
-    if (
-        !msg.includes('[Settings]') &&
-        !msg.includes('[Auto-start]') &&
-        !msg.includes('[Init]') &&
-        !msg.includes('Fetching modules') &&
-        !msg.includes('Module data received') &&
-        !msg.includes('App mounted')
-    ) {
-        originalConsoleLog(...args);
-    }
-};
 
 console.warn = (...args) => {
     const msg = args.join(' ');

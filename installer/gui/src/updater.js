@@ -133,7 +133,7 @@ function showFailure(summary, titleKey = 'applyFailed') {
     try {
         mode = await invoke('get_apply_mode');
     } catch (e) {
-        console.log('Apply mode check:', e);
+        console.error('Apply mode check failed:', e);
     }
     await enterApplyMode(mode);
 })();

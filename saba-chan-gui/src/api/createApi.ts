@@ -527,8 +527,6 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         instanceGet: (id: string) => call('get', instancePath(id)),
         instanceUpdateSettings: async (id: string, settings: ApiBody) => {
             try {
-                // 값에는 비밀번호가 들어갈 수 있어 키 이름만 남긴다
-                console.log(`[Bridge] Updating settings for instance ${id}:`, Object.keys(settings || {}));
                 // 데몬은 잠금을 기다리고 모듈 configure를 돌린 뒤 답한다: CLI(SLOW)처럼 기다린다
                 return (await request('patch', `/api/instance/${encodeURIComponent(id)}`, settings, { timeout: 60000 }))
                     .data;

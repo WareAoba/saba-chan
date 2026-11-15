@@ -56,7 +56,7 @@ export function DaemonSwitcher({ onSwitched = reloadWindow }: { onSwitched?: () 
 
     const load = useCallback(async () => {
         const [list, current] = await Promise.all([
-            window.api.remoteDaemons().catch(() => null),
+            window.api.remoteDaemons(),
             window.api.daemonTarget().catch(() => null),
         ]);
         const saved = Array.isArray(list?.daemons) ? list.daemons : [];
@@ -78,7 +78,7 @@ export function DaemonSwitcher({ onSwitched = reloadWindow }: { onSwitched?: () 
     const leaveForgotten = useCallback(
         async (chosen: string) => {
             if (chosen === LOCAL || typeof window.api.remoteServers !== 'function') return;
-            const all = await window.api.remoteServers().catch(() => null);
+            const all = await window.api.remoteServers();
             const mine = all?.daemons?.find((d: RemoteDaemon) => d.hostId === chosen);
             if (mine?.error_code !== 'remote_unauthorized') return;
             const current = await window.api.daemonTarget().catch(() => null);

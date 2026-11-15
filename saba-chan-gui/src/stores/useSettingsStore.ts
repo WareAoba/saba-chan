@@ -188,10 +188,7 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     // ── Actions ──
     load: async () => {
         try {
-            const isTest = process.env.NODE_ENV === 'test' || 'jest' in globalThis;
-
             const settings = await window.api.settingsLoad();
-            if (!isTest) console.log('[Settings] Loaded:', settings);
             const patch: Partial<SettingsState> & Record<string, unknown> = {};
             if (settings) {
                 patch.autoRefresh = settings.autoRefresh ?? SETTINGS_DEFAULTS.autoRefresh;
@@ -236,7 +233,6 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
             }
             const path = await window.api.settingsGetPath();
             patch.settingsPath = path;
-            if (!isTest) console.log('[Settings] GUI settings loaded from:', path);
 
             patch.settingsReady = true;
             applyingLoad = true;
@@ -265,7 +261,6 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
                     sidebarCompact: patch.sidebarCompact,
                 });
             }
-            if (!isTest) console.log('[Settings] Ready flag set to true');
             return settings; // Return raw settings for discord token etc.
         } catch (error) {
             console.error('[Settings] Failed to load settings:', error);
@@ -303,7 +298,6 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
         try {
             const saved = await window.api.settingsSave(Object.fromEntries(keys.map((k) => [k, state[k]])));
             if (saved === false) throw new Error('settings not saved');
-            console.log('[Settings] GUI settings saved');
             return true;
         } catch (error) {
             // 저장하지 못한 칸은 다음 저장에 다시 싣는다
@@ -370,7 +364,6 @@ useSettingsStore.subscribe((state, prevState) => {
     for (const k of changed) dirtyKeys.add(k);
     if (!state.settingsReady || !state.settingsPath) return;
     if (changed.length === 0) return;
-    console.log('[Settings] Settings changed, saving...');
     clearTimeout(settingsSaveTimer);
     settingsSaveTimer = setTimeout(async () => {
         // 자동 저장 실패는 조용히 넘기지 않는다 (G-U6)

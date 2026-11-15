@@ -135,7 +135,7 @@ function RemotePathPicker() {
         if (kind === 'save' && replacing !== value) {
             const req = requestRef.current;
             checking.current = true;
-            const res = await window.api.systemBrowse(value, null).catch(() => null);
+            const res = await window.api.systemBrowse(value, null);
             checking.current = false;
             // 묻는 동안 창을 닫았거나 이름·폴더를 바꿨으면 그 답으로 정하지 않는다
             if (requestRef.current !== req || shown.current !== value) return;

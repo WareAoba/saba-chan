@@ -537,8 +537,9 @@ pub(crate) async fn stop_saba_processes(install_dir: &Path, scope: Scope) -> Res
 async fn stop_daemon(api: &DaemonApi, dirs: &[PathBuf], scope: Scope) -> Result<DaemonStop, String> {
     let tag = scope.tag();
     let core = list_named(&["saba-core"]).unwrap_or_default();
+    tracing::info!("{} saba-core processes: {}", tag, core.len());
     for p in &core {
-        tracing::info!("{} saba-core process: {}|{}|{}", tag, p.pid, p.name, p.exe);
+        tracing::debug!("{} saba-core process: {}|{}|{}", tag, p.pid, p.name, p.exe);
     }
     let mut daemons: Vec<u32> = filter_in(&core, dirs, &["saba-core"]).into_iter().map(|(pid, _)| pid).collect();
     let answering = api.health_pid().await;
@@ -1459,18 +1460,19 @@ fn remove_appdata_entries(keep: Keep) -> Vec<PathBuf> {
     };
     for path in std::fs::read_dir(&saba_dir).into_iter().flatten().flatten().map(|e| e.path()) {
         if !removable(&path) {
-            tracing::info!("[Uninstall] Keeping: {:?}", path);
+            tracing::debug!("[Uninstall] Keeping: {:?}", path);
         }
     }
     // 잠긴 파일, 아직 끝나는 중인 프로세스가 다시 쓴 파일은 잠시 뒤 다시 지운다
     let mut left = pending(&saba_dir);
+    tracing::info!("[Uninstall] Removing {} data entries from {:?}", left.len(), saba_dir);
     for attempt in 0..3 {
         for path in &left {
             if path.is_dir() {
-                tracing::info!("[Uninstall] Removing dir: {:?}", path);
+                tracing::debug!("[Uninstall] Removing dir: {:?}", path);
                 let _ = remove_dir_robust(path);
             } else {
-                tracing::info!("[Uninstall] Removing file: {:?}", path);
+                tracing::debug!("[Uninstall] Removing file: {:?}", path);
                 let _ = std::fs::remove_file(path);
             }
         }

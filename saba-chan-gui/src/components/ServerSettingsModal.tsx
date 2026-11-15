@@ -86,7 +86,7 @@ function GeneralTab({
     const askReset = async () => {
         const seen =
             typeof window.api?.instanceResetPreview === 'function'
-                ? await window.api.instanceResetPreview(settingsServer.id).catch(() => null)
+                ? await window.api.instanceResetPreview(settingsServer.id)
                 : null;
         if (seen?.success && Array.isArray(seen.scopes) && seen.scopes.length) setResetScopes(seen.scopes);
         else handleResetServer();

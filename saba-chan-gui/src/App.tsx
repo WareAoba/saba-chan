@@ -268,7 +268,6 @@ function App() {
                 .daemonStatus()
                 .then((status) => {
                     if (status && status.running) {
-                        console.log('[HMR] Daemon already running, skipping loading screen');
                         window.__sabaReadyReceived = true;
                         setInitStatus(t('loading.step_done'));
                         setInitProgress(100);
@@ -283,7 +282,6 @@ function App() {
         let offStatus: (() => void) | undefined;
         if (window.api && window.api.onStatusUpdate) {
             offStatus = window.api.onStatusUpdate((data) => {
-                console.log('[Init Status]', data.step, ':', data.message);
                 setInitSeen((n) => n + 1);
 
                 const progressValues = {
@@ -319,7 +317,6 @@ function App() {
         // Update notifications
         if (window.api && window.api.onUpdatesAvailable) {
             window.api.onUpdatesAvailable((data) => {
-                console.log('[Updater] Updates available notification:', data);
                 syncUpdateNotice(data, t);
             });
         }
@@ -327,7 +324,6 @@ function App() {
         // Post-update completion notification
         if (window.api && window.api.onUpdateCompleted) {
             window.api.onUpdateCompleted((data) => {
-                console.log('[Updater] Update completed notification:', data);
                 setTimeout(() => announceUpdateCompleted(data, t), 1500);
             });
         }
@@ -445,8 +441,6 @@ function App() {
     // ── Main initialization + auto-refresh ──────────────────
     // biome-ignore lint/correctness/useExhaustiveDependencies: fetchServers/t/setModal are intentionally omitted — adding them would cause interval re-registration on every action
     useEffect(() => {
-        const isTest = process.env.NODE_ENV === 'test' || typeof (globalThis as { jest?: unknown }).jest !== 'undefined';
-        if (!isTest) console.log('App mounted, fetching initial data...');
         fetchServers();
 
         // 다른 인터페이스(CLI의 `gui`)가 이 창을 띄우며 고른 서버를 연다

@@ -27,7 +27,7 @@ export function ServerAddress({ server }: { server: Server }) {
 
     const load = useCallback(async () => {
         if (typeof window.api?.instanceAddress !== 'function') return;
-        const res = await window.api.instanceAddress(server.id).catch(() => null);
+        const res = await window.api.instanceAddress(server.id);
         setInfo(res && Array.isArray(res.ports) ? res : null);
     }, [server.id]);
     useEffect(() => {

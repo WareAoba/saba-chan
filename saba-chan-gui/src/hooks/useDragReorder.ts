@@ -2,7 +2,7 @@ import type React from 'react';
 import { useRef, useState } from 'react';
 import type { Server } from '../stores/useServerStore';
 import { failed } from '../utils/apiResult';
-import { debugLog, debugWarn, safeShowToast } from '../utils/helpers';
+import { safeShowToast } from '../utils/helpers';
 
 interface SlotPosition {
     x: number;
@@ -203,11 +203,9 @@ export function useDragReorder(servers: Server[], setServers: (updater: (prev: S
             const res = await window.api.instanceReorder(orderedIds).catch((err: Error) => ({ error: err.message }));
             if (savingOrder === orderedIds) savingOrder = null;
             if (failed(res)) {
-                debugWarn('Failed to save server order:', res.error);
+                console.warn('Failed to save server order:', res.error);
                 safeShowToast(res.error, 'error', 4000);
                 setServers((prev) => inOrder(prev, originalOrder));
-            } else {
-                debugLog('Server order saved:', orderedIds);
             }
         };
 
