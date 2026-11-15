@@ -168,7 +168,7 @@ async fn restart_unrecorded(state: &IPCServer, id: &str, mode: StopMode) -> Outc
         let supervisor = state.supervisor.read().await;
         supervisor.instance_store.find(id).map(|i| {
             let module_timeout = supervisor.module_loader.get_module(&i.module_name).ok().and_then(|m| m.metadata.stop_timeout);
-            (i.id.clone(), crate::supervisor::stop_timeout_of(i, module_timeout), supervisor.tracker.get_pid(&i.id).ok())
+            (i.id.clone(), crate::supervisor::stop_timeout_of(i, module_timeout), supervisor.tracker.get_pid(&i.id))
         })
     };
     let Some((inst_id, stop_timeout, old_pid)) = picked else {
@@ -547,11 +547,9 @@ async fn stop_unrecorded(state: &IPCServer, key: &str, force: bool) -> Outcome {
                 if success {
                     // tracker는 id로만 찾는다: 이름이 다른 인스턴스의 id와 같아도 그쪽을 건드리지 않는다
                     let supervisor = state.supervisor.read().await;
-                    // managed 정지는 stop_server 안에서 이미 tracker를 비운다: NotFound는 정상이다
-                    match supervisor.tracker.untrack(&inst.id) {
-                        Ok(()) => tracing::info!("Server '{}' untracked from process tracker", name),
-                        Err(crate::supervisor::process::ProcessError::NotFound { .. }) => {}
-                        Err(e) => tracing::warn!("Failed to untrack stopped server '{}': {}", name, e),
+                    // managed 정지는 stop_server 안에서 이미 tracker를 비운다: 없어도 정상이다
+                    if supervisor.tracker.untrack(&inst.id) {
+                        tracing::info!("Server '{}' untracked from process tracker", name);
                     }
                 }
                 settled(result)
@@ -720,7 +718,7 @@ mod tests {
         let restarted = restarter.await.unwrap();
         assert_eq!(restarted["error_code"], "restart_cancelled", "{restarted}");
         let s = state.supervisor.read().await;
-        assert!(s.tracker.get_pid("stop-during-restart").is_err(), "nothing is tracked");
+        assert!(s.tracker.get_pid("stop-during-restart").is_none(), "nothing is tracked");
         assert!(s.managed_store.get("stop-during-restart").await.is_none(), "the restart did not bring the server back");
     }
 
@@ -748,7 +746,7 @@ mod tests {
         sup.instance_store.add(inst).unwrap();
         let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
         let mut child = std::process::Command::new("sleep").arg("30").spawn().unwrap();
-        state.supervisor.read().await.tracker.track("slow-save", child.id()).unwrap();
+        state.supervisor.read().await.tracker.track("slow-save", child.id());
 
         let restarted = crate::ipc::internal::InternalResponse::from(restart_unrecorded(&state, "slow-save", StopMode::Graceful).await);
         assert_eq!(restarted.status, StatusCode::CONFLICT, "{}", restarted.body);
@@ -801,7 +799,7 @@ mod tests {
         let started = starter.await.unwrap();
         assert_eq!(started["error_code"], "start_cancelled", "{started}");
         let s = state.supervisor.read().await;
-        assert!(s.tracker.get_pid("stop-during-check").is_err(), "nothing is tracked");
+        assert!(s.tracker.get_pid("stop-during-check").is_none(), "nothing is tracked");
         assert!(s.managed_store.get("stop-during-check").await.is_none(), "no server was left running");
     }
 
@@ -845,7 +843,7 @@ mod tests {
         assert_eq!(started["error_code"], "start_cancelled", "{started}");
         assert_eq!(started["error"], "Server 'srv' was stopped while it was starting", "{started}");
         let s = state.supervisor.read().await;
-        assert!(s.tracker.get_pid("stop-after-check").is_err(), "nothing is tracked");
+        assert!(s.tracker.get_pid("stop-after-check").is_none(), "nothing is tracked");
         assert!(s.managed_store.get("stop-after-check").await.is_none(), "no server was left running");
     }
 
@@ -939,7 +937,7 @@ mod tests {
 
         // non-managed(데몬이 PID만 안다): 모듈 stop()의 답을 그대로 전한다
         let mut child = std::process::Command::new("sleep").arg("30").spawn().unwrap();
-        state.supervisor.read().await.tracker.track("no-console-native", child.id()).unwrap();
+        state.supervisor.read().await.tracker.track("no-console-native", child.id());
         let refused = stop("no-console-native", false).await;
         assert_eq!(refused["error_code"], "graceful_stop_unavailable", "{refused}");
         assert!(child.try_wait().unwrap().is_none(), "a plain stop does not kill it");
@@ -953,7 +951,7 @@ mod tests {
         assert_eq!(stopped["success"], true, "{stopped}");
         assert!(state.supervisor.read().await.managed_store.get("no-console-managed").await.is_none_or(|m| !m.is_running()));
         let mut child = std::process::Command::new("sleep").arg("30").spawn().unwrap();
-        state.supervisor.read().await.tracker.track("no-console-native", child.id()).unwrap();
+        state.supervisor.read().await.tracker.track("no-console-native", child.id());
         let stopped = crate::ipc::internal::InternalResponse::from(user_stop(&state, "no-console-native", false).await).body;
         assert_eq!(stopped["success"], true, "{stopped}");
         assert!(child.wait().is_ok());
@@ -1004,7 +1002,7 @@ mod tests {
         let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
 
         let mut child = std::process::Command::new("sleep").arg("30").spawn().unwrap();
-        state.supervisor.read().await.tracker.track("native", child.id()).unwrap();
+        state.supervisor.read().await.tracker.track("native", child.id());
         let stopped = crate::ipc::internal::InternalResponse::from(stop(&state, "native", false).await).body;
         assert_eq!(stopped["success"], true, "{stopped}");
         assert!(child.wait().is_ok());

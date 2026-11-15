@@ -60,7 +60,7 @@ impl Supervisor {
             // 모듈이 기다릴 시간은 데몬이 기다리는 시간과 같다 (인스턴스 값, 모듈 값, 기본 30초 순)
             config_obj.insert("stop_timeout".to_string(), json!(stop_timeout_of(&instance, module.metadata.stop_timeout)));
             // 추적표는 id로만 찾는다 (다른 인스턴스 id와 이름이 같아도 섞이지 않게)
-            let tracked_pid = s.tracker.get_pid(&instance.id).ok();
+            let tracked_pid = s.tracker.get_pid(&instance.id);
             (module, config_obj, tracked_pid, s.host_context(&instance.id))
         };
 

@@ -34,10 +34,7 @@ impl Supervisor {
             if let Some(proc) = attached {
                 let pid = proc.pid;
                 // 가동 시간은 데몬이 다시 붙은 때가 아니라 러너가 서버를 띄운 때부터
-                if let Err(e) = self.tracker.track_since(&instance.id, pid, proc.started_at) {
-                    tracing::warn!("Failed to re-track '{}' (PID {}): {}", instance.name, pid, e);
-                    continue;
-                }
+                self.tracker.track_since(&instance.id, pid, proc.started_at);
                 let _ = saba_atomic_file::write(&pid_file, pid.to_string().as_bytes(), saba_atomic_file::Mode::Plain);
                 self.managed_store.insert(&instance.id, proc).await;
                 reattached += 1;
@@ -79,10 +76,7 @@ impl Supervisor {
             };
             if same {
                 // Process is still running — re-register it
-                if let Err(e) = self.tracker.track(&instance.id, pid) {
-                    tracing::warn!("Failed to re-track orphan '{}' (PID {}): {}", instance.name, pid, e);
-                    continue;
-                }
+                self.tracker.track(&instance.id, pid);
 
                 // Create a stub ManagedProcess with history from disk
                 let stub = managed_process::ManagedProcess::create_reattached_stub(
@@ -185,7 +179,7 @@ mod tests {
             }
         }
         supervisor.reattach_orphaned_managed().await;
-        assert!(supervisor.tracker.get_pid("reused").is_err(), "a process that started after the record is someone else");
+        assert!(supervisor.tracker.get_pid("reused").is_none(), "a process that started after the record is someone else");
         assert!(!supervisor.instance_store.managed_pid_file("reused").exists());
         assert_eq!(supervisor.tracker.get_pid("same").unwrap(), std::process::id());
     }
@@ -204,7 +198,7 @@ mod tests {
         let inst_dir = supervisor.instance_store.instance_dir("srv");
         std::fs::write(inst_dir.join("managed.pid"), std::process::id().to_string()).unwrap();
         supervisor.reattach_orphaned_managed().await;
-        assert!(supervisor.tracker.get_pid("srv").is_err());
+        assert!(supervisor.tracker.get_pid("srv").is_none());
     }
 
     /// 업데이트 전 배치의 PID 기록은 처음 시작 때 한 번만 옮겨 받는다 (그때 돌던 서버에 다시 붙는다)
@@ -229,11 +223,11 @@ mod tests {
         assert_eq!(supervisor.instance_store.runner_home("srv"), supervisor.instance_store.state_dir("srv"));
         assert!(!inst_dir.join("run").exists(), "the old runner record is cleared once it is not followed");
 
-        supervisor.tracker.untrack("srv").unwrap();
+        supervisor.tracker.untrack("srv");
         std::fs::remove_file(supervisor.instance_store.managed_pid_file("srv")).unwrap();
         std::fs::write(inst_dir.join("managed.pid"), std::process::id().to_string()).unwrap();
         supervisor.reattach_orphaned_managed().await;
-        assert!(supervisor.tracker.get_pid("srv").is_err());
+        assert!(supervisor.tracker.get_pid("srv").is_none());
     }
 
     /// 데몬이 다시 붙으면 콘솔 줄 번호가 0부터 다시 매겨진다. PID가 같아도 클라이언트가 이어 읽던 번호를

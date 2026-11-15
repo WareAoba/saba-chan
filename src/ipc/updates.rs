@@ -3579,7 +3579,7 @@ mod tests {
     async fn set_running(state: &UpdateState, id: &str, on: bool) {
         let sup = state.supervisor.as_ref().unwrap().read().await;
         if on {
-            sup.tracker.track(id, std::process::id()).unwrap();
+            sup.tracker.track(id, std::process::id());
         } else {
             let _ = sup.tracker.untrack(id);
         }

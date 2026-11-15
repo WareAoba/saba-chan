@@ -75,7 +75,7 @@ impl Supervisor {
         // 시작 때와 같은 인스턴스 값 (zomboid server_name·cache_dir 등)
         Self::insert_instance_fields(&mut cfg, instance, &self.instance_store.instance_dir(instance_id));
         // 켜져 있으면 자기 포트를 "다른 프로그램이 쓰는 중"으로 보지 않게
-        let server = self.tracker.get_pid(instance_id).ok();
+        let server = self.tracker.get_pid(instance_id);
         cfg.insert("running".to_string(), json!(server.is_some()));
 
         Ok(crate::plugin::PluginCall::new(module_path, function, Value::Object(cfg)).serving(server).in_instance(self.host_context(instance_id)))

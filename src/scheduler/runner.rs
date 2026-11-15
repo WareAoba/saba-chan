@@ -226,7 +226,7 @@ async fn sweep_restore_safeties(state: &IPCServer, swept: &mut std::collections:
         if !supervisor.is_running(id).await {
             return None;
         }
-        let started = supervisor.tracker.get_start_time(id).ok()?;
+        let started = supervisor.tracker.get_start_time(id)?;
         (now >= started.saturating_add(backup::RESTORE_SAFETY_GRACE_SECS)).then_some(started)
     }
     let now = saba_runner::now();

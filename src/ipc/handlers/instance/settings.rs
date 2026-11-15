@@ -433,7 +433,7 @@ mod tests {
         let shown = patch(json!({ "pvp": true, "damage": "" })).await;
         assert_eq!(shown.status.as_u16(), 400, "shown again, it is required: {:?}", shown.body);
 
-        state.supervisor.read().await.tracker.track(&id, std::process::id()).unwrap();
+        state.supervisor.read().await.tracker.track(&id, std::process::id());
         let running = patch(json!({ "admins": ["Steve"], "motd": "x" })).await;
         assert_eq!(running.body["restart_required"], json!([]), "unchanged values ask for nothing");
         let running = patch(json!({ "admins": ["Alex"], "motd": "y" })).await;
@@ -443,7 +443,7 @@ mod tests {
         assert_eq!(running.body["restart_required"], json!(["port"]));
         let running = patch(json!({ "port": 25570 })).await;
         assert_eq!(running.body["restart_required"], json!([]), "saving the same value again asks for nothing");
-        state.supervisor.read().await.tracker.untrack(&id).unwrap();
+        state.supervisor.read().await.tracker.untrack(&id);
         let stored = std::fs::read_to_string(state.supervisor.read().await.instance_store.instance_dir(&id).join("settings.json")).unwrap();
         assert!(stored.contains("\"Alex\""), "{stored}");
     }

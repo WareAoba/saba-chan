@@ -230,7 +230,7 @@ pub async fn refresh(sup: &tokio::sync::RwLock<Supervisor>) {
         for instance in s.instance_store.list() {
             let module = s.module_loader.get_module(&instance.module_name).ok();
             let function = module.as_ref().and_then(|m| m.metadata.players_function.clone());
-            let pid = s.tracker.get_pid(&instance.id).ok();
+            let pid = s.tracker.get_pid(&instance.id);
             let probe = module.as_ref().zip(pid).and_then(|(m, pid)| {
                 Some((instance.id.clone(), pid, m.metadata.rest_host(instance)?, m.metadata.rest_port(instance)?))
             });

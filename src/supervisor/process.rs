@@ -1,19 +1,10 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::collections::HashMap;
-use std::sync::{Mutex, MutexGuard};
-use thiserror::Error;
+use std::sync::{Mutex, MutexGuard, PoisonError};
 use anyhow::Result;
 
 #[cfg(not(target_os = "windows"))]
 use nix::libc;
-
-#[derive(Error, Debug)]
-pub enum ProcessError {
-    #[error("process {pid} not found")]
-    NotFound { pid: u32 },
-    #[error("lock poisoned")]
-    LockPoisoned,
-}
 
 /// Check if a process with the given PID is alive. Cross-platform helper.
 pub fn is_process_alive(pid: u32) -> bool {
@@ -177,66 +168,44 @@ impl ProcessTracker {
         Self::default()
     }
 
-    /// Mutex 락 획득 헬퍼 — 보일러플레이트 제거
-    fn lock(&self) -> Result<MutexGuard<'_, HashMap<String, ProcessInfo>>, ProcessError> {
-        self.processes.lock().map_err(|e| {
-            tracing::error!("ProcessTracker lock poisoned: {}", e);
-            ProcessError::LockPoisoned
-        })
+    /// 맵 조작은 중간에 패닉하지 않으므로 독이 든 락도 그대로 쓴다
+    fn lock(&self) -> MutexGuard<'_, HashMap<String, ProcessInfo>> {
+        self.processes.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// Get start_time by server name
-    pub fn get_start_time(&self, server_name: &str) -> Result<u64, ProcessError> {
-        let processes = self.lock()?;
-        processes
-            .get(server_name)
-            .map(|p| p.start_time)
-            .ok_or(ProcessError::NotFound { pid: 0 })
+    pub fn get_start_time(&self, server_name: &str) -> Option<u64> {
+        self.lock().get(server_name).map(|p| p.start_time)
     }
 
-    /// Track a server process by name
-    pub fn track(&self, server_name: &str, pid: u32) -> Result<()> {
+    pub fn track(&self, server_name: &str, pid: u32) {
         self.track_since(server_name, pid, current_timestamp())
     }
 
     /// 이미 돌던 서버를 다시 붙일 때: 실제로 시작한 시각(유닉스 초)을 그대로 쓴다
-    pub fn track_since(&self, server_name: &str, pid: u32, start_time: u64) -> Result<()> {
-        let info = ProcessInfo { pid, start_time };
-        let mut processes = self.lock().map_err(|e| anyhow::anyhow!("{}", e))?;
-        processes.insert(server_name.to_string(), info);
+    pub fn track_since(&self, server_name: &str, pid: u32, start_time: u64) {
+        self.lock().insert(server_name.to_string(), ProcessInfo { pid, start_time });
         tracing::info!("Now tracking server '{}' with pid: {}", server_name, pid);
-        Ok(())
     }
 
     /// 같은 서버의 PID만 바꾼다 (런처가 끝나고 진짜 서버로 넘어갈 때). 시작 시각은 그대로
-    pub fn replace_pid(&self, server_name: &str, pid: u32) -> Result<()> {
-        let mut processes = self.lock().map_err(|e| anyhow::anyhow!("{}", e))?;
-        match processes.get_mut(server_name) {
-            Some(info) => info.pid = pid,
-            None => {
-                processes.insert(server_name.to_string(), ProcessInfo { pid, start_time: current_timestamp() });
-            }
+    pub fn replace_pid(&self, server_name: &str, pid: u32) {
+        self.lock()
+            .entry(server_name.to_string())
+            .and_modify(|info| info.pid = pid)
+            .or_insert_with(|| ProcessInfo { pid, start_time: current_timestamp() });
+    }
+
+    pub fn get_pid(&self, server_name: &str) -> Option<u32> {
+        self.lock().get(server_name).map(|p| p.pid)
+    }
+
+    /// 추적을 멈춘다. 추적하던 서버였으면 true
+    pub fn untrack(&self, server_name: &str) -> bool {
+        let removed = self.lock().remove(server_name).is_some();
+        if removed {
+            tracing::info!("Stopped tracking server '{}'", server_name);
         }
-        Ok(())
-    }
-
-    /// Get PID by server name
-    pub fn get_pid(&self, server_name: &str) -> Result<u32, ProcessError> {
-        let processes = self.lock()?;
-        processes
-            .get(server_name)
-            .map(|p| p.pid)
-            .ok_or(ProcessError::NotFound { pid: 0 })
-    }
-
-    /// Stop tracking a server by name
-    pub fn untrack(&self, server_name: &str) -> Result<(), ProcessError> {
-        let mut processes = self.lock()?;
-        processes
-            .remove(server_name)
-            .ok_or(ProcessError::NotFound { pid: 0 })?;
-        tracing::info!("Stopped tracking server '{}'", server_name);
-        Ok(())
+        removed
     }
 }
 
@@ -300,93 +269,26 @@ mod tests {
     }
 
     #[test]
-    fn test_get_pid() {
+    fn tracks_by_name_and_untracks() {
         let tracker = ProcessTracker::new();
-        tracker.track("palworld", 5678).unwrap();
-        assert_eq!(tracker.get_pid("palworld").unwrap(), 5678);
-    }
-
-    #[test]
-    fn test_not_found() {
-        let tracker = ProcessTracker::new();
-        assert!(tracker.get_pid("nonexistent").is_err());
-    }
-
-    #[test]
-    fn test_untrack() {
-        let tracker = ProcessTracker::new();
-        tracker.track("minecraft", 1234).unwrap();
-        tracker.untrack("minecraft").unwrap();
-        assert!(tracker.get_pid("minecraft").is_err());
-    }
-
-    // ── 추가 심층 테스트 ──
-
-    #[test]
-    fn test_start_time_is_nonzero() {
-        let tracker = ProcessTracker::new();
-        tracker.track("srv", 1234).unwrap();
-        let start_time = tracker.get_start_time("srv").unwrap();
-        assert!(start_time > 0, "Start time should be a valid Unix timestamp, got: {}", start_time);
+        tracker.track("mc", 100);
+        tracker.track("pw", 100);
+        tracker.track("mc", 200);
+        assert_eq!(tracker.get_pid("mc"), Some(200), "tracking again replaces the pid");
+        assert_eq!(tracker.get_pid("pw"), Some(100));
+        assert!(tracker.untrack("mc"));
+        assert!(!tracker.untrack("mc"), "already gone");
+        assert_eq!(tracker.get_pid("mc"), None);
+        assert_eq!(tracker.get_pid("pw"), Some(100));
     }
 
     #[test]
     fn reattached_server_keeps_its_real_start_time() {
         let tracker = ProcessTracker::new();
-        tracker.track_since("srv", 1234, 1_000).unwrap();
-        assert_eq!(tracker.get_start_time("srv").unwrap(), 1_000);
-    }
-
-    #[test]
-    fn test_start_time_not_found() {
-        let tracker = ProcessTracker::new();
-        assert!(tracker.get_start_time("ghost").is_err());
-    }
-
-    #[test]
-    fn test_track_overwrites_existing() {
-        let tracker = ProcessTracker::new();
-        tracker.track("srv", 1000).unwrap();
-        assert_eq!(tracker.get_pid("srv").unwrap(), 1000);
-
-        // 같은 이름으로 재등록 → 새 PID로 업데이트
-        tracker.track("srv", 2000).unwrap();
-        assert_eq!(tracker.get_pid("srv").unwrap(), 2000);
-    }
-
-    #[test]
-    fn test_untrack_nonexistent_returns_error() {
-        let tracker = ProcessTracker::new();
-        let result = tracker.untrack("never-existed");
-        assert!(result.is_err(), "untrack on unknown server should return NotFound");
-    }
-
-    #[test]
-    fn test_multiple_servers_independent() {
-        let tracker = ProcessTracker::new();
-        tracker.track("mc", 100).unwrap();
-        tracker.track("pw", 200).unwrap();
-        tracker.track("zomboid", 300).unwrap();
-
-        assert_eq!(tracker.get_pid("mc").unwrap(), 100);
-        assert_eq!(tracker.get_pid("pw").unwrap(), 200);
-        assert_eq!(tracker.get_pid("zomboid").unwrap(), 300);
-
-        // 하나만 삭제 → 나머지 존재
-        tracker.untrack("mc").unwrap();
-        assert!(tracker.get_pid("mc").is_err());
-        assert_eq!(tracker.get_pid("zomboid").unwrap(), 300);
-    }
-
-    /// 동일 PID를 다른 서버 이름으로 등록 — 허용되어야 함 (추적 기반이 이름이므로)
-    #[test]
-    fn test_same_pid_different_servers() {
-        let tracker = ProcessTracker::new();
-        tracker.track("srv-a", 9999).unwrap();
-        tracker.track("srv-b", 9999).unwrap();
-
-        assert_eq!(tracker.get_pid("srv-a").unwrap(), 9999);
-        assert_eq!(tracker.get_pid("srv-b").unwrap(), 9999);
+        tracker.track_since("srv", 1234, 1_000);
+        assert_eq!(tracker.get_start_time("srv"), Some(1_000));
+        tracker.replace_pid("srv", 5678);
+        assert_eq!((tracker.get_pid("srv"), tracker.get_start_time("srv")), (Some(5678), Some(1_000)), "only the pid changes");
     }
 
     /// 자식 하나(ping)를 띄운 런처(cmd)와 그 자식 PID. cmd는 ping보다 먼저 콘솔 호스트(conhost)를 자식으로 둔다:
@@ -467,15 +369,5 @@ mod tests {
         let pid = child.id();
         child.wait().unwrap();
         assert!(force_kill_pid(pid).is_ok());
-    }
-
-    /// 빈 서버 이름 — 허용되지만 의미 없는 엣지 케이스
-    #[test]
-    fn test_empty_server_name() {
-        let tracker = ProcessTracker::new();
-        tracker.track("", 1234).unwrap();
-        assert_eq!(tracker.get_pid("").unwrap(), 1234);
-        tracker.untrack("").unwrap();
-        assert!(tracker.get_pid("").is_err());
     }
 }

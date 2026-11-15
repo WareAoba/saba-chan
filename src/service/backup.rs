@@ -346,7 +346,7 @@ async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, prote
     // 정지·재시작은 작업 잠금을 기다리지 않는다: 묶는 사이 꺼지거나 다시 켜졌는지 프로세스를 추적하기 시작한 시각으로 가린다.
     // 실행 세대는 정지를 요청하는 순간 오르므로(정지가 실패해도) 쓰지 않는다. PID는 런처가 끝나고 진짜 서버로 넘어갈 때
     // 같은 실행에서도 바뀐다(`replace_pid`, 시작 시각은 그대로)
-    let started = state.supervisor.read().await.tracker.get_start_time(id).ok();
+    let started = state.supervisor.read().await.tracker.get_start_time(id);
     let saved = if live {
         save_for_backup(state, id, &plan.spec, &failures).await
     } else {
@@ -372,7 +372,7 @@ async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, prote
         .and_then(|r| r)
     };
     // 묶는 사이 서버가 꺼졌으면 종료 저장이 쓰는 중인 파일을 읽었을 수 있다: 백업을 남기지 않고, 오래된 백업도 정리하지 않는다
-    let stopped = live && (!is_running(state, id).await || state.supervisor.read().await.tracker.get_start_time(id).ok() != started);
+    let stopped = live && (!is_running(state, id).await || state.supervisor.read().await.tracker.get_start_time(id) != started);
     let mut result = match result {
         Ok(made) if stopped => {
             tracing::warn!("'{}' stopped while it was being backed up; discarding {}", id, made.name);
@@ -1905,7 +1905,7 @@ print(json.dumps({'success': True, 'snapshots': [{'id': 'startup/backup_1', 'cre
         assert_eq!(reset().await, "instance_busy");
         drop(guard);
 
-        state.supervisor.read().await.tracker.track(&id, std::process::id()).unwrap();
+        state.supervisor.read().await.tracker.track(&id, std::process::id());
         assert_eq!(install().await, "server_running");
         assert_eq!(reset().await, "server_running");
         assert!(InstanceLock::take(&id).is_some(), "refused calls must not keep the lock");
@@ -2051,7 +2051,7 @@ print(json.dumps({'success': True, 'snapshots': [{'id': 'startup/backup_1', 'cre
             let mut inst = sup.instance_store.get(&id).cloned().unwrap();
             inst.module_settings.insert("managed_start".into(), json!(false));
             sup.instance_store.update(&id, inst.clone()).unwrap();
-            sup.tracker.track(&id, std::process::id()).unwrap();
+            sup.tracker.track(&id, std::process::id());
             sup.ensure_rcon_access(&inst).unwrap();
             crate::protocol::rcon::load(&sup.instance_store.instance_dir(&id)).unwrap()
         };
@@ -2169,12 +2169,12 @@ print(json.dumps({'success': True, 'snapshots': [{'id': 'startup/backup_1', 'cre
     async fn a_live_backup_is_kept_when_only_the_launcher_pid_is_replaced() {
         let (state, id, tmp) = server_with(&live_module(None), None).await;
         run_fake_server(&state, &id, &tmp, "save-all) sleep 1; echo 'ok save-all';;").await;
-        state.supervisor.read().await.tracker.track(&id, 4_000_100).unwrap();
+        state.supervisor.read().await.tracker.track(&id, 4_000_100);
         let swap = {
             let (state, id) = (state.clone(), id.clone());
             tokio::spawn(async move {
                 tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-                state.supervisor.read().await.tracker.replace_pid(&id, 4_000_101).unwrap();
+                state.supervisor.read().await.tracker.replace_pid(&id, 4_000_101);
             })
         };
         let made = take_backup(&state, &id, BackupKind::Manual).await;

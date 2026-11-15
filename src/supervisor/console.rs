@@ -29,7 +29,7 @@ impl Supervisor {
             let module_path = module.entry_path();
 
             // 명령어 config 구성
-            let pid = s.tracker.get_pid(&instance.id).ok();
+            let pid = s.tracker.get_pid(&instance.id);
             let instance_dir = s.instance_store.instance_dir(&instance.id);
             let working_dir = instance.working_dir.clone()
                 .unwrap_or_else(|| instance_dir.join("server").to_string_lossy().to_string());

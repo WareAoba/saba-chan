@@ -286,7 +286,7 @@ pub async fn import(State(state): State<IPCServer>, Json(req): Json<ImportReques
         // 쓰기 잠금 안에서 본다: 그 사이에 켜진 서버를 덮어쓰지 않게
         let running: HashSet<String> = {
             let mut ids: HashSet<String> = sup.managed_store.running_instance_ids().await.into_iter().collect();
-            ids.extend(sup.instance_store.list().iter().filter(|i| sup.tracker.get_pid(&i.id).is_ok()).map(|i| i.id.clone()));
+            ids.extend(sup.instance_store.list().iter().filter(|i| sup.tracker.get_pid(&i.id).is_some()).map(|i| i.id.clone()));
             ids
         };
         // 앞서 더하거나 바꾼 인스턴스까지 보고 판정한다: 미리보기(dry run)도 실제 가져오기와 같은 결과를 내게

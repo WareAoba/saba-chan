@@ -236,7 +236,7 @@ pub async fn chat_handler(Path(id): Path<String>, State(state): State<IPCServer>
         let Some(function) = sup.module_loader.get_module(&instance.module_name).ok().and_then(|m| m.metadata.chat_send_function) else {
             return fail(StatusCode::NOT_IMPLEMENTED, "not_supported", "This server's module cannot send chat".into());
         };
-        if sup.tracker.get_pid(&id).is_err() {
+        if sup.tracker.get_pid(&id).is_none() {
             return fail(StatusCode::CONFLICT, "server_not_running", "The server is not running".into());
         }
         sup.instance_call(&id, &function)
@@ -286,7 +286,7 @@ pub async fn chat_link_handler(Path((id, guild)): Path<(String, String)>, State(
         let module = sup.module_loader.get_module(&instance.module_name).ok();
         let reads = module.as_ref().is_some_and(|m| !m.metadata.chat_patterns.is_empty());
         let sends = module.as_ref().is_some_and(|m| m.metadata.chat_send_function.is_some());
-        (reads, sends, sup.tracker.get_pid(&id).is_ok(), sup.runtime.clone())
+        (reads, sends, sup.tracker.get_pid(&id).is_some(), sup.runtime.clone())
     };
     let result = chat_link::toggle(&id, &guild, channel, direction, |d| {
         if (d.to_discord() && !reads_chat) || (d.to_game() && !sends_chat) {
@@ -744,7 +744,7 @@ mod tests {
         assert_eq!(saved.status, StatusCode::OK, "{}", saved.body);
         assert_eq!(port().await, Some(25580), "the instance port follows the written file");
 
-        state.supervisor.read().await.tracker.track("props", std::process::id()).unwrap();
+        state.supervisor.read().await.tracker.track("props", std::process::id());
         assert_eq!(reset().await.body["error_code"], "server_running");
         let _ = state.supervisor.read().await.tracker.untrack("props");
         assert_eq!(port().await, Some(25580));
@@ -814,7 +814,7 @@ mod tests {
 
         let off = players("with").await;
         assert_eq!((off.status, off.body["error_code"].as_str()), (StatusCode::CONFLICT, Some("server_not_running")), "{}", off.body);
-        state.supervisor.read().await.tracker.track("with", std::process::id()).unwrap();
+        state.supervisor.read().await.tracker.track("with", std::process::id());
         let on = players("with").await;
         assert_eq!(on.body, json!({ "success": true, "online": 2, "max": 20, "players": [{ "name": "Steve" }, { "name": "Alex" }, { "name": "x".repeat(64) }] }));
         let _ = state.supervisor.read().await.tracker.untrack("with");
@@ -873,7 +873,7 @@ mod tests {
             ] })
         );
         // 켜진 서버: 모듈이 받는 명령은 보낼 수 있고, 콘솔 명령은 콘솔·RCON 길이 있어야 한다
-        state.supervisor.read().await.tracker.track("with", std::process::id()).unwrap();
+        state.supervisor.read().await.tracker.track("with", std::process::id());
         let on = lists("with").await;
         assert_eq!((on.body["lists"][0]["editable"].as_bool(), on.body["lists"][1]["editable"].as_bool()), (Some(true), Some(false)), "{}", on.body);
         let _ = state.supervisor.read().await.tracker.untrack("with");
@@ -916,7 +916,7 @@ mod tests {
         let msg = json!({ "name": " 김치 ", "text": "안녕\nstop" });
 
         assert_eq!(chat("chat-with", msg.clone()).await.body["error_code"], "server_not_running");
-        state.supervisor.read().await.tracker.track("chat-with", std::process::id()).unwrap();
+        state.supervisor.read().await.tracker.track("chat-with", std::process::id());
         let sent = chat("chat-with", msg.clone()).await;
         assert_eq!(sent.body, json!({ "success": true }), "the newline never reaches the console");
         assert!(crate::supervisor::game_chat::is_echo("chat-with", "Server", "김치: 안녕 stop"), "its echo is not sent back to Discord");
@@ -956,7 +956,7 @@ mod tests {
         let on = json!({ "channel": "200000000000000001" });
 
         assert_eq!(link("link-game", on.clone()).await.body["error_code"], "server_not_running");
-        state.supervisor.read().await.tracker.track("link-game", std::process::id()).unwrap();
+        state.supervisor.read().await.tracker.track("link-game", std::process::id());
         assert_eq!(link("link-game", on.clone()).await.body["error_code"], "players_unknown", "players must be counted from join/leave lines");
         let rt = state.supervisor.read().await.runtime.clone();
         let roster = crate::supervisor::players::roster_start(&rt, "link-game");

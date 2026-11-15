@@ -1037,7 +1037,7 @@ mod tests {
         let inst = crate::instance::ServerInstance::new("srv", "plain");
         let id = inst.id.clone();
         sup.instance_store.add(inst).unwrap();
-        sup.tracker.track(&id, std::process::id()).unwrap();
+        sup.tracker.track(&id, std::process::id());
         let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
 
         let refused = crate::ipc::internal::into_internal(remove_module(Path("plain".into()), State(state.clone())).await.into_response()).await.body;
@@ -1047,7 +1047,7 @@ mod tests {
         let upper = crate::ipc::internal::into_internal(remove_module(Path("PLAIN".into()), State(state.clone())).await.into_response()).await.body;
         assert_eq!(upper["error_code"], "module_in_use", "{upper}");
 
-        state.supervisor.read().await.tracker.untrack(&id).unwrap();
+        state.supervisor.read().await.tracker.untrack(&id);
         let removed = crate::ipc::internal::into_internal(remove_module(Path("plain".into()), State(state)).await.into_response()).await.body;
         assert_eq!(removed["success"], true, "{removed}");
     }

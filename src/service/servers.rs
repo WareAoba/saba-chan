@@ -283,7 +283,7 @@ pub(crate) async fn players(state: &IPCServer, id: &str) -> Outcome {
         let Some(function) = sup.module_loader.get_module(&instance.module_name).ok().and_then(|m| m.metadata.players_function) else {
             return fail(StatusCode::NOT_IMPLEMENTED, "not_supported", "This server's module cannot list players".into());
         };
-        if sup.tracker.get_pid(id).is_err() {
+        if sup.tracker.get_pid(id).is_none() {
             return fail(StatusCode::CONFLICT, "server_not_running", "The server is not running".into());
         }
         sup.instance_call(id, &function)

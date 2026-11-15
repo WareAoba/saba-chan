@@ -116,7 +116,7 @@ impl Supervisor {
     /// 옮겼으면 `(옮기기 전, 옮긴 뒤)`
     fn move_reserved_default_rest_port(&mut self, id: &str) -> Option<(u16, u16)> {
         // 이미 떠 있는 서버는 지금 포트로 붙어 있다
-        if self.tracker.get_pid(id).is_ok_and(process::is_process_alive) {
+        if self.tracker.get_pid(id).is_some_and(process::is_process_alive) {
             return None;
         }
         let instance = self.instance_store.get(id)?;
@@ -158,7 +158,7 @@ impl Supervisor {
         let all_instances = self.instance_store.list();
         let running_ids: std::collections::HashSet<String> = all_instances
             .iter()
-            .filter(|i| self.tracker.get_pid(&i.id).is_ok())
+            .filter(|i| self.tracker.get_pid(&i.id).is_some())
             .map(|i| i.id.clone())
             .collect();
         let rest_ports = self.rest_port_settings();
@@ -404,13 +404,13 @@ impl Supervisor {
         let running = match self.managed_store.get(&instance.id).await.filter(|p| p.is_running()) {
             Some(existing) => Some(existing.pid),
             None => match self.tracker.get_pid(&instance.id) {
-                Ok(pid) if process::is_process_alive(pid) => Some(pid),
-                Ok(pid) => {
+                Some(pid) if process::is_process_alive(pid) => Some(pid),
+                Some(pid) => {
                     tracing::info!("Cleaning stale tracker entry for '{}' (PID {} no longer alive)", instance.name, pid);
                     let _ = self.tracker.untrack(&instance.id);
                     None
                 }
-                Err(_) => None,
+                None => None,
             },
         };
         if let Some(pid) = running {
@@ -812,7 +812,7 @@ impl Supervisor {
                 r.stop_requested = None;
                 r.run_generation += 1;
             });
-            s.tracker.track(&instance.id, pid)?;
+            s.tracker.track(&instance.id, pid);
         }
         tracing::info!("Non-managed server '{}' started with PID {}", server_name, pid);
         announce_started(&starting.runtime, &instance.id, &instance.name, &crate::audit::current(), false);
@@ -970,7 +970,7 @@ impl Supervisor {
                 r.stop_requested = None;
                 r.run_generation += 1;
             });
-            s.tracker.track(&instance.id, pid)?;
+            s.tracker.track(&instance.id, pid);
             s.managed_store.insert(&instance.id, managed).await;
         }
 
@@ -1528,7 +1528,7 @@ mod tests {
 
         // managed_store에는 없지만 tracker에 현재 프로세스 PID를 등록
         let current_pid = std::process::id();
-        supervisor.tracker.track("test-tracker-guard", current_pid).unwrap();
+        supervisor.tracker.track("test-tracker-guard", current_pid);
 
         let supervisor = tokio::sync::RwLock::new(supervisor);
         let result = Supervisor::start_managed_server(&supervisor, "test-tracker-guard", "minecraft", json!({}))
@@ -1554,7 +1554,7 @@ mod tests {
         inst.id = "test-nm-guard".into();
         supervisor.instance_store.add(inst).unwrap();
         let current_pid = std::process::id();
-        supervisor.tracker.track("test-nm-guard", current_pid).unwrap();
+        supervisor.tracker.track("test-nm-guard", current_pid);
 
         let supervisor = tokio::sync::RwLock::new(supervisor);
         let result = Supervisor::start_server(&supervisor, "test-nm-guard", "minecraft", json!({}))
@@ -1606,7 +1606,7 @@ mod tests {
         let started = starter.await.unwrap().unwrap();
         assert_eq!(started["error_code"], "start_cancelled", "{started}");
         let s = sup.read().await;
-        assert!(s.tracker.get_pid("stop-during-start").is_err(), "nothing is tracked");
+        assert!(s.tracker.get_pid("stop-during-start").is_none(), "nothing is tracked");
         assert!(s.managed_store.get("stop-during-start").await.is_none(), "no server was left running");
     }
 

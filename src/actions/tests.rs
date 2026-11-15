@@ -1286,7 +1286,7 @@ async fn discord_restores_a_backup_picked_from_the_list() {
     assert!(label.contains("직접") && label.contains(" · "), "{label}");
 
     // 켜진 서버
-    state.supervisor.read().await.tracker.track(&id, std::process::id()).unwrap();
+    state.supervisor.read().await.tracker.track(&id, std::process::id());
     let err = plan(&state, "backup.restore", Some(&id), &json!({ "name": made }), &relay("owner", false)).await.unwrap_err();
     assert_eq!((err.status, err.code), (409, "server_running"));
     let alone = json!([{ "id": "backup.restore", "instance": id, "input": { "name": made } }]);
@@ -1885,7 +1885,7 @@ else:\n    print(json.dumps({'success': True}))\n";
     set_node(&state, json!({ "ownerDiscordId": "owner" })).await;
     for caller in [gui(), relay("owner", false)] {
         let mut child = std::process::Command::new("sleep").arg("30").spawn().unwrap();
-        state.supervisor.read().await.tracker.track(&id, child.id()).unwrap();
+        state.supervisor.read().await.tracker.track(&id, child.id());
         let planned = plan(&state, "server.stop", Some(&id), &json!({}), &caller).await.unwrap();
         let out = run(&state, "server.stop", Some(&id), &json!({}), planned["planId"].as_str(), &caller).await.unwrap();
         assert_eq!(out["success"], true, "{out}");

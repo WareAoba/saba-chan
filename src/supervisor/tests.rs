@@ -87,12 +87,12 @@ async fn a_module_without_status_is_answered_from_the_tracked_pid() {
 
     let stopped = Supervisor::get_server_status(&sup, &id, "game").await.unwrap();
     assert_eq!((stopped["status"].as_str(), stopped["pid"].as_u64()), (Some("stopped"), None), "{stopped}");
-    sup.read().await.tracker.track(&id, std::process::id()).unwrap();
+    sup.read().await.tracker.track(&id, std::process::id());
     let running = Supervisor::get_server_status(&sup, &id, "game").await.unwrap();
     assert_eq!((running["status"].as_str(), running["pid"].as_u64()), (Some("running"), Some(std::process::id() as u64)), "{running}");
     assert!(running["start_time"].is_number(), "{running}");
     // 추적표에 남았지만 이미 끝난 프로세스는 꺼진 것이다
-    sup.read().await.tracker.track(&id, 4_000_001).unwrap();
+    sup.read().await.tracker.track(&id, 4_000_001);
     let gone = Supervisor::get_server_status(&sup, &id, "game").await.unwrap();
     assert_eq!(gone["status"], "stopped", "{gone}");
 }
@@ -163,7 +163,7 @@ async fn an_instance_call_carries_the_tracked_server_pid() {
     let id = inst.id.clone();
     sup.instance_store.add(inst).unwrap();
     assert_eq!(sup.instance_call(&id, "status").unwrap().server(), None);
-    sup.tracker.track(&id, 4_000_001).unwrap();
+    sup.tracker.track(&id, 4_000_001);
     let call = sup.instance_call(&id, "status").unwrap();
     assert_eq!(call.server(), Some(4_000_001));
     assert_eq!(call.config()["running"], true);

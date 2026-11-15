@@ -16,7 +16,7 @@ impl Supervisor {
             return;
         }
         // 끝난 실행의 PID는 놓는다: 남겨 두면 모니터가 다음 순회에서 같은 실행을 원인 모를 종료로 다시 판정한다
-        if self.tracker.get_pid(instance_id).is_ok_and(|pid| pid == proc.pid || proc.runner_pid.is_some()) {
+        if self.tracker.get_pid(instance_id).is_some_and(|pid| pid == proc.pid || proc.runner_pid.is_some()) {
             let _ = self.tracker.untrack(instance_id);
         }
         let stop_origin = self.runtime.existing(instance_id, |r| r.stop_requested.take()).flatten();

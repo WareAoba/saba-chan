@@ -18,7 +18,7 @@ impl Supervisor {
                 crate::system_monitor::InstanceRoot {
                     id: inst.id.clone(),
                     name: inst.name.clone(),
-                    pid: self.tracker.get_pid(&inst.id).ok(),
+                    pid: self.tracker.get_pid(&inst.id),
                     dirs,
                     ports: crate::port_check::public_ports(inst, module.as_ref().and_then(|m| m.metadata.settings.as_ref())),
                 }
@@ -67,10 +67,10 @@ impl Supervisor {
         
         for instance in &all_instances_snapshot {
             // 이미 추적 중이면 상태만 확인 (snapshot 기반 — 시스템 콜 없음)
-            if let Ok(pid) = self.tracker.get_pid(&instance.id) {
+            if let Some(pid) = self.tracker.get_pid(&instance.id) {
                 tracked_count += 1;
                 
-                let tracked_after_snapshot = self.tracker.get_start_time(&instance.id).is_ok_and(|t| t >= snapshot_taken_at);
+                let tracked_after_snapshot = self.tracker.get_start_time(&instance.id).is_some_and(|t| t >= snapshot_taken_at);
                 if !tracked_after_snapshot && !process_monitor::is_running_in(process_snapshot, pid) {
                     // 러너가 아직 서버를 돌리고 있으면(런처가 끝나고 진짜 서버가 남은 경우) 러너가 보는 PID로 옮긴다
                     // 로그만 따라 읽는 익스텐션 follower는 서버 수명을 말해 주지 않는다: 러너일 때만
@@ -89,9 +89,7 @@ impl Supervisor {
                     }
                     tracing::warn!("Process {} for instance '{}' is no longer running, removing from tracker", pid, instance.name);
                     // tracker에서 제거하여 다음 사이클에서 다시 감지할 수 있도록 함
-                    if let Err(e) = self.tracker.untrack(&instance.id) {
-                        tracing::error!("Failed to untrack process: {}", e);
-                    }
+                    self.tracker.untrack(&instance.id);
                     // 사바쨩이 시키지 않았는데 사라진 non-managed 서버 (managed는 위에서 판정했다)
                     let judged = dead.iter().any(|(id, _)| *id == instance.id) || self.managed_store.get(&instance.id).await.is_some();
                     if !judged && !self.runtime.existing(&instance.id, |r| r.stop_requested.is_some()).unwrap_or(false) {
@@ -152,7 +150,7 @@ impl Supervisor {
                     let taken: std::collections::HashSet<u32> = all_instances_snapshot
                         .iter()
                         .filter(|i| i.id != instance.id)
-                        .filter_map(|i| self.tracker.get_pid(&i.id).ok())
+                        .filter_map(|i| self.tracker.get_pid(&i.id))
                         .collect();
                     let (own_roots, other_roots) = process_monitor::drop_shared_roots(
                         self.instance_roots(instance),
@@ -166,9 +164,7 @@ impl Supervisor {
                                     "Auto-detected process '{}' (PID: {}) for instance '{}'",
                                     process_name, process.pid, instance.name
                                 );
-                                if let Err(e) = self.tracker.track(&instance.id, process.pid) {
-                                    tracing::error!("Failed to track process: {}", e);
-                                }
+                                self.tracker.track(&instance.id, process.pid);
                                 // 지난 정지의 표시를 지운다: 이 프로세스가 나중에 사라지면 사용자 정지가 아니다
                                 self.runtime.existing(&instance.id, |r| r.stop_requested = None);
 
@@ -180,7 +176,7 @@ impl Supervisor {
                                 let all_instances = self.instance_store.list();
                                 let running_ids: std::collections::HashSet<String> = all_instances
                                     .iter()
-                                    .filter(|i| i.id != instance.id && self.tracker.get_pid(&i.id).is_ok())
+                                    .filter(|i| i.id != instance.id && self.tracker.get_pid(&i.id).is_some())
                                     .map(|i| i.id.clone())
                                     .collect();
                                 let conflicts = crate::validator::check_port_conflicts(instance, all_instances, &running_ids, &self.rest_port_settings());
@@ -223,7 +219,7 @@ impl Supervisor {
                                 // 사바쨩이 띄우지 않은 서버가 켜졌다. 데몬이 켜질 때 이미 돌던 것은 빼고, 포트 충돌로 끈 것도 뺀다.
                                 // 사바쨩이 띄우는 중(추적 전)에 먼저 본 것도 뺀다
                                 let starting = self.runtime.existing(&instance.id, |r| r.starting).unwrap_or(false);
-                                if self.first_scan_done && !starting && self.tracker.get_pid(&instance.id).is_ok() {
+                                if self.first_scan_done && !starting && self.tracker.get_pid(&instance.id).is_some() {
                                     announce_started(&self.runtime, &instance.id, &instance.name, &crate::audit::Origin::new("external"), true);
                                 }
                             }
@@ -263,13 +259,13 @@ mod tests {
         let inst = crate::instance::ServerInstance::new("fresh", "none");
         let id = inst.id.clone();
         sup.instance_store.add(inst).unwrap();
-        sup.tracker.track(&id, 4_000_000).unwrap();
+        sup.tracker.track(&id, 4_000_000);
         let tracked_at = sup.tracker.get_start_time(&id).unwrap();
 
         sup.monitor_processes_taken_at(&[], tracked_at - 1).await.unwrap();
-        assert!(sup.tracker.get_pid(&id).is_ok(), "the snapshot predates the start");
+        assert!(sup.tracker.get_pid(&id).is_some(), "the snapshot predates the start");
         sup.monitor_processes_taken_at(&[], tracked_at + 1).await.unwrap();
-        assert!(sup.tracker.get_pid(&id).is_err(), "a later snapshot without the pid means it is gone");
+        assert!(sup.tracker.get_pid(&id).is_none(), "a later snapshot without the pid means it is gone");
     }
 
     /// cleanup_dead()가 죽은 managed process를 정리할 때

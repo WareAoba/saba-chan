@@ -172,7 +172,7 @@ async fn dispatch(proxy: &Proxy, request: &Value) -> Value {
         let Some((host, port)) = module.as_ref().and_then(|m| Some((m.metadata.rest_host(instance)?, m.metadata.rest_port(instance)?))) else {
             return failure("rest_not_supported", "This instance's module declares no REST port");
         };
-        (host, port, sup.tracker.get_pid(&context.id).ok())
+        (host, port, sup.tracker.get_pid(&context.id))
     };
     if rest_port == super::ipc_port() {
         tracing::warn!("[Host] refused REST to the daemon port {}", rest_port);
@@ -299,7 +299,7 @@ mod tests {
         let reply: serde_json::Value = serde_json::from_slice(&std::fs::read(dir.path().join("r1.json")).unwrap()).unwrap();
         assert_eq!(reply["error_code"], "port_not_served", "{reply}");
         // Codex 재검증 #550: PID 없이 온 호출(익스텐션 명령)도 데몬이 추적하는 서버가 그 포트를 들으면 잇는다
-        supervisor.read().await.tracker.track(&id, std::process::id()).unwrap();
+        supervisor.read().await.tracker.track(&id, std::process::id());
         serve(&proxy, &json!({"id":"r2","op":"instance.rest","args":{"method":"GET","path":"/x"}}).to_string()).await;
         let reply: serde_json::Value = serde_json::from_slice(&std::fs::read(dir.path().join("r2.json")).unwrap()).unwrap();
         assert_ne!(reply["error_code"], "port_not_served", "{reply}");
@@ -318,7 +318,7 @@ mod tests {
         instance.module_settings.insert("rest_port".into(), serde_json::json!(rest_port));
         let id = instance.id.clone();
         supervisor.instance_store.add(instance).unwrap();
-        supervisor.tracker.track(&id, std::process::id()).unwrap();
+        supervisor.tracker.track(&id, std::process::id());
         (tmp, Arc::new(RwLock::new(supervisor)), id, module.join("lifecycle.py"))
     }
 
@@ -443,7 +443,7 @@ print(json.dumps(result))
         let id = instance.id.clone();
         supervisor.instance_store.add(instance).unwrap();
         // REST 포트는 그 인스턴스 서버가 들어야 잇는다: 이 테스트 프로세스가 서버이고 포트를 듣는다
-        supervisor.tracker.track(&id, std::process::id()).unwrap();
+        supervisor.tracker.track(&id, std::process::id());
         let state = crate::ipc::IPCServer::new(
             Arc::new(RwLock::new(supervisor)),
             "127.0.0.1:0",

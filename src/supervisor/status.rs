@@ -52,7 +52,7 @@ impl Supervisor {
             // Non-managed: module plugin으로 상태 확인
 
             // tracker에서 PID를 먼저 확인 — start_server()가 저장한 PID
-            let tracked_pid = s.tracker.get_pid(&instance.id).ok();
+            let tracked_pid = s.tracker.get_pid(&instance.id);
 
             // Find module
             let module = s.module_loader.get_module(module_name)?;
@@ -78,7 +78,7 @@ impl Supervisor {
                 if result.get("error_code").and_then(Value::as_str) == Some("not_supported") {
                     let pid = tracked_pid.filter(|pid| process::is_process_alive(*pid));
                     let start_time = match pid {
-                        Some(_) => sup.read().await.tracker.get_start_time(&instance.id).ok(),
+                        Some(_) => sup.read().await.tracker.get_start_time(&instance.id),
                         None => None,
                     };
                     return Ok(json!({
@@ -94,7 +94,7 @@ impl Supervisor {
                 let status = result.get("status").and_then(|s| s.as_str()).unwrap_or("unknown");
                 let pid = result.get("pid").and_then(|p| p.as_u64());
                 let start_time = match pid {
-                    Some(_) => sup.read().await.tracker.get_start_time(&instance.id).ok(),
+                    Some(_) => sup.read().await.tracker.get_start_time(&instance.id),
                     None => None,
                 };
                 Ok(json!({
@@ -122,7 +122,7 @@ impl Supervisor {
     /// managed 프로세스가 있으면 그것이 살아 있는지로 정한다(끝났지만 모니터가 아직 치우지 않은 PID를 실행 중으로 보지 않는다).
     /// 없으면 추적 중인 PID가 있는지다
     pub async fn tracked_state(&self, instance_id: &str) -> (bool, Option<u32>, Option<u64>) {
-        let pid = self.tracker.get_pid(instance_id).ok();
+        let pid = self.tracker.get_pid(instance_id);
         let running = match self.managed_store.get(instance_id).await {
             Some(managed) => managed.is_running(),
             None => pid.is_some(),
@@ -130,13 +130,13 @@ impl Supervisor {
         if !running {
             return (false, None, None);
         }
-        (true, pid, self.tracker.get_start_time(instance_id).ok())
+        (true, pid, self.tracker.get_start_time(instance_id))
     }
 
     /// 서버가 켜져 있는가: 추적표(non-managed와 managed 모두 띄운 뒤 올린다)나 managed 저장소에 살아 있으면.
     /// "켜져 있으면 거절" 판정은 모두 이것을 쓴다 (재부착 때 추적표 등록이 실패해 managed에만 남은 경우도 켜진 것이다)
     pub async fn is_running(&self, instance_id: &str) -> bool {
-        self.tracker.get_pid(instance_id).is_ok() || self.managed_store.running_instance_ids().await.iter().any(|id| id == instance_id)
+        self.tracker.get_pid(instance_id).is_some() || self.managed_store.running_instance_ids().await.iter().any(|id| id == instance_id)
     }
 
     /// 켜져 있는 서버 인스턴스 id (`is_running` 판정)
