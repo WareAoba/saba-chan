@@ -1311,6 +1311,11 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         instanceScheduleGet: (id: string) => call('get', instancePath(id, '/schedule')),
         // 모든 서버의 다가오는 예약 (작업 기록 화면). hours 안에 도는 것만
         schedulesUpcoming: (hours?: number) => call('get', `/api/schedules/upcoming${queryString({ hours })}`),
+        // 알림함 (데몬이 보관, 고른 데몬의 것). 문장은 화면 언어로 받는다
+        noticesList: () => call('get', `/api/notices${queryString({ locale: i18n.language })}`),
+        noticesRead: () => call('post', '/api/notices/read', {}),
+        noticeRemove: (id: number) => call('delete', `/api/notices/${id}`),
+        noticesClear: () => call('delete', '/api/notices'),
         instanceScheduleSave: (id: string, body: ApiBody) => call('put', instancePath(id, '/schedule'), body),
         chatbotGet: () => call('get', '/api/chatbot'),
         chatbotSave: (patch: ApiBody) => call('put', '/api/chatbot', patch),
@@ -1373,7 +1378,6 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         // 화면이 고른 때 내는 효과음 (정상 기동음 'startup'·가이드 열림 'guideOpen'). 셸이 설정 sounds를 따른다
         playSound: (name: 'startup' | 'guideOpen') => send('sound_play', { name }),
         soundHold: (hold: boolean) => send('sound_hold', { hold }),
-        eventsBacklog: () => invoke('events_backlog'),
         launchUninstaller: () => invoke('launch_uninstaller'),
         getAppVersion: () => invoke('app_get_version'),
         getComponentInfo: async () => {

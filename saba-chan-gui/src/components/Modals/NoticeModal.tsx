@@ -4,7 +4,8 @@ import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { useServerStore } from '../../stores/useServerStore';
 import type { ApiBody } from '../../types/daemon';
-import type { Notice, NoticeInput } from '../../types/global';
+import type { Notice } from '../../types/global';
+import { clearAllNotices, loadNotices, markAllRead, NOTICE_UPDATE, refreshNotices, removeNotice } from '../../utils/noticeInbox';
 import { initials } from '../../utils/serverView';
 import { applyServerUpdateFromNotice, SERVER_UPDATE_ACTION } from '../../utils/serverUpdateNotice';
 import './Modals.css';
@@ -21,141 +22,13 @@ export function updateResultMessage(res: ApiBody | null | undefined, t: TFunctio
     return t('patch_notes.notice_failed', { count: (r.failed || []).length || 1 });
 }
 
-// ── ─ localStorage 키 ──
-const STORAGE_KEY = 'saba-chan-notices';
-
-// ── ─ 알림 유틸 ──
-
-/** localStorage에서 알림 목록 불러오기 */
-function loadNotices(): Notice[] {
-    try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        return raw ? JSON.parse(raw) : [];
-    } catch {
-        return [];
-    }
+/** 업데이트 결과 알림을 눌렀다: 데몬의 마지막 결과(확인한 것 포함)를 패치노트로 연다 */
+async function openPatchNotes(open: (data: unknown) => void) {
+    const res = await window.api?.updaterLastResult?.({ includeSeen: true });
+    if (res?.result) open({ version: res.version || null, notes: res.notes ?? null, result: res.result });
 }
 
-/** localStorage에 알림 목록 저장 */
-function saveNotices(notices: Notice[]) {
-    try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(notices));
-    } catch {
-        /* quota exceeded 등 무시 */
-    }
-}
-
-/** 새 알림 추가 (전역 함수로 노출) */
-function addNotice({
-    message,
-    type = 'info',
-    source = 'saba-chan',
-    instanceId,
-    detail,
-    action = null,
-    dedup = false,
-    data = null,
-    read = false,
-    timestamp,
-}: NoticeInput): Notice {
-    const notices = loadNotices();
-
-    // 중복 방지: 같은 source + action(액션이 없으면 같은 문구)이 이미 있으면 기존 알림을 업데이트
-    if (dedup) {
-        const existIdx = notices.findIndex(
-            (n) => n.source === source && (action ? n.action === action : !n.action && n.message === message),
-        );
-        if (existIdx >= 0) {
-            // 메시지만 업데이트하고 상단으로 이동
-            const existing = notices.splice(existIdx, 1)[0];
-            existing.message = message;
-            existing.type = type;
-            existing.timestamp = new Date().toISOString();
-            existing.read = false;
-            existing.data = data;
-            notices.unshift(existing);
-            saveNotices(notices);
-            window.dispatchEvent(new CustomEvent('saba-notice-update'));
-            return existing;
-        }
-    }
-
-    const notice: Notice = {
-        id: Date.now() + Math.random(),
-        message,
-        type, // 'info' | 'success' | 'error'
-        source, // 'saba-chan', 'Updater' 또는 서버 이름
-        ...(instanceId ? { instanceId } : {}),
-        ...(detail ? { detail } : {}),
-        action, // 'openUpdateModal' 등 클릭 시 실행할 액션
-        data, // 액션에 넘길 값 (예: 패치노트)
-        timestamp: timestamp ?? new Date().toISOString(),
-        read,
-    };
-    notices.unshift(notice);
-    saveNotices(notices);
-    // 커스텀 이벤트로 리렌더 트리거
-    window.dispatchEvent(new CustomEvent('saba-notice-update'));
-    return notice;
-}
-
-// 업데이트 결과 알림을 지우면 데몬에도 확인했다고 알린다 (다음 실행에 다시 뜨지 않게)
-function acknowledgeRemoved(removed: Notice[]) {
-    if (removed.some((n) => n.action === PATCH_NOTES_ACTION)) {
-        Promise.resolve(window.api?.updaterLastResult?.({ clear: true })).catch(() => {});
-    }
-}
-
-/** 단일 알림 삭제 */
-function removeNotice(id: number) {
-    const all = loadNotices();
-    const notices = all.filter((n) => n.id !== id);
-    acknowledgeRemoved(all.filter((n) => n.id === id));
-    saveNotices(notices);
-    window.dispatchEvent(new CustomEvent('saba-notice-update'));
-}
-
-/** 출처와 액션이 같은 알림을 모두 삭제 (예: 받을 업데이트가 없어진 업데이트 알림) */
-function removeNoticesByAction(source: string, action: string) {
-    const all = loadNotices();
-    const notices = all.filter((n) => !(n.source === source && n.action === action));
-    if (notices.length === all.length) return;
-    acknowledgeRemoved(all.filter((n) => n.source === source && n.action === action));
-    saveNotices(notices);
-    window.dispatchEvent(new CustomEvent('saba-notice-update'));
-}
-
-/** 전체 알림 삭제 */
-function clearAllNotices() {
-    acknowledgeRemoved(loadNotices());
-    saveNotices([]);
-    window.dispatchEvent(new CustomEvent('saba-notice-update'));
-}
-
-/** 읽지 않은 알림 개수 */
-function getUnreadCount() {
-    return loadNotices().filter((n) => !n.read).length;
-}
-
-/** 모든 알림을 읽음 처리 */
-function markAllRead() {
-    const notices = loadNotices().map((n) => ({ ...n, read: true }));
-    saveNotices(notices);
-    window.dispatchEvent(new CustomEvent('saba-notice-update'));
-}
-
-// 전역으로 내보내기 (Toast 등에서 사용)
-window.__sabaNotice = {
-    addNotice,
-    removeNotice,
-    removeNoticesByAction,
-    clearAllNotices,
-    getUnreadCount,
-    loadNotices,
-    markAllRead,
-};
-
-// ── ─ 알림 카드 ──
+// ─── 알림 카드 ─────────────────────────────────────────
 
 interface NoticeCardProps {
     notice: Notice;
@@ -194,12 +67,7 @@ function NoticeCard({ notice, onDismiss, onAction, t }: NoticeCardProps) {
                 <Icon name={icon} size="sm" />
             </div>
             <div className="notice-card-body">
-                <p className="notice-card-message">
-                    {/* 업데이트 결과는 보일 때 번역한다 (만들 때 아직 사용자 언어가 아니었을 수 있다) */}
-                    {notice.action === PATCH_NOTES_ACTION && (notice.data as ApiBody | null)?.result
-                        ? updateResultMessage(notice.data as ApiBody, t)
-                        : notice.message}
-                </p>
+                <p className="notice-card-message">{notice.message}</p>
                 {notice.detail && <p className="notice-card-detail">{notice.detail}</p>}
                 <span className="notice-card-time">
                     {timeStr}
@@ -271,14 +139,20 @@ function NoticeModal({ isOpen, onClose, isClosing, onOpenUpdateModal, onOpenPatc
 
     // 알림 변경 이벤트 구독
     useEffect(() => {
-        const handler = () => setNotices(loadNotices());
-        window.addEventListener('saba-notice-update', handler);
-        return () => window.removeEventListener('saba-notice-update', handler);
-    }, []);
+        const handler = () => {
+            setNotices(loadNotices());
+            // 열려 있는 동안 새로 온 것도 본 것이다
+            if (isOpen) markAllRead();
+        };
+        window.addEventListener(NOTICE_UPDATE, handler);
+        return () => window.removeEventListener(NOTICE_UPDATE, handler);
+    }, [isOpen]);
 
-    // 모달 열릴 때 모두 읽음 처리
+    // 모달 열릴 때 데몬에서 다시 읽고 모두 읽음 처리
     useEffect(() => {
-        if (isOpen) markAllRead();
+        if (!isOpen) return;
+        markAllRead();
+        void refreshNotices().then(markAllRead);
     }, [isOpen]);
 
     const handleDismiss = useCallback((id: number) => {
@@ -292,20 +166,16 @@ function NoticeModal({ isOpen, onClose, isClosing, onOpenUpdateModal, onOpenPatc
     if (!isOpen) return null;
 
     // 서버 알림은 서버 id로, 나머지는 출처로 묶는다. 최근 알림이 있는 묶음이 먼저 (알림은 최신이 먼저다)
-    const groupKey = (n: Notice) => (n.instanceId ? `server:${n.instanceId}` : n.source || 'saba-chan');
+    const groupKey = (n: Notice) => (n.instanceId ? `server:${n.instanceId}` : n.source);
     const groups = new Map<string, Notice[]>();
     for (const n of notices) {
         const key = groupKey(n);
         groups.set(key, [...(groups.get(key) || []), n]);
     }
 
-    // 서버 묶음은 지금 이름(이름을 바꿨을 수 있다), 없어진 서버면 알릴 때의 이름
+    // 서버 묶음은 지금 이름(이름을 바꿨을 수 있다), 없어진 서버면 알릴 때의 이름. 나머지는 데몬이 준 이름("사바쨩")
     const serverOf = (list: Notice[]) => servers.find((s) => s.id === list[0].instanceId);
-    const groupLabel = (key: string, list: Notice[]) => {
-        if (list[0].instanceId) return serverOf(list)?.name || list[0].source;
-        if (key === 'saba-chan') return t('notice_modal.source_main');
-        return key;
-    };
+    const groupLabel = (list: Notice[]) => (list[0].instanceId && serverOf(list)?.name) || list[0].source;
     const groupIcon = (list: Notice[]) => {
         if (!list[0].instanceId) return null;
         const server = serverOf(list);
@@ -352,7 +222,7 @@ function NoticeModal({ isOpen, onClose, isClosing, onOpenUpdateModal, onOpenPatc
                         <div key={key} className="notice-group">
                             <div className="notice-group-header">
                                 {groupIcon(list)}
-                                <span className="notice-group-label">{groupLabel(key, list)}</span>
+                                <span className="notice-group-label">{groupLabel(list)}</span>
                                 <span className="notice-group-count">{list.length}</span>
                             </div>
                             {list.map((notice) => (
@@ -366,7 +236,7 @@ function NoticeModal({ isOpen, onClose, isClosing, onOpenUpdateModal, onOpenPatc
                                             onOpenUpdateModal();
                                         } else if (action === PATCH_NOTES_ACTION && onOpenPatchNotes) {
                                             onClose();
-                                            onOpenPatchNotes(n.data);
+                                            void openPatchNotes(onOpenPatchNotes);
                                         } else if (action === SERVER_UPDATE_ACTION) {
                                             void applyServerUpdateFromNotice(n, t);
                                         }

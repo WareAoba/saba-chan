@@ -45,7 +45,7 @@ describe('목록 폴링의 상태 변화 알림', () => {
         await act(async () => result.current.fetchServers());
         list({ ...ext, status: 'stopped' });
         await act(async () => result.current.fetchServers());
-        expect(window.showToast).toHaveBeenCalledWith(expect.any(String), 'error', 5000, expect.anything());
+        expect(window.showToast).toHaveBeenCalledWith(expect.any(String), 'error', 5000, undefined);
     });
 
     it('이벤트가 없어도 사바쨩을 거쳐 켜고 끈 것은 밖에서 켰다거나 예기치 않게 꺼졌다고 하지 않는다', async () => {

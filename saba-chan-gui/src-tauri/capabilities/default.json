@@ -36,7 +36,6 @@
     "allow-notify",
     "allow-sound-play",
     "allow-sound-hold",
-    "allow-events-backlog",
     "allow-console-popout",
     "allow-console-popout-list",
     "allow-console-popin",

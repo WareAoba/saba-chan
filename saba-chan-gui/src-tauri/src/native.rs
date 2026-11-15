@@ -615,12 +615,6 @@ pub fn app_get_version(app: AppHandle) -> String {
     app.package_info().version.to_string()
 }
 
-/// 메인 화면이 뜨는 동안·창이 닫혀 있던 동안 받지 못한 데몬 이벤트 (화면이 알림함에 넣는다)
-#[tauri::command]
-pub fn events_backlog(app: AppHandle) -> Vec<crate::events::SseEvent> {
-    lifecycle::take_backlog(&app)
-}
-
 /// OS 알림 (렌더러의 포트 충돌 알림 등)
 #[tauri::command]
 pub fn notify(app: AppHandle, title: String, body: String) {

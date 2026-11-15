@@ -1591,6 +1591,37 @@ async fn an_mcp_owner_reaches_app_actions_but_not_pc_only_ones() {
     assert!(ran.is_ok(), "{ran:?}");
 }
 
+/// 원격 MCP는 사용 모드·전용 멤버 명단·자동 강퇴 목록을 바꾼다 (사용자 2026-11-15: 원격·웹 콘솔에서도 설정).
+/// 디스코드·말하는 사바쨩은 그대로 못 바꾼다 (2026-11-08)
+#[tokio::test]
+async fn an_mcp_owner_sets_the_access_lists_but_discord_cannot() {
+    let (state, id, _tmp) = server().await;
+    let owner = Caller::mcp("owner".into(), "owner".into(), None, None, "en".into());
+    let input = json!({ "access": "members", "controllers": [{ "name": "Steve", "discord_id": "1" }], "kick_players": ["Griefer"] });
+    let made = plan(&state, "instance.settings.set", Some(&id), &input, &owner).await;
+    assert!(made.is_ok(), "{made:?}");
+    for key in ["access", "controllers", "controllers_only", "kick_players"] {
+        let value = if key == "controllers_only" { json!(true) } else { input.get(key).cloned().unwrap_or(json!("members")) };
+        let err = plan(&state, "instance.settings.set", Some(&id), &json!({ key: value }), &relay("owner", false)).await.unwrap_err();
+        assert_eq!((err.code, err.data["field"].as_str()), ("invalid_input", Some(key)), "{key}: {err:?}");
+    }
+    // 실행·폴더 칸은 원격 MCP도 그대로 막는다
+    let err = plan(&state, "instance.settings.set", Some(&id), &json!({ "working_dir": "/tmp" }), &owner).await.unwrap_err();
+    assert_eq!(err.data["field"].as_str(), Some("working_dir"), "{err:?}");
+}
+
+/// 원격 MCP(폰 에이전트)는 알림함을 보고 비운다. 디스코드에는 열지 않는다
+#[tokio::test]
+async fn an_mcp_owner_reads_and_clears_the_inbox_but_discord_cannot() {
+    let (state, _id, _tmp) = server().await;
+    let owner = Caller::mcp("owner".into(), "owner".into(), None, None, "en".into());
+    for action in ["notice.list", "notice.clear"] {
+        let made = plan(&state, action, None, &json!({}), &owner).await;
+        assert!(made.is_ok(), "{action}: {made:?}");
+        assert!(plan(&state, action, None, &json!({}), &relay("owner", false)).await.is_err(), "{action} from Discord");
+    }
+}
+
 /// 길드가 명령별로 정한 위험 단계(`discord.commandRisks["<서버>/<액션>"]`)로 디스코드 되묻기를 정한다. 앱은 고정 규칙 그대로
 #[tokio::test]
 async fn a_guild_can_retier_one_command_for_discord_confirms() {

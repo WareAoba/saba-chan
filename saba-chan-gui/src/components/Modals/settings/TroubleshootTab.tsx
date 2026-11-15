@@ -209,10 +209,7 @@ export function TroubleshootTab({
                             className="gui-test-btn gui-test-notice-info"
                             onClick={() => {
                                 window.showToast &&
-                                    window.showToast('ℹ️ Info notification test', 'info', 3000, {
-                                        isNotice: true,
-                                        source: 'GUI Test',
-                                    });
+                                    window.showToast('ℹ️ Info notification test', 'info', 3000);
                             }}
                         >
                             <Icon name="bell" size="sm" /> Notice (Info)
@@ -221,10 +218,7 @@ export function TroubleshootTab({
                             className="gui-test-btn gui-test-notice-success"
                             onClick={() => {
                                 window.showToast &&
-                                    window.showToast('✅ Success notification test', 'success', 3000, {
-                                        isNotice: true,
-                                        source: 'GUI Test',
-                                    });
+                                    window.showToast('✅ Success notification test', 'success', 3000);
                             }}
                         >
                             <Icon name="bell" size="sm" /> Notice (Success)
@@ -233,10 +227,7 @@ export function TroubleshootTab({
                             className="gui-test-btn gui-test-notice-error"
                             onClick={() => {
                                 window.showToast &&
-                                    window.showToast('❌ Error notification test', 'error', 4000, {
-                                        isNotice: true,
-                                        source: 'GUI Test',
-                                    });
+                                    window.showToast('❌ Error notification test', 'error', 4000);
                             }}
                         >
                             <Icon name="bell" size="sm" /> Notice (Error)

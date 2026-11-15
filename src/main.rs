@@ -1,6 +1,6 @@
 // 데몬 모듈은 lib(saba_core) 하나로만 컴파일한다. 바이너리가 같은 모듈을 다시 `mod`로 선언하면
 // 데몬 전체가 두 번 컴파일되고 단위 시험도 두 번 돈다
-use saba_core::{service, supervisor, plugin, ipc, process_monitor, system_monitor, python_env, utils, extension, boot_selector, daemon_log, instance_lock, module_audit, audit, sandbox, controllers, tray_host};
+use saba_core::{service, supervisor, plugin, ipc, process_monitor, system_monitor, python_env, utils, extension, boot_selector, daemon_log, instance_lock, module_audit, audit, sandbox, controllers, tray_host, notices};
 
 use std::sync::Arc;
 use std::io::IsTerminal;
@@ -359,6 +359,13 @@ async fn main() -> anyhow::Result<()> {
         utils::remove_install_leftovers(&plugin::resolve_extensions_dir());
     } else {
         tracing::warn!("Skipping cleanup of interrupted installs without the single-instance guard");
+    }
+    // 알림함 (notices.json): 서버 감시보다 먼저 열어 켜자마자 난 크래시도 남긴다. 지난 업데이트 결과도 한 번 넣는다
+    notices::init(&constants::resolve_data_dir());
+    if let Some(marker) = saba_chan_updater_lib::UpdateCompletionMarker::load_from(&saba_chan_updater_lib::UpdateCompletionMarker::path()) {
+        if let Some(store) = notices::store() {
+            store.note_update_result(&marker);
+        }
     }
     let supervisor = Arc::new(RwLock::new(supervisor::Supervisor::new(&modules_path_str)));
     {

@@ -64,7 +64,8 @@ import {
     whenScreenSettled,
 } from './utils/opening';
 import { consoleQuickCommands, interactionOf } from './utils/serverView';
-import { announceUpdateCompleted, syncUpdateNotice } from './utils/updateNotice';
+import { announceUpdateCompleted } from './utils/updateNotice';
+import { getUnreadCount, NOTICE_UPDATE, refreshNotices } from './utils/noticeInbox';
 import { answerCloseRequest } from './utils/appClose';
 import { warmTabArt, whenIdle } from './utils/warmArt';
 // 새 레이아웃 스타일은 화면별 옛 CSS(App.css, Modals.css)보다 뒤에 와야 이긴다
@@ -147,9 +148,11 @@ function App() {
     quickOpenRef.current = quickOpen;
     const daemonRunning = backgroundDaemonStatus === 'running';
 
-    // 마지막 업데이트 결과 (데몬 last-result): 데몬이 뜨면 한 번 묻고 알림을 남긴다. 알림을 누르면 패치노트
+    // 데몬이 뜨면 알림함(데몬이 보관)과 마지막 업데이트 결과(되돌리기 표시)를 읽는다
     useEffect(() => {
-        if (daemonRunning) announceLastUpdateResult(t);
+        if (!daemonRunning) return;
+        void refreshNotices();
+        announceLastUpdateResult();
     }, [daemonRunning]);
     const setBackgroundDaemonStatus = useUIStore((s) => s.setBackgroundDaemonStatus);
     // 데몬이 GUI를 띄운 프로그램의 job 안에서 돈다 (그 프로그램이 꺼지면 함께 꺼질 수 있다)
@@ -250,13 +253,11 @@ function App() {
     // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only event listener — setter is stable
     useEffect(() => {
         const updateCount = () => {
-            if (window.__sabaNotice) {
-                setUnreadNoticeCount(window.__sabaNotice.getUnreadCount());
-            }
+            setUnreadNoticeCount(getUnreadCount());
         };
         updateCount();
-        window.addEventListener('saba-notice-update', updateCount);
-        return () => window.removeEventListener('saba-notice-update', updateCount);
+        window.addEventListener(NOTICE_UPDATE, updateCount);
+        return () => window.removeEventListener(NOTICE_UPDATE, updateCount);
     }, []);
 
     // Initialization status monitoring
@@ -319,12 +320,6 @@ function App() {
                     setTimeout(() => setDaemonReady(true), 600);
                     setTimeout(() => setServersInitializing(false), 3500);
                 }
-            });
-        }
-
-        if (window.api && window.api.onUpdatesAvailable) {
-            window.api.onUpdatesAvailable((data) => {
-                syncUpdateNotice(data, t);
             });
         }
 

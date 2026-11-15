@@ -447,12 +447,6 @@
           "markdownDescription": "Enables the dialog_save_file command without any pre-configured scope."
         },
         {
-          "description": "Enables the events_backlog command without any pre-configured scope.",
-          "type": "string",
-          "const": "allow-events-backlog",
-          "markdownDescription": "Enables the events_backlog command without any pre-configured scope."
-        },
-        {
           "description": "Enables the language_get command without any pre-configured scope.",
           "type": "string",
           "const": "allow-language-get",
@@ -751,12 +745,6 @@
           "type": "string",
           "const": "deny-dialog-save-file",
           "markdownDescription": "Denies the dialog_save_file command without any pre-configured scope."
-        },
-        {
-          "description": "Denies the events_backlog command without any pre-configured scope.",
-          "type": "string",
-          "const": "deny-events-backlog",
-          "markdownDescription": "Denies the events_backlog command without any pre-configured scope."
         },
         {
           "description": "Denies the language_get command without any pre-configured scope.",

@@ -315,6 +315,59 @@
       "apiKey": "API 키",
       "command": "명령",
       "settings": "설정"
+    },
+    "notice": {
+      "list": {
+        "title": "알림 보기",
+        "description": "데몬이 보관하는 알림함(크래시·시작 실패·업데이트 결과)을 봅니다"
+      },
+      "clear": {
+        "title": "알림 모두 삭제",
+        "description": "알림함을 비웁니다"
+      }
     }
+  },
+  "notices": {
+    "main": "사바쨩",
+    "exit_crash": "크래시로 종료됨",
+    "exit_start_failed": "시작 실패",
+    "exit_unknown_exit": "예기치 않게 종료됨",
+    "started_external": "사바쨩 밖에서 시작됨",
+    "unresponsive": "{{minutes}}분째 응답 없음",
+    "restored": "복원 · {{source}}",
+    "restore_failed": "복원 실패",
+    "port_conflict": "포트 {{port}}이(가) {{existing}}와(과) 겹쳐 정지됨",
+    "reason_memory_limit": "메모리 상한({{mb}} MiB) 도달",
+    "reason_exit_code": "종료 코드 {{code}}",
+    "reason_signal": "신호 {{signal}}로 종료",
+    "reason_crash_file": "새 크래시 보고서 생성",
+    "reason_ended_early": "시작 {{secs}}초 만에 종료",
+    "restart_in": "{{secs}}초 뒤 다시 켬",
+    "note_auto_off": "자동 재시작이 꺼져 있음",
+    "note_gave_up": "10분 안에 {{count}}번 다시 시작해서 포기함",
+    "module_update": "{{name}}: {{module}} 모듈 새 버전 {{version}} 출시",
+    "server_update": "{{name}}: 게임 서버 새 버전 출시. 접속이 막히면 서버를 업데이트해 주세요.",
+    "server_update_waiting": "{{name}}: 게임 서버 새 버전 출시. {{count}}명 접속 중이라 자동 업데이트 대기 중",
+    "server_update_waiting_unknown": "{{name}}: 게임 서버 새 버전 출시. 접속자가 있어 자동 업데이트 대기 중",
+    "server_update_failed": "{{name}}: 게임 서버 업데이트 실패. {{error}}",
+    "update_done": "사바쨩 {{version}}(으)로 업데이트됨",
+    "update_failed": "업데이트 실패 항목 {{count}}개",
+    "unknown_version": "새 버전",
+    "reverted": "{{from}}에서 {{version}}(으)로 되돌림",
+    "revert_incomplete": "{{from}}에서 {{version}}(으)로 되돌리기 일부 실패",
+    "source_gui": "앱",
+    "source_cli": "CLI",
+    "source_api": "API",
+    "source_discord": "디스코드",
+    "source_chatbot": "말하는 사바쨩",
+    "source_schedule": "예약 작업",
+    "source_daemon": "데몬",
+    "source_web": "사바쨩 웹",
+    "source_remote": "원격 PC",
+    "source_mcp": "AI 에이전트",
+    "source_agent": "이 PC의 AI 에이전트",
+    "source_restart": "자동 재시작",
+    "source_idle": "접속자 없음 자동 정지",
+    "source_watchdog": "응답 없음 감시"
   }
 }

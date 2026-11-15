@@ -313,6 +313,9 @@ pub static ACTIONS: &[Def] = &[
         fields: &[Field { options_from: Some(OptionsFrom { action: "backup.list", list: "backups", value: "name", label: "label" }), ..path_field("name") }],
         ..def("backup.delete", Kind::Admin, "danger", LOCAL, true, "DELETE", "/api/instance/:id/backups/:name")
     },
+    // 알림함 (`crate::notices`): 앱·CLI와 같은 목록. 원격 MCP도 앱 표면으로 닿는다. 디스코드·챗봇에는 열지 않는다
+    def("notice.list", Kind::Query, "safe", LOCAL, false, "GET", "/api/notices"),
+    def("notice.clear", Kind::Admin, "safe", LOCAL, false, "DELETE", "/api/notices"),
     def("update.check", Kind::Query, "safe", LOCAL_AND_DISCORD, false, "POST", "/api/updates/check"),
     // 원격(디스코드)에서도 끝까지 가도록 받기·적용·업데이터 띄우기를 한 번에 한다 (`/api/updates/install`)
     Def { discord_level: Some(crate::chat::permissions::OWNER), ..def("update.apply", Kind::Admin, "danger", LOCAL_AND_DISCORD, false, "POST", "/api/updates/install") },
@@ -1186,8 +1189,13 @@ async fn resolve_in(server: &IPCServer, id: &str, instance: Option<&str>, input:
             Some(_) => {}
         }
     }
-    // 원격(디스코드·챗봇)은 비밀값과 실행 파일·폴더·인자를 바꾸지 못한다 (어느 깊이든, 모듈 필드 포함)
+    // 원격(디스코드·챗봇)은 비밀값과 실행 파일·폴더·인자를 바꾸지 못한다 (어느 깊이든, 모듈 필드 포함).
+    // 원격 MCP는 사용 모드와 그 명단만 바꾼다 (`MCP_ACCESS_KEYS`)
     if caller.remote.is_some() && matches!(def.id, "instance.settings.set" | "instance.create") {
+        let mut input = input.clone();
+        if caller.origin.via.as_deref() == Some(MCP_VIA) {
+            input.retain(|k, _| !MCP_ACCESS_KEYS.contains(&k.as_str()));
+        }
         let module = match &instance {
             Some(i) => server.supervisor.read().await.instance_store.get(i).map(|x| x.module_name.clone()).or_else(|| module_hint.map(str::to_string)),
             None => input.get("module_name").and_then(Value::as_str).map(str::to_string),
@@ -1489,6 +1497,9 @@ fn builtin_command(action: &str) -> Option<&'static str> {
         _ => None,
     }
 }
+
+/// 원격 MCP가 바꾸는 사용 모드·전용 멤버 명단·자동 강퇴 목록 (`LAUNCH_KEYS` 중). 디스코드·챗봇은 그대로 못 바꾼다
+const MCP_ACCESS_KEYS: &[&str] = &["access", "controllers", "controllers_only", "kick_players"];
 
 /// 원격 MCP가 웹 원격·짝 맺은 PC의 PC 전용 규칙(라우트·칸)을 받지 않는 액션
 const MCP_UNLOCKED: &[&str] = &["update.check", "update.apply", "instance.properties.get", "instance.properties.set"];

@@ -315,6 +315,59 @@
       "apiKey": "Clé API",
       "command": "Commande",
       "settings": "Paramètres"
+    },
+    "notice": {
+      "list": {
+        "title": "Voir les notifications",
+        "description": "Affiche la boîte de notifications conservée par le démon (plantages, échecs de démarrage, résultats de mise à jour)"
+      },
+      "clear": {
+        "title": "Supprimer toutes les notifications",
+        "description": "Vide la boîte de notifications"
+      }
     }
+  },
+  "notices": {
+    "main": "Saba-chan",
+    "exit_crash": "Arrêté par un plantage",
+    "exit_start_failed": "Échec du démarrage",
+    "exit_unknown_exit": "Arrêt inattendu",
+    "started_external": "Démarré en dehors de Saba-chan",
+    "unresponsive": "Sans réponse depuis {{minutes}} min",
+    "restored": "Restauré · {{source}}",
+    "restore_failed": "Échec de la restauration",
+    "port_conflict": "Arrêté : port {{port}} en conflit avec {{existing}}",
+    "reason_memory_limit": "Limite de mémoire atteinte ({{mb}} Mio)",
+    "reason_exit_code": "Code de sortie {{code}}",
+    "reason_signal": "Terminé par le signal {{signal}}",
+    "reason_crash_file": "Nouveau rapport de plantage créé",
+    "reason_ended_early": "Terminé {{secs}} s après le démarrage",
+    "restart_in": "Redémarrage dans {{secs}} s",
+    "note_auto_off": "Le redémarrage automatique est désactivé",
+    "note_gave_up": "Abandon après {{count}} redémarrages en 10 minutes",
+    "module_update": "{{name}} : version {{version}} du module {{module}} disponible",
+    "server_update": "{{name}} : nouvelle version du serveur de jeu disponible. Mettez le serveur à jour si la connexion est bloquée.",
+    "server_update_waiting": "{{name}} : nouvelle version du serveur de jeu disponible. {{count}} joueur(s) connecté(s) : mise à jour automatique en attente",
+    "server_update_waiting_unknown": "{{name}} : nouvelle version du serveur de jeu disponible. Joueurs connectés : mise à jour automatique en attente",
+    "server_update_failed": "{{name}} : échec de la mise à jour du serveur de jeu. {{error}}",
+    "update_done": "Saba-chan mis à jour vers {{version}}",
+    "update_failed": "{{count}} élément(s) non mis à jour",
+    "unknown_version": "la nouvelle version",
+    "reverted": "Retour de {{from}} à {{version}} effectué",
+    "revert_incomplete": "Retour de {{from}} à {{version}} partiellement échoué",
+    "source_gui": "Application",
+    "source_cli": "CLI",
+    "source_api": "API",
+    "source_discord": "Discord",
+    "source_chatbot": "Saba-chan qui parle",
+    "source_schedule": "Planification",
+    "source_daemon": "Démon",
+    "source_web": "Web Saba-chan",
+    "source_remote": "PC distant",
+    "source_mcp": "Agent IA",
+    "source_agent": "Agent IA de ce PC",
+    "source_restart": "Redémarrage auto",
+    "source_idle": "Arrêt automatique, personne en ligne",
+    "source_watchdog": "Surveillance sans réponse"
   }
 }

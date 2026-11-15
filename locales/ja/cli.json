@@ -63,7 +63,8 @@
     "ask_dir": "インストールするフォルダーのパス",
     "ask_run": "サーバーをどう実行しますか？",
     "run_managed": "サバちゃんが管理 (おすすめ)",
-    "run_unmanaged": "手動管理 (サバちゃん のコンソール使用不可)"
+    "run_unmanaged": "手動管理 (サバちゃん のコンソール使用不可)",
+    "branch_name": "{{name}} · ブランチ"
   },
   "bot": {
     "ask_token": "ノードトークン",
@@ -1001,7 +1002,7 @@
       "backup.export": "バックアップ1つを別のPCに移せるzip1つに書き出す(名前なしなら一覧から選ぶ)",
       "backup.import": "`backup export`で作ったzipを確認してこのサーバーのバックアップ一覧に追加する(その後に復元)",
       "schedule": "サーバーの予約作業 (起動、停止、再起動、保存、バックアップ、告知、アップデート、ゲームコマンド)",
-      "schedule.show": "予約を表示",
+      "schedule.show": "サーバーの予約を表示。サーバー省略時は全サーバーの今後の予約",
       "schedule.add": "作業を予約: start、stop、restart、save、backup、announce、update、command",
       "schedule.edit": "N 番の作業を消さずに直す: 指定したオプションだけ変わる (schedule show を参照)",
       "schedule.remove": "N 番の作業を削除 (schedule show を参照)",
@@ -1108,7 +1109,12 @@
       "remote.install": "このPCのsshでLinux PCにサバちゃんをインストールして接続（`ユーザー@ホスト`）",
       "remote.remove": "自分のPCを削除：ここで忘れ、必要ならそのPCからサバちゃんを削除しサーバーちゃんの一覧からも外す",
       "remote.update": "リモートデーモンを今すぐ更新、または自動更新のオン/オフ（`--auto on|off`）",
-      "config.public-address": "このPCの公開アドレス(ゲームサーバーのアドレスとリモートデーモンの接続が共通で使います): 値なしで今の値、ドメインかIPで保存、autoでサーバーちゃんが見たグローバルIP"
+      "config.public-address": "このPCの公開アドレス(ゲームサーバーのアドレスとリモートデーモンの接続が共通で使います): 値なしで今の値、ドメインかIPで保存、autoでサーバーちゃんが見たグローバルIP",
+      "server.access": "Discordでこのサーバーを使える人: サーバー共用・専用メンバー、専用メンバー名簿、自動キックするニックネーム。オプションなしで表示",
+      "notice": "デーモンが保管する通知ボックス (クラッシュ・起動失敗・アップデート結果)。アプリと同じ一覧",
+      "notice.read": "すべての通知を既読にする",
+      "notice.remove": "通知を 1 件削除",
+      "notice.clear": "通知をすべて削除"
     },
     "arg": {
       "module.maker.game": "最初の依頼に入れるゲーム名",
@@ -1363,7 +1369,16 @@
       "remote.update.host_id": "リモートデーモンの PC id (`remote daemons` に表示)",
       "remote.update.auto": "自動更新のオン(on)/オフ(off)。省略すると今すぐ更新",
       "config.public-address.address": "ドメインかIP(autoでグローバルIP自動)",
-      "config.public-address.share": "Discordの/<サーバー> addressで教えるか (on|off)"
+      "config.public-address.share": "Discordの/<サーバー> addressで教えるか (on|off)",
+      "branch_of": "このサーバーのブランチとして作成: 同じゲーム、設定は一度だけコピー、フォルダー・ワールド・ポートは別",
+      "server.access.mode": "shared (サーバー共用、Discordレベルの権限) または members (専用メンバー名簿のみ)",
+      "server.access.add_member": "専用メンバー名簿に追加: ニックネーム または ニックネーム=DiscordID (複数指定可)",
+      "server.access.remove_member": "専用メンバー名簿から削除 (複数指定可)",
+      "server.access.kick_others": "専用メンバー: 名簿外のニックネームを自動キック",
+      "server.access.kick": "サーバー共用: このニックネームが入ると自動キック (複数指定可)",
+      "server.access.unkick": "自動キック名簿から削除 (複数指定可)",
+      "schedule.show.hours": "サーバー省略時: 何時間先まで表示するか (既定 24、最大 720)",
+      "notice.remove.id": "`notice` の先頭列の番号"
     },
     "after": "名前は一部のみでも指定可 (例: start pal)。引数なしで端末から実行すると全画面メニューが開きます (SABA_NO_TUI=1 なら対話シェル)。\nスクリプトでは --json と --yes を使用してください。終了コード: 0 成功 · 1 失敗 · 2 使い方の誤り · 3 デーモン接続失敗 · 4 なし · 130 キャンセル"
   },
@@ -1480,7 +1495,9 @@
     "bad_date": "「{{got}}」は日付ではありません。2026-12-24 のように YYYY-MM-DD で入力してください。",
     "bad_arg": "「{{got}}」は引数ではありません。名前=値 で入力してください。",
     "confirm_danger": "{{command}} は元に戻しにくいコマンドで、指定した時刻に確認なしで実行されます。スケジュールしますか？",
-    "from_needs_every_days": "--from は N 日ごと (--every-days) のタスクでのみ使用します。"
+    "from_needs_every_days": "--from は N 日ごと (--every-days) のタスクでのみ使用します。",
+    "clash": "重複",
+    "upcoming_none": "今後{{hours}}時間以内の予約なし"
   },
   "chatbot": {
     "api_key": "API キー保存済み",
@@ -2101,5 +2118,24 @@
     "some_failed": "一部のエージェントの変更に失敗",
     "is_linked": "✓ {{agent}}: サバちゃん あり",
     "is_not_linked": "· {{agent}}: サバちゃん なし (saba-chan agent link)"
+  },
+  "access": {
+    "mode": "使用モード",
+    "shared": "サーバー共用",
+    "members": "専用メンバー",
+    "member_list": "専用メンバー名簿",
+    "kick_others": "名簿外を自動キック",
+    "kick_list": "自動キック",
+    "none": "なし",
+    "not_listed": "{{name}}は名簿にありません",
+    "saved": "{{server}}の使用モードを保存しました"
+  },
+  "notice": {
+    "col": "通知",
+    "none": "通知なし",
+    "unread": "未読の通知 {{count}} 件",
+    "read_done": "すべて既読にしました",
+    "removed": "通知 {{id}} を削除しました",
+    "cleared": "通知 {{count}} 件を削除しました"
   }
 }

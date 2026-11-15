@@ -41,6 +41,10 @@ pub async fn run(ctx: &Ctx, cmd: ServerCmd) -> Result<()> {
         ServerCmd::Console(a) => crate::cmd::console::run(ctx, a).await,
         ServerCmd::Run(a) => run_command(ctx, a).await,
         ServerCmd::Commands { server } => commands(ctx, server.as_deref()).await,
+        ServerCmd::Access { server, mode, add_member, remove_member, kick_others, kick, unkick } => {
+            let change = crate::cmd::access::AccessChange { mode, add_members: add_member, remove_members: remove_member, kick_others, kick, unkick };
+            crate::cmd::access::run(ctx, server.as_deref(), change).await
+        }
         ServerCmd::Discord { server, word, command, clear } => {
             let change = crate::cmd::discord_words::WordsChange { words: word, commands: command, clear };
             crate::cmd::discord_words::run(ctx, server.as_deref(), change).await
@@ -972,6 +976,36 @@ mod tests {
             _ => json!({}),
         };
         (200, reply)
+    }
+
+    /// 브랜치 서버 (`--branch-of`): GUI '브랜치 서버 만들기'와 같이 상위 서버의 모듈로, `branch_of`를 실어 만든다.
+    /// 이름을 주지 않으면 데몬이 권하는 이름, 포트는 데몬이 비어 있는 것으로 정한다
+    #[tokio::test]
+    async fn a_branch_is_made_from_its_parent_like_the_gui() {
+        crate::i18n::init("en");
+        fn daemon(line: &str, body: &Value) -> (u16, Value) {
+            match line {
+                "POST /api/instances/check" => (200, json!({
+                    "success": true,
+                    "name": { "value": s(body, "name"), "taken": false, "suggested": "mc · branch" },
+                    "folder": { "custom": false, "path": null, "in_use_by": null, "not_empty": false },
+                    "ports": [{ "field": "port", "port": 25566, "in_use_by": [], "reserved": false }],
+                })),
+                "POST /api/instances" => {
+                    let want = json!({ "name": "mc 2", "module_name": "minecraft", "branch_of": "1" });
+                    if *body == want {
+                        (200, json!({ "success": true, "id": "3" }))
+                    } else {
+                        (400, json!({ "success": false, "error": format!("unexpected body {body}") }))
+                    }
+                }
+                _ => add_daemon(line, body),
+            }
+        }
+        let (port, seen) = fake_daemon(daemon).await;
+        let a = AddArgs { name: Some("mc 2".into()), branch_of: Some("mc".into()), ..Default::default() };
+        add(&quiet_ctx(port), a).await.unwrap();
+        assert!(seen.lock().unwrap().iter().any(|l| l == "POST /api/instances"), "{:?}", seen.lock().unwrap());
     }
 
     /// 이름이 겹치면 다른 것을 묻거나 만들기 전에 막는다 (아무것도 만들지 않는다)

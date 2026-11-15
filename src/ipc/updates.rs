@@ -1997,6 +1997,9 @@ fn record_daemon_apply(path: &std::path::Path, targets: &[String], applied: &[St
     if let Err(e) = marker.save_to(path) {
         tracing::warn!("[Updates] Cannot record the update result: {}", e);
     }
+    if let Some(store) = crate::notices::store() {
+        store.note_update_result(&marker);
+    }
 }
 
 fn last_result_body(marker: Option<saba_chan_updater_lib::UpdateCompletionMarker>, lang: &str) -> Value {
