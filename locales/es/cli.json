@@ -1110,7 +1110,11 @@
       "remote.remove": "Quitar uno de tus PC: olvidarlo aquí y, si quieres, desinstalar Saba-chan allí y quitarlo de la lista del relay",
       "remote.update": "Actualizar ahora un daemon remoto o activar/desactivar sus actualizaciones automáticas (`--auto on|off`)",
       "config.public-address": "Dirección pública de este PC (la usan las direcciones de servidores y las conexiones de daemon remoto): sin valor la muestra, un dominio o IP la guarda, auto usa la IP pública que ve Server-chan",
-      "server.access": "Quién puede usar este servidor en Discord: compartido o solo miembros, lista de miembros, apodos con expulsión automática. Sin opciones: mostrar"
+      "server.access": "Quién puede usar este servidor en Discord: compartido o solo miembros, lista de miembros, apodos con expulsión automática. Sin opciones: mostrar",
+      "notice": "Bandeja de avisos que guarda el daemon (caídas, fallos de inicio, resultados de actualización). Es la misma lista que en la app",
+      "notice.read": "Marcar todos los avisos como leídos",
+      "notice.remove": "Eliminar un aviso",
+      "notice.clear": "Eliminar todos los avisos"
     },
     "arg": {
       "module.maker.game": "Juego para la primera petición",
@@ -1373,7 +1377,8 @@
       "server.access.kick_others": "Solo miembros: expulsar automáticamente los apodos fuera de la lista",
       "server.access.kick": "Compartido: expulsar automáticamente a quien entre con este apodo (se puede repetir)",
       "server.access.unkick": "Quitar de la lista de expulsión automática (se puede repetir)",
-      "schedule.show.hours": "Sin servidor: cuántas horas hacia adelante mostrar (por defecto 24, máximo 720)"
+      "schedule.show.hours": "Sin servidor: cuántas horas hacia adelante mostrar (por defecto 24, máximo 720)",
+      "notice.remove.id": "Número de la primera columna de `notice`"
     },
     "after": "Los nombres pueden ser parciales (p. ej. start pal). Sin argumentos en una terminal se abre el menú a pantalla completa (con SABA_NO_TUI=1, la shell interactiva).\nEn scripts usa --json y --yes. Códigos de salida: 0 correcto · 1 error · 2 uso · 3 daemon inaccesible · 4 no encontrado · 130 cancelado"
   },
@@ -2124,5 +2129,13 @@
     "none": "Nadie",
     "not_listed": "{{name}} no está en la lista",
     "saved": "Modo de uso de {{server}} guardado"
+  },
+  "notice": {
+    "col": "Aviso",
+    "none": "Sin avisos",
+    "unread": "{{count}} aviso(s) sin leer",
+    "read_done": "Todos marcados como leídos",
+    "removed": "Aviso {{id}} eliminado",
+    "cleared": "{{count}} aviso(s) eliminado(s)"
   }
 }

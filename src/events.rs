@@ -118,8 +118,9 @@ pub fn bus() -> &'static Bus {
     GLOBAL.get_or_init(Bus::new)
 }
 
-/// 데몬 버스로 한 건 낸다
+/// 데몬 버스로 한 건 낸다. 알림함에 넣을 일이면 알림함에도 (`crate::notices::from_event`)
 pub fn emit(kind: &str, data: Value) {
+    crate::notices::on_event(kind, &data);
     bus().emit(kind, data);
 }
 

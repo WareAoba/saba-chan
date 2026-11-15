@@ -1110,7 +1110,11 @@
       "remote.remove": "Retirer un de tes PC : l’oublier ici et, au choix, y désinstaller Saba-chan et le retirer de la liste du relais",
       "remote.update": "Mettre à jour un daemon distant maintenant, ou activer/désactiver ses mises à jour automatiques (`--auto on|off`)",
       "config.public-address": "Adresse publique de ce PC (utilisée par les adresses de serveurs de jeu et les connexions de daemon distant) : sans valeur l'affiche, un domaine ou une IP l'enregistre, auto utilise l'IP publique vue par Server-chan",
-      "server.access": "Qui peut utiliser ce serveur sur Discord : partagé ou membres uniquement, liste des membres, pseudos expulsés automatiquement. Sans option : afficher"
+      "server.access": "Qui peut utiliser ce serveur sur Discord : partagé ou membres uniquement, liste des membres, pseudos expulsés automatiquement. Sans option : afficher",
+      "notice": "Boîte de notifications conservée par le démon (plantages, échecs de démarrage, résultats de mise à jour). Même liste que dans l'app",
+      "notice.read": "Marquer toutes les notifications comme lues",
+      "notice.remove": "Supprimer une notification",
+      "notice.clear": "Supprimer toutes les notifications"
     },
     "arg": {
       "module.maker.game": "Jeu à mettre dans la première demande",
@@ -1373,7 +1377,8 @@
       "server.access.kick_others": "Membres uniquement : expulser automatiquement les pseudos hors liste",
       "server.access.kick": "Partagé : expulser automatiquement quiconque entre avec ce pseudo (répétable)",
       "server.access.unkick": "Retirer de la liste d'expulsion automatique (répétable)",
-      "schedule.show.hours": "Sans serveur : nombre d'heures à afficher à l'avance (24 par défaut, 720 max)"
+      "schedule.show.hours": "Sans serveur : nombre d'heures à afficher à l'avance (24 par défaut, 720 max)",
+      "notice.remove.id": "Numéro de la première colonne de `notice`"
     },
     "after": "Les noms peuvent être partiels (ex. start pal). Sans argument dans un terminal, le menu plein écran s'ouvre (SABA_NO_TUI=1 : shell interactif).\nDans les scripts, utilisez --json et --yes. Codes de sortie : 0 succès · 1 échec · 2 utilisation · 3 connexion au daemon impossible · 4 introuvable · 130 annulé"
   },
@@ -2124,5 +2129,13 @@
     "none": "Personne",
     "not_listed": "{{name}} n'est pas dans la liste",
     "saved": "Mode d'utilisation de {{server}} enregistré"
+  },
+  "notice": {
+    "col": "Notification",
+    "none": "Aucune notification",
+    "unread": "{{count}} notification(s) non lue(s)",
+    "read_done": "Tout marqué comme lu",
+    "removed": "Notification {{id}} supprimée",
+    "cleared": "{{count}} notification(s) supprimée(s)"
   }
 }

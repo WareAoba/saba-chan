@@ -55,7 +55,6 @@ const COMMANDS: &[&str] = &[
     "overlay_set_scale",
     "sound_play",
     "sound_hold",
-    "events_backlog",
 ];
 
 /// 자리표시 index.html에만 있는 문구

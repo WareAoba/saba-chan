@@ -5,33 +5,24 @@ import { Icon } from '../Icon';
 import { Dialog } from '../ui/Dialog';
 import { announceRevert } from './AppVersion';
 import { ConfirmIcon } from './Modals';
-import { PATCH_NOTES_ACTION, updateResultMessage } from './NoticeModal';
+import { updateResultMessage } from './NoticeModal';
 
 export { updateResultMessage };
 
 /**
- * 시작할 때 마지막 업데이트 결과를 묻고, 있으면 알림을 남긴다 (데몬 GET /api/updates/last-result).
- * 알림은 같은 액션끼리 하나로 합쳐서, 확인 전에 다시 켜도 쌓이지 않는다.
- * 사용자가 되돌린 결과는 데몬이 확인한 것으로 남기므로 확인한 것까지 받아 따로 한 번 알린다(업데이트로 알리지 않는다).
+ * 마지막 업데이트 결과를 묻는다 (데몬 GET /api/updates/last-result). 알림함 알림은 데몬이 넣는다 (`notices.rs`).
+ * 사용자가 되돌린 결과는 데몬이 확인한 것으로 남기므로 확인한 것까지 받아, 컴포넌트 탭 위에 한 번 보인다.
  */
-export async function announceLastUpdateResult(t: TFunction) {
-    if (!window.api?.updaterLastResult || !window.__sabaNotice) return null;
+export async function announceLastUpdateResult() {
+    if (!window.api?.updaterLastResult) return null;
     try {
         const res = await window.api.updaterLastResult({ includeSeen: true });
         if (!res?.success || !res.result) return null;
         if (res.result.result === 'reverted') {
-            announceRevert(res.result, t);
+            announceRevert(res.result);
             return res;
         }
         if (res.acknowledged) return null;
-        window.__sabaNotice.addNotice({
-            message: updateResultMessage(res, t),
-            type: res.result.success ? 'success' : 'error',
-            source: 'Updater',
-            action: PATCH_NOTES_ACTION,
-            dedup: true,
-            data: { version: res.version || null, notes: res.notes ?? null, result: res.result },
-        });
         return res;
     } catch {
         return null;

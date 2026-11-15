@@ -209,6 +209,13 @@ impl Supervisor {
                                         .duration_since(std::time::UNIX_EPOCH)
                                         .map(|d| d.as_millis() as u64)
                                         .unwrap_or(0);
+                                    // 알림함에도 (`crate::notices`)
+                                    for conflict in &conflicts {
+                                        crate::events::emit(
+                                            "instance.port_conflict_stop",
+                                            serde_json::json!({ "instanceId": instance.id, "instance": instance.name, "port": conflict.port, "existing": conflict.conflicting_instance_name, "existingId": conflict.conflicting_instance_id }),
+                                        );
+                                    }
                                     self.record_port_conflict_stops(conflicts.iter().map(|conflict| PortConflictStopEvent {
                                         id: 0,
                                         stopped_name: instance.name.clone(),

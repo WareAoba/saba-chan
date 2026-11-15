@@ -867,23 +867,7 @@ describe('풀 라이프사이클 시나리오', () => {
 // 12. 업데이트 알림 이벤트 크로스 E2E
 // ════════════════════════════════════════════════════════════
 describe('업데이트 알림 이벤트', () => {
-    it('onUpdatesAvailable → 이벤트 핸들러 등록됨', async () => {
-        const onUpdatesAvailable = vi.fn();
-        window.api = createApiMock({ onUpdatesAvailable });
-
-        await act(async () => {
-            render(<App />);
-        });
-
-        await waitFor(
-            () => {
-                expect(onUpdatesAvailable).toHaveBeenCalledWith(expect.any(Function));
-            },
-            { timeout: 4000 },
-        );
-    });
-
-    it('onUpdateCompleted → 업데이트 알림을 지우고 결과 알림 하나만 남긴다', async () => {
+    it('onUpdateCompleted → 완료를 토스트로 알린다 (결과 알림은 데몬이 알림함에 넣는다)', async () => {
         let updateHandler = null as ((u: { message: string }) => void) | null;
         window.api = createApiMock({
             onUpdateCompleted: vi.fn((handler) => {
@@ -895,13 +879,6 @@ describe('업데이트 알림 이벤트', () => {
                 result: { success: true, updated_components: ['saba-core'], failed: [] },
             }),
         });
-
-        // notice 시스템 mock
-        window.__sabaNotice = {
-            addNotice: vi.fn(),
-            removeNoticesByAction: vi.fn(),
-            getUnreadCount: vi.fn().mockReturnValue(0),
-        } as unknown as typeof window.__sabaNotice;
 
         await act(async () => {
             render(<App />);
@@ -916,31 +893,26 @@ describe('업데이트 알림 이벤트', () => {
 
         expect(updateHandler).not.toBeNull();
 
+        // Toast 컴포넌트가 건 showToast를 감싸 부른 것을 본다
+        const shown = vi.fn();
+        const origShowToast = window.showToast;
+        window.showToast = ((...args: Parameters<NonNullable<typeof window.showToast>>) => {
+            shown(...args);
+            return origShowToast?.(...args) ?? 0;
+        }) as typeof window.showToast;
+
         // 업데이트 완료 이벤트 발생
         await act(async () => {
             updateHandler!({ message: 'palworld 모듈 업데이트 완료!' });
         });
 
-        // 1.5초 지연 후 토스트 + notice
+        // 1.5초 지연 후 토스트
         await waitFor(
             () => {
-                expect(window.__sabaNotice!.removeNoticesByAction).toHaveBeenCalledWith('Updater', 'openUpdateModal');
-                // 완료 문구는 토스트로만, 알림함에는 같은 액션끼리 합쳐지는 결과 알림만 (앱이 뜰 때 한 번 더 물어도 하나로 합쳐진다)
-                const calls = vi.mocked(window.__sabaNotice!.addNotice).mock.calls.map(([n]) => n);
-                expect(calls.length).toBeGreaterThan(0);
-                for (const n of calls) {
-                    expect(n).toMatchObject({
-                        type: 'success',
-                        source: 'Updater',
-                        action: 'openPatchNotes',
-                        dedup: true,
-                    });
-                }
+                expect(shown).toHaveBeenCalledWith('palworld 모듈 업데이트 완료!', 'success', 5000);
             },
             { timeout: 5000 },
         );
-
-        delete window.__sabaNotice;
     });
 });
 

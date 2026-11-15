@@ -43,8 +43,6 @@ pub struct Lifecycle {
     client_id: Mutex<Option<String>>,
     last_status: Mutex<Option<Value>>,
     update_alerts: Mutex<UpdateAlerts>,
-    /// 메인 화면이 받지 못한 데몬 이벤트 (창이 닫혀 있거나 아직 뜨는 중). 화면이 뜨면 가져가 알림함에 넣는다
-    backlog: Mutex<Backlog>,
     events_stop: Arc<AtomicBool>,
     heartbeat_task: Mutex<Option<JoinHandle<()>>>,
     events_task: Mutex<Option<JoinHandle<()>>>,
@@ -82,44 +80,6 @@ impl UpdateAlerts {
         self.last_key = None;
         self.primed = true;
     }
-}
-
-/// 메인 화면이 받지 못한 데몬 이벤트를 모아 둔다 (사용자 11-15: 인터페이스만 종료한 동안의 일도 평소처럼 알림함에).
-/// 화면이 가져가면(`take`) 멈추고, 창을 모두 닫으면(`window_closed`) 다시 모은다. 처음(창이 아직 없다)에도 모은다
-#[derive(Default)]
-struct Backlog {
-    taken: bool,
-    events: std::collections::VecDeque<SseEvent>,
-}
-
-impl Backlog {
-    /// 오래 닫혀 있어도 이만큼만 (오래된 것부터 버린다)
-    const CAP: usize = 200;
-
-    fn keep(&mut self, ev: &SseEvent) {
-        // 설치 진행은 자주 온다: 끝난 것만 (알림이 되는 것은 끝뿐이다)
-        if self.taken || (ev.kind == "provision.progress" && ev.data["done"] != json!(true)) {
-            return;
-        }
-        if self.events.len() == Self::CAP {
-            self.events.pop_front();
-        }
-        self.events.push_back(ev.clone());
-    }
-
-    fn take(&mut self) -> Vec<SseEvent> {
-        self.taken = true;
-        self.events.drain(..).collect()
-    }
-
-    fn window_closed(&mut self) {
-        self.taken = false;
-    }
-}
-
-/// 메인 화면이 뜨는 동안·닫혀 있던 동안 모아 둔 데몬 이벤트를 가져간다 (그 뒤로는 화면이 바로 받는다)
-pub fn take_backlog(app: &AppHandle) -> Vec<SseEvent> {
-    app.state::<AppState>().life.backlog.lock().unwrap().take()
 }
 
 fn sleep(ms: u64) -> tokio::time::Sleep {
@@ -950,7 +910,6 @@ fn start_events(app: &AppHandle) {
                     }
                 }
                 if feed == Feed::Chosen {
-                    app2.state::<AppState>().life.backlog.lock().unwrap().keep(&ev);
                     emit_main(&app2, "events:message", &ev);
                     crate::overlay::emit(&app2, "events:message", &ev);
                 }
@@ -1214,8 +1173,6 @@ pub async fn interface_only_quit(app: &AppHandle) {
     tracing::info!("Closing every window; staying in the tray");
     // 다음 창의 렌더러가 준비될 때까지 서버 열기 요청을 맡아 둔다
     state.life.renderer_ready.store(false, Ordering::SeqCst);
-    // 창이 없는 동안의 데몬 이벤트는 다음 창이 알림함에 넣는다
-    state.life.backlog.lock().unwrap().window_closed();
     crate::window::close_answered();
     crate::window::close_all(app);
 }
@@ -1289,25 +1246,6 @@ pub fn on_exit(app: &AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// 화면이 가져가기 전(창이 없거나 뜨는 중)의 이벤트를 모으고, 가져간 뒤에는 창을 모두 닫을 때까지 모으지 않는다
-    #[test]
-    fn backlog_keeps_events_only_while_no_window_takes_them() {
-        let ev = |kind: &str, data: Value| SseEvent { id: None, kind: kind.into(), data };
-        let mut b = Backlog::default();
-        b.keep(&ev("instance.exit", json!({ "kind": "crash" })));
-        b.keep(&ev("provision.progress", json!({ "done": false })));
-        b.keep(&ev("provision.progress", json!({ "done": true })));
-        let kinds = |v: Vec<SseEvent>| v.into_iter().map(|e| e.kind).collect::<Vec<_>>();
-        assert_eq!(kinds(b.take()), ["instance.exit", "provision.progress"]);
-        b.keep(&ev("instance.started", json!({})));
-        assert!(b.take().is_empty(), "the window gets events live after taking");
-        b.window_closed();
-        for _ in 0..Backlog::CAP + 5 {
-            b.keep(&ev("instance.stopped", json!({})));
-        }
-        assert_eq!(b.take().len(), Backlog::CAP);
-    }
 
     /// 이 GUI가 뜬 뒤 처음 읽은 업데이트(이미 있던 것)는 소리·OS 알림 없이 기억만 하고, 그 뒤 새로 생긴 목록만 알린다
     #[test]

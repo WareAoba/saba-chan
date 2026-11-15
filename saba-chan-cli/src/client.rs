@@ -1195,6 +1195,22 @@ impl Api {
         self.post_long(&format!("/api/instance/{}/backups/import", seg(id)), json!({ "path": path }))
             .await
     }
+    /// GET /api/notices?locale — 알림함 `{notices: [{id, at, level, message, detail?, source, instanceId?, read}], unread}`
+    pub async fn notices(&self) -> Result<Value> {
+        self.get(&format!("/api/notices?locale={}", seg(crate::i18n::lang()))).await
+    }
+    /// POST /api/notices/read — 모두 읽음
+    pub async fn notices_read(&self) -> Result<Value> {
+        self.post("/api/notices/read", json!({})).await
+    }
+    /// DELETE /api/notices/:id
+    pub async fn notice_remove(&self, id: u64) -> Result<Value> {
+        self.delete(&format!("/api/notices/{id}")).await
+    }
+    /// DELETE /api/notices — 모두 지우기 `{removed}`
+    pub async fn notices_clear(&self) -> Result<Value> {
+        self.delete("/api/notices").await
+    }
     /// GET /api/schedules/upcoming?hours= — 모든 서버의 다가오는 예약 `{upcoming:[{instance, task, next, clash}], clashes}`
     pub async fn upcoming_schedules(&self, hours: Option<u32>) -> Result<Value> {
         match hours {

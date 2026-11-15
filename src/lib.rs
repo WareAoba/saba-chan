@@ -23,6 +23,7 @@ pub mod chat;  // 채팅 명령 처리기 (릴레이 에이전트)
 pub mod commands;  // 게임 명령 해석 (/api/instance/:id/command)
 pub mod module_audit;  // 모듈 Python 코드 정적 검사 (M12)
 pub mod audit;
+pub mod notices;  // 알림함: 크래시·실패·업데이트 결과를 데몬이 보관 (notices.json)
 pub mod events;  // 데몬 이벤트 스트림 (P4, GET /api/events)
 pub mod sandbox;  // 확인되지 않은 모듈·익스텐션 실행 제한 (Windows)
 pub mod actions;  // 데몬 액션 카탈로그 (P2): 모든 표면이 읽는 기능 목록

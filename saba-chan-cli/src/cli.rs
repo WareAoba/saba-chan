@@ -80,6 +80,12 @@ pub enum Cmd {
     /// Scheduled tasks of a server (backup, restart, announce, update)
     #[command(subcommand, visible_alias = "schedules")]
     Schedule(ScheduleCmd),
+    /// The notification inbox the daemon keeps (crashes, failed starts, update results). Same list as the app
+    #[command(visible_alias = "notices")]
+    Notice {
+        #[command(subcommand)]
+        action: Option<NoticeCmd>,
+    },
     /// Talking Saba-chan, the AI for Discord (API key, settings, memory)
     #[command(subcommand, visible_alias = "ai")]
     Chatbot(ChatbotCmd),
@@ -468,6 +474,20 @@ pub struct ScheduleWhen {
     /// With --at: every day (drops --every-days, --on and --date in `edit`)
     #[arg(long)]
     pub daily: bool,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum NoticeCmd {
+    /// Mark every notice as read
+    Read,
+    /// Delete one notice
+    #[command(visible_alias = "rm")]
+    Remove {
+        /// The number in the first column of `notice`
+        id: u64,
+    },
+    /// Delete every notice
+    Clear,
 }
 
 #[derive(Subcommand, Debug)]

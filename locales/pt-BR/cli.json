@@ -1110,7 +1110,11 @@
       "remote.remove": "Remover um dos seus PCs: esquecê-lo aqui e, se quiser, desinstalar o Saba-chan nele e tirá-lo da lista do relay",
       "remote.update": "Atualizar agora um daemon remoto ou ligar/desligar as atualizações automáticas (`--auto on|off`)",
       "config.public-address": "Endereço público deste PC (usado nos endereços de servidores e nas conexões de daemon remoto): sem valor mostra, domínio ou IP salva, auto usa o IP público que o Server-chan vê",
-      "server.access": "Quem pode usar este servidor no Discord: compartilhado ou somente membros, lista de membros, apelidos com expulsão automática. Sem opções: mostrar"
+      "server.access": "Quem pode usar este servidor no Discord: compartilhado ou somente membros, lista de membros, apelidos com expulsão automática. Sem opções: mostrar",
+      "notice": "Caixa de avisos mantida pelo daemon (falhas, erros ao iniciar, resultados de atualização). É a mesma lista do app",
+      "notice.read": "Marcar todos os avisos como lidos",
+      "notice.remove": "Excluir um aviso",
+      "notice.clear": "Excluir todos os avisos"
     },
     "arg": {
       "module.maker.game": "Jogo para o primeiro pedido",
@@ -1373,7 +1377,8 @@
       "server.access.kick_others": "Somente membros: expulsar automaticamente apelidos fora da lista",
       "server.access.kick": "Compartilhado: expulsar automaticamente quem entrar com este apelido (pode repetir)",
       "server.access.unkick": "Remover da lista de expulsão automática (pode repetir)",
-      "schedule.show.hours": "Sem servidor: quantas horas à frente mostrar (padrão 24, máximo 720)"
+      "schedule.show.hours": "Sem servidor: quantas horas à frente mostrar (padrão 24, máximo 720)",
+      "notice.remove.id": "Número da primeira coluna de `notice`"
     },
     "after": "Os nomes podem ser parciais (ex.: start pal). Sem argumentos em um terminal, abre o menu em tela cheia (SABA_NO_TUI=1: shell interativo).\nEm scripts, use --json e --yes. Códigos de saída: 0 sucesso · 1 falha · 2 uso · 3 falha de conexão com o daemon · 4 não encontrado · 130 cancelado"
   },
@@ -2124,5 +2129,13 @@
     "none": "Ninguém",
     "not_listed": "{{name}} não está na lista",
     "saved": "Modo de uso de {{server}} salvo"
+  },
+  "notice": {
+    "col": "Aviso",
+    "none": "Nenhum aviso",
+    "unread": "{{count}} aviso(s) não lido(s)",
+    "read_done": "Todos marcados como lidos",
+    "removed": "Aviso {{id}} excluído",
+    "cleared": "{{count}} aviso(s) excluído(s)"
   }
 }

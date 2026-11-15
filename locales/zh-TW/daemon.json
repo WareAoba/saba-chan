@@ -315,6 +315,59 @@
       "apiKey": "API 金鑰",
       "command": "指令",
       "settings": "設定"
+    },
+    "notice": {
+      "list": {
+        "title": "檢視通知",
+        "description": "檢視守護程式保存的通知匣（當機、啟動失敗、更新結果）"
+      },
+      "clear": {
+        "title": "刪除所有通知",
+        "description": "清空通知匣"
+      }
     }
+  },
+  "notices": {
+    "main": "Saba-chan",
+    "exit_crash": "因當機而結束",
+    "exit_start_failed": "啟動失敗",
+    "exit_unknown_exit": "意外結束",
+    "started_external": "在 Saba-chan 之外啟動",
+    "unresponsive": "{{minutes}} 分鐘無回應",
+    "restored": "還原 · {{source}}",
+    "restore_failed": "還原失敗",
+    "port_conflict": "連接埠 {{port}} 與 {{existing}} 衝突，已停止",
+    "reason_memory_limit": "達到記憶體上限（{{mb}} MiB）",
+    "reason_exit_code": "結束代碼 {{code}}",
+    "reason_signal": "因訊號 {{signal}} 結束",
+    "reason_crash_file": "已產生新的當機報告",
+    "reason_ended_early": "啟動 {{secs}} 秒後結束",
+    "restart_in": "{{secs}} 秒後重新啟動",
+    "note_auto_off": "自動重啟已關閉",
+    "note_gave_up": "10 分鐘內重啟 {{count}} 次後放棄",
+    "module_update": "{{name}}：{{module}} 模組新版本 {{version}} 發布",
+    "server_update": "{{name}}：遊戲伺服器新版本發布。無法連線時請更新伺服器。",
+    "server_update_waiting": "{{name}}：遊戲伺服器新版本發布。有 {{count}} 人連線中，自動更新等待中",
+    "server_update_waiting_unknown": "{{name}}：遊戲伺服器新版本發布。有人連線，自動更新等待中",
+    "server_update_failed": "{{name}}：遊戲伺服器更新失敗。{{error}}",
+    "update_done": "Saba-chan 已更新至 {{version}}",
+    "update_failed": "{{count}} 個項目更新失敗",
+    "unknown_version": "新版本",
+    "reverted": "已從 {{from}} 還原到 {{version}}",
+    "revert_incomplete": "從 {{from}} 還原到 {{version}} 部分失敗",
+    "source_gui": "應用程式",
+    "source_cli": "CLI",
+    "source_api": "API",
+    "source_discord": "Discord",
+    "source_chatbot": "會說話的 Saba-chan",
+    "source_schedule": "排程工作",
+    "source_daemon": "背景服務",
+    "source_web": "Saba-chan 網頁",
+    "source_remote": "遠端電腦",
+    "source_mcp": "AI 代理",
+    "source_agent": "此電腦上的 AI 代理",
+    "source_restart": "自動重新啟動",
+    "source_idle": "無人上線自動停止",
+    "source_watchdog": "無回應監視"
   }
 }

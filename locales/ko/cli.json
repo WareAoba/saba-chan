@@ -1110,7 +1110,11 @@
       "remote.remove": "내 PC 하나 지우기: 여기서 잊고, 원하면 그 PC에서 사바쨩을 지우고 서버쨩 목록에서도 빼기",
       "remote.update": "원격 데몬을 지금 업데이트하거나 자동 업데이트 켜고 끄기 (`--auto on|off`)",
       "config.public-address": "이 PC의 공개 주소(게임 서버 주소와 원격 데몬 연결이 함께 써요): 값 없이 쓰면 지금 값, 도메인이나 IP를 주면 저장, auto면 서버쨩이 본 공인 IP",
-      "server.access": "디스코드에서 이 서버를 쓰는 사람: 서버 공용·전용 멤버, 전용 멤버 명단, 자동 강퇴 닉네임. 옵션 없으면 보기"
+      "server.access": "디스코드에서 이 서버를 쓰는 사람: 서버 공용·전용 멤버, 전용 멤버 명단, 자동 강퇴 닉네임. 옵션 없으면 보기",
+      "notice": "데몬이 보관하는 알림함 (크래시·시작 실패·업데이트 결과). 앱과 같은 목록",
+      "notice.read": "모든 알림을 읽음으로 표시",
+      "notice.remove": "알림 하나 삭제",
+      "notice.clear": "알림 모두 삭제"
     },
     "arg": {
       "module.maker.game": "첫 부탁에 넣을 게임 이름",
@@ -1373,7 +1377,8 @@
       "server.access.kick_others": "전용 멤버: 명단 밖 닉네임 자동 강퇴",
       "server.access.kick": "서버 공용: 이 닉네임이 들어오면 자동 강퇴 (여러 번 가능)",
       "server.access.unkick": "자동 강퇴 명단에서 빼기 (여러 번 가능)",
-      "schedule.show.hours": "서버 없이: 몇 시간 앞까지 볼지 (기본 24, 최대 720)"
+      "schedule.show.hours": "서버 없이: 몇 시간 앞까지 볼지 (기본 24, 최대 720)",
+      "notice.remove.id": "`notice` 첫 칸의 번호"
     },
     "after": "이름은 일부만 적어도 됩니다 (예: start pal). 인자 없이 터미널에서 실행하면 전체 화면 메뉴가 열립니다(SABA_NO_TUI=1이면 대화형 셸).\n스크립트에서는 --json과 --yes를 써 주세요. 종료 코드: 0 성공 · 1 실패 · 2 사용법 · 3 데몬 연결 실패 · 4 없음 · 130 취소"
   },
@@ -2124,5 +2129,13 @@
     "none": "없음",
     "not_listed": "{{name}}은(는) 명단에 없음",
     "saved": "{{server}} 사용 모드 저장됨"
+  },
+  "notice": {
+    "col": "알림",
+    "none": "알림 없음",
+    "unread": "읽지 않은 알림 {{count}}개",
+    "read_done": "모두 읽음으로 표시함",
+    "removed": "알림 {{id}} 삭제됨",
+    "cleared": "알림 {{count}}개 삭제됨"
   }
 }
