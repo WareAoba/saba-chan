@@ -11,8 +11,6 @@ import { Icon } from '../Icon';
 import { SabaSpinner } from '../ui/SabaUI';
 import { StatusChip } from '../ui/StatusChip';
 
-/** 이 카드를 띄울 IPC가 있는지 (구버전 브리지에는 없다) */
-export const upcomingAvailable = () => typeof window.api?.schedulesUpcoming === 'function';
 
 /** 데몬 GET /api/schedules/upcoming 의 한 줄 */
 interface UpcomingRow {

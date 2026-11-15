@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { useSettingsStore } from '../../../stores/useSettingsStore';
 import CustomDropdown from '../../CustomDropdown/CustomDropdown';
 import { SabaToggle } from '../../ui/SabaUI';
-import { NetTraceSetting, netTraceAvailable } from '../NetTraceSetting';
+import { NetTraceSetting } from '../NetTraceSetting';
 import { setOption } from './options';
 
 /** 설정 › 서버: 비밀번호 자동 생성·포트 검사·네트워크 측정·새 서버 기본값·활동 기록 보관 */
@@ -74,7 +74,7 @@ export function ServersTab() {
             </div>
 
             {/* 포트·서버별 네트워크 (기본 꺼짐, Windows만): 시스템 모니터를 펼쳐 둔 동안 데몬이 센다 */}
-            {netTraceAvailable() && <NetTraceSetting />}
+            <NetTraceSetting />
 
             {/* 새 서버 기본값: 서버를 만들 때 데몬이 채운다. 만든 뒤에는 서버마다 바꾼다 */}
             <div className="setting-item setting-item-group">

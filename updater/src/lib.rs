@@ -334,8 +334,6 @@ pub const CHECK_EVERY_HOURS: u32 = 24;
 #[serde(default)]
 pub struct UpdateConfig {
     pub enabled: bool,
-    /// 확인 주기 (시간 단위, 기본값 3, 최소 1시간에서 최대 8시간)
-    pub check_interval_hours: u32,
     /// 확인 뒤 새 버전을 미리 내려받아 둘지
     pub auto_download: bool,
     /// 앱 업데이트를 묻지 않고 적용할지 (켜면 내려받기도 한다). 끄면 받아 두거나(`auto_download`) 알리기만 하고,
@@ -382,7 +380,6 @@ impl Default for UpdateConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            check_interval_hours: 3,
             // 앱 업데이트는 묻지 않고 적용한다
             auto_download: true,
             auto_apply: true,
@@ -1063,7 +1060,7 @@ impl UpdateManager {
         }
 
         let now = time::now_iso();
-        // 주기 확인은 24시간마다다 (연결된 데몬은 heartbeat의 판 번호로 안다). `check_interval_hours`는 읽기만 한다
+        // 주기 확인은 24시간마다다 (연결된 데몬은 heartbeat의 판 번호로 안다)
         let next = time::iso_after_hours(CHECK_EVERY_HOURS);
         // 같은 판 베타를 받는 동안 기다리는 정식 판. 정식(그 판 이상)을 받으면 사라진다
         let stable_wait = relay::stable_wait_base(&channel, &current)

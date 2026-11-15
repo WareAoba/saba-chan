@@ -14,7 +14,6 @@ export { updateResultMessage };
  * 사용자가 되돌린 결과는 데몬이 확인한 것으로 남기므로 확인한 것까지 받아, 컴포넌트 탭 위에 한 번 보인다.
  */
 export async function announceLastUpdateResult() {
-    if (!window.api?.updaterLastResult) return null;
     try {
         const res = await window.api.updaterLastResult({ includeSeen: true });
         if (!res?.success || !res.result) return null;
@@ -47,7 +46,7 @@ export function PatchNotesModal({ data, onClose }: PatchNotesModalProps) {
     const failed = result.failed || [];
 
     useEffect(() => {
-        Promise.resolve(window.api?.updaterLastResult?.({ clear: true })).catch(() => {});
+        Promise.resolve(window.api.updaterLastResult({ clear: true })).catch(() => {});
     }, []);
 
     return (

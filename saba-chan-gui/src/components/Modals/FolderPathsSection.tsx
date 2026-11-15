@@ -5,7 +5,6 @@ import { failed } from '../../utils/apiResult';
 import { Icon } from '../Icon';
 import { Disclosure } from '../ui/Disclosure';
 
-export const folderPathsAvailable = () => typeof window.api?.systemPaths === 'function';
 
 // 데몬 `paths_<코드>` (`component_dirs::PathError`) 중 문구가 있는 것 (`folder_paths.err_<코드>`). 파일 이동 창이 쓴다
 export const PATH_ERRORS = [

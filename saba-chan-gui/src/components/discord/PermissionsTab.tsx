@@ -34,7 +34,7 @@ export function usePermissions(guildId: string) {
         try {
             const [res, stairs] = await Promise.all([
                 window.api.permissionsGet(guildId),
-                window.api.permissionsCommands?.(guildId, locale),
+                window.api.permissionsCommands(guildId, locale),
             ]);
             if (mine !== seq.current) return;
             if (failed(res)) setError(res || {});
@@ -254,7 +254,6 @@ export function PeopleView({
     const [legacy, setLegacy] = useState<DiscordMember[]>([]);
     const legacyGen = useRef(0);
     const loadLegacy = useCallback(async () => {
-        if (!window.api?.relayListLegacyMembers) return;
         const gen = ++legacyGen.current;
         // 새 목록이 올 때까지 옛 후보와 고른 것을 비워 옛 레벨을 가져오지 못하게 한다
         setLegacy([]);

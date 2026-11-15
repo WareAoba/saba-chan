@@ -13,8 +13,6 @@ import { errorText } from './maintenanceText';
 // 예전 경로로 가져오는 곳(시험)을 위해 다시 내보낸다
 export { draftProblems, formatBytes, fromDraft, toDraft, WEEKDAYS };
 
-/** 이 화면을 띄울 IPC가 있는지 (구버전 브리지에는 없다) */
-export const maintenanceAvailable = () => !!window.api?.instanceScheduleGet;
 
 /**
  * 서버별 백업·예약 작업 탭 (데몬 A2·A3).
@@ -67,7 +65,7 @@ export function MaintenanceTab({ server, moduleCommands = [] }: { server: Server
     }
     return (
         <div className="mt-tab">
-            {info.backupSupported && typeof window.api?.instanceBackups === 'function' && <BackupsCard server={server} />}
+            {info.backupSupported && <BackupsCard server={server} />}
             <ScheduleCard server={server} info={info} onSaved={load} moduleCommands={moduleCommands} />
         </div>
     );

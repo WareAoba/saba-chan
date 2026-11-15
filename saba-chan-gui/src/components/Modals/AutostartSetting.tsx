@@ -5,8 +5,6 @@ import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { Icon } from '../Icon';
 import { failed } from '../../utils/apiResult';
 
-export const autostartAvailable = () =>
-    typeof window.api?.systemAutostart === 'function' && typeof window.api?.systemAutostartSet === 'function';
 
 const MODES = ['off', 'daemon', 'full'];
 // 데몬 `autostart_<코드>` (`saba_chan_updater_lib::autostart::AutostartError`) 중 문구가 있는 것

@@ -300,7 +300,7 @@ export function serverPowerActions(get: () => ServerState, fetchServers: () => P
             // ── error_code: agreement_required — 모듈이 선언한 약관(EULA 등)에 아직 동의하지 않음 ──
             if (outcome.kind === 'agreements') {
                 revertOptimistic(id);
-                if (outcome.agreements.length && !!window.api.instanceAgreements) {
+                if (outcome.agreements.length) {
                     askAgreements(srv, t('agreements.start_title'), t('agreements.start_message', { name }), outcome.agreements);
                 } else {
                     // 데몬 문구는 이미 현지화돼 있다
@@ -321,11 +321,7 @@ export function serverPowerActions(get: () => ServerState, fetchServers: () => P
                 // 동의 기록은 있는데 파일(eula.txt 등)이 지워진 경우: 다시 동의하면 모듈이 파일을 다시 쓴다
                 // 서버 목록에는 agreements가 없어 모듈 목록의 선언을 쓴다
                 const srvAgreements = get().modules.find((m) => m.name === module)?.agreements || [];
-                if (
-                    result.issue_code === 'EULA_NOT_ACCEPTED' &&
-                    srvAgreements.length &&
-                    !!window.api.instanceAgreements
-                ) {
+                if (result.issue_code === 'EULA_NOT_ACCEPTED' && srvAgreements.length) {
                     askAgreements(srv, title, message, srvAgreements);
                 } else {
                     setModal({ type: 'failure', title, message });
@@ -559,7 +555,7 @@ export function serverPowerActions(get: () => ServerState, fetchServers: () => P
     // confirmed: 부른 곳에서 이미 재시작을 골랐다 (설정 저장 뒤 '지금 다시 시작') → 다시 묻지 않는다
     const restartServer = async (id: string, { confirmed = false }: { confirmed?: boolean } = {}) => {
         const srv = get().servers.find((s) => s.id === id);
-        if (!srv || !window.api.instanceRestart) return;
+        if (!srv) return;
         const { name } = srv;
         const restartNow = async () => {
             internal.optimistic.set(id, { status: 'stopping' });

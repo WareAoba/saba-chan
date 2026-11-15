@@ -15,7 +15,7 @@ export function SwitchToCliButton() {
 
     useEffect(() => {
         let alive = true;
-        Promise.resolve(window.api?.clientsLaunchable?.())
+        Promise.resolve(window.api.clientsLaunchable())
             .then((r) => alive && setAvailable(r?.cli === true))
             .catch(() => {});
         return () => {
@@ -31,7 +31,7 @@ export function SwitchToCliButton() {
         try {
             const instance = useUIStore.getState().activeServerId || undefined;
             // 고른 원격 데몬은 CLI에도 넘긴다: 그 서버는 그 데몬에 있다
-            const current = await window.api.daemonTarget?.().catch(() => null);
+            const current = await window.api.daemonTarget().catch(() => null);
             const res = await window.api.clientLaunch({
                 kind: 'cli',
                 instance,

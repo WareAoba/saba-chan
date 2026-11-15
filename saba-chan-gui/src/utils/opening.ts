@@ -113,14 +113,14 @@ let quietQueue: (() => void)[] | null = null;
 export function beginOpeningQuiet(): void {
     if (quietQueue) return;
     quietQueue = [];
-    window.api?.soundHold?.(true);
+    window.api.soundHold(true);
 }
 /** 오프닝이 끝났다: 셸의 붙잡기를 놓고 미뤄 둔 앱 안 알림을 띄운다. 시작하지 않았으면 아무것도 하지 않는다 */
 export function endOpeningQuiet(): void {
     const queue = quietQueue;
     if (!queue) return;
     quietQueue = null;
-    window.api?.soundHold?.(false);
+    window.api.soundHold(false);
     for (const show of queue) show();
 }
 /** 오프닝 중이면 알림을 끝난 뒤로 미루고 true, 아니면 false(바로 띄운다) */

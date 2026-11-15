@@ -77,7 +77,7 @@ function AuditNotice({ kind, id, name }: { kind: AuditKind; id: string; name: st
     useEffect(() => {
         setUndeclared([]);
         setFailed(false);
-        if (!id || !window.api?.[source.api]) return;
+        if (!id) return;
         let alive = true;
         loadAudit(kind, id).then((res) => {
             if (!alive) return;

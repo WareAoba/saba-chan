@@ -13,7 +13,7 @@ import { useExtensions } from '../contexts/ExtensionContext';
 import { changedForCli, SECRET_KEY } from '../utils/cliValues';
 import { CliLine } from './CliLine';
 import { CustomDropdown, ExtensionSlot, Icon } from './index';
-import { LaunchPreview, launchPreviewAvailable } from './servers/LaunchPreview';
+import { LaunchPreview } from './servers/LaunchPreview';
 import { type ResetChoice, type ResetScope, ResetServerDialog } from './servers/ResetServerDialog';
 import { Popover } from './ui/Popover';
 import { SaveBar } from './ui/SaveBar';
@@ -84,10 +84,7 @@ function GeneralTab({
     // 버전 때문에 숨긴 설정의 이름을 펼쳤는가 ("목록 보기")
     const [versionHiddenListed, setVersionHiddenListed] = useState(false);
     const askReset = async () => {
-        const seen =
-            typeof window.api?.instanceResetPreview === 'function'
-                ? await window.api.instanceResetPreview(settingsServer.id)
-                : null;
+        const seen = await window.api.instanceResetPreview(settingsServer.id);
         if (seen?.success && Array.isArray(seen.scopes) && seen.scopes.length) setResetScopes(seen.scopes);
         else handleResetServer();
     };
@@ -597,7 +594,7 @@ export function ServerSettingsModal({
                 </div>
             )}
 
-            {section !== 'server' && settingsActiveTab === 'general' && launchPreviewAvailable() && (
+            {section !== 'server' && settingsActiveTab === 'general' && (
                 <LaunchPreview
                     key={settingsServer.id}
                     serverId={settingsServer.id}

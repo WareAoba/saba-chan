@@ -19,7 +19,6 @@ fn create_test_manager(tmpdir: &TempDir) -> UpdateManager {
 
     let config = UpdateConfig {
         enabled: true,
-        check_interval_hours: 3,
         auto_download: false,
         install_root: Some(tmpdir.path().to_string_lossy().to_string()),
         ..Default::default()

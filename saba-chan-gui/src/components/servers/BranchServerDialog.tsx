@@ -27,7 +27,7 @@ export function BranchServerDialog({
 
     useEffect(() => {
         let live = true;
-        Promise.resolve(window.api?.instanceCheck?.({ name: firstName.current, branch_of: parent.id }))
+        Promise.resolve(window.api.instanceCheck({ name: firstName.current, branch_of: parent.id }))
             .then((res) => {
                 if (!live || !res) return;
                 const ports = (res.ports || []) as { field?: string; port?: number }[];

@@ -98,15 +98,24 @@ if (typeof window !== 'undefined') {
         moduleGetLocales: vi.fn(),
         moduleGetMetadata: vi.fn(),
     };
-    global.window.api = new Proxy(baseMocks, {
-        get(target, prop: string | symbol) {
-            if (typeof prop === 'symbol') return Reflect.get(target, prop);
-            if (!(prop in target)) {
-                target[prop] = vi.fn().mockResolvedValue({});
-            }
-            return target[prop];
+    // 실제 window.api(createApi)는 모든 메서드를 갖는다. 테스트가 일부만 넣은 mock도 빠진 메서드는 빈 응답으로 채운다
+    const withDefaults = (target: object) =>
+        new Proxy(target as Record<string, unknown>, {
+            get(t, prop: string | symbol) {
+                if (typeof prop === 'symbol' || prop in t) return Reflect.get(t, prop);
+                const fn = vi.fn().mockResolvedValue({});
+                t[prop] = fn;
+                return fn;
+            },
+        }) as unknown as typeof window.api;
+    let api = withDefaults(baseMocks);
+    Object.defineProperty(window, 'api', {
+        configurable: true,
+        get: () => api,
+        set: (next: typeof window.api | undefined) => {
+            api = next && typeof next === 'object' ? withDefaults(next) : (next as unknown as typeof window.api);
         },
-    }) as unknown as typeof window.api;
+    });
 
     global.window.showToast = vi.fn();
     global.window.showStatus = vi.fn();

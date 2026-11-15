@@ -51,8 +51,8 @@ import { Card, SettingRow } from '../ServerSettingsParts';
 import { Disclosure } from '../ui/Disclosure';
 import { Segmented, StatusChip } from '../ui/StatusChip';
 import { ServerLogs } from './ServerLogs';
-import { InstanceDiscordTab, instanceWordsAvailable } from '../discord/InstanceWordsTab';
-import { MaintenanceTab, maintenanceAvailable } from './MaintenanceTab';
+import { InstanceDiscordTab } from '../discord/InstanceWordsTab';
+import { MaintenanceTab } from './MaintenanceTab';
 import { PlayersTab, playerListsAvailable } from './PlayersTab';
 import { ModuleAuditNotice } from './ModuleAuditNotice';
 import { ServerConsole } from './ServerConsole';
@@ -122,12 +122,12 @@ export function ServerDetail({ server, moduleData, modules, servers, onBack, con
         },
         { id: 'settings', label: t('shell.tab_settings'), icon: <Icon name="gamepad" size="sm" /> },
         { id: 'saba', label: t('shell.tab_saba'), icon: <Icon name="sabaFace" size="sm" /> },
-        maintenanceAvailable() && {
+        {
             id: 'maintenance',
             label: t('shell.tab_maintenance'),
             icon: <Icon name="clock" size="sm" />,
         },
-        instanceWordsAvailable() && {
+        {
             id: 'discord',
             label: t('shell.tab_discord'),
             icon: <Icon name="discord" size="sm" />,
@@ -204,17 +204,15 @@ export function ServerDetail({ server, moduleData, modules, servers, onBack, con
         }
         return action === 'stop' ? (
             <>
-                {typeof window.api?.instanceRestart === 'function' && (
-                    <button
-                        type="button"
-                        className="icon-btn"
-                        onClick={() => onRestart(server.id)}
-                        data-tooltip={t('shell.restart')}
-                        aria-label={t('shell.restart')}
-                    >
-                        <Icon name="refresh" size="sm" />
-                    </button>
-                )}
+                <button
+                    type="button"
+                    className="icon-btn"
+                    onClick={() => onRestart(server.id)}
+                    data-tooltip={t('shell.restart')}
+                    aria-label={t('shell.restart')}
+                >
+                    <Icon name="refresh" size="sm" />
+                </button>
                 <button type="button" className="btn btn-danger btn-lg" onClick={() => onStop(server.id)}>
                     <Icon name="stop" size="sm" /> {t('shell.stop')}
                 </button>
@@ -323,11 +321,9 @@ export function ServerDetail({ server, moduleData, modules, servers, onBack, con
                                 {t('server_status.unresponsive', { reason: server.unresponsive })}
                             </span>
                         </span>
-                        {typeof window.api?.instanceRestart === 'function' && (
-                            <button type="button" className="btn btn-ghost btn-sm" onClick={() => onRestart(server.id)}>
-                                <Icon name="refresh" size="sm" /> {t('shell.restart')}
-                            </button>
-                        )}
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => onRestart(server.id)}>
+                            <Icon name="refresh" size="sm" /> {t('shell.restart')}
+                        </button>
                     </div>
                 )}
 
@@ -457,7 +453,7 @@ export function ServerDetail({ server, moduleData, modules, servers, onBack, con
                                 setConsoleInput={consoleProps.setConsoleInput}
                                 sendConsoleCommand={consoleProps.sendConsoleCommand}
                                 poppedOut={poppedOut}
-                                onPopout={typeof window.api?.consolePopout === 'function' ? popoutConsole : undefined}
+                                onPopout={popoutConsole}
                                 onPopin={() => consoleProps.popinConsole(server.id)}
                             />
                         )}
@@ -544,7 +540,7 @@ function ServerName({
         return (
             <h1 className="detail-name">
                 <span>{server.name}</span>
-                {canRename && typeof window.api?.instanceRename === 'function' && (
+                {canRename && (
                     <button
                         type="button"
                         className="icon-btn detail-rename"

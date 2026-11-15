@@ -61,7 +61,7 @@ export function ChatbotGuildTab({ node }: ChatbotGuildTabProps) {
     const hasKey = !!data?.hasApiKey;
     const [credit, setCredit] = useState<{ provider: string; balanceSupported: boolean } | null>(null);
     useEffect(() => {
-        if (!hasKey || !window.api?.chatbotCredit) return;
+        if (!hasKey) return;
         let alive = true;
         window.api
             .chatbotCredit(guildId)
@@ -327,7 +327,7 @@ export function ChatbotGuildTab({ node }: ChatbotGuildTabProps) {
                 <div className="cb-guild-memo">
                     <span className="cb-memo-head">
                         <span>{t('chatbot.memo')}</span>
-                        {!draft.memo.trim() && typeof window.api?.chatbotMemoTemplate === 'function' && (
+                        {!draft.memo.trim() && (
                             <button
                                 type="button"
                                 className="btn btn-ghost btn-sm"
@@ -355,15 +355,13 @@ export function ChatbotGuildTab({ node }: ChatbotGuildTabProps) {
                         <Icon name="alertTriangle" size="xs" /> {t('chatbot.err_memo', { max: MEMO_MAX })}
                     </p>
                 )}
-                {typeof window.api?.chatbotClearMemory === 'function' && (
-                    <button
-                        type="button"
-                        className={clsx('btn btn-sm', memArmed ? 'btn-danger' : 'btn-ghost')}
-                        onClick={() => (memArmed ? clearMemory() : setMemArmed(true))}
-                    >
-                        {memArmed ? t('chatbot.memory_clear_confirm') : t('chatbot.memory_clear')}
-                    </button>
-                )}
+                <button
+                    type="button"
+                    className={clsx('btn btn-sm', memArmed ? 'btn-danger' : 'btn-ghost')}
+                    onClick={() => (memArmed ? clearMemory() : setMemArmed(true))}
+                >
+                    {memArmed ? t('chatbot.memory_clear_confirm') : t('chatbot.memory_clear')}
+                </button>
             </section>
 
             {syncWarn && (

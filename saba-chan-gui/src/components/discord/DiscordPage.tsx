@@ -363,22 +363,18 @@ export function DiscordPage({
     };
 
     // ── 봇 초대: 데몬이 릴레이의 초대 주소를 받아 온다 (GET /api/relay/bot-invite) ──
-    const inviteBot = window.api?.relayBotInvite
-        ? async () => {
-              try {
-                  await saveRelayUrl();
-                  const res = await window.api.relayBotInvite(relayUrl);
-                  const url = res?.url || res?.inviteUrl || res?.invite_url;
-                  if (!url) throw new Error(res?.error || 'no invite url');
-                  const openExternal = window.api?.shellOpenExternal;
-                  if (!openExternal) throw new Error('shell bridge unavailable');
-                  const opened = await openExternal(url);
-                  if (opened?.error) throw new Error(opened.error);
-              } catch (e) {
-                  safeShowToast(t('discord.invite_failed', { error: (e as Error).message }), 'error', 4000);
-              }
-          }
-        : null;
+    const inviteBot = async () => {
+        try {
+            await saveRelayUrl();
+            const res = await window.api.relayBotInvite(relayUrl);
+            const url = res?.url || res?.inviteUrl || res?.invite_url;
+            if (!url) throw new Error(res?.error || 'no invite url');
+            const opened = await window.api.shellOpenExternal(url);
+            if (opened?.error) throw new Error(opened.error);
+        } catch (e) {
+            safeShowToast(t('discord.invite_failed', { error: (e as Error).message }), 'error', 4000);
+        }
+    };
 
     const settings = nodeSettings || {};
     const currentNode = cloudNodes.find((n) => n.guildId === nodeId);

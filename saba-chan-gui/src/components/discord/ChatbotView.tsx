@@ -53,7 +53,6 @@ export const EFFORTS = ['low', 'medium', 'high'];
 export const AMBIENT_MINUTES = [1, 3, 5, 10, 30];
 export const MEMO_MAX = 8000;
 
-export const chatbotAvailable = () => !!window.api?.chatbotGet;
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
@@ -125,7 +124,7 @@ export interface ToolCatalog {
  */
 export function useChatbotTools(guildId: string | undefined, keyVersion = 0) {
     const [res, setRes] = useState<ToolCatalog | null>(null);
-    const canAsk = !!(guildId && window.api?.chatbotTools);
+    const canAsk = !!guildId;
     // biome-ignore lint/correctness/useExhaustiveDependencies: keyVersion 은 다시 묻는 신호 (제공사가 바뀐다)
     const load = useCallback(async () => {
         if (!canAsk) return;
@@ -253,10 +252,9 @@ export function ChatbotView({ nodes = [] }: ChatbotViewProps) {
     }, [t]);
 
     // 말하는 사바쨩을 쓸 수 없는 PC 도 이 화면에 온다 (DM 알림 카드)
-    const available = chatbotAvailable();
     useEffect(() => {
-        if (available) load();
-    }, [available, load]);
+        load();
+    }, [load]);
 
     const nameOf = (id: string) => nodes.find((n) => n.guildId === id)?.guildName || id;
     const guildIds = data ? [...new Set([...nodes.map((n) => n.guildId), ...Object.keys(data.guilds || {})])] : [];
@@ -270,7 +268,7 @@ export function ChatbotView({ nodes = [] }: ChatbotViewProps) {
                 <p className="muted">{t('chatbot.saba_desc')}</p>
             </header>
             {loadError && <SabaFail message={loadError} onRetry={load} retryLabel={t('maintenance.retry')} />}
-            {available && !data && !loadError && <SabaSpinner />}
+            {!data && !loadError && <SabaSpinner />}
             {data && (
                 <>
                     {data.pendingRelayDelete && (
@@ -487,7 +485,7 @@ export function CreditCard({ guildIds, nameOf, hasApiKey, keyVersion = 0 }: Cred
     const [rows, setRows] = useState<CreditRow[] | null>(null);
     // 늦게 온 앞 요청의 답이 새 답을 덮지 않게
     const asked = useRef(0);
-    const canAsk = !!(guildIds.length && hasApiKey && window.api?.chatbotCredit);
+    const canAsk = !!(guildIds.length && hasApiKey);
     const idsKey = guildIds.join(',');
 
     // biome-ignore lint/correctness/useExhaustiveDependencies: idsKey·keyVersion 이 다시 묻는 신호
@@ -515,7 +513,6 @@ export function CreditCard({ guildIds, nameOf, hasApiKey, keyVersion = 0 }: Cred
         load();
     }, [load]);
 
-    if (!window.api?.chatbotCredit) return null;
     const first = rows?.find((r) => !r.error);
     const number = (n: unknown) => Number(n || 0).toLocaleString(i18n.language);
     const money = (b: { currency: string; amount: number }) => {
@@ -624,7 +621,7 @@ interface ModelFieldProps {
 export function ModelField({ value, saved, onChange, onFallback, guildId, hasApiKey, keyVersion = 0 }: ModelFieldProps) {
     const { t } = useTranslation('gui');
     const [res, setRes] = useState<ApiBody | null>(null);
-    const canAsk = !!(guildId && hasApiKey && window.api?.chatbotModels);
+    const canAsk = !!(guildId && hasApiKey);
 
     // keyVersion: 키를 바꾸면 같은 길드라도 다시 묻는다 (제공사·목록이 바뀐다)
     // biome-ignore lint/correctness/useExhaustiveDependencies: keyVersion 은 다시 묻는 신호

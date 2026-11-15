@@ -15,7 +15,6 @@ import { PublicAddressRow } from './PublicAddress';
 import { InstallDialog, RemoveDialog } from './RemotePcDialogs';
 import { failed } from '../../utils/apiResult';
 
-export const remoteDaemonAvailable = () => typeof window.api?.remoteSettings === 'function';
 
 // 데몬 원격 데몬 오류 코드 중 문구가 있는 것 (01 §1.4.2)
 const ERRORS = [
@@ -140,7 +139,7 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
         if (failed(res)) return;
         setDaemons(res.daemons || []);
         setThisName((n) => ({ ...n, saved: res.thisName || '' }));
-        if (!res.daemons?.length || typeof window.api.remoteServers !== 'function') return;
+        if (!res.daemons?.length) return;
         // 그 PC의 데몬이 지워졌거나 다시 설치돼 짝을 잊었는지 본다 (닿지 않는 데몬은 늦게 답한다)
         const all = await window.api.remoteServers();
         const next: Record<string, string> = {};
@@ -225,7 +224,7 @@ export function RemoteDaemonSection({ onTargetGone = reloadWindow, onSwitched = 
         if (mainDaemon === card.hostId) updateSettings({ mainDaemon: null });
         // 지금 다루던 데몬이면 이 PC로 돌아간다 (남겨 두면 모든 요청이 remote_unknown이다)
         if (card.daemon) {
-            const current = await window.api.daemonTarget?.().catch(() => null);
+            const current = await window.api.daemonTarget().catch(() => null);
             if (current?.target === card.hostId) {
                 const back = await window.api.daemonTargetSet(null).catch(() => null);
                 if (back?.success) {

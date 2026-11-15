@@ -13,8 +13,7 @@ export function ErrorFallback({ error, resetErrorBoundary }: FallbackProps) {
     const { t } = useTranslation('gui');
 
     useEffect(() => {
-        if (!window.api?.onCloseRequest) return undefined;
-        const off = window.api.onCloseRequest(() => window.api.closeResponse?.('exit-interface'));
+        const off = window.api.onCloseRequest(() => window.api.closeResponse('exit-interface'));
         return () => {
             if (typeof off === 'function') off();
         };

@@ -116,7 +116,6 @@ function updateStateOf(check: ApiBody | null): Pick<Maintenance, 'updateInfo' | 
 /** 게임 서버 업데이트 적용 (설치 방식 익스텐션; 지원 안 하면 데몬이 update_unsupported) */
 export async function applyInstanceUpdate(server: Server, setServers: SetServers) {
     const { patch } = useMaintenanceStore.getState();
-    if (!window.api?.instanceApplyUpdate) return;
     patch(server.id, { updatingServer: true });
     try {
         const result = await window.api.instanceApplyUpdate(server.id);

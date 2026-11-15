@@ -15,8 +15,6 @@ import { failed } from '../../utils/apiResult';
 
 export { draftOf, errorsByField, isDraftDirty };
 
-export const instanceWordsAvailable = () =>
-    typeof window.api?.instanceWords === 'function' && typeof window.api?.instanceWordsSave === 'function';
 
 /** 데몬이 돌려주는 인스턴스 낱말 항목 */
 interface InstanceWords extends InstanceWordsEntry {

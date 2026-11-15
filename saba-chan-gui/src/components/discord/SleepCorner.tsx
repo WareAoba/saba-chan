@@ -23,7 +23,6 @@ export function SleepCorner({ guildId }: SleepCornerProps) {
     const asleep = useRef<boolean | null>(null);
 
     useEffect(() => {
-        if (!window.api?.discordSettingsGet) return undefined;
         let alive = true;
         let wakingTimer: ReturnType<typeof setTimeout> | undefined;
         asleep.current = null;

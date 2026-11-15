@@ -2126,7 +2126,6 @@
   },
   "activity": {
     "idle": "Klicken, um das Daemon-Konsolenprotokoll anzuzeigen",
-    "empty": "Noch keine Serverbefehle ausgeführt",
     "expand": "Daemon-Konsole anzeigen",
     "collapse": "Daemon-Konsole ausblenden",
     "console_title": "Daemon-Konsole",

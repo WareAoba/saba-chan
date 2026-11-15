@@ -23,7 +23,7 @@ function useDaemonLog(active: boolean) {
     const [line, setLine] = useState<DaemonLogLine | null>(null);
     const [tokens, setTokens] = useState<string[]>([]);
     useEffect(() => {
-        if (!active || !window.api?.daemonConsole) return undefined;
+        if (!active) return undefined;
         let alive = true;
         let timer: ReturnType<typeof setTimeout> | undefined;
         const poll = async () => {

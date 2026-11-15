@@ -35,15 +35,14 @@ export function DesktopOverlay() {
             // 고른 화면(서버·탭)은 셸이 메인 창에 바로 연다. 모르는 화면은 앱만 연다
             openApp: (route) =>
                 isAppRoute(route)
-                    ? window.api?.overlayAction?.('open_app', route)
-                    : window.api?.overlayAction?.('open_app'),
+                    ? window.api.overlayAction('open_app', route)
+                    : window.api.overlayAction('open_app'),
         }),
         [run],
     );
 
     // 판의 크기 막대
     useEffect(() => {
-        if (typeof window.api?.onOverlayScale !== 'function') return undefined;
         const off = window.api.onOverlayScale((value: unknown) => {
             if (typeof value === 'number' && value > 0) setScale(value);
         });
@@ -58,7 +57,7 @@ export function DesktopOverlay() {
         if (!el) return undefined;
         const report = () => {
             const box = el.getBoundingClientRect();
-            window.api?.overlayFit?.(Math.ceil(box.width), Math.ceil(box.height));
+            window.api.overlayFit(Math.ceil(box.width), Math.ceil(box.height));
         };
         report();
         if (typeof ResizeObserver === 'undefined') return undefined;
@@ -80,17 +79,17 @@ export function DesktopOverlay() {
         p.dragging = true;
         // 끌기는 OS가 맡는다: 끝난 뒤 떼기가 오지 않을 수 있어 여기서 누르기를 끝낸다
         press.current = null;
-        window.api?.overlayStartDrag?.();
+        window.api.overlayStartDrag();
     };
     const onPointerUp = (e: React.PointerEvent) => {
         const p = press.current;
         press.current = null;
         if (!p || p.dragging || e.button !== 0) return;
-        window.api?.overlayAction?.('open_app');
+        window.api.overlayAction('open_app');
     };
     const onContextMenu = (e: React.MouseEvent) => {
         e.preventDefault();
-        window.api?.overlayMenu?.();
+        window.api.overlayMenu();
     };
 
     return (
