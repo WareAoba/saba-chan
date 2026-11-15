@@ -37,7 +37,7 @@
   - 아카이브 전체를 tempdir에 풀었다가 `<modules>/.extracted/<name>/`로 복사한다. 이 과정에서 기존 디렉터리는 `remove_dir_all`로 지운다.
   - 캐시가 무효화될 때마다(`refresh_modules`) 다시 풀린다. 그동안 실행 중인 Python 프로세스가 그 디렉터리를 쓰고 있어도 삭제된다.
 - 결과는 `RwLock<Option<Vec<LoadedModule>>>`에 캐시된다. `invalidate_cache()`는 `/api/modules/refresh`, 모듈 설치·삭제 시에만 호출된다.
-- 로드에 실패한 모듈은 `warn` 로그를 남기고 `load_errors`에 기록한다. `GET /api/modules`가 `failed[]`로 돌려준다 (, `D:src/ipc/handlers/server.rs`).
+- 로드에 실패한 모듈은 `warn` 로그를 남기고 `load_errors`에 기록한다. `GET /api/modules`가 `failed[]`로 돌려준다 (`D:src/ipc/handlers/server.rs`).
 - `.py` 파일(`daemon_rcon.py`, `i18n.py`)이 같은 루트에 있어도 무시된다. 이 둘은 PYTHONPATH용 공용 라이브러리다 (§2.1).
 
 **진입점 파일**: `[module].entry`가 데몬이 실행하는 Python 파일이다(보통 `lifecycle.py`). `LoadedModule::entry_path()`가 `<모듈 폴더>/<entry>`를 만들고(`D:src/module_loader/schema.rs`), 데몬의 모든 lifecycle 호출이 이 경로를 쓴다(예: `D:src/supervisor/status.rs`·`console.rs`·`queries.rs`·`stop.rs`). 로드할 때 `check_loadable()`이 이 파일이 실제로 있는지 확인하고, 없으면 모듈을 로드하지 않는다(`module_loader/schema.rs`). 검증 단계는 `entry`가 비었거나 절대 경로이거나 모듈 폴더 밖을 가리키면(`..`·`.` 포함) 거부한다(`module_loader/raw.rs`, 익스텐션 `python_modules`와 같은 `utils::is_inner_relative_path`). (qcza9f 기준)
@@ -401,7 +401,7 @@ player_join_patterns = ['{log_head}(?P<name>{player_name}) joined the game\s*$']
   - 격리를 준비하지 못하면(오래된 Windows, ACL 오류 등) 격리 없이 돌리지 않고 `{success:false, action_required:"sandbox_unavailable", message, detail, component}`를 돌려준다. 사용자가 `POST /api/sandbox/unisolated/:component`로 동의하면 그 구성요소는 격리 없이 돈다. 동의는 `config.json` `sandbox.unisolated`에 파일 지문(상대 경로와 sha256)으로 남아, 파일이 하나라도 바뀌면 다시 묻는다.
   - Linux·macOS에서는 하지 않는다.
   - 격리되는 것은 lifecycle Python 실행(설치·설정·상태 스크립트)뿐이다. **게임 서버 프로세스는 격리되지 않는다**: 데몬이 사용자 권한(중간 무결성)으로 띄우고, 확인되지 않은 모듈이면 띄울 대상의 위치만 본다(아래 "확인되지 않은 모듈의 실행 대상"). 백신 검사도 하지 않으므로, 확인되지 않은 모듈이 설치 중 서버 폴더에 둔 실행 파일은 그대로 사용자 권한으로 돈다. 서버 폴더를 격리 실행의 쓰기 범위에서 빼는 구조 변경은 0.1.8 과제다.
-- **데몬 락**: lifecycle 호출은 데몬 락 밖에서 실행한다. 보통 `PluginCall`로 락 안에서 값을 챙기고 락을 놓은 뒤 부른다 (, C12).
+- **데몬 락**: lifecycle 호출은 데몬 락 밖에서 실행한다. 보통 `PluginCall`로 락 안에서 값을 챙기고 락을 놓은 뒤 부른다 (C12).
 - **환경변수**:
   - `PYTHONIOENCODING=utf-8`, `PYTHONUNBUFFERED=1`
   - `PYTHONPATH` = `<python-guard>` + `<extensions_dir의 부모>` + `<data_dir>/python-shared` + 기존 `PYTHONPATH`.
