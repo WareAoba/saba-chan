@@ -140,13 +140,18 @@ export function FileMoveDialog({ volumes, items, onClose, onMoved }: Props) {
     const checks: [string, string][] = preview
         ? [
               ...(item?.kind === 'server' ? [['ok', t('storage.check_stopped')] as [string, string]] : []),
-              [
-                  'ok',
-                  t('storage.check_space', {
-                      need: formatBytes(preview.bytes),
-                      free: formatBytes(preview.available_bytes),
-                  }),
-              ],
+              // 들어갈 디스크를 모르면 데몬이 공간을 확인하지 않는다 (null)
+              ...(preview.available_bytes == null
+                  ? []
+                  : [
+                        [
+                            'ok',
+                            t('storage.check_space', {
+                                need: formatBytes(preview.bytes),
+                                free: formatBytes(preview.available_bytes),
+                            }),
+                        ] as [string, string],
+                    ]),
               ...(item?.kind === 'server' && targetVolume?.kind === 'hdd'
                   ? [['warn', t('storage.check_hdd')] as [string, string]]
                   : []),

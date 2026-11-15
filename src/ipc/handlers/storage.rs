@@ -162,16 +162,24 @@ fn volume_for<'a>(volumes: &'a [Volume], path: &Path) -> Option<&'a Volume> {
     volumes.iter().find(|v| v.mount == mount)
 }
 
-/// 같은 디스크 안의 옮기기는 이름만 바꾼다 (공간이 더 들지 않는다). 아니면 옮긴 뒤에도 `SPARE_BYTES`가 남아야 한다
-/// 모자라면 거절의 `detail`
-fn space_check(volumes: &[Volume], source: &Path, target: &Path, bytes: u64) -> Result<u64, String> {
-    let to = volume_for(volumes, target);
-    let available = to.map_or(0, |v| v.available_bytes);
-    let same = to.is_some() && volume_for(volumes, source).map(|v| &v.mount) == to.map(|v| &v.mount);
+/// 같은 디스크 안의 옮기기는 이름만 바꾼다 (공간이 더 들지 않는다). 아니면 옮긴 뒤에도 `SPARE_BYTES`가 남아야 한다.
+/// 들어갈 디스크를 모르면 확인하지 않는다 (`None`, 모자라면 복사가 실패한다). 모자라면 거절의 `detail`
+async fn space_check(source: &Path, target: &Path, bytes: u64) -> Result<Option<u64>, String> {
+    let (source, target) = (source.to_path_buf(), target.to_path_buf());
+    let (from, to) = tokio::task::spawn_blocking(move || {
+        let disks = storage::all_disks();
+        (storage::space_at(&source, &disks), storage::space_at(&target, &disks))
+    })
+    .await
+    .unwrap_or((None, None));
+    let Some((to_mount, available)) = to else {
+        return Ok(None);
+    };
+    let same = from.is_some_and(|(m, _)| m == to_mount);
     if !same && bytes.saturating_add(storage::SPARE_BYTES) > available {
         return Err(format!("{} needed, {} available", bytes, available));
     }
-    Ok(available)
+    Ok(Some(available))
 }
 
 /// POST /api/system/storage/move
@@ -241,7 +249,7 @@ async fn start_server_move(state: IPCServer, req: MoveRequest) -> Response {
         return refused("storage_server_running", instance.name);
     }
     let bytes = size_of(&state, "server", Some(&id), &server_dir).await;
-    let available = match space_check(&volumes, &plan.source, &plan.target, bytes) {
+    let available = match space_check(&plan.source, &plan.target, bytes).await {
         Ok(a) => a,
         Err(detail) => return refused("storage_no_space", detail),
     };
@@ -388,7 +396,7 @@ async fn start_component_move(state: IPCServer, kind: Kind, req: MoveRequest) ->
     };
     let source = layout.dir(kind).to_path_buf();
     let bytes = size_of(&state, kind.dir_name(), None, &source).await;
-    let available = match space_check(&volumes, &source, &target, bytes) {
+    let available = match space_check(&source, &target, bytes).await {
         Ok(a) => a,
         Err(detail) => return refused("storage_no_space", detail),
     };

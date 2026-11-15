@@ -74,6 +74,24 @@ pub fn internal_volumes() -> Vec<Volume> {
     out
 }
 
+/// 모든 디스크의 (마운트 자리, 남은 공간). 공간 확인용이라 내장이 아닌 것도 넣는다
+/// (macOS는 `/`가 읽기 전용이고 `/var`·`/Users`가 다른 자리에 붙는다)
+pub fn all_disks() -> Vec<(String, u64)> {
+    let Ok(disks) = sysinfo::Disks::new_with_refreshed_list() else {
+        return Vec::new();
+    };
+    disks.iter().map(|d| (d.mount_point().to_string_lossy().into_owned(), d.available_space())).collect()
+}
+
+/// 경로가 놓일 디스크의 (마운트 자리, 남은 공간). 아직 없는 경로는 있는 위 폴더로, 링크는 풀어서 본다. 모르면 None
+pub fn space_at(path: &Path, disks: &[(String, u64)]) -> Option<(String, u64)> {
+    let existing = path.ancestors().find(|p| p.exists())?;
+    let real = std::fs::canonicalize(existing).unwrap_or_else(|_| existing.to_path_buf());
+    let mounts: Vec<String> = disks.iter().map(|(m, _)| m.clone()).collect();
+    let mount = crate::system_monitor::mount_for(&real, &mounts)?;
+    disks.iter().find(|(m, _)| m == mount).cloned()
+}
+
 /// 사바쨩 파일의 갈래 (디스크 막대의 색)
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
@@ -523,6 +541,17 @@ pub fn plan_server_move(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 아직 없는 자리·링크를 거친 자리도 그 디스크로 찾는다 (macOS의 `/var` → `/private/var`)
+    #[test]
+    fn space_is_found_through_missing_folders_and_links() {
+        let tmp = tempfile::tempdir().unwrap();
+        let real = std::fs::canonicalize(tmp.path()).unwrap();
+        let disks = vec![("/nowhere".to_string(), 1), (real.to_string_lossy().into_owned(), 42)];
+        assert_eq!(space_at(&tmp.path().join("a").join("b"), &disks).map(|d| d.1), Some(42));
+        assert_eq!(space_at(&tmp.path().join("a"), &[("/nowhere".to_string(), 1)]), None);
+    }
+
 
     #[test]
     fn only_fixed_local_drives_count_as_internal() {
