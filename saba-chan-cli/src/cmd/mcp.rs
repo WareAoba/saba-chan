@@ -43,6 +43,8 @@ arguments and exit codes.\n\
 Output is JSON.\n\
 - Never pass --yes. When a command needs the user's OK the result says confirm_required with the question: ask the \
 user in plain words, and only if they agree call saba_run again with the same args and confirm: true.\n\
+- Commands that keep running until stopped (events, monitor --watch, audit/console/daemon logs --follow) are refused: \
+check once with status or server progress instead.\n\
 - Exit code 3 means the Saba-chan daemon is not running: start it with saba_run [\"daemon\", \"start\"].\n\
 - Game agreements (EULA) are accepted only by the user in a terminal or the app; do not try to accept them.";
 
@@ -188,9 +190,9 @@ where
 /// `base`(띄울 때 고른 대상)는 호출이 같은 옵션을 직접 주지 않았을 때만 붙인다
 fn child_args(args: &[String], confirm: bool, base: &[String]) -> std::result::Result<Vec<String>, String> {
     // 자식과 같은 파서로 읽는다: `-ys`처럼 묶은 짧은 옵션 안의 `-y`도 잡는다
-    let parsed_yes =
-        crate::cli::Cli::try_parse_from(std::iter::once("saba-chan-cli").chain(args.iter().map(String::as_str)))
-            .is_ok_and(|c| c.global.yes);
+    let parsed =
+        crate::cli::Cli::try_parse_from(std::iter::once("saba-chan-cli").chain(args.iter().map(String::as_str))).ok();
+    let parsed_yes = parsed.as_ref().is_some_and(|c| c.global.yes);
     if parsed_yes
         || args
             .iter()
@@ -220,6 +222,12 @@ fn child_args(args: &[String], confirm: bool, base: &[String]) -> std::result::R
     if REFUSED.contains(&command.as_str()) {
         return Err(format!("`{command}` is for a person at a keyboard and cannot run here"));
     }
+    if parsed.as_ref().and_then(|c| c.cmd.as_ref()).is_some_and(never_ends) {
+        return Err(format!(
+            "`{}` keeps running until stopped, so it cannot finish here. Check once instead, e.g. saba_run [\"status\"] or [\"server\", \"progress\"]",
+            args.join(" ")
+        ));
+    }
     let mut out = vec!["--json".to_string()];
     if confirm {
         out.push("--yes".into());
@@ -233,6 +241,20 @@ fn child_args(args: &[String], confirm: bool, base: &[String]) -> std::result::R
     }
     out.extend(args.iter().cloned());
     Ok(out)
+}
+
+/// 멈출 때까지 계속 출력하는 명령 (`events`, `--watch`·`--follow`): 시간이 다 되면 받은 출력까지 버리게 된다
+fn never_ends(cmd: &crate::cli::Cmd) -> bool {
+    use crate::cli::{Cmd, ConsoleArgs, DaemonCmd, MonitorArgs, ServerCmd};
+    matches!(
+        cmd,
+        Cmd::Events { .. }
+            | Cmd::Monitor(MonitorArgs { watch: true, .. })
+            | Cmd::Audit { follow: true, .. }
+            | Cmd::Console(ConsoleArgs { follow: true, .. })
+            | Cmd::Server(ServerCmd::Console(ConsoleArgs { follow: true, .. }))
+            | Cmd::Daemon(DaemonCmd::Logs { follow: true, .. })
+    )
 }
 
 /// 자식 CLI 한 번의 결과
@@ -407,6 +429,26 @@ mod tests {
             assert!(child_args(&a(&["--daemon", "home", c]), false, &[]).is_err(), "{c}");
         }
         assert!(child_args(&a(&["--daemon", "mcp", "status"]), false, &[]).is_ok());
+    }
+
+    /// 끝나지 않는 명령은 시간이 다 될 때까지 기다리다 출력을 버리게 되니 처음부터 거절한다. 한 번 보고 끝나는 형태는 된다
+    #[test]
+    fn never_ending_commands_are_refused() {
+        for c in [
+            &["events"][..],
+            &["events", "--kind", "instance"],
+            &["monitor", "--watch"],
+            &["audit", "-f"],
+            &["console", "survival", "-f"],
+            &["server", "console", "survival", "--follow"],
+            &["daemon", "logs", "-f"],
+        ] {
+            let err = child_args(&a(c), false, &[]).expect_err(&c.join(" "));
+            assert!(err.contains("status"), "{err}");
+        }
+        for c in [&["monitor"][..], &["audit"], &["console", "survival"], &["daemon", "logs"]] {
+            assert!(child_args(&a(c), false, &[]).is_ok(), "{}", c.join(" "));
+        }
     }
 
     fn text(r: &CallToolResult) -> String {

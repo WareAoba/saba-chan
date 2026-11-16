@@ -615,7 +615,7 @@ async fn history(ctx: &Ctx, query: Option<&str>) -> Result<()> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::{add::*, checkup::*, command::*, settings::*};
     /// 설치 방식 익스텐션으로 받은 서버는 데몬이 적어 둔 빌드 번호를 버전으로 보인다
     #[test]
@@ -891,7 +891,7 @@ mod tests {
 
     /// 요청 줄(`POST /api/instances/check`)과 본문으로 답하는 가짜 데몬. 받은 요청 줄을 모은다.
     /// 토큰 파일이 있으면 CLI가 신원을 확인하므로 `/health`는 그 토큰으로 증명한다
-    async fn fake_daemon(answer: fn(&str, &Value) -> (u16, Value)) -> (u16, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+    pub(crate) async fn fake_daemon(answer: fn(&str, &Value) -> (u16, Value)) -> (u16, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
@@ -938,7 +938,7 @@ mod tests {
         (port, seen)
     }
 
-    fn quiet_ctx(port: u16) -> Ctx {
+    pub(crate) fn quiet_ctx(port: u16) -> Ctx {
         Ctx {
             api: crate::client::Api::new(port, None),
             spawn_port: port,
