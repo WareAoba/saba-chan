@@ -675,7 +675,9 @@
     "minutes_ago": "il y a {{count}} min",
     "yesterday": "Hier",
     "click_to_open": "cliquer pour ouvrir",
-    "click_to_update": "cliquez pour mettre à jour"
+    "click_to_update": "cliquez pour mettre à jour",
+    "open_backups": "Ouvrir les sauvegardes",
+    "open_schedule": "Ouvrir la planification"
   },
   "updates": {
     "no_updates": "Tous les composants sont à jour",

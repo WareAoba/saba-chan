@@ -20,6 +20,10 @@ pub const PATCH_NOTES_ACTION: &str = "openPatchNotes";
 pub const UPDATE_MODAL_ACTION: &str = "openUpdateModal";
 /// 누르면 그 게임 서버를 업데이트하는 알림 (`data: {instanceId, name}`)
 pub const SERVER_UPDATE_ACTION: &str = "applyServerUpdate";
+/// 누르면 그 서버의 백업 화면을 여는 알림 (예약 백업 실패)
+pub const OPEN_BACKUPS_ACTION: &str = "openBackups";
+/// 누르면 그 서버의 예약 작업 화면을 여는 알림 (예약 작업 실패)
+pub const OPEN_SCHEDULE_ACTION: &str = "openSchedule";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -129,6 +133,23 @@ fn server_update_dedup(id: &str) -> String {
     format!("server_update:{id}")
 }
 
+/// 문장에 넣을 서버 이름. 없으면 id
+fn server_name(d: &Value) -> Option<String> {
+    str_of(d, "instance").or_else(|| str_of(d, "instanceId"))
+}
+
+/// 종료 근거 → 이유 한 줄 (`instance.exit`·`instance.restart_failed`의 `evidenceCode`·`evidenceArgs`)
+fn exit_reason(d: &Value) -> Option<Text> {
+    let code = d.get("evidenceCode").and_then(Value::as_str).filter(|c| EXIT_REASONS.contains(c))?;
+    Some(Text::new(&format!("reason_{code}"), d.get("evidenceArgs").cloned().unwrap_or(Value::Null)))
+}
+
+/// 복구 시도 하나의 카드: 크래시 카드와 그 시도의 재시작 실패 카드가 같은 값 (`restartAttempt`)
+fn restart_dedup(d: &Value) -> Option<String> {
+    let attempt = d.get("restartAttempt").and_then(Value::as_u64)?;
+    Some(format!("restart:{}:{attempt}", str_of(d, "instanceId")?))
+}
+
 /// 데몬 이벤트 → 알림함에 할 일 (없으면 None). 앱에서 한 일(`source: gui`)은 그 자리에서 이미 봤으니 읽은 것으로 넣는다
 pub fn from_event(kind: &str, d: &Value) -> Option<Change> {
     let from_app = d.get("source").and_then(Value::as_str) == Some("gui");
@@ -139,11 +160,11 @@ pub fn from_event(kind: &str, d: &Value) -> Option<Change> {
                 return None;
             }
             let mut n = Draft::new(Level::Error, &format!("exit_{exit}"), json!({})).server(d);
-            if let Some(code) = d.get("evidenceCode").and_then(Value::as_str).filter(|c| EXIT_REASONS.contains(c)) {
-                n.detail.push(Text::new(&format!("reason_{code}"), d.get("evidenceArgs").cloned().unwrap_or(Value::Null)));
-            }
+            n.detail.extend(exit_reason(d));
             if let Some(secs) = d.get("restartInSecs").filter(|v| !v.is_null()) {
                 n.detail.push(Text::new("restart_in", json!({ "secs": secs })));
+                // 다시 켜지 못하면(`instance.restart_failed`) 이 카드를 실패 카드로 바꾼다
+                n.dedup = restart_dedup(d);
             } else {
                 match d.get("noteCode").and_then(Value::as_str) {
                     Some("auto_restart_off") => n.detail.push(Text::new("note_auto_off", json!({}))),
@@ -151,6 +172,37 @@ pub fn from_event(kind: &str, d: &Value) -> Option<Change> {
                     _ => {}
                 }
             }
+            n
+        }
+        // 크래시 뒤 다시 켜지 못했다: 그 크래시 카드("N초 뒤 다시 켬")를 같은 자리 표시(`dedup`)로 바꾼다
+        "instance.restart_failed" => {
+            let exit = d.get("kind").and_then(Value::as_str).filter(|k| EXIT_KINDS.contains(k)).unwrap_or("crash");
+            let mut n = Draft::new(Level::Error, "not_restarted", json!({ "exit": { "key": format!("exit_{exit}") } })).server(d);
+            n.detail.extend(exit_reason(d));
+            n.detail.push(Text::new("error", json!({ "message": d.pointer("/noteArgs/reason") })));
+            n.dedup = restart_dedup(d);
+            n
+        }
+        // 예약 백업만: 직접 한 백업은 그 자리에서 결과를 봤고, 업데이트·복원 전 백업의 실패는 그 작업의 실패로 알린다
+        "backup.done" if d.get("ok").and_then(Value::as_bool) == Some(false) && d.get("kind").and_then(Value::as_str) == Some("scheduled") => {
+            let mut n = Draft::new(Level::Error, "scheduled_backup_failed", json!({ "name": server_name(d) })).server(d);
+            n.detail.push(Text::new("error", json!({ "code": d.get("code"), "message": d.get("error") })));
+            n.action = Some(OPEN_BACKUPS_ACTION.into());
+            n
+        }
+        // 실패가 따로 카드를 남기는 작업(백업 → 예약 백업 실패, 업데이트 → 게임 서버 업데이트 실패)은 넣지 않는다
+        "schedule.failed" => {
+            let action = d.get("action").and_then(Value::as_str)?;
+            let code = d.get("code").and_then(Value::as_str);
+            if action == "backup" || code == Some("update_failed") {
+                return None;
+            }
+            let mut n = Draft::new(Level::Error, "scheduled_task_failed", json!({ "name": server_name(d) })).server(d);
+            n.detail.push(Text::new(&format!("task_{action}"), json!({})));
+            if code.is_some() {
+                n.detail.push(Text::new("error", json!({ "code": code })));
+            }
+            n.action = Some(OPEN_SCHEDULE_ACTION.into());
             n
         }
         // 사바쨩이 띄우지 않은 프로세스로 켜졌다. 사바쨩이 켠 것은 넣지 않는다
@@ -185,7 +237,7 @@ pub fn from_event(kind: &str, d: &Value) -> Option<Change> {
                 let mut n = Draft::new(
                     Level::Info,
                     "module_update",
-                    json!({ "name": str_of(d, "instance").or_else(|| str_of(d, "instanceId")), "module": d.get("module"), "version": d.get("latest") }),
+                    json!({ "name": server_name(d), "module": d.get("module"), "version": d.get("latest") }),
                 );
                 n.action = Some(UPDATE_MODAL_ACTION.into());
                 n.dedup = Some("module_update".into());
@@ -199,8 +251,7 @@ pub fn from_event(kind: &str, d: &Value) -> Option<Change> {
             None => server_update(d, "server_update_waiting_unknown", json!({})),
         },
         "instance.update_failed" => {
-            let name = str_of(d, "instance").or_else(|| str_of(d, "instanceId"));
-            Draft::new(Level::Error, "server_update_failed", json!({ "name": name, "error": str_of(d, "error").unwrap_or_default() })).server(d)
+            Draft::new(Level::Error, "server_update_failed", json!({ "name": server_name(d), "error": str_of(d, "error").unwrap_or_default() })).server(d)
         }
         // 업데이트를 마쳤다: 누를 업데이트 알림이 더는 없다
         "instance.updated" => return str_of(d, "instanceId").map(|id| Change::Drop(server_update_dedup(&id))),
@@ -453,10 +504,14 @@ pub fn render(cat: &crate::chat::i18n::Catalog, n: &Notice) -> Value {
         .iter()
         .map(|t| {
             if t.key == "error" {
-                // 실패 코드 → 데몬 오류 문구. 없으면 코드 그대로
+                // 실패 코드 → 데몬 오류 문구. 모르는 코드면 데몬이 남긴 문장(`message`), 그것도 없으면 코드 그대로
                 let code = t.args.get("code").and_then(Value::as_str).unwrap_or_default();
-                let text = cat.t(&format!("errors.{code}"), &[]);
-                if text.starts_with("errors.") { code.to_string() } else { text }
+                let message = t.args.get("message").and_then(Value::as_str).filter(|m| !m.is_empty());
+                let key = format!("errors.{code}");
+                match cat.t(&key, &[]) {
+                    text if !code.is_empty() && text != key => text,
+                    _ => message.unwrap_or(code).to_string(),
+                }
             } else {
                 render_text(cat, t)
             }
@@ -517,6 +572,74 @@ mod tests {
             assert!(added("instance.exit", json!({ "instanceId": "i1", "kind": kind })).is_some(), "{kind}");
         }
         assert!(added("instance.started", json!({ "instanceId": "i1", "unexpected": true })).is_some());
+    }
+
+    /// 백업·예약 작업은 예약해 둔 것이 실패했을 때만 넣는다. 직접 한 백업의 실패는 그 자리에서 이미 봤다.
+    /// 예약 백업이 실패하면 백업 카드 하나만, 업데이트 실패는 업데이트 카드 하나만 남긴다
+    #[test]
+    fn only_scheduled_failures_of_backups_and_tasks_go_into_the_inbox() {
+        for kind in ["manual", "snapshot", "pre-update", "pre-restore"] {
+            assert_eq!(added("backup.done", json!({ "instanceId": "i1", "kind": kind, "ok": false, "error": "x" })), None, "{kind} backup");
+        }
+        assert_eq!(added("backup.done", json!({ "instanceId": "i1", "kind": "scheduled", "ok": true, "name": "a.zip" })), None);
+        assert!(added("backup.done", json!({ "instanceId": "i1", "kind": "scheduled", "ok": false, "error": "x" })).is_some());
+        for action in ["backup", "restart", "start", "stop", "save", "announce", "command", "update"] {
+            assert_eq!(added("schedule.ran", json!({ "instanceId": "i1", "action": action, "seconds": 1 })), None, "{action} ran");
+        }
+        assert_eq!(added("schedule.failed", json!({ "instanceId": "i1", "action": "backup", "code": "backup_failed" })), None);
+        assert_eq!(added("schedule.failed", json!({ "instanceId": "i1", "action": "update", "code": "update_failed" })), None);
+        assert!(added("schedule.failed", json!({ "instanceId": "i1", "action": "update", "code": "check_failed" })).is_some());
+    }
+
+    /// 크래시 뒤 다시 켜지 못하면 그 크래시 카드를 고친다: 새 카드를 더하지 않고, 다시 읽지 않은 것으로 돌린다
+    #[test]
+    fn a_failed_restart_rewrites_its_crash_card() {
+        let store = Store::in_memory();
+        let ko = crate::chat::i18n::Catalog::for_language("ko");
+        let exit = json!({ "instanceId": "i1", "instance": "mc", "kind": "crash", "evidenceCode": "exit_code", "evidenceArgs": { "code": 1 }, "restartInSecs": 10, "restartAttempt": 3 });
+        store.apply(from_event("instance.exit", &exit).unwrap());
+        store.apply(from_event("instance.unresponsive", &json!({ "instanceId": "i2", "minutes": 3 })).unwrap());
+        store.mark_all_read();
+        let failed = json!({ "instanceId": "i1", "instance": "mc", "kind": "crash", "evidenceCode": "exit_code", "evidenceArgs": { "code": 1 },
+            "noteCode": "restart_failed", "noteArgs": { "reason": "Java를 찾을 수 없음" }, "restartAttempt": 3 });
+        store.apply(from_event("instance.restart_failed", &failed).unwrap());
+        let list = store.list();
+        assert_eq!(list.len(), 2, "the crash card is rewritten, not joined by another");
+        let card = render(&ko, list.iter().find(|n| n.instance_id.as_deref() == Some("i1")).unwrap());
+        assert_eq!(card["message"], "크래시로 종료됨 · 다시 켜지 못함");
+        assert_eq!(card["detail"], "종료 코드 1 · Java를 찾을 수 없음");
+        assert_eq!(card["read"], false);
+        assert_eq!(store.unread(), 1);
+        // 카드를 지운 뒤에 실패해도 실패는 남는다. 다른 시도의 실패는 그 시도의 카드만 고친다
+        store.clear();
+        store.apply(from_event("instance.restart_failed", &failed).unwrap());
+        store.apply(from_event("instance.exit", &json!({ "instanceId": "i1", "kind": "crash", "restartInSecs": 10, "restartAttempt": 4 })).unwrap());
+        let list = store.list();
+        assert_eq!(list.len(), 2);
+        assert_eq!(render(&ko, &list[0])["detail"], "10초 뒤 다시 켬");
+    }
+
+    /// 예약 백업·예약 작업 실패 카드: 서버 이름과 실패, 이유(모르는 코드면 데몬이 준 문장), 누르면 그 서버의 백업·예약 화면
+    #[test]
+    fn scheduled_failures_say_what_failed_and_open_its_screen() {
+        let store = Store::in_memory();
+        let ko = crate::chat::i18n::Catalog::for_language("ko");
+        store.apply(from_event("backup.done", &json!({ "instanceId": "i1", "instance": "mc", "kind": "scheduled", "ok": false, "code": "backup_save_rejected", "error": "save rejected" })).unwrap());
+        let backup = render(&ko, &store.list()[0]);
+        assert_eq!(backup["message"], "mc · 예약 백업 실패");
+        assert_eq!(backup["detail"], "서버가 저장 명령을 거절함");
+        assert_eq!(backup["action"], OPEN_BACKUPS_ACTION);
+        assert_eq!(backup["instanceId"], "i1");
+        assert_eq!(backup["level"], "error");
+        store.apply(from_event("backup.done", &json!({ "instanceId": "i1", "instance": "mc", "kind": "scheduled", "ok": false, "code": "backup_failed", "error": "No space left on device" })).unwrap());
+        assert_eq!(render(&ko, &store.list()[0])["detail"], "No space left on device");
+        store.apply(from_event("schedule.failed", &json!({ "instanceId": "i2", "instance": "pal", "action": "save", "seconds": 1, "code": "command_failed" })).unwrap());
+        let task = render(&ko, &store.list()[0]);
+        assert_eq!(task["message"], "pal · 예약 작업 실패");
+        assert_eq!(task["detail"], "저장 · 서버가 명령을 거절함");
+        assert_eq!(task["action"], OPEN_SCHEDULE_ACTION);
+        let en = render(&crate::chat::i18n::Catalog::for_language("en"), &store.list()[0]);
+        assert_eq!(en["message"], "pal · Scheduled task failed");
     }
 
     #[test]

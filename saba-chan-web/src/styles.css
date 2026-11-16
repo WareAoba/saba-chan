@@ -432,6 +432,24 @@ textarea {
     font-size: 12px;
     white-space: nowrap;
 }
+/* 누르면 그 서버의 화면으로 가는 알림 (예약 백업·예약 작업 실패) */
+.notice-item-link {
+    width: 100%;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    text-align: left;
+    cursor: pointer;
+}
+.notice-item-link:hover,
+.notice-item-link:focus-visible {
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.notice-action {
+    grid-column: 2 / -1;
+    color: var(--accent);
+    font-size: 12.5px;
+}
 .topbar-title .pill {
     min-width: 0;
     overflow: hidden;

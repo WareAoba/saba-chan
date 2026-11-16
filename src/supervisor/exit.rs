@@ -229,13 +229,17 @@ impl Supervisor {
             last.note = Some(format!("restart failed: {}", reason));
             last.note_code = Some("restart_failed".into());
             last.note_args = Some(serde_json::json!({ "reason": reason }));
-            Some((last.note_code.clone(), last.note_args.clone()))
+            Some((last.verdict.kind, crash::evidence_code(&last.verdict.evidence), last.note_code.clone(), last.note_args.clone()))
         });
-        if let Some((note_code, note_args)) = noted.flatten() {
-            // `instance.exit`는 이미 나갔으므로 실패는 따로 알린다 (오류 원문이 있어 릴레이로는 올리지 않는다)
+        if let Some((kind, (evidence_code, evidence_args), note_code, note_args)) = noted.flatten() {
+            // `instance.exit`는 이미 나갔으므로 실패는 따로 알린다 (오류 원문이 있어 릴레이로는 올리지 않는다).
+            // 종료 종류·근거는 그 `instance.exit`와 같다: 알림함이 그 크래시 카드를 실패 카드로 바꾼다
             crate::events::emit("instance.restart_failed", serde_json::json!({
                 "instanceId": instance_id,
                 "instance": self.instance_store.get(instance_id).map(|i| i.name.clone()).unwrap_or_default(),
+                "kind": kind,
+                "evidenceCode": evidence_code,
+                "evidenceArgs": evidence_args,
                 "noteCode": note_code,
                 "noteArgs": note_args,
                 "restartAttempt": attempt,
@@ -391,7 +395,13 @@ mod tests {
         // 이미 나간 instance.exit 뒤에 실패를 따로 알린다
         let mut told = false;
         while let Ok(e) = sub.rx.try_recv() {
-            told |= e.kind == "instance.restart_failed" && e.data["noteArgs"]["reason"] == "no java" && e.data["restartAttempt"] == 0;
+            // 알림함이 그 크래시 카드를 고칠 수 있게 종료 종류와 근거도 싣는다
+            told |= e.kind == "instance.restart_failed"
+                && e.data["noteArgs"]["reason"] == "no java"
+                && e.data["restartAttempt"] == 0
+                && e.data["kind"] == "crash"
+                && e.data["evidenceCode"] == crash_exit.data["evidenceCode"]
+                && e.data["evidenceArgs"] == crash_exit.data["evidenceArgs"];
         }
         assert!(told, "restart failure was not announced on the event stream");
         // 복구 시도의 끝도 알린다: 다시 켜졌거나, 대기 중에 정지·시작해서 그만뒀거나.

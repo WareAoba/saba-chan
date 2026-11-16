@@ -675,7 +675,9 @@
     "minutes_ago": "{{count}} 分鐘前",
     "yesterday": "昨天",
     "click_to_open": "點擊以開啟",
-    "click_to_update": "點擊更新"
+    "click_to_update": "點擊更新",
+    "open_backups": "開啟備份",
+    "open_schedule": "開啟排程"
   },
   "updates": {
     "no_updates": "所有元件均為最新版本",

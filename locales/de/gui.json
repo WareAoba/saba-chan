@@ -675,7 +675,9 @@
     "minutes_ago": "vor {{count}} Min.",
     "yesterday": "Gestern",
     "click_to_open": "zum Öffnen klicken",
-    "click_to_update": "zum Aktualisieren klicken"
+    "click_to_update": "zum Aktualisieren klicken",
+    "open_backups": "Backups öffnen",
+    "open_schedule": "Zeitplan öffnen"
   },
   "updates": {
     "no_updates": "Alle Komponenten aktuell",
