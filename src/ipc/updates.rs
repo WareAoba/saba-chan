@@ -41,7 +41,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use saba_chan_updater_lib::{
-    addon_pins, Component, DownloadProgress, IntegrityStatus, UpdateConfig, UpdateManager,
+    addon_pins, is_gui_exe, Component, DownloadProgress, IntegrityStatus, UpdateConfig, UpdateManager,
 };
 
 use super::update_phase::{self, Decision, LiveState, Phase, PhaseState, ReadyReason};
@@ -1741,7 +1741,7 @@ async fn roll_back_with(
     let targets = previous
         .exes
         .iter()
-        .map(|(_, exe)| if is_gui_exe(&exe.to_string_lossy()) { "gui".to_string() } else { exe.to_string_lossy().into_owned() })
+        .map(|(_, exe)| if is_gui_exe(&exe) { "gui".to_string() } else { exe.to_string_lossy().into_owned() })
         .collect();
     hand_off_to_updater(state, body, targets, true).await
 }
@@ -1865,8 +1865,7 @@ fn running_guis(clients: &[(String, crate::ipc::RegisteredClient)]) -> Vec<(u32,
         .filter_map(|pid| {
             let proc = sys.process(sysinfo::Pid::from_u32(pid))?;
             let exe = proc.exe()?.to_path_buf();
-            let name = exe.file_name()?.to_string_lossy().into_owned();
-            saba_chan_updater_lib::GUI_EXE_NAMES.iter().any(|g| g.eq_ignore_ascii_case(&name)).then_some((pid, exe))
+            is_gui_exe(&exe).then_some((pid, exe))
         })
         .collect()
 }
@@ -1899,11 +1898,6 @@ fn restart_plan(
 /// GUI를 끄고 다시 띄워야 하는가: GUI가 적용 대상이거나, 부른 GUI가 남을 줄 모른다(옛 GUI는 성공 응답에 끝나므로 다시 띄워 준다)
 fn gui_must_restart(targets: &[String], requested: &[String], gui_stays: bool) -> bool {
     targets.iter().any(|k| k == "gui") || (!gui_stays && requested.first().is_some_and(|exe| is_gui_exe(exe)))
-}
-
-fn is_gui_exe(exe: &str) -> bool {
-    let name = std::path::Path::new(exe).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    saba_chan_updater_lib::GUI_EXE_NAMES.iter().any(|g| g.eq_ignore_ascii_case(&name))
 }
 
 /// 업데이터가 다시 띄울 것: 떠 있던 GUI가 있으면 그 GUI(요청이 이미 GUI면 그대로), 없으면 요청대로.

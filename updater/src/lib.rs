@@ -43,7 +43,6 @@ mod apply;
 pub mod apply_session;
 pub mod autostart;
 mod state;
-mod time;
 
 #[cfg(test)]
 mod tests;
@@ -418,6 +417,11 @@ exe_names! {
 
 /// GUI 실행 파일 이름들: 표준 이름과, 0.1.1 GUI zip처럼 Electron 폴더를 그대로 담은 경우의 productName
 pub const GUI_EXE_NAMES: &[&str] = if cfg!(windows) { &[GUI_EXE, LEGACY_GUI_EXE] } else { &[GUI_EXE] };
+
+/// 경로의 파일 이름이 GUI 실행 파일 이름(`GUI_EXE_NAMES`, 대소문자 무시)인가
+pub fn is_gui_exe(path: impl AsRef<Path>) -> bool {
+    path.as_ref().file_name().is_some_and(|n| GUI_EXE_NAMES.iter().any(|g| n.eq_ignore_ascii_case(g)))
+}
 
 /// 설치기가 업데이트 적용(`--apply`)을 맡은 첫 판. 이보다 옛 설치기(Windows 0.1.12-beta.1까지)는 `--apply`를 모르고 설치 창을 연다
 pub const INSTALLER_APPLIES_SINCE: &str = "0.1.12-beta.2";
@@ -1018,7 +1022,9 @@ impl UpdateManager {
                 {
                     true
                 } else if installed && current.is_empty() {
-                    let _ = Self::update_installed_version(key, &info.version);
+                    if let Err(e) = Self::update_installed_version_at(&self.installed_manifest_file, key, &info.version) {
+                        tracing::warn!("[UpdateManager] Recording {} {} as installed failed: {}", key, info.version, e);
+                    }
                     false
                 } else if addons.as_ref().is_some_and(|c| c.is_yanked(key, &current)) && info.version != current {
                     // 깐 판을 내렸다: 목록의 판으로 되돌린다 (더 낮은 판이어도)
@@ -1049,15 +1055,15 @@ impl UpdateManager {
             self.latest_release = Some(release.latest);
         }
 
-        let now = time::now_iso();
+        let now = chrono::Utc::now();
         // 주기 확인은 24시간마다다 (연결된 데몬은 heartbeat의 판 번호로 안다)
-        let next = time::iso_after_hours(CHECK_EVERY_HOURS);
+        let next = now + chrono::Duration::hours(CHECK_EVERY_HOURS.into());
         // 같은 판 베타를 받는 동안 기다리는 정식 판. 정식(그 판 이상)을 받으면 사라진다
         let stable_wait = relay::stable_wait_base(&channel, &current)
             .filter(|_| offered.as_deref().and_then(SemVer::parse).is_none_or(|v| v.is_prerelease()));
         self.status = UpdateStatus {
-            last_check: Some(now),
-            next_check: Some(next),
+            last_check: Some(now.to_rfc3339()),
+            next_check: Some(next.to_rfc3339()),
             components,
             checking: false,
             error: None,

@@ -58,7 +58,7 @@ POST /events (알림, I3)
 
 `updater/src/constants.rs`는 "모든 크레이트가 공유하는 SSOT"라고 스스로 설명한다(`constants.rs`). daemon도 `saba_chan_updater_lib::constants::*`로 data dir, 토큰 경로, IPC 포트(57474, `constants.rs`)를 가져다 쓴다. 즉 경로/상수 SSOT가 updater 라이브러리 안에 들어 있다.
 
-updater-lib 파일 구성(859c3fd에서 나눔): `lib.rs`는 컴포넌트 정의와 `UpdateManager`의 확인·다운로드·적용 흐름, `state.rs`는 적용 대기 목록(`pending.json`, `apply-targets.json`)과 설치 버전 기록, `apply.rs`는 폴더·바이너리·GUI 교체와 압축 해제, `time.rs`는 chrono 없이 만드는 ISO 8601 시각 문자열 도우미다.
+updater-lib 파일 구성(859c3fd에서 나눔): `lib.rs`는 컴포넌트 정의와 `UpdateManager`의 확인·다운로드·적용 흐름, `state.rs`는 적용 대기 목록(`pending.json`, `apply-targets.json`)과 설치 버전 기록, `apply.rs`는 폴더·바이너리·GUI 교체와 압축 해제다. 시각 문자열은 chrono(`to_rfc3339`)로 만든다.
 
 ### 1.2 컴포넌트 모델
 
@@ -80,7 +80,7 @@ updater-lib 파일 구성(859c3fd에서 나눔): `lib.rs`는 컴포넌트 정의
 - 설치하지 않은 모듈·익스텐션은 업데이트 목록에 넣지 않는다. 새로 받는 것은 목록 화면의 몫이다(`lib.rs`).
 - **설치 구성**(`updater/src/profile.rs`, 0.1.9): installed-manifest 옆(데이터 폴더)의 `install-profile.json`(`{"profile":"headless"}`)이 `"desktop"`|`"headless"`를 적는다(`Profile::load`/`save`. 없거나 읽지 못하거나 모르는 값이면 `desktop`, 0.1.8까지의 설치). 컴포넌트가 어느 구성에 드는지는 `versions.toml` `[components.<키>] profiles = [...]` 한 곳에서 정하고(빌드에 묶여 `versions::profiles`로 읽는다), 표시가 없으면 모든 구성에 든다. 지금은 `gui`만 `profiles = ["desktop"]`이다. `check_for_updates`는 설치 구성에 들지 않는 manifest 키를 건너뛰어 헤드리스 설치에 GUI가 끌려 들어오지 않는다. requires 검사에 쓰는 버전 맵(`dependency_versions_for`)도 같은 구성으로 걸러, 헤드리스에서는 번들 GUI 버전이 requires를 채우지 않는다. installed-manifest는 구성요소 → 버전 맵 그대로 두어 섞지 않는다(0.1.8이 그 맵을 구성요소 목록으로 보인다).
 - **로컬 버전 판정 순서**(`collect_local_versions`, `lib.rs`): 먼저 `installed-manifest.json`(`<data_dir>/installed-manifest.json`)을 본다. 앱 컴포넌트가 거기 없으면 빌드에 묶인 `versions.toml` 버전을 쓰고(설치기는 빼고. 0.1.7까지 기록하지 않아 깔려 있는데 기록이 없으면 옛 사본으로 보고 바꾼다, `fill_bundled_versions`·`unknown_version_needs_update`), 모듈은 `module.toml`, 익스텐션은 `manifest.json`의 id·version을 읽는다.
-  - "설치돼 있는데 버전을 모르면 최신으로 간주하고 installed-manifest에 기록"하는 로직이 있다(`lib.rs`). 거짓 양성을 막으려는 것이지만, 실제로 구버전이어도 영구히 최신으로 표시될 수 있다.
+  - "설치돼 있는데 버전을 모르면 최신으로 간주하고 installed-manifest에 기록"하는 로직이 있다(`lib.rs`, 관리자의 `installed_manifest_file`에 쓰고 실패는 경고로 남긴다). 거짓 양성을 막으려는 것이지만, 실제로 구버전이어도 영구히 최신으로 표시될 수 있다.
 
 ### 1.3 Release manifest 형식
 

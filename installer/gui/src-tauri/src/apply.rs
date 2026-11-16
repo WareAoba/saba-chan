@@ -440,13 +440,8 @@ fn resolve_gui_exe() -> Option<PathBuf> {
 /// 다시 띄울 실행 파일: `--relaunch`로 받은 것, 없으면 설치된 GUI.
 /// 받은 것이 GUI인데 업데이트로 비켜났으면(0.1.1의 `Saba-chan.exe` → `saba-chan-gui.exe`) 설치된 GUI
 fn relaunch_command(requested: Option<String>, installed_gui: Option<PathBuf>) -> Option<String> {
-    let is_gui = |exe: &str| {
-        Path::new(exe).file_name().is_some_and(|n| {
-            saba_chan_updater_lib::GUI_EXE_NAMES.iter().any(|g| n.eq_ignore_ascii_case(g))
-        })
-    };
     match (requested, installed_gui) {
-        (Some(cmd), Some(gui)) if is_gui(&cmd) && !Path::new(&cmd).exists() => {
+        (Some(cmd), Some(gui)) if saba_chan_updater_lib::is_gui_exe(&cmd) && !Path::new(&cmd).exists() => {
             tracing::info!("[Apply] {} was replaced; relaunching {}", cmd, gui.display());
             Some(gui.to_string_lossy().into_owned())
         }
