@@ -646,7 +646,7 @@ Tauri 커맨드(`installer/gui/src-tauri/src/lib.rs`): `get_installer_state`(채
 
 ## 5. server-chan 운영 구성요소와 운영 결함
 
-> 이 절(공유 폴더에만 있는 chatbot/music-server, 운영 배포 토폴로지)과 §6.3–§6.5(relay 결함, 비밀 파일, 누락 소스)는 운영 서버 보안과 직결돼 공개 저장소에 두지 않는다. 비공개 저장소 `WareAoba/server-chan`의 `docs/architecture-server.md`에서 관리한다.
+> 이 절(공유 폴더에만 있는 chatbot/music-server, 운영 배포 토폴로지)과 §6.3–§6.5(relay 결함, 비밀 파일, 누락 소스)는 운영 서버 보안과 직결돼 공개 저장소에 두지 않는다. 비공개 저장소 `WareAoba/server-chan`의 구성요소 문서(`deploy/README.md`, `deploy/watchdog/README.md`, `tts-server/README.md`)와 `AGENTS.md`에서 관리한다.
 
 ---
 
