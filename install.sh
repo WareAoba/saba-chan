@@ -105,16 +105,27 @@ TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT INT TERM
 
 say "최신 릴리즈를 찾는 중..." "Looking up the latest release..."
+# 업데이터·CLI와 같은 캐시되는 확인(/latest). 후보는 높은 판부터이고, 고른 채널이 받는 판 가운데
+# 모두에게 배포된 첫 판을 고른다(점진 배포 중인 판은 이어서 도는 CLI 설치가 자기 몫으로 고른다)
 curl -fsS -H 'X-Saba-Client: 1' \
-    "$RELAY/v1/updates/check?channel=$CHANNEL&platform=$PLATFORM&current=0.0.0&client_id=install-sh" >"$TMP/check.json" ||
+    "$RELAY/v1/updates/latest?channel=$CHANNEL&platform=$PLATFORM&current=0.0.0" >"$TMP/latest.json" ||
     die "릴레이에 닿지 못했어요." "Could not reach the relay."
 if [ -n "$MAC" ]; then
-    MANIFEST_URL=$(js "$TMP/check.json" <<'JS'
-return (j.latest || {}).manifestUrl || "";
+    MANIFEST_URL=$(js "$TMP/latest.json" "$CHANNEL" <<'JS'
+var order = ["stable", "rc", "beta", "nightly"];
+var takes = function (c) { var i = order.indexOf(c); return !c || (i >= 0 && i <= order.indexOf(a[1])); };
+var r = (j.releases || []).filter(function (r) { return takes(r.channel) && (r.rolloutPercent == null || r.rolloutPercent >= 100); })[0];
+return (r || {}).manifestUrl || "";
 JS
 )
 else
-    MANIFEST_URL=$(python3 -I -c 'import json,sys;print((json.load(open(sys.argv[1])).get("latest") or {}).get("manifestUrl",""))' "$TMP/check.json") || MANIFEST_URL=
+    MANIFEST_URL=$(python3 -I -c '
+import json, sys
+order = ["stable", "rc", "beta", "nightly"]
+takes = lambda c: not c or (c in order and order.index(c) <= order.index(sys.argv[2]))
+full = lambda r: r.get("rolloutPercent") is None or r["rolloutPercent"] >= 100
+picked = [r for r in json.load(open(sys.argv[1])).get("releases") or [] if takes(r.get("channel")) and full(r)]
+print((picked[0] if picked else {}).get("manifestUrl") or "")' "$TMP/latest.json" "$CHANNEL") || MANIFEST_URL=
 fi
 [ -n "$MANIFEST_URL" ] || die "이 PC용 릴리즈가 아직 없어요." "No release for this platform yet."
 curl -fsS -H 'X-Saba-Client: 1' "$MANIFEST_URL" >"$TMP/manifest.json" || die "manifest를 받지 못했어요." "Could not download the manifest."
