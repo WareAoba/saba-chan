@@ -422,6 +422,7 @@ pub async fn list_node_members(
 
 /// 릴레이에 남은 권한 부여값 (`/api/nodes/:id/members`, `[{id, username, displayName, level}]`). 권한 가져오기(`permissions.rs`)가 읽는다.
 /// 실패하면 그 오류 응답을 돌려준다(빈 목록으로 바꾸지 않는다)
+#[allow(clippy::result_large_err)] // 오류 응답은 드문 경로다
 pub(crate) async fn legacy_members(state: &IPCServer, guild_id: &str) -> Result<Vec<Value>, Response> {
     let base = signed_base(state, None).await;
     let client = client()?;

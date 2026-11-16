@@ -30,6 +30,7 @@ async fn change(state: &IPCServer, guild_id: &str, changes: Vec<Change>) -> Resp
     }
 }
 
+#[allow(clippy::result_large_err)] // 오류는 바로 돌려줄 HTTP 응답
 async fn save(state: &IPCServer, guild_id: &str, changes: Vec<Change>) -> Result<(), Response> {
     let result = state
         .config_store
@@ -146,6 +147,7 @@ pub async fn remove_member(State(state): State<IPCServer>, Path((guild_id, disco
 }
 
 /// 릴레이에 남은 부여값 중 가져올 후보 (`chat::permissions::import_candidates`)
+#[allow(clippy::result_large_err)] // 오류는 바로 돌려줄 HTTP 응답
 async fn candidates(state: &IPCServer, guild_id: &str) -> Result<Vec<Value>, Response> {
     let relay_members = super::relay::legacy_members(state, guild_id).await?;
     let bot = state.config_store.get_bot_config().await;
