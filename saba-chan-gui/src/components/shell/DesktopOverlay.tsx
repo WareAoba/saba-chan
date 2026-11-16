@@ -51,19 +51,33 @@ export function DesktopOverlay() {
         };
     }, []);
 
-    // 내용 크기가 바뀔 때마다 셸에 알린다 (첫 알림에 창이 보인다)
+    // 내용 크기와 이 웹뷰의 배율을 셸에 알린다 (첫 알림에 창이 보인다). 내용 크기나 배율이 바뀌면 다시 알린다:
+    // 셸은 이 배율로 창 크기를 정한다. 배율이 다른 모니터로 옮겼을 때 웹뷰가 아직 옛 배율로 그리면 창이 내용을 자르지 않게
     useLayoutEffect(() => {
         const el = rootRef.current;
         if (!el) return undefined;
         const report = () => {
             const box = el.getBoundingClientRect();
-            window.api.overlayFit(Math.ceil(box.width), Math.ceil(box.height));
+            window.api.overlayFit(Math.ceil(box.width), Math.ceil(box.height), window.devicePixelRatio || 1);
         };
         report();
-        if (typeof ResizeObserver === 'undefined') return undefined;
-        const observer = new ResizeObserver(report);
-        observer.observe(el);
-        return () => observer.disconnect();
+        let media: MediaQueryList | null = null;
+        const watchScale = () => {
+            media?.removeEventListener('change', onScale);
+            media = window.matchMedia?.(`(resolution: ${window.devicePixelRatio || 1}dppx)`) ?? null;
+            media?.addEventListener('change', onScale);
+        };
+        const onScale = () => {
+            report();
+            watchScale();
+        };
+        watchScale();
+        const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(report);
+        observer?.observe(el);
+        return () => {
+            observer?.disconnect();
+            media?.removeEventListener('change', onScale);
+        };
     }, []);
 
     // 누르기: 움직이지 않고 떼면 앱 열기, 누른 채 움직이면 창 끌기
