@@ -322,6 +322,12 @@ fn render_countdown(cat: &Catalog, default_mode: BootMode, seconds: u64, frame: 
     let _ = std::io::stdout().flush();
 }
 
+/// 메뉴 이름 칸을 화면 너비 14칸으로 채운다 (한글은 두 칸)
+fn pad_name(name: &str) -> String {
+    let width = unicode_width::UnicodeWidthStr::width(name);
+    format!("{name}{}", " ".repeat(14usize.saturating_sub(width)))
+}
+
 fn render_menu(cat: &Catalog, selected: usize) {
     clear_screen();
     let modes = [BootMode::Gui, BootMode::Cli, BootMode::DaemonOnly].map(|m| mode_name(cat, m));
@@ -333,9 +339,9 @@ fn render_menu(cat: &Catalog, selected: usize) {
 
     for (i, (mode, desc)) in modes.iter().zip(descs.iter()).enumerate() {
         if i == selected {
-            println!("  {} > {}{:<14}{}{}", GREEN, BOLD, mode, RESET, desc);
+            println!("  {} > {}{}{}{}", GREEN, BOLD, pad_name(mode), RESET, desc);
         } else {
-            println!("    {:<14}{}{}{}", mode, DIM, desc, RESET);
+            println!("    {}{}{}{}", pad_name(mode), DIM, desc, RESET);
         }
     }
 
@@ -669,6 +675,13 @@ pub async fn wait_for_ipc_port(port: u16, timeout: Duration) -> bool {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn menu_names_pad_to_screen_width() {
+        // 한글은 화면에서 두 칸이라 글자 수로 맞추면 설명 줄이 어긋난다
+        assert_eq!(pad_name("GUI"), format!("GUI{}", " ".repeat(11)));
+        assert_eq!(pad_name("데몬만"), format!("데몬만{}", " ".repeat(8)));
+    }
     use super::*;
 
     /// 리눅스 "CLI로 전환": 고른 터미널(`$TERMINAL`)이 먼저고, 없으면 알려진 터미널을 차례로 찾는다.
