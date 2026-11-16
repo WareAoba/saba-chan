@@ -16,7 +16,7 @@ use serde_json::{json, Value};
 use std::collections::HashSet;
 
 use super::super::IPCServer;
-use crate::scheduler::runner::{history_of, next_runs};
+use crate::scheduler::runner::{clash_groups, history_of, next_runs, upcoming};
 use crate::scheduler::{daily_runs, save_command_of, schedule_revision, ScheduledTask, TaskAction};
 
 /// 원격에서 넣는 반복 작업의 가장 짧은 간격(분)과 보관 개수 상한
@@ -41,62 +41,37 @@ pub struct UpcomingQuery {
     pub hours: Option<u32>,
 }
 
-/// 이만큼 안에 함께 도는 무거운 작업(백업·재시작·업데이트)은 겹친다고 알린다
-const CLASH_WINDOW_SECS: i64 = 5 * 60;
-
-/// GET /api/schedules/upcoming?hours= — 모든 인스턴스의 켜 둔 예약의 다음 실행을 가까운 순으로.
+/// GET /api/schedules/upcoming?hours= — 모든 인스턴스의 켜 둔 예약의 다음 실행을 가까운 순으로 (`scheduler::runner::upcoming`).
 /// `{upcoming: [{instance_id, instance, index, task, next, clash}], clashes: [{at, actions}], utc_offset_minutes}`
 pub async fn upcoming_schedules(axum::extract::Query(q): axum::extract::Query<UpcomingQuery>, State(state): State<IPCServer>) -> Response {
     let now = chrono::Local::now().timestamp();
     let until = now + i64::from(q.hours.unwrap_or(24).clamp(1, 720)) * 3600;
     let supervisor = state.supervisor.read().await;
-    let mut rows: Vec<(i64, &crate::instance::ServerInstance, usize, &ScheduledTask)> = supervisor
-        .instance_store
-        .list()
-        .iter()
-        .flat_map(|inst| {
-            next_runs(&inst.id, &inst.schedule)
-                .into_iter()
-                .zip(&inst.schedule)
-                .enumerate()
-                .filter_map(move |(index, (next, task))| Some((next?, inst, index, task)))
-        })
-        .filter(|(next, ..)| *next <= until)
-        .collect();
-    rows.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.name.cmp(&b.1.name)).then_with(|| a.2.cmp(&b.2)));
-    // 무거운 작업을 시각 순으로 훑어, 앞 것과 `CLASH_WINDOW_SECS` 안이면 한 묶음으로 본다
-    let heavy: Vec<usize> = (0..rows.len()).filter(|i| matches!(rows[*i].3.action, TaskAction::Backup | TaskAction::Restart | TaskAction::Update)).collect();
-    let mut groups: Vec<Vec<usize>> = Vec::new();
-    for i in heavy {
-        match groups.last_mut() {
-            Some(group) if rows[i].0 - rows[*group.last().expect("groups are never empty")].0 <= CLASH_WINDOW_SECS => group.push(i),
-            _ => groups.push(vec![i]),
-        }
-    }
-    groups.retain(|group| group.len() > 1);
+    let rows: Vec<_> = upcoming(supervisor.instance_store.list()).into_iter().take_while(|run| run.next <= until).collect();
+    let groups = clash_groups(&rows);
     let clashing: HashSet<usize> = groups.iter().flatten().copied().collect();
     let clashes: Vec<Value> = groups
         .iter()
         .map(|group| {
             let mut actions: Vec<TaskAction> = Vec::new();
             for i in group {
-                if !actions.contains(&rows[*i].3.action) {
-                    actions.push(rows[*i].3.action);
+                if !actions.contains(&rows[*i].task.action) {
+                    actions.push(rows[*i].task.action);
                 }
             }
-            json!({ "at": rows[group[0]].0, "actions": actions })
+            json!({ "at": rows[group[0]].next, "actions": actions })
         })
         .collect();
-    let upcoming: Vec<Value> = rows
+    let listed: Vec<Value> = rows
         .iter()
         .enumerate()
-        .map(|(i, (next, inst, index, task))| {
-            json!({ "instance_id": inst.id, "instance": inst.name, "index": index, "task": task, "next": next, "clash": clashing.contains(&i) })
+        .map(|(i, run)| {
+            json!({ "instance_id": run.instance.id, "instance": run.instance.name, "index": run.index, "task": run.task, "next": run.next, "clash": clashing.contains(&i) })
         })
         .collect();
     Json(json!({
         "success": true,
-        "upcoming": upcoming,
+        "upcoming": listed,
         "clashes": clashes,
         "utc_offset_minutes": chrono::Local::now().offset().local_minus_utc() / 60,
     }))
@@ -104,26 +79,30 @@ pub async fn upcoming_schedules(axum::extract::Query(q): axum::extract::Query<Up
 }
 
 pub async fn get_schedule(Path(id): Path<String>, State(state): State<IPCServer>) -> Response {
-    let supervisor = state.supervisor.read().await;
-    let Some(instance) = supervisor.instance_store.get(&id) else {
-        return crate::service::Failure::instance_not_found(&id).into_response();
+    let (mut body, dir, schedule) = {
+        let supervisor = state.supervisor.read().await;
+        let Some(instance) = supervisor.instance_store.get(&id) else {
+            return crate::service::Failure::instance_not_found(&id).into_response();
+        };
+        let meta = supervisor.module_loader.get_module(&instance.module_name).ok().map(|m| m.metadata);
+        let body = json!({
+            "success": true,
+            "schedule": instance.schedule,
+            "backup_keep": instance.backup_keep.unwrap_or(DEFAULT_KEEP as u32),
+            "revision": schedule_revision(instance),
+            "backup_supported": meta.as_ref().is_some_and(|m| m.backup.is_some()),
+            "announce_supported": meta.as_ref().is_some_and(|m| m.announce_command.is_some()),
+            "save_supported": meta.as_ref().is_some_and(|m| save_command_of(m).is_some()),
+            "next_runs": next_runs(&id, &instance.schedule),
+            // 작업 시각(`at`·`date`)은 데몬 PC의 벽시계다: 다른 시간대에서 보는 화면이 그 차이를 알린다
+            "utc_offset_minutes": chrono::Local::now().offset().local_minus_utc() / 60,
+        });
+        (body, supervisor.instance_store.instance_dir(&id), instance.schedule.clone())
     };
-    let meta = supervisor.module_loader.get_module(&instance.module_name).ok().map(|m| m.metadata);
-    Json(json!({
-        "success": true,
-        "schedule": instance.schedule,
-        "backup_keep": instance.backup_keep.unwrap_or(DEFAULT_KEEP as u32),
-        "revision": schedule_revision(instance),
-        "backup_supported": meta.as_ref().is_some_and(|m| m.backup.is_some()),
-        "announce_supported": meta.as_ref().is_some_and(|m| m.announce_command.is_some()),
-        "save_supported": meta.as_ref().is_some_and(|m| save_command_of(m).is_some()),
-        "next_runs": next_runs(&id, &instance.schedule),
-        // 작업마다 최근 실행 기록 (새것부터, `scheduler::HISTORY_KEEP`건까지). 돈 적이 없으면 빈 배열
-        "history": history_of(&supervisor.instance_store.instance_dir(&id), &id, &instance.schedule),
-        // 작업 시각(`at`·`date`)은 데몬 PC의 벽시계다: 다른 시간대에서 보는 화면이 그 차이를 알린다
-        "utc_offset_minutes": chrono::Local::now().offset().local_minus_utc() / 60,
-    }))
-    .into_response()
+    // 작업마다 최근 실행 기록 (새것부터, `scheduler::HISTORY_KEEP`건까지). 돈 적이 없으면 빈 배열. 파일은 잠금 밖에서 읽는다
+    let history = tokio::task::spawn_blocking(move || history_of(&dir, &id, &schedule)).await.unwrap_or_default();
+    body["history"] = json!(history);
+    Json(body).into_response()
 }
 
 pub async fn put_schedule(Path(id): Path<String>, State(state): State<IPCServer>, Json(mut body): Json<ScheduleBody>) -> Response {
