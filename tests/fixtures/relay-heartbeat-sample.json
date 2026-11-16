@@ -168,7 +168,12 @@
         ],
         "updateHint": { "version": "0.1.15", "channel": "stable" },
         "latestReleases": { "stable": 42 },
-        "latestAddons": { "stable": "3f2a9c1d7e5b8a04", "rc": "3f2a9c1d7e5b8a04", "beta": "b81e4d2c9a6f0357", "nightly": "b81e4d2c9a6f0357" },
+        "latestAddons": {
+            "stable": "3f2a9c1d7e5b8a04",
+            "rc": "3f2a9c1d7e5b8a04",
+            "beta": "b81e4d2c9a6f0357",
+            "nightly": "b81e4d2c9a6f0357"
+        },
         "address": "11.22.33.44"
     },
     "reducedRequest": {
