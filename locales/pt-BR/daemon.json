@@ -389,5 +389,18 @@
     "task_stop": "Parada",
     "task_save": "Salvamento",
     "task_command": "Comando do jogo"
+  },
+  "boot": {
+    "target": "Destino de inicialização: {{mode}}",
+    "change_hint": "Pressione [DEL] para mudar o destino de inicialização",
+    "starting": "Iniciando {{mode}} em {{secs}}s...",
+    "menu_title": "Configuração de inicialização",
+    "menu_keys": "↑/↓ Mover  1-3 Seleção rápida  Enter Confirmar",
+    "mode_daemon_only": "Só daemon",
+    "desc_gui": "Abrir a interface gráfica",
+    "desc_cli": "Abrir a interface de terminal",
+    "desc_daemon_only": "Executar sem interface (log no console)",
+    "daemon_only": "só daemon na porta {{port}}",
+    "shutdown_hint": "Pressione Ctrl+C para encerrar."
   }
 }

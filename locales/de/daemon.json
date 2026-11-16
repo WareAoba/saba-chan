@@ -389,5 +389,18 @@
     "task_stop": "Stopp",
     "task_save": "Speichern",
     "task_command": "Spielbefehl"
+  },
+  "boot": {
+    "target": "Startziel: {{mode}}",
+    "change_hint": "[DEL] drücken, um das Startziel zu ändern",
+    "starting": "{{mode}} startet in {{secs}} s...",
+    "menu_title": "Starteinstellungen",
+    "menu_keys": "↑/↓ Bewegen  1-3 Schnellauswahl  Enter Bestätigen",
+    "mode_daemon_only": "Nur Daemon",
+    "desc_gui": "Grafische Oberfläche starten",
+    "desc_cli": "Terminal-Oberfläche starten",
+    "desc_daemon_only": "Ohne Oberfläche ausführen (Log in der Konsole)",
+    "daemon_only": "nur Daemon auf Port {{port}}",
+    "shutdown_hint": "Strg+C zum Beenden drücken."
   }
 }

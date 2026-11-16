@@ -389,5 +389,18 @@
     "task_stop": "停止",
     "task_save": "儲存",
     "task_command": "遊戲指令"
+  },
+  "boot": {
+    "target": "啟動目標: {{mode}}",
+    "change_hint": "按 [DEL] 變更啟動目標",
+    "starting": "{{secs}} 秒後啟動 {{mode}}...",
+    "menu_title": "啟動設定",
+    "menu_keys": "↑/↓ 移動  1-3 快速選擇  Enter 確認",
+    "mode_daemon_only": "僅常駐程式",
+    "desc_gui": "啟動圖形介面",
+    "desc_cli": "啟動終端介面",
+    "desc_daemon_only": "無介面執行（記錄輸出到主控台）",
+    "daemon_only": "僅常駐程式執行中（連接埠 {{port}}）",
+    "shutdown_hint": "按 Ctrl+C 結束。"
   }
 }

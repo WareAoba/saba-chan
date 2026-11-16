@@ -389,5 +389,18 @@
     "task_stop": "停止",
     "task_save": "保存",
     "task_command": "游戏命令"
+  },
+  "boot": {
+    "target": "启动目标: {{mode}}",
+    "change_hint": "按 [DEL] 更改启动目标",
+    "starting": "{{secs}} 秒后启动 {{mode}}...",
+    "menu_title": "启动设置",
+    "menu_keys": "↑/↓ 移动  1-3 快速选择  Enter 确认",
+    "mode_daemon_only": "仅守护进程",
+    "desc_gui": "启动图形界面",
+    "desc_cli": "启动终端界面",
+    "desc_daemon_only": "无界面运行（日志输出到控制台）",
+    "daemon_only": "仅守护进程运行中（端口 {{port}}）",
+    "shutdown_hint": "按 Ctrl+C 退出。"
   }
 }

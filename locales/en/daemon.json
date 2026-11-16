@@ -389,5 +389,18 @@
     "task_stop": "Stop",
     "task_save": "Save",
     "task_command": "Game command"
+  },
+  "boot": {
+    "target": "Boot target: {{mode}}",
+    "change_hint": "Press [DEL] to change boot target",
+    "starting": "Starting {{mode}} in {{secs}}s...",
+    "menu_title": "Boot Configuration",
+    "menu_keys": "↑/↓ Navigate  1-3 Quick select  Enter Confirm",
+    "mode_daemon_only": "Daemon Only",
+    "desc_gui": "Launch graphical interface",
+    "desc_cli": "Launch terminal interface",
+    "desc_daemon_only": "Run headless (log to console)",
+    "daemon_only": "daemon-only on port {{port}}",
+    "shutdown_hint": "Press Ctrl+C to shut down."
   }
 }

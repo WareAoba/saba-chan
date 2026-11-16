@@ -389,5 +389,18 @@
     "task_stop": "Detención",
     "task_save": "Guardado",
     "task_command": "Comando del juego"
+  },
+  "boot": {
+    "target": "Destino de arranque: {{mode}}",
+    "change_hint": "Pulsa [DEL] para cambiar el destino de arranque",
+    "starting": "Iniciando {{mode}} en {{secs}} s...",
+    "menu_title": "Configuración de arranque",
+    "menu_keys": "↑/↓ Mover  1-3 Selección rápida  Enter Confirmar",
+    "mode_daemon_only": "Solo daemon",
+    "desc_gui": "Abrir la interfaz gráfica",
+    "desc_cli": "Abrir la interfaz de terminal",
+    "desc_daemon_only": "Ejecutar sin interfaz (registro en la consola)",
+    "daemon_only": "solo daemon en el puerto {{port}}",
+    "shutdown_hint": "Pulsa Ctrl+C para cerrar."
   }
 }

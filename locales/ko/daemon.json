@@ -389,5 +389,18 @@
     "task_stop": "정지",
     "task_save": "저장",
     "task_command": "게임 명령"
+  },
+  "boot": {
+    "target": "부팅 대상: {{mode}}",
+    "change_hint": "[DEL]을 누르면 부팅 대상을 바꿉니다",
+    "starting": "{{secs}}초 뒤 {{mode}} 시작...",
+    "menu_title": "부팅 설정",
+    "menu_keys": "↑/↓ 이동  1-3 바로 선택  Enter 확인",
+    "mode_daemon_only": "데몬만",
+    "desc_gui": "그래픽 화면 실행",
+    "desc_cli": "터미널 화면 실행",
+    "desc_daemon_only": "화면 없이 실행 (콘솔에 로그 출력)",
+    "daemon_only": "데몬만 실행 중 (포트 {{port}})",
+    "shutdown_hint": "Ctrl+C를 누르면 종료합니다."
   }
 }

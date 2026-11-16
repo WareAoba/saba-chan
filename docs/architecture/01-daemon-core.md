@@ -65,7 +65,8 @@
 
 - 마지막 선택을 `config.json`의 `boot` 네임스페이스에 `{"last_mode":"gui"|"cli"|"daemononly"}` 형태로 저장한다(`boot_selector.rs`).
 - 5초 카운트다운 동안 DEL 키를 누르면 메뉴가 열린다(↑/↓, 1-3, Enter).
-- **키 입력은 Windows에서만 구현돼 있다.** 비 Windows에서는 `poll_key_fallback`이 그냥 sleep하므로(`boot_selector.rs`) 메뉴를 열 수 없고, 항상 마지막 모드로 자동 부팅한다. 그래서 "Press [DEL]" 안내도 Windows에서만 보인다.
+- **키 입력은 Windows에서만 구현돼 있다.** 비 Windows에서는 `poll_key_fallback`이 그냥 sleep하므로(`boot_selector.rs`) 메뉴를 열 수 없고, 항상 마지막 모드로 자동 부팅한다. 그래서 [DEL] 안내도 Windows에서만 보인다.
+- 화면 문구(부팅 대상·[DEL] 안내·카운트다운·메뉴·데몬만 실행 안내)는 daemon.json `boot.*`에서 읽는다. 언어는 `config.json` `gui.language`(앱 언어), 비었으면 OS 언어(`boot_selector::catalog`).
 
 ### 1.3 환경변수 목록 (코어가 읽는 것)
 

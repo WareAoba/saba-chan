@@ -389,5 +389,18 @@
     "task_stop": "Arrêt",
     "task_save": "Enregistrement",
     "task_command": "Commande de jeu"
+  },
+  "boot": {
+    "target": "Cible de démarrage : {{mode}}",
+    "change_hint": "Appuyez sur [DEL] pour changer la cible de démarrage",
+    "starting": "Démarrage de {{mode}} dans {{secs}} s...",
+    "menu_title": "Configuration du démarrage",
+    "menu_keys": "↑/↓ Déplacer  1-3 Choix rapide  Entrée Valider",
+    "mode_daemon_only": "Daemon seul",
+    "desc_gui": "Lancer l'interface graphique",
+    "desc_cli": "Lancer l'interface terminal",
+    "desc_daemon_only": "Exécuter sans interface (journal dans la console)",
+    "daemon_only": "daemon seul sur le port {{port}}",
+    "shutdown_hint": "Appuyez sur Ctrl+C pour arrêter."
   }
 }
