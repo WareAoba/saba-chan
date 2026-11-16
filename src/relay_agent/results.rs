@@ -39,7 +39,7 @@ impl Session {
 
     /// 결과를 한 번 보낸다. 다시 보낼 일이 없으면(받았거나, 릴레이가 그 명령을 몰라 받지 않으면) `true`
     async fn send_result(&self, id: &str, body: &str, attempt: u32) -> bool {
-        let path = format!("/result/{}", encode_segment(id));
+        let path = format!("/result/{}", crate::relay_client::encode_path_segment(id));
         let sent = match self.request(reqwest::Method::POST, &path, Some(body.to_string())) {
             Ok(req) => req.send().await.map_err(|e| e.to_string()),
             Err(e) => Err(e),

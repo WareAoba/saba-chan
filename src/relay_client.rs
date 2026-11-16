@@ -28,7 +28,7 @@ pub(crate) fn encode_path_segment(s: &str) -> String {
 pub(crate) fn resolve_relay_url(relay_url: Option<&str>) -> String {
     let url = relay_url
         .filter(|u| !u.is_empty())
-        .unwrap_or("https://saba-chan.online");
+        .unwrap_or(saba_chan_updater_lib::relay::DEFAULT_RELAY_URL);
     url.trim_end_matches('/').to_string()
 }
 

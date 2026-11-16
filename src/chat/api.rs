@@ -124,7 +124,14 @@ pub fn module_locale(module_dir: &std::path::Path, lang: &str) -> Option<std::sy
             return Some(value.clone());
         }
     }
-    let value = std::sync::Arc::new(serde_json::from_str::<serde_json::Value>(&std::fs::read_to_string(&path).ok()?).ok()?);
+    let text = std::fs::read_to_string(&path).ok()?;
+    let value = match serde_json::from_str::<serde_json::Value>(text.trim_start_matches('\u{feff}')) {
+        Ok(value) => std::sync::Arc::new(value),
+        Err(e) => {
+            tracing::warn!("Module locale {} is not valid JSON: {}", path.display(), e);
+            return None;
+        }
+    };
     CACHE.lock().unwrap_or_else(|e| e.into_inner()).insert(path, (stamp, value.clone()));
     Some(value)
 }
@@ -274,6 +281,16 @@ impl DaemonApi for IPCServer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Windows 편집기가 BOM을 붙여 저장한 모듈 locales도 읽는다 (manifest·module.toml과 같이)
+    #[test]
+    fn a_module_locale_saved_with_a_bom_is_read() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(tmp.path().join("locales")).unwrap();
+        std::fs::write(tmp.path().join("locales").join("ko.json"), "\u{feff}{\"module\": {\"display_name\": \"마인크래프트\"}}").unwrap();
+        let locale = module_locale(tmp.path(), "ko").expect("a BOM does not hide the locale");
+        assert_eq!(locale_display_name(&locale), Some("마인크래프트"));
+    }
 
     #[test]
     fn a_language_adds_only_its_own_game_name_and_aliases() {

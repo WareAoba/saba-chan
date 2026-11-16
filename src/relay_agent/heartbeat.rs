@@ -323,7 +323,6 @@ pub(super) fn host_load(snapshot: &crate::system_monitor::MetricsSnapshot) -> Va
     load
 }
 
-/// 하트비트 본문. 적용한 새 길드가 있으면 그 연결 id로 확인 응답을 싣는다(`linkedGuildsAckIds`)
 /// 이 PC의 OS·CPU와 리눅스 배포판 `{os, distro?}` (하트비트, 앱의 PC 카드)
 pub fn platform() -> Value {
     let mut v = json!({ "os": format!("{} {}", std::env::consts::OS, std::env::consts::ARCH) });
@@ -334,6 +333,7 @@ pub fn platform() -> Value {
     v
 }
 
+/// 하트비트 본문. 적용한 새 길드가 있으면 그 연결 id로 확인 응답을 싣는다(`linkedGuildsAckIds`)
 pub(super) fn heartbeat_body(metadata: Value, hash: &str, unchanged: bool, acks: &[String]) -> Value {
     let mut body = json!({
         "agentVersion": AGENT_VERSION,
@@ -352,9 +352,6 @@ pub(super) fn heartbeat_body(metadata: Value, hash: &str, unchanged: bool, acks:
     body
 }
 
-/// 하트비트 메타데이터를 보낼 모양으로: (보낼 메타데이터, 지문, 바뀌지 않아 줄였는가).
-/// 지문은 `HEARTBEAT_VOLATILE`을 뺀 나머지(권한 포함)의 SHA-256이다. 릴레이가 받아 둔 지문(`sent`)과 같으면
-/// `HEARTBEAT_ALWAYS`만 보낸다 (모듈 명령·액션·낱말처럼 큰 값은 바뀔 때만)
 /// PC 주인 DM 알림 설정 (봇 설정 `backupNotice`·`dmNotice`). `dmOff`·`dmOn`은 비면 싣지 않는다
 pub(super) fn dm_notice_meta(meta: &mut Value, bot: &crate::config_store::BotConfig) {
     use crate::config_store::BackupNotice;
@@ -374,6 +371,9 @@ pub(super) fn dm_notice_meta(meta: &mut Value, bot: &crate::config_store::BotCon
     }
 }
 
+/// 하트비트 메타데이터를 보낼 모양으로: (보낼 메타데이터, 지문, 바뀌지 않아 줄였는가).
+/// 지문은 `HEARTBEAT_VOLATILE`을 뺀 나머지(권한 포함)의 SHA-256이다. 릴레이가 받아 둔 지문(`sent`)과 같으면
+/// `HEARTBEAT_ALWAYS`만 보낸다 (모듈 명령·액션·낱말처럼 큰 값은 바뀔 때만)
 pub(super) fn heartbeat_metadata(mut meta: Value, sent: Option<&str>) -> (Value, String, bool) {
     use sha2::{Digest, Sha256};
     let Value::Object(map) = &mut meta else { return (meta, String::new(), false) };

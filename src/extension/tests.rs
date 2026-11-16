@@ -57,6 +57,19 @@ fn contract_paths_i18n_never_reads_outside_the_extension_folder() {
     assert_eq!(manager.load_i18n("ext", "ko").unwrap()["label"], "inside");
 }
 
+/// Windows 편집기가 BOM을 붙여 저장한 익스텐션 locales도 읽는다 (manifest와 같이)
+#[test]
+fn extension_locales_saved_with_a_bom_are_read() {
+    let tmp = tempfile::tempdir().unwrap();
+    let ext = tmp.path().join("ext");
+    std::fs::create_dir_all(&ext).unwrap();
+    std::fs::write(ext.join("ko.json"), "\u{feff}{\"label\":\"라벨\"}").unwrap();
+    let mut manager = super::ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
+    let manifest = serde_json::from_value(serde_json::json!({ "id":"ext", "name":"Ext", "version":"1.0.0", "i18n_dir":"." })).unwrap();
+    manager.discovered.insert("ext".into(), super::DiscoveredExtension { manifest, dir: ext, warnings: vec![] });
+    assert_eq!(manager.load_i18n("ext", "ko").expect("a BOM does not hide the locale")["label"], "라벨");
+}
+
 /// FIRED_HOOKS의 이름마다 데몬 코드(이 파일 밖) 어딘가에서 그 이름으로 hook을 부른다
 #[test]
 fn every_listed_hook_is_fired_somewhere() {

@@ -586,19 +586,6 @@ fn semver_lt(a: &str, b: &str) -> bool {
     false
 }
 
-/// encodeURIComponent와 같은 경로 조각 인코딩 (서명 경로와 실제 경로가 같아야 함)
-fn encode_segment(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for b in s.bytes() {
-        if b.is_ascii_alphanumeric() || b"-_.!~*'()".contains(&b) {
-            out.push(b as char);
-        } else {
-            out.push_str(&format!("%{:02X}", b));
-        }
-    }
-    out
-}
-
 fn now_ms() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
 }

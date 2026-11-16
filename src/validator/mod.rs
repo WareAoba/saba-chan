@@ -677,10 +677,7 @@ pub fn next_free_port(from: u16, blocked: impl Fn(u16) -> bool) -> Option<u16> {
 
 #[cfg(not(windows))]
 fn ports_held_by_binding(ports: &[(String, u16)]) -> Vec<(String, u16)> {
-    let in_use = |e: std::io::Error| {
-        // Windows는 다른 프로그램이 독점(SO_EXCLUSIVEADDRUSE)으로 잡은 포트나 예약 범위에 PermissionDenied를 준다
-        e.kind() == std::io::ErrorKind::AddrInUse || (cfg!(windows) && e.kind() == std::io::ErrorKind::PermissionDenied)
-    };
+    let in_use = |e: std::io::Error| e.kind() == std::io::ErrorKind::AddrInUse;
     ports
         .iter()
         .filter(|(_, port)| *port != 0)
