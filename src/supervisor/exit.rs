@@ -266,14 +266,13 @@ impl Supervisor {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use serde_json::json;
     use crate::supervisor::start::announce_started;
 
     /// 켜진 뒤 곧 끝난 시작 실패는 그 시작을 시킨 쪽을 싣는다: 앱 버튼(`gui`)으로 켠 실패에는 앱이 효과음을 내지 않는다
-    #[cfg(unix)]
     #[tokio::test]
     async fn start_failure_names_who_started_it() {
         let tmp = tempfile::tempdir().unwrap();
@@ -313,7 +312,6 @@ mod tests {
     }
 
     /// 끝난 managed 서버를 크래시·정상 종료·사용자 정지·강제 종료로 가르고 크래시만 재시작한다
-    #[cfg(unix)]
     #[tokio::test]
     async fn exits_are_judged_and_only_crashes_restart() {
         let tmp = tempfile::tempdir().unwrap();

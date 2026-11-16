@@ -1139,13 +1139,13 @@ mod tests {
         let saved_dir = |sup: &Supervisor| sup.instance_store.get(&id).unwrap().working_dir.clone().unwrap();
 
         let exe = outside.join("server.exe").to_string_lossy().into_owned();
-        crate::service::instance::install::save_installed(&mut sup, &id, "1.0", &json!({ "executable_path": exe }), &install_dir).unwrap();
+        crate::service::instance::install::save_installed(&mut sup, &id, Some("1.0"), &json!({ "executable_path": exe }), &install_dir).unwrap();
         assert_eq!(saved_dir(&sup), install_dir, "the executable's folder outside the instance is not taken");
-        crate::service::instance::install::save_installed(&mut sup, &id, "1.0", &json!({ "executable_path": exe, "install_path": outside }), &install_dir).unwrap();
+        crate::service::instance::install::save_installed(&mut sup, &id, Some("1.0"), &json!({ "executable_path": exe, "install_path": outside }), &install_dir).unwrap();
         assert_eq!(saved_dir(&sup), install_dir, "install_path outside the instance is not taken");
         let nested = inside.join("bin");
         std::fs::create_dir_all(&nested).unwrap();
-        crate::service::instance::install::save_installed(&mut sup, &id, "1.0", &json!({ "executable_path": exe, "install_path": nested }), &install_dir).unwrap();
+        crate::service::instance::install::save_installed(&mut sup, &id, Some("1.0"), &json!({ "executable_path": exe, "install_path": nested }), &install_dir).unwrap();
         assert_eq!(saved_dir(&sup), nested.to_string_lossy(), "a folder inside the instance is kept");
     }
 
