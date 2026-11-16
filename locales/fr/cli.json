@@ -1967,7 +1967,6 @@
     "import_none": "Aucune autorisation à reprendre depuis Server-chan",
     "import_confirm": "Reprendre sur ce PC les niveaux des {{count}} membre(s) ci-dessus ?",
     "import_not_candidate": "{{member}} : rien à reprendre. Liste : `saba-chan-cli perm import <server>`.",
-    "import_partial": "{{ok}} repris, {{failed}} en échec",
     "imported": "Niveaux de {{count}} membre(s) repris dans {{guild}}",
     "level": {
       "owner": "propriétaire",

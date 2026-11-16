@@ -25,10 +25,11 @@ beforeEach(() => {
 });
 
 describe('접속자 없을 때 자동 정지 설정', () => {
-    it('기본은 꺼짐·30분·15분이고, 바꾼 칸만 데몬에 보낸다', async () => {
+    it('데몬이 실제로 쓰는 값(effective)을 칸 값으로 보이고, 바꾼 칸만 데몬에 보낸다', async () => {
         const { result } = setup();
-        await act(async () => result.current.handleOpenSettings({ id: 's', name: 'S', module: 'game' } as never));
-        expect(result.current.settingsValues).toMatchObject({ idle_stop: false, idle_stop_minutes: '30', idle_stop_grace_minutes: '15' });
+        const effective = { idle_stop: false, idle_stop_minutes: 20, idle_stop_grace_minutes: 5 };
+        await act(async () => result.current.handleOpenSettings({ id: 's', name: 'S', module: 'game', effective } as never));
+        expect(result.current.settingsValues).toMatchObject({ idle_stop: false, idle_stop_minutes: '20', idle_stop_grace_minutes: '5' });
         await act(async () => result.current.handleSaveSettings());
         const untouched = vi.mocked(window.api.instanceUpdateSettings).mock.calls[0][1];
         expect(Object.keys(untouched).filter((k) => k.startsWith('idle_stop'))).toEqual([]);

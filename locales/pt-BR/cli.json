@@ -1967,7 +1967,6 @@
     "import_none": "Nenhum nível para importar do Server-chan",
     "import_confirm": "Importar para este PC os níveis dos {{count}} membro(s) acima?",
     "import_not_candidate": "{{member}}: nada a importar. Veja os candidatos com `saba-chan-cli perm import <server>`.",
-    "import_partial": "{{ok}} importado(s), {{failed}} com falha",
     "imported": "Níveis de {{count}} membro(s) importados para {{guild}}",
     "level": {
       "owner": "dono",

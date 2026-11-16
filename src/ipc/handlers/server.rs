@@ -833,6 +833,35 @@ mod tests {
         assert_eq!(managed("direct"), json!(false));
     }
 
+    /// 서버 정보의 `effective`는 데몬이 자동 재시작·자동 정지·응답 없음 감시에 실제로 쓰는 값이다:
+    /// 저장한 값('false' 같은 글자 포함), 없는 칸은 데몬 기본값, 범위 밖 값은 범위 안으로. 목록과 `GET /api/instance/:id`가 같다
+    #[tokio::test]
+    async fn server_list_and_instance_carry_the_effective_behavior_settings() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("a", "plain");
+        inst.module_settings.insert("auto_restart".into(), json!("false"));
+        inst.module_settings.insert("idle_stop_minutes".into(), json!("45"));
+        inst.module_settings.insert("unresponsive_minutes".into(), json!(1));
+        let id = inst.id.clone();
+        sup.instance_store.add(inst).unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+
+        let expected = json!({
+            "auto_restart": false, "restart_on_unknown_exit": false,
+            "idle_stop": false, "idle_stop_minutes": 45, "idle_stop_grace_minutes": 15,
+            "unresponsive_action": "notify", "unresponsive_minutes": 5,
+        });
+        let list = crate::ipc::internal::into_internal(list_servers(State(state.clone()), Query(ListServersQuery::default())).await).await.body;
+        assert_eq!(list["servers"][0]["effective"], expected);
+        let one = crate::ipc::internal::into_internal(crate::ipc::handlers::instance::get_instance(axum::extract::Path(id), State(state)).await.into_response()).await.body;
+        assert_eq!(one["effective"], expected);
+    }
+
     /// 설정 칸마다 저장된 값(`stored`)은 데몬이 고른다: 공통 칸(port)은 인스턴스 칸, 나머지는 module_settings
     #[tokio::test]
     async fn server_list_and_instance_carry_the_stored_value_of_each_setting() {

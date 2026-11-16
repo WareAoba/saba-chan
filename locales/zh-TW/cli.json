@@ -1967,7 +1967,6 @@
     "import_none": "Server-chan 上沒有可匯入的權限",
     "import_confirm": "要把以上 {{count}} 人的等級匯入此電腦嗎？",
     "import_not_candidate": "{{member}}：不是可匯入的對象。請用 `saba-chan-cli perm import <server>` 查看對象。",
-    "import_partial": "已匯入 {{ok}} 人，{{failed}} 人失敗",
     "imported": "已匯入 {{guild}} 的 {{count}} 人等級",
     "level": {
       "owner": "所有者",

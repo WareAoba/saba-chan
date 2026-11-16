@@ -21,15 +21,22 @@ pub struct Rule {
 
 /// `module_settings`의 `idle_stop`·`idle_stop_minutes`·`idle_stop_grace_minutes`. 꺼져 있으면 None
 pub fn rule_of(instance: &crate::instance::ServerInstance) -> Option<Rule> {
-    if !super::setting_flag(instance, "idle_stop", false) {
-        return None;
-    }
+    enabled(instance).then(|| configured(instance))
+}
+
+/// `idle_stop` (기본 꺼짐)
+pub fn enabled(instance: &crate::instance::ServerInstance) -> bool {
+    super::setting_flag(instance, "idle_stop", false)
+}
+
+/// `idle_stop_minutes`·`idle_stop_grace_minutes` (꺼져 있어도 켜면 쓸 값)
+pub fn configured(instance: &crate::instance::ServerInstance) -> Rule {
     let minutes = |key: &str, default: u64, least: u64| {
         let value = instance.module_settings.get(key);
         let n = value.and_then(|v| v.as_u64().or_else(|| v.as_str()?.trim().parse().ok())).unwrap_or(default);
         n.clamp(least, MAX_MINUTES)
     };
-    Some(Rule { minutes: minutes("idle_stop_minutes", DEFAULT_MINUTES, 1), grace_minutes: minutes("idle_stop_grace_minutes", DEFAULT_GRACE_MINUTES, 0) })
+    Rule { minutes: minutes("idle_stop_minutes", DEFAULT_MINUTES, 1), grace_minutes: minutes("idle_stop_grace_minutes", DEFAULT_GRACE_MINUTES, 0) }
 }
 
 /// 인스턴스마다 (그 프로세스를 켠 시각, 0명이 되기 시작한 시각) (Unix 초)

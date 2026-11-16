@@ -1967,7 +1967,6 @@
     "import_none": "В Server-chan нет прав для переноса",
     "import_confirm": "Перенести уровни участников выше ({{count}}) на этот ПК?",
     "import_not_candidate": "{{member}}: не подлежит переносу. Список: `saba-chan-cli perm import <server>`.",
-    "import_partial": "Перенесено: {{ok}}, не удалось: {{failed}}",
     "imported": "Уровни перенесены в {{guild}}: {{count}}",
     "level": {
       "owner": "владелец",

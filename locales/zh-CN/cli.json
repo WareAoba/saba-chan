@@ -1603,7 +1603,6 @@
     "import_none": "Server-chan 上没有可导入的权限",
     "import_confirm": "将上面 {{count}} 人的等级导入此电脑吗？",
     "import_not_candidate": "{{member}}：不在可导入对象中。请用 `saba-chan-cli perm import <server>` 查看对象。",
-    "import_partial": "已导入 {{ok}} 人，{{failed}} 人失败",
     "imported": "已导入 {{guild}} 的 {{count}} 人的等级",
     "level": {
       "owner": "所有者",

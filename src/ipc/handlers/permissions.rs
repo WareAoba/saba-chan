@@ -10,7 +10,7 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
-use serde_json::{Map, Value};
+use serde_json::{json, Map, Value};
 
 fn invalid(code: &str) -> Response {
     super::error(StatusCode::BAD_REQUEST, code, format!("Invalid permission change: {}", code))
@@ -22,8 +22,15 @@ async fn view(state: &IPCServer, guild_id: &str) -> Value {
     NodePermissions::from_node(node).to_view(guild_id, node)
 }
 
-/// 바꾸기 여러 건을 한 번에 적용한다 (하나라도 틀리면 아무것도 저장하지 않는다)
+/// 바꾸기 여러 건을 한 번에 적용하고 바뀐 권한을 답한다 (하나라도 틀리면 아무것도 저장하지 않는다)
 async fn change(state: &IPCServer, guild_id: &str, changes: Vec<Change>) -> Response {
+    match save(state, guild_id, changes).await {
+        Ok(()) => Json(view(state, guild_id).await).into_response(),
+        Err(r) => r,
+    }
+}
+
+async fn save(state: &IPCServer, guild_id: &str, changes: Vec<Change>) -> Result<(), Response> {
     let result = state
         .config_store
         .update_node_settings(guild_id, |node| {
@@ -43,9 +50,9 @@ async fn change(state: &IPCServer, guild_id: &str, changes: Vec<Change>) -> Resp
         })
         .await;
     match result {
-        Ok(Ok(())) => Json(view(state, guild_id).await).into_response(),
-        Ok(Err(code)) => invalid(code),
-        Err(e) => super::error(StatusCode::INTERNAL_SERVER_ERROR, "save_failed", e.to_string()),
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(code)) => Err(invalid(code)),
+        Err(e) => Err(super::error(StatusCode::INTERNAL_SERVER_ERROR, "save_failed", e.to_string())),
     }
 }
 
@@ -136,6 +143,56 @@ pub async fn set_member(
 /// DELETE /api/permissions/:guildId/members/:discordId (기본 레벨로)
 pub async fn remove_member(State(state): State<IPCServer>, Path((guild_id, discord_id)): Path<(String, String)>) -> Response {
     change(&state, &guild_id, vec![Change::Member { discord_id, level: None }]).await
+}
+
+/// 릴레이에 남은 부여값 중 가져올 후보 (`chat::permissions::import_candidates`)
+async fn candidates(state: &IPCServer, guild_id: &str) -> Result<Vec<Value>, Response> {
+    let relay_members = super::relay::legacy_members(state, guild_id).await?;
+    let bot = state.config_store.get_bot_config().await;
+    Ok(crate::chat::permissions::import_candidates(bot.node_settings.get(guild_id), &relay_members))
+}
+
+/// GET /api/permissions/:guildId/import — 가져오기 후보 `{success, candidates:[{id, level, username?, displayName?, …}]}`
+/// (릴레이 항목 그대로). 릴레이를 읽지 못하면 그 오류
+pub async fn import_candidates(State(state): State<IPCServer>, Path(guild_id): Path<String>) -> Response {
+    match candidates(&state, &guild_id).await {
+        Ok(candidates) => Json(json!({ "success": true, "candidates": candidates })).into_response(),
+        Err(r) => r,
+    }
+}
+
+/// POST /api/permissions/:guildId/import `{members:[id]}` — 고른 후보를 릴레이에 남은 레벨로 한 번에 저장한다.
+/// 후보를 지금 다시 읽어 판단하고, 후보가 아닌 멤버가 있으면 아무것도 바꾸지 않고 400 `not_candidate`(`members`: 그 id)로 답한다.
+/// 답은 권한 보기에 `imported:[{id, level}]`를 더한 것
+pub async fn import_members(State(state): State<IPCServer>, Path(guild_id): Path<String>, Json(body): Json<Value>) -> Response {
+    let Some(chosen) = body.get("members").and_then(Value::as_array).and_then(|a| a.iter().map(|v| v.as_str().map(str::to_string)).collect::<Option<Vec<_>>>()) else {
+        return invalid("invalid_body");
+    };
+    let candidates = match candidates(&state, &guild_id).await {
+        Ok(c) => c,
+        Err(r) => return r,
+    };
+    let changes = match crate::chat::permissions::import_changes(&candidates, &chosen) {
+        Ok(changes) => changes,
+        Err(missing) => {
+            let mut failure = crate::service::Failure::coded(StatusCode::BAD_REQUEST, "not_candidate", format!("Not an import candidate: {}", missing.join(", ")));
+            failure.body["members"] = json!(missing);
+            return failure.into_response();
+        }
+    };
+    let imported: Vec<Value> = changes
+        .iter()
+        .filter_map(|c| match c {
+            Change::Member { discord_id, level } => Some(json!({ "id": discord_id, "level": level })),
+            _ => None,
+        })
+        .collect();
+    if let Err(r) = save(&state, &guild_id, changes).await {
+        return r;
+    }
+    let mut body = view(&state, &guild_id).await;
+    body["imported"] = json!(imported);
+    Json(body).into_response()
 }
 
 #[cfg(test)]

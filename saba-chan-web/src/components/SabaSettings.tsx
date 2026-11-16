@@ -19,8 +19,6 @@ export interface SabaValues {
 }
 
 const GAME_CHAT_MODES = ['off', 'all', 'keyword'];
-/** 'true'·'false' 글자로 저장된 값도 있다. 기본값은 데몬과 같다 (크래시 재시작 켜짐, 원인 모를 종료 꺼짐) */
-const asFlag = (v: unknown, dflt: boolean) => (v === true || v === 'true' ? true : v === false || v === 'false' ? false : dflt);
 
 /** 저장된 사바쨩 칸 값 (GUI useServerSettingsStore 와 같은 자리에서 읽는다) */
 export function sabaValues(server: Partial<Server> | ApiBody | null | undefined): SabaValues {
@@ -30,8 +28,9 @@ export function sabaValues(server: Partial<Server> | ApiBody | null | undefined)
         stop_timeout: ms.stop_timeout == null ? '' : String(ms.stop_timeout),
         game_chat: server?.game_chat || 'off',
         game_chat_keyword: server?.game_chat_keyword || '',
-        auto_restart: asFlag(ms.auto_restart, true),
-        restart_on_unknown_exit: asFlag(ms.restart_on_unknown_exit, false),
+        // 데몬이 실제로 쓰는 값 (서버 정보 effective). 싣지 않는 예전 데몬이면 GUI처럼 끈 것만 끔으로 본다
+        auto_restart: server?.effective?.auto_restart !== false,
+        restart_on_unknown_exit: server?.effective?.restart_on_unknown_exit === true,
         controllers_only: server?.controllers_only === true,
     };
 }

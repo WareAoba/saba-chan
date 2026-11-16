@@ -1278,7 +1278,6 @@
     "import_none": "No permissions to import from Server-chan",
     "import_confirm": "Import the levels of the {{count}} member(s) above into this PC?",
     "import_not_candidate": "{{member}}: not importable. See the targets with `saba-chan-cli perm import <server>`.",
-    "import_partial": "{{ok}} imported, {{failed}} failed",
     "imported": "Levels of {{count}} member(s) imported into {{guild}}",
     "level": {
       "owner": "owner",

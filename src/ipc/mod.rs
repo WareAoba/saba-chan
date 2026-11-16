@@ -310,7 +310,8 @@ pub struct ServerInfo {
     /// 모듈 설정 칸마다 저장된 값 (0.1.14-beta.2~): 공통 칸(`constants::INSTANCE_FIELDS`)은 인스턴스 칸, 나머지는 `module_settings`.
     /// 값이 없는 칸은 빠진다. 화면은 어느 쪽이 진짜인지 고르지 않고 이것을 읽는다 (`instance::stored_settings`)
     #[serde(default)]
-    pub stored: serde_json::Map<String, serde_json::Value>,
+    pub stored: serde_json::Map<String, serde_json::Value>,    /// 자동 재시작·자동 정지·응답 없음 감시에 데몬이 실제로 쓰는 값 (`supervisor::Effective`). 화면은 기본값을 따로 두지 않고 이것을 칸 값으로 쓴다
+    pub effective: crate::supervisor::Effective,
 }
 
 /// 포트 충돌 요약 (서버 목록 API에서 반환)
@@ -890,6 +891,7 @@ impl IPCServer {
             .route("/api/instance/{id}/rename", post(handlers::instance::rename_instance))
             .route("/api/instance/{id}", get(handlers::instance::get_instance).delete(handlers::instance::delete_instance).patch(handlers::instance::update_instance_settings))
             .route("/api/instance/{id}/launch-preview", post(handlers::instance::launch_preview))
+            .route("/api/instance/{id}/port-conflicts", post(handlers::instance::draft_port_conflicts))
             // ── Provision progress ──
             .route("/api/provision-progress/{name}", get(handlers::instance::get_provision_progress).delete(handlers::instance::dismiss_provision_progress))
             // ── Server update ──
@@ -975,6 +977,10 @@ impl IPCServer {
                 get(handlers::permissions::get_command_board),
             )
             .route(
+                "/api/permissions/{guild_id}/import",
+                get(handlers::permissions::import_candidates).post(handlers::permissions::import_members),
+            )
+            .route(
                 "/api/permissions/{guild_id}/members/{discord_id}",
                 axum::routing::put(handlers::permissions::set_member).delete(handlers::permissions::remove_member),
             )
@@ -1032,7 +1038,6 @@ impl IPCServer {
             .route("/api/relay/host/{host_id}/status", get(handlers::relay::check_host_status))
             .route("/api/relay/host/{host_id}/nodes", get(handlers::relay::list_host_nodes))
             .route("/api/relay/node/{guild_id}/members", get(handlers::relay::list_node_members))
-            .route("/api/relay/node/{guild_id}/legacy-members", get(handlers::relay::list_node_legacy_members))
             .route(
                 "/api/relay/node/{guild_id}/channels",
                 get(handlers::relay::get_node_channels).put(handlers::relay::put_node_channels),

@@ -594,6 +594,9 @@ export function createApi({
             if (extraArgs !== undefined && extraArgs !== null) body.extra_args = extraArgs;
             return call('post', `/api/instance/${encodeURIComponent(id)}/launch-preview`, body, 15000);
         },
+        // 고치는 중인 설정 초안의 포트가 다른 서버와 겹치는지 (데몬이 판정, 아무것도 저장하지 않는다)
+        instancePortConflicts: (id: string, settings: ApiBody) =>
+            call('post', `/api/instance/${encodeURIComponent(id)}/port-conflicts`, { settings }),
         // 초기화가 지울 것 (범위마다 지금 있는 항목과 크기). 모듈이 알려 주지 않으면 error_code not_supported
         instanceResetPreview: (instanceId: string) => call('get', `/api/instance/${encodeURIComponent(instanceId)}/server/reset`),
         instanceResetServer: (instanceId: string, body: { scope?: string; backup?: boolean } = {}) =>
@@ -1049,6 +1052,11 @@ export function createApi({
             call('get', `${permPath(guildId)}/commands${queryString({ locale: locale || undefined })}`),
         permissionsSetMember: (guildId: string, discordId: string, level: string | number) => call('put', permPath(guildId, discordId), { level }),
         permissionsRemoveMember: (guildId: string, discordId: string) => call('delete', permPath(guildId, discordId)),
+        // 가져오기 후보: 데몬이 릴레이에 남은 부여값에서 고른다 `{candidates:[{id, level, username?, displayName?}]}`
+        permissionsImportCandidates: (guildId: string) => call('get', `${permPath(guildId)}/import`, undefined, 15000),
+        // 고른 후보를 데몬이 한 번에 저장한다 (후보가 아닌 id가 있으면 400 not_candidate, 아무것도 바꾸지 않는다)
+        permissionsImport: (guildId: string, discordIds: string[]) =>
+            call('post', `${permPath(guildId)}/import`, { members: discordIds }, 15000),
         sandboxListUnisolated: () => call('get', '/api/sandbox/unisolated'),
         // 동의 기록은 셸이 네이티브 확인 창을 띄운 뒤에 보낸다. 취소하면 {success:false, error_code:'canceled'}
         sandboxAllowUnisolated: (component: string) => invoke('sandbox_consent_allow', { kind: 'unisolated', component }),
@@ -1133,8 +1141,6 @@ export function createApi({
             // 데몬이 디스코드 전체 목록을 15초까지 기다린 뒤 폴백한다
             return call('get', `/api/relay/node/${encodeURIComponent(guildId)}/members?withStatus=1${qs}`, undefined, 20000);
         },
-        // 릴레이에 남은 권한 부여값 `[{id, username, displayName, level}]` (가져오기 후보)
-        relayListLegacyMembers: (guildId: string) => call('get', `/api/relay/node/${encodeURIComponent(guildId)}/legacy-members`, undefined, 15000),
         relayBotInvite: (relayUrl: string) => call('get', `/api/relay/bot-invite${relayQs(relayUrl)}`, undefined, 8000),
         relayNodeChannels: (guildId: string) =>
             call('get', `/api/relay/node/${encodeURIComponent(guildId)}/channels`, undefined, 15000),
