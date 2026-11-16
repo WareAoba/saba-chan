@@ -838,7 +838,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 
 | # | 위치 | 내용 | 원칙 |
 |---|---|---|---|
-| 9 | `M:palworld/lifecycle.py`, `zomboid`/`palworld` `install_server` | 모듈이 플러그인(`extensions.*`)을 Python import로 직접 사용. 활성 여부도 스스로 `SABA_ENABLED_EXTENSIONS`로 확인. 데몬은 import 가드로 꺼진 익스텐션 import만 막는다 (`D:src/plugin/mod.rs`) | 플러그인 기능 주입은 데몬이 중개해야 하는데, 모듈과 플러그인이 직접 결합 |
+| 9 | `M:palworld/lifecycle.py`(ue4-ini), `zomboid`/`palworld` `install_server`(steamcmd), `M:terraria/lifecycle.py` `_xna()`(xna) | 모듈이 플러그인(`extensions.*`)을 Python import로 직접 사용. 데몬은 import 가드로 꺼진 익스텐션 import만 막는다 (`D:src/plugin/mod.rs`) | 플러그인 기능 주입은 데몬이 중개해야 하는데, 모듈과 플러그인이 직접 결합 |
 | 10 | `modules/daemon_rcon.py`, palworld, zomboid 콜백 | 모듈이 데몬 HTTP API를 역호출(rcon/rest/stdin). 토큰과 `SABA_IPC_URL`을 쓴다 | "매뉴얼"인 모듈이 능동 클라이언트로 동작. 경계가 모호함 |
 
 ---

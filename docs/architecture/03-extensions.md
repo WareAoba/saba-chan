@@ -38,7 +38,7 @@
 
 | key | Rust 타입 | 필수/기본값 | 코드에서 실제 사용 여부 |
 |---|---|---|---|
-| `schema_version` | `u32` | `0` | `parse_manifest()`(`ext/manifest.rs`): `1`이면 모르는 키·발화되지 않는 hook·없는 python_modules 참조가 오류, `0`이면 같은 문제를 경고로만 남기고, 더 큰 값은 거부한다. 현재 세 manifest(steamcmd·ue4_ini·xna) 모두 `1`이다. |
+| `schema_version` | `u32` | `0` | `parse_manifest()`(`ext/manifest.rs`): `1`이면 모르는 키·발화되지 않는 hook·없는 python_modules 참조가 오류, `0`이면 같은 문제를 경고로만 남기고, 더 큰 값은 거부한다. 현재 네 manifest(desktop_pet·steamcmd·ue4_ini·xna) 모두 `1`이다. |
 | `id` | `String` | **필수** | discovered 맵의 키. 영문·숫자·`-`·`_`만 허용한다(`ext/manifest.rs`). 스캔 시 폴더 이름이 id이거나 하이픈을 밑줄로 바꾼 이름이어야 한다(`ext/discovery.rs`). `mount()`는 `manifest.id == ext_id`를 검사한다(`ext/discovery.rs`). |
 | `name` | `String` | **필수** | 목록과 로그 |
 | `version` | `String` | **필수** | 업데이트 비교(SemVer, 파싱 실패 시 문자열 비교 `ext/remote.rs`), 익스텐션 간 의존성 버전 검사 |
@@ -63,7 +63,7 @@
 
 - **`HookBinding`** (`ext/manifest.rs`): `module: String`(필수, `python_modules`의 키), `function: String`(필수), `condition: Option<String>`.
 - **`GuiManifest`** (`ext/manifest.rs`): `bundle`, `styles`, `assets: Option<String>`, `builtin: Option<bool>`, `slots: HashMap<String, Value>`.
-  - `assets`(saba-core 0.1.15-0): 번들이 처음 쓸 때 받는 정적 파일(그림 등) 폴더. 익스텐션 폴더 기준 상대 경로다(예: `gui/assets`). 데몬이 `GET /api/extensions/:id/gui/assets/*path`로 번들과 같은 조건에 서빙하고(4.1 보안), 번들은 `host.assetUrl(이름)`으로 받는다(4.5). 그림을 번들에 data URI로 넣지 않아도 되어, 번들이 작아지고 쓰지 않는 그림을 읽지 않는다. 이 키를 모르는 데몬은 schema v1 manifest를 모르는 키로 거부하므로, 쓰는 익스텐션은 `min_app_version`을 이 버전 이상으로 둔다. 목록 응답의 `gui`에는 선언했을 때만 실린다.
+  - `assets`(saba-core 0.1.14-beta.2): 번들이 처음 쓸 때 받는 정적 파일(그림 등) 폴더. 익스텐션 폴더 기준 상대 경로다(예: `gui/assets`). 데몬이 `GET /api/extensions/:id/gui/assets/*path`로 번들과 같은 조건에 서빙하고(4.1 보안), 번들은 `host.assetUrl(이름)`으로 받는다(4.5). 그림을 번들에 data URI로 넣지 않아도 되어, 번들이 작아지고 쓰지 않는 그림을 읽지 않는다. 이 키를 모르는 데몬은 schema v1 manifest를 모르는 키로 거부하므로, 쓰는 익스텐션은 `min_app_version`을 이 버전 이상으로 둔다. 목록 응답의 `gui`에는 선언했을 때만 실린다.
   - `builtin`은 daemon에서 읽지 않는다.
   - `slots`는 slot id → 표시 정보 `{label?, icon?, description?}`이다(옛 모양인 컴포넌트 이름 문자열도 받고 빈 표시 정보로 본다). 데몬은 검사하지 않고 `/api/extensions`의 `gui`에 그대로 싣는다. GUI가 slot 표와 대조하고, 창마다 읽을 번들을 고르고, 탭·버튼·카드 이름을 정한다(4.2). `bundle` 없이 `slots`만 써도 된다(설정 탭 자동 폼).
 - **`CliManifest`** (`ext/manifest.rs`): `slots: HashMap<String, Value>`. 데이터 slot 선언(4.3). 값은 항목 하나 또는 배열이다.
@@ -80,8 +80,8 @@
 
 ### 1.4 코드는 지원하는데 실제 manifest에서 안 쓰는 것
 
-- `gui` 전체: 현재 두 익스텐션 모두 `gui`가 없다. CSS 서빙 경로(`handlers/extension.rs`)와 번들 경로가 있지만 쓰는 익스텐션이 없다.
-- `commands`, `priority`, `i18n_dir`, `config_fields`, `cli`: 현재 manifest에서 쓰지 않는다.
+- `gui`·`i18n_dir`: desktop_pet만 쓴다(`gui.bundle`·`styles`·`assets`·`slots`, `i18n_dir = "locales"`). steamcmd·ue4_ini·xna에는 없다.
+- `commands`, `priority`, `config_fields`, `cli`: 현재 manifest에서 쓰지 않는다.
 - `dependencies`의 비-익스텐션 컴포넌트 키: HTTP enable은 `enable()`이 `{"saba-core": APP_VERSION}`을 넘기므로(`ext/enable.rs`) `saba-core` 버전 요구는 검사된다. 그 밖의 컴포넌트 키(`gui` 등)에 버전을 쓰면 설치 버전을 모르므로 활성화할 수 없다(`ext/enable.rs`).
 - `condition` 패턴은 `instance.ext_data.<key>` 하나뿐이다(`ext/hooks.rs`). 그 외 패턴은 warn을 남기고 false로 처리한다.
 
