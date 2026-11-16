@@ -292,7 +292,7 @@ PC 주인이 디스코드에서 받은 일회용 링크로 브라우저(사바�
 - 사바 스토리지 목록 캐시(`ipc/store_cache.rs`): `/api/modules/manifest`·`/api/extensions/manifest`는 채널별로 받아 둔 카탈로그로 바로 답한다. 30분이 지난 목록은 가진 것으로 답하고 뒤에서 새로 받으며(실패하면 가진 것을 둔다), 채널이 바뀌었거나 `refresh=true`면 받을 때까지 기다린다. 업데이트 주기 확인(`spawn_update_scheduler`) 때마다 뒤에서 새로 받는다. 카탈로그 meta의 `icon`(GitHub raw 주소)은 응답에서 빼고 `has_icon`만 싣는다. 아이콘은 목록을 받을 때 미리 받아 데이터 폴더 `cache/store-icons/<키>-<주소 해시>.png`에 두고(PNG·1MB 이하만, 주소가 바뀌면 지난 파일을 지운다) `GET /api/store/icons/:key`로 준다. 설치·업데이트는 이 캐시를 쓰지 않고 그때 새로 받는다.
 - `/api/modules/manifest/:id/install`은 같은 manifest의 `module-<id>`를 R2에서 받아 SHA-256을 확인하고(`download_verified`), staging에 푼 뒤 데몬이 읽을 수 있는 모듈일 때만(`load_module_dir`) `modules/<id>`와 바꾸고(기존 폴더는 바꾼 뒤에 지운다) refresh한다. `id`의 `..`, `/`, `\`는 거부한다. 받은 zip과 staging은 요청마다 다른 이름(`.tmp-module-<id>-<uuid>.zip`, `.staging-<id>-<uuid>`)이고, 같은 모듈의 설치·제거(`DELETE /api/modules/:id`)·업데이트 적용(`POST /api/updates/apply`의 모듈)은 한 번에 하나만 한다(id는 대소문자를 가리지 않는다). 설치는 잠금을 쥔 채 따로 돌아, 요청이 끊겨도 받은 파일을 치우고 잠금을 푸는 일이 작업 끝에 함께 일어난다. 다른 요청이 진행 중이면 409 `module_busy`다. 제거는 그 모듈을 쓰는 서버가 켜져 있으면 409 `module_in_use`로 거절한다.
 
-#### 인스턴스 (handlers/instance.rs)
+#### 인스턴스 (handlers/instance/mod.rs)
 
 | Method | Path | Handler | 요청 | 응답 |
 |---|---|---|---|---|
@@ -978,7 +978,7 @@ REST 자격증명 조회의 `get_credentials` 재진입은 바깥 호출의 자�
   - `check-update`: 없는 인스턴스는 404, 설치 방식 익스텐션이 설치하지 않은 인스턴스는 `reason:"update_unsupported"`, `extension_data`가 비어 있으면 `update_available:false`.
 - 인증은 `tests/api_contract.rs`가 실제 서버로 모든 라우트가 토큰 없이 401인지 확인한다. 단일 인스턴스는 `tests/single_instance.rs`, 릴레이 에이전트 왕복은 `tests/relay_agent_e2e.rs`가 본다.
 
-## 10. 시스템 모니터 (`system_monitor.rs`)
+## 10. 시스템 모니터 (`system_monitor/mod.rs`)
 
 - `GET /api/system/metrics`(`ipc/handlers/system.rs`)가 부를 때만 표본을 뜬다. 백그라운드 루프는 없고, 아무 클라이언트도 보지 않으면 비용이 없다. 0.9초 안의 재요청은 직전 표본을 준다(`MIN_SAMPLE_INTERVAL`). 직전 표본이 10초보다 오래됐으면 짧은 간격으로 두 번 떠서 비율을 만든다(`STALE_AFTER`).
 - 인스턴스 몫 = `tracker.get_pid`의 PID와 그 자손 프로세스의 합(`attribute`). saba-runner 자체는 인스턴스 몫이 아니다. `cpu_percent`는 기계 전체 기준(코어 수로 나눔).
