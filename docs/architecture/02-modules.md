@@ -607,7 +607,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 
 이력 근거: 공개 태그 `test23`(`f493b78e`, 코어 `0.1.1`)에 `i18n.I18n`이 있다. 기존 통신·설정·프로세스 함수는 `97db8a0e`(`0.1.2` 릴리스 커밋)에 있다. 루프백 함수는 `1862c5c0`(`0.1.7` 릴리스 커밋)에는 없고 `77333cab`(`0.1.8` 릴리스 커밋)에 있다. 공개 origin에는 `test`~`test23` 태그만 있다. 따라서 `0.1.2`·`0.1.8` 값은 릴리스 커밋에 근거한 보수적 값이며 최초 공개 배포 태그로 확정한 값은 아니다.
 
-`saba_audit.py`는 `daemon_rcon`·`i18n`의 import와 별칭 사용을 표와 비교한다. 선언이 없거나 낮으면 `sdk_version` finding으로 실패하며 함수 이름·현재 선언·필요 버전을 알린다. 모듈은 `[module.dependencies] saba-core = ">=<버전>"`으로 최소 버전을 선언한다. 범위·상한은 지원하지 않는다. 익스텐션 감사의 기존 호환성은 manifest의 코어 의존성도 같은 방법으로 읽어 유지한다.
+`saba_audit.py`는 `daemon_rcon`·`i18n`의 import와 별칭 사용을 표와 비교한다. 선언이 없거나 낮으면 `sdk_version` finding으로 실패하며 함수 이름·현재 선언·필요 버전을 알린다. 버전은 SemVer 순서로 비교한다: 미리보기 꼬리표도 조각마다 견주므로 `0.1.14-beta.2` 선언은 `0.1.14-beta.4` 이름을 쓰지 못한다(`-0`은 그 판의 모든 미리보기보다 앞선다). 모듈은 `[module.dependencies] saba-core = ">=<버전>"`으로 최소 버전을 선언한다. 범위·상한은 지원하지 않는다. 익스텐션 감사의 기존 호환성은 manifest의 코어 의존성도 같은 방법으로 읽어 유지한다.
 
 데몬·CLI 감사는 Rust가 TOML 선언을 읽어 검사기에 넘긴다. 데몬이 쓰는 Python은 3.11 이상이다(01 §Python). 단독 `saba_audit.py`로 `module.toml`을 읽으려면 `tomllib`이 필요하다. Python 3.10에서 이 단독 실행은 명확히 실패하며 `saba-core module audit` 사용을 안내한다. 선언 누락 finding으로 잘못 바꾸지 않는다.
 

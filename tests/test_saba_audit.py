@@ -59,6 +59,17 @@ class SdkAuditTests(unittest.TestCase):
     def test_matching_minimum_version_passes(self):
         self.assertEqual(self.scan("from daemon_rcon import safe_join, daemon_rest\nfrom i18n import I18n\n", ">=0.1.10"), [])
 
+    def test_prerelease_numbers_are_compared(self):
+        # 0.1.14-beta.4에 생긴 도우미를 0.1.14-beta.2로 선언하면 그 판 데몬에는 없다
+        findings = self.scan("from daemon_rcon import setting_default\n", ">=0.1.14-beta.2")
+        self.assertEqual(len(findings), 1, findings)
+        self.assertIn("0.1.14-beta.4", findings[0]["detail"])
+        for minimum in (">=0.1.14-beta.4", ">=0.1.14-beta.10", ">=0.1.14-rc.1", ">=0.1.14"):
+            self.assertEqual(self.scan("from daemon_rcon import setting_default\n", minimum), [], minimum)
+        # `-0`은 그 판의 모든 미리보기보다 앞선다
+        self.assertEqual(len(self.scan("from daemon_rcon import chat_reply\n", ">=0.1.13")), 1)
+        self.assertEqual(self.scan("from daemon_rcon import chat_reply\n", ">=0.1.14-beta.1"), [])
+
     def test_star_import_checks_names_that_are_used(self):
         findings = self.scan("from daemon_rcon import *\nsafe_join('.', 'world')\n", ">=0.1.8")
         self.assertEqual(len(findings), 1, findings)
