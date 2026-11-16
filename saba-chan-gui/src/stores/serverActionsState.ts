@@ -1,4 +1,5 @@
-import { useUIStore } from './useUIStore';
+import { t } from './serverI18n';
+import { setModal, useUIStore } from './useUIStore';
 
 /** 화면이 버튼을 눌러 낙관적으로 바꿔 둔 상태 */
 interface OptimisticStatus {
@@ -33,3 +34,22 @@ export const setServerConsole = (open: typeof openConsole) => {
 };
 
 export const ui = () => useUIStore.getState();
+
+/** 켜지 않은 익스텐션이 필요하다: 익스텐션 설정을 열지 묻는다 (시작·정지·만들기가 같이 쓴다) */
+export function askExtensionRequired(message: string) {
+    setModal({
+        type: 'question',
+        title: t('servers.extension_required_title'),
+        message,
+        buttons: [
+            {
+                label: t('servers.extension_open_settings'),
+                action: () => {
+                    setModal(null);
+                    ui().openSettings('extensions');
+                },
+            },
+            { label: t('modals.cancel'), action: () => setModal(null) },
+        ],
+    });
+}

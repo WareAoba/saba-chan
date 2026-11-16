@@ -6,7 +6,7 @@ import { controlOutcome, installFailure } from '../utils/serverControl';
 import { gameNameOf } from '../utils/serverView';
 import { blockedText, canAskUnisolated } from '../utils/trustNotice';
 import { updateRequiredText } from '../utils/updateRequired';
-import { internal, openConsole, ui } from './serverActionsState';
+import { askExtensionRequired, internal, openConsole, ui } from './serverActionsState';
 import { t, translateError } from './serverI18n';
 import type { Server, ServerState } from './useServerStore';
 import { setModal, setProgressBar, useUIStore } from './useUIStore';
@@ -220,29 +220,7 @@ export function serverPowerActions(get: () => ServerState, fetchServers: () => P
             // ── action_required: extension_required ──
             if (result.action_required === 'extension_required') {
                 revertOptimistic(id);
-                setModal({
-                    type: 'question',
-                    title: t('servers.extension_required_title', { defaultValue: 'Extension Required' }),
-                    message:
-                        result.message ||
-                        t('servers.extension_required_message', {
-                            name,
-                            defaultValue: `Server '${name}' requires an extension that is not enabled.`,
-                        }),
-                    buttons: [
-                        {
-                            label: t('servers.extension_open_settings', { defaultValue: 'Open Extension Settings' }),
-                            action: () => {
-                                setModal(null);
-                                ui().openSettings('extensions');
-                            },
-                        },
-                        {
-                            label: t('modals.cancel'),
-                            action: () => setModal(null),
-                        },
-                    ],
-                });
+                askExtensionRequired(result.message || t('servers.extension_required_message', { name }));
                 return;
             }
 
@@ -466,31 +444,7 @@ export function serverPowerActions(get: () => ServerState, fetchServers: () => P
                 // ── extension_required 처리 ──
                 if (result.action_required === 'extension_required') {
                     undo();
-                    setModal({
-                        type: 'question',
-                        title: t('servers.extension_required_title', { defaultValue: 'Extension Required' }),
-                        message:
-                            result.message ||
-                            t('servers.extension_required_message', {
-                                name,
-                                defaultValue: `Server '${name}' requires an extension that is not enabled.`,
-                            }),
-                        buttons: [
-                            {
-                                label: t('servers.extension_open_settings', {
-                                    defaultValue: 'Open Extension Settings',
-                                }),
-                                action: () => {
-                                    setModal(null);
-                                    ui().openSettings('extensions');
-                                },
-                            },
-                            {
-                                label: t('modals.cancel'),
-                                action: () => setModal(null),
-                            },
-                        ],
-                    });
+                    askExtensionRequired(result.message || t('servers.extension_required_message', { name }));
                     return;
                 }
 
