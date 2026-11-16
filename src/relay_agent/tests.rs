@@ -1211,8 +1211,7 @@ async fn the_heartbeat_matches_the_contract_sample_shared_with_the_relay() {
     assert!(session.heartbeat_once().await, "a newly linked guild is acknowledged at once");
     session.heartbeat_once().await;
     let sent = shared.lock().unwrap().0.clone();
-    // moduleDetails: 새 릴레이는 받지 않지만 운영 중인 릴레이 스키마가 요구한다 (`metadata`의 주석)
-    assert_eq!(off_contract(&sent[0], &[&sample["request"]], &["metadata.moduleDetails"]), vec![], "{}", sent[0]);
+    assert_eq!(off_contract(&sent[0], &[&sample["request"]], &[]), vec![], "{}", sent[0]);
     assert!(sent[0]["metadata"]["permissions"][guild].is_object() && sent[0]["metadata"]["actions"].as_array().is_some_and(|a| !a.is_empty()));
     // 답의 공인 주소와 새로 묶인 길드를 읽었다: 다음 하트비트가 그 연결 id로 확인 응답을 싣는다
     assert_eq!(agent.lock().status.seen_address.as_deref(), sample["response"]["address"].as_str());
@@ -1281,8 +1280,8 @@ async fn heartbeat_leaves_out_what_the_relay_drops() {
     let meta = session.metadata().await;
     assert!(meta.get("features").is_none());
     assert_eq!(meta["botConfig"].as_object().unwrap().keys().collect::<Vec<_>>(), vec!["prefixes"]);
-    // 2026-11-12 전 릴레이 스키마는 줄이지 않은 하트비트에 이 둘을 요구한다
-    assert!(meta["modules"].is_array() && meta["moduleDetails"].is_object());
+    // 줄이지 않은 하트비트는 모듈 목록을 싣는다. moduleDetails는 읽는 곳이 없어 싣지 않는다
+    assert!(meta["modules"].is_array() && meta.get("moduleDetails").is_none());
 }
 
 /// 새로 묶인 길드를 적용했으면 다음 하트비트가 릴레이가 준 연결 id를 확인 응답(`linkedGuildsAckIds`)으로 싣는다.
