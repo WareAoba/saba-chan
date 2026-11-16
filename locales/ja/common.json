@@ -45,6 +45,7 @@
   },
   "server": {
     "list_failed": "サーバーリストの取得に失敗しました (HTTP {{status}}): {{error}}",
+    "auth_failed": "認証に失敗しました。デーモンのトークンが変わった可能性があります。",
     "start_failed": "起動に失敗しました: {{error}}",
     "stop_failed": "停止に失敗しました: {{error}}",
     "status_check_failed": "ステータスチェックに失敗しました (HTTP {{status}}): {{error}}",

@@ -263,7 +263,7 @@ export function createApi({
                 if (error.response) {
                     const { status, data } = error.response;
                     // 401 재시도(토큰 다시 읽기)는 daemon_request가 이미 했다
-                    if (status === 401) return { error: 'Authentication failed. Daemon token may have changed.' };
+                    if (status === 401) return { error: t('server.auth_failed') };
                     return { error: t('server.list_failed', { status, error: data?.error || error.message }) };
                 }
                 return connectionError(error);

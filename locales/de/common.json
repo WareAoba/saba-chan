@@ -45,6 +45,7 @@
   },
   "server": {
     "list_failed": "Abrufen der Serverliste fehlgeschlagen (HTTP {{status}}): {{error}}",
+    "auth_failed": "Authentifizierung fehlgeschlagen. Das Daemon-Token hat sich möglicherweise geändert.",
     "start_failed": "Start fehlgeschlagen: {{error}}",
     "stop_failed": "Stop fehlgeschlagen: {{error}}",
     "status_check_failed": "Statusprüfung fehlgeschlagen (HTTP {{status}}): {{error}}",
