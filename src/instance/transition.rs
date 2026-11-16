@@ -21,7 +21,8 @@ impl Kind {
 }
 
 /// 인스턴스마다 진행 중인 요청 (번호, 종류). 나중에 시작한 것이 뒤에 있다
-static ACTIVE: LazyLock<Mutex<HashMap<String, Vec<(u64, Kind)>>>> = LazyLock::new(Default::default);
+type Active = HashMap<String, Vec<(u64, Kind)>>;
+static ACTIVE: LazyLock<Mutex<Active>> = LazyLock::new(Default::default);
 static NEXT: AtomicU64 = AtomicU64::new(1);
 
 /// 진행 중 표시. 겹친 요청이 있으면 가장 나중에 시작한 것을 보인다 (재시작은 정지 → 시작으로 바뀐다).
