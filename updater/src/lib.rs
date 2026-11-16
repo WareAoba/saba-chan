@@ -329,6 +329,9 @@ pub struct ApplyComponentResult {
 /// 주기 확인 간격 (시간). 연결 여부와 상관없는 안전망이다
 pub const CHECK_EVERY_HOURS: u32 = 24;
 
+/// 앱(`PUT /api/updates/config`)에서 바꿀 수 있는 업데이트 설정 키. 나머지 칸은 데몬이 관리하는 상태다
+pub const SETTABLE_CONFIG_KEYS: [&str; 5] = ["enabled", "auto_download", "auto_apply", "relay_url", "channel"];
+
 /// 업데이트 설정
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
