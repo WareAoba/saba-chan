@@ -793,6 +793,9 @@ mod tests {
         assert_eq!(run("bad").await["rejected"], json!({ "reason": "bad" }));
         assert_eq!(run("worse").await["rejected"], json!({ "reason": null }));
         assert!(run("fine").await.get("rejected").is_none());
+        // 예약 실행기·공지·자동 강퇴가 쓰는 길도 거절을 실패로 본다
+        assert_eq!(crate::service::backup::run_command(&state, &id, "bad", Value::Null).await, Err("command_failed".to_string()));
+        assert_eq!(crate::service::backup::run_command(&state, &id, "fine", Value::Null).await, Ok(()));
     }
 
     /// 팔레트는 지금 보낼 수 있는 명령만 보여준다: 목록의 `ready`가 실제 실행 경로(`run_command`)와 같은 판정이어야 한다

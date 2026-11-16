@@ -325,7 +325,7 @@ async fn count_down(
             "schedule.warn",
             json!({ "instanceId": id, "instance": name, "action": task.action, "minutesLeft": minutes }),
         );
-        announce(state, id, &catalog.t(message_key, &[("minutes", &minutes.to_string())])).await;
+        let _ = announce(state, id, &catalog.t(message_key, &[("minutes", &minutes.to_string())])).await;
     }
     let wait = (fire - chrono::Local::now().naive_local()).to_std().unwrap_or_default();
     tokio::time::sleep(wait).await;
@@ -405,10 +405,9 @@ async fn run_task_now(state: &IPCServer, id: &str, task: &ScheduledTask, fire: c
             outcome
         }
         TaskAction::Announce if running => {
-            if announce(state, id, task.message.as_deref().unwrap_or_default()).await {
-                done()
-            } else {
-                failed(Some("command_failed".into()))
+            match announce(state, id, task.message.as_deref().unwrap_or_default()).await {
+                Ok(()) => done(),
+                Err(code) => failed(Some(code)),
             }
         }
         // 예고 시작 때 꺼져 있었어도 재시작 시각에 켜져 있으면 다시 시작한다 (정지와 같다)
@@ -460,24 +459,25 @@ async fn run_task_now(state: &IPCServer, id: &str, task: &ScheduledTask, fire: c
                     .and_then(|i| supervisor.module_loader.get_module(&i.module_name).ok())
                     .and_then(|m| save_command_of(&m.metadata))
             };
-            match cmd {
-                Some(cmd) if run_command(state, id, &cmd, json!({})).await => done(),
-                Some(_) => {
-                    tracing::warn!("Scheduled save of '{}' failed", id);
-                    failed(Some("command_failed".into()))
+            let Some(cmd) = cmd else { return skipped("save_unsupported") };
+            match run_command(state, id, &cmd, json!({})).await {
+                Ok(()) => done(),
+                Err(code) => {
+                    tracing::warn!("Scheduled save of '{}' failed: {}", id, code);
+                    failed(Some(code))
                 }
-                None => skipped("save_unsupported"),
             }
         }
         // 익스텐션 명령은 서버가 꺼져 있어도 돈다: 켜짐 여부는 명령 실행이 판단하고, 결과는 감사 로그에 남는다
         TaskAction::Command => {
             let name = task.command.as_deref().unwrap_or_default();
             let args = task.args.clone().map(Value::Object).unwrap_or(Value::Null);
-            if run_command(state, id, name, args).await {
-                done()
-            } else {
-                tracing::warn!("Scheduled command '{}' on '{}' failed", name, id);
-                failed(Some("command_failed".into()))
+            match run_command(state, id, name, args).await {
+                Ok(()) => done(),
+                Err(code) => {
+                    tracing::warn!("Scheduled command '{}' on '{}' failed: {}", name, id, code);
+                    failed(Some(code))
+                }
             }
         }
         TaskAction::Start => skipped("already_running"),
