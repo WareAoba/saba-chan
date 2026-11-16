@@ -1415,7 +1415,7 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
 
         // ── 바탕화면 오버레이 (익스텐션 slot Desktop.overlay, 셸 overlay.rs) ──
         // 잰 내용 크기(px)에 맞춰 셸이 아래 가운데 점을 지키며 창 크기를 맞추고 보인다
-        overlayFit: (width: number, height: number) => invoke('overlay_fit', { width, height }),
+        overlayFit: (width: number, height: number, dpr: number) => invoke('overlay_fit', { width, height, dpr }),
         // 우클릭: 셸이 펫 옆에 판(`?overlay-menu=1`)을 열거나 닫는다
         overlayMenu: () => invoke('overlay_menu'),
         // 판이 잰 내용 높이(px)에 맞춰 셸이 펫 옆에 놓고 보인다

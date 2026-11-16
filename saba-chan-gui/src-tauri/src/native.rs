@@ -180,10 +180,10 @@ pub fn tray_popup_fit(app: AppHandle, height: f64) {
 
 // ── 바탕화면 오버레이 (`overlay.rs`) ──
 
-/// 오버레이 렌더러가 잰 내용 크기(논리 px). 아래 가운데 점을 지키며 크기를 맞추고 보인다
+/// 오버레이 렌더러가 잰 내용 크기(논리 px)와 웹뷰 배율. 아래 가운데 점을 지키며 크기를 맞추고 보인다
 #[tauri::command]
-pub fn overlay_fit(app: AppHandle, width: f64, height: f64) {
-    crate::overlay::fit(&app, width, height);
+pub fn overlay_fit(app: AppHandle, width: f64, height: f64, dpr: f64) {
+    crate::overlay::fit(&app, width, height, dpr);
 }
 
 /// 펫을 우클릭했다: 펫 옆의 우클릭 판(`overlay-menu`)을 열거나 닫는다.
