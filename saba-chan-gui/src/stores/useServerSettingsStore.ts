@@ -213,6 +213,13 @@ export const useServerSettingsStore = create<ServerSettingsState>()((set, get) =
         set((s) => ({ settingsValues: typeof next === 'function' ? next(s.settingsValues) : next }));
     const setOpenedSettings = (next: Updater<SettingsValues>) =>
         set((s) => ({ openedSettings: typeof next === 'function' ? next(s.openedSettings) : next }));
+    /** 기본값을 보이는 칸 목록을 새 Set으로 바꾼다 (상태를 제자리에서 고치면 구독한 화면이 바뀐 줄 모른다) */
+    const editUnset = (change: (unset: Set<string>) => void) =>
+        set((s) => {
+            const unset = new Set(s.unsetSettings);
+            change(unset);
+            return { unsetSettings: unset };
+        });
 
     // ── handleOpenSettings ──
     // reload: 저장한 뒤 열린 화면 그대로 다시 읽는다 (보던 탭·접힘을 두고, 읽는 사이 고친 칸도 둔다)
@@ -285,7 +292,7 @@ export const useServerSettingsStore = create<ServerSettingsState>()((set, get) =
                 if (value === null) {
                     value = fieldValue(field.default) ?? '';
                     defaulted.add(field.name);
-                    get().unsetSettings.add(field.name);
+                    editUnset((u) => u.add(field.name));
                 }
                 internal.unconfirmedFields.add(field.name);
                 initial[field.name] = value;
@@ -333,7 +340,9 @@ export const useServerSettingsStore = create<ServerSettingsState>()((set, get) =
             setOpenedSettings(initial);
         }
         internal.openedUnset = new Set(get().unsetSettings);
-        for (const name of touched) get().unsetSettings.delete(name);
+        editUnset((u) => {
+            for (const name of touched) u.delete(name);
+        });
 
         if (!reload) {
             setSettingsActiveTab('general');
@@ -368,7 +377,7 @@ export const useServerSettingsStore = create<ServerSettingsState>()((set, get) =
                             internal.openedUnset.delete(field.name);
                         }
                         if (v === null || internal.touchedFields.has(field.name)) continue;
-                        get().unsetSettings.delete(field.name);
+                        editUnset((u) => u.delete(field.name));
                         patch[field.name] = v;
                     }
                     setSettingsValues((prev) => ({ ...prev, ...patch }));
@@ -459,7 +468,7 @@ export const useServerSettingsStore = create<ServerSettingsState>()((set, get) =
     // ── handleSettingChange ──
     const handleSettingChange = (fieldName: string, value: unknown) => {
         internal.touchedFields.add(fieldName);
-        get().unsetSettings.delete(fieldName);
+        editUnset((u) => u.delete(fieldName));
         setSettingsValues((prev) => ({ ...prev, [fieldName]: Array.isArray(value) ? value : String(value) }));
     };
 
@@ -488,7 +497,7 @@ export const useServerSettingsStore = create<ServerSettingsState>()((set, get) =
             return rest;
         });
         internal.touchedFields.delete(name);
-        if (internal.openedUnset.has(name)) get().unsetSettings.add(name);
+        if (internal.openedUnset.has(name)) editUnset((u) => u.add(name));
     };
 
     // ── handleInstallVersion ──
