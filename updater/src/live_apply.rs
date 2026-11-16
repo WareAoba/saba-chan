@@ -206,17 +206,7 @@ pub struct HttpProbe {
 
 impl HttpProbe {
     pub fn local() -> Self {
-        let port = std::env::var("SABA_IPC_PORT")
-            .ok()
-            .and_then(|p| p.parse::<u16>().ok())
-            .or_else(|| {
-                ConfigFile::default_location()
-                    .peek_section("gui")
-                    .get("ipcPort")
-                    .and_then(|v| v.as_u64())
-                    .and_then(|p| u16::try_from(p).ok())
-            })
-            .unwrap_or(crate::constants::DEFAULT_IPC_PORT);
+        let port = crate::config_file::ipc_port();
         Self::at(&format!("http://127.0.0.1:{}", port))
     }
 

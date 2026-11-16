@@ -34,7 +34,7 @@
    - 필터는 `RUST_LOG`이며 기본값은 `info`다.
    - CLI 모드는 CLI 대화형 셸이 터미널을 차지하므로 로그를 `<data_dir>/daemon.log` 파일로 보낸다(truncate, `main.rs`). 나머지 모드는 stderr와 `<data_dir>/logs/daemon.log`(이어 쓰기, 5 MiB를 넘으면 `daemon.log.1`로 넘김, `daemon_log::LogFile`)에 함께 보낸다. GUI가 띄운 데몬의 stderr는 GUI의 파이프라 GUI가 먼저 끝나면 남지 않기 때문이다. 이 모드는 패닉도 tracing을 거치지 않고 같은 파일에 `PANIC` 줄로 남긴다.
 4. **IPC 포트 결정** (`main.rs`)
-   - `SABA_IPC_PORT` 환경변수, 없으면 `config.json`의 `gui.ipcPort`, 둘 다 없으면 `DEFAULT_IPC_PORT = 57474`(`constants.rs`)다.
+   - `SABA_IPC_PORT` 환경변수, 없으면 `config.json`의 `gui.ipcPort`, 둘 다 없으면 `DEFAULT_IPC_PORT = 57474`(`constants.rs`)다. 데몬·트레이·업데이터 건강 확인·CLI가 같은 함수(updater-lib `config_file::ipc_port`, 설정 값만은 `ConfigFile::ipc_port`)로 읽고, u16 범위를 넘는 `gui.ipcPort`는 기본값으로 본다.
    - **바인드 주소는 `127.0.0.1`로 고정이다.** 포트는 `plugin::set_ipc_port`로 Python 실행 환경에도 넘긴다.
 5. **단일 인스턴스 잠금** (`main.rs`): `<data_dir>/daemon.lock`에 OS 배타 잠금을 건다(`instance_lock.rs`). 이미 다른 데몬이 잡고 있으면 그 pid·주소를 찍고 종료 코드 2로 끝낸다. 잠금 파일을 열 수 없는 환경이면 경고만 하고 진행한다. §1.6 참조.
 6. `launch_ticket::record_core_version`으로 코어 버전을 기록하고(`main.rs`), Python 런타임 준비를 백그라운드로 시작한다(`main.rs`, 진행은 `/api/runtime/preflight`).

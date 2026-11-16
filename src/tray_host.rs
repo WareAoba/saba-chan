@@ -158,12 +158,7 @@ pub(crate) fn gui_ipc_base(listen_addr: &str, configured: u16) -> Option<String>
 
 /// GUI가 읽는 설정 포트 (main.rs와 같은 자리, 없으면 기본값)
 pub(crate) fn configured_gui_port() -> u16 {
-    saba_chan_updater_lib::config_file::ConfigFile::default_location()
-        .section("gui")
-        .get("ipcPort")
-        .and_then(|v| v.as_u64())
-        .and_then(|p| u16::try_from(p).ok())
-        .unwrap_or(saba_chan_updater_lib::constants::DEFAULT_IPC_PORT)
+    saba_chan_updater_lib::config_file::ConfigFile::default_location().ipc_port()
 }
 
 /// 감독 루프. 화면이 없거나 GUI 실행 파일이 없으면 바로 끝난다
