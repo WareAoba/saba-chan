@@ -688,6 +688,7 @@
     "out_of_range": "{{label}} 必须在 {{min}} 到 {{max}} 之间。",
     "pick": "{{name}} 的命令",
     "raw_ok": "不在列表中的行将原样发送到控制台。",
+    "rejected": "服务器拒绝了该命令",
     "sent": "完成。",
     "too_many_args": "参数过多。用法：{{usage}}"
   },
@@ -2116,6 +2117,7 @@
     "failed": "✗ {{agent}}: {{error}}",
     "restart_hint": "重新打开代理后会显示 Saba-chan 工具。",
     "some_failed": "部分代理更改失败",
+    "none_linked": "没有添加 Saba-chan 的代理",
     "is_linked": "✓ {{agent}}：已添加 Saba-chan",
     "is_not_linked": "· {{agent}}：未添加 Saba-chan（saba-chan agent link）"
   },

@@ -291,10 +291,18 @@ async fn install_many(ctx: &Ctx, ids: &[String], url: Option<String>, sha256: Op
     if url.is_some() || sha256.is_some() {
         return Err(crate::error::usage(t!("ext.url_one_id")));
     }
-    // 하나씩 설치하고, 실패하면 거기서 멈춘다 (앞의 것은 이미 설치됨)
+    // 하나씩 설치하고, 실패하면 거기서 멈춘다. 앞의 것은 이미 설치됐으므로 --json 결과에 남긴다 (`update`의 일부 실패와 같은 모양)
     let mut results = Vec::new();
-    for id in ids {
-        results.push(install(ctx, id, None, None).await?);
+    for (i, id) in ids.iter().enumerate() {
+        match install(ctx, id, None, None).await {
+            Ok(r) => results.push(r),
+            Err(e) if ctx.out.json && i > 0 => {
+                let err = crate::error::classify(&e);
+                let failed = json!([{ "id": id, "error": err.to_string(), "error_code": err.code() }]);
+                return Err(CliError::Partial { message: err.to_string(), data: json!({ "installed": &ids[..i], "failed": failed }) }.into());
+            }
+            Err(e) => return Err(e),
+        }
     }
     ctx.out.data(&json!({ "results": results }), |_| {});
     Ok(())

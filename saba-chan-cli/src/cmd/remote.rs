@@ -181,14 +181,19 @@ async fn install(ctx: &Ctx, target: &str, port: u16, linger: bool, steam_libs: b
         }
         asked = Some(text.clone());
         let answer = match s(prompt, "kind") {
-            "host_key" => Some(if ctx.ask.confirm(&t!("remote.install_host_key"), false)? { "yes".to_string() } else { "no".to_string() }),
-            _ => ctx.ask.secret(text.lines().last().unwrap_or("").trim())?,
+            "host_key" => ctx.ask.confirm(&t!("remote.install_host_key"), false).map(|yes| Some(if yes { "yes" } else { "no" }.to_string())),
+            _ => ctx.ask.secret(text.lines().last().unwrap_or("").trim()),
         };
-        let Some(answer) = answer else {
+        // 묻지 못했거나(비대화형) 답을 보내지 못했으면 데몬의 ssh 설치가 답을 기다린 채 남지 않게 취소한다
+        let sent = match answer {
+            Ok(Some(answer)) => ctx.api.answer_remote_install(&id, &answer).await.map(|_| ()),
+            Ok(None) => Err(crate::error::CliError::Cancelled.into()),
+            Err(e) => Err(e),
+        };
+        if let Err(e) = sent {
             let _ = ctx.api.cancel_remote_install(&id).await;
-            return Err(crate::error::CliError::Cancelled.into());
-        };
-        ctx.api.answer_remote_install(&id, &answer).await?;
+            return Err(e);
+        }
     }
 }
 

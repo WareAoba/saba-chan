@@ -688,6 +688,7 @@
     "out_of_range": "{{label}} debe estar entre {{min}} y {{max}}.",
     "pick": "Comando para {{name}}",
     "raw_ok": "Las líneas que no están en la lista se envían tal cual a la consola.",
+    "rejected": "El servidor rechazó el comando",
     "sent": "Hecho.",
     "too_many_args": "Demasiados argumentos. Uso: {{usage}}"
   },
@@ -2116,6 +2117,7 @@
     "failed": "✗ {{agent}}: {{error}}",
     "restart_hint": "Al volver a abrir el agente aparecen las herramientas de Saba-chan.",
     "some_failed": "Error al cambiar algunos agentes",
+    "none_linked": "No se vinculó ningún agente",
     "is_linked": "✓ {{agent}}: con Saba-chan",
     "is_not_linked": "· {{agent}}: sin Saba-chan (saba-chan agent link)"
   },

@@ -688,6 +688,7 @@
     "out_of_range": "{{label}} должно быть от {{min}} до {{max}}.",
     "pick": "Команда для {{name}}",
     "raw_ok": "Строки не из списка отправляются в консоль как есть.",
+    "rejected": "Сервер отклонил команду",
     "sent": "Готово.",
     "too_many_args": "Слишком много аргументов. Использование: {{usage}}"
   },
@@ -2116,6 +2117,7 @@
     "failed": "✗ {{agent}}: {{error}}",
     "restart_hint": "Откройте агента заново, чтобы увидеть инструменты Saba-chan.",
     "some_failed": "Не удалось изменить часть агентов",
+    "none_linked": "Ни один агент не подключён",
     "is_linked": "✓ {{agent}}: Saba-chan есть",
     "is_not_linked": "· {{agent}}: Saba-chan нет (saba-chan agent link)"
   },

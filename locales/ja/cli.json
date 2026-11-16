@@ -688,6 +688,7 @@
     "out_of_range": "{{label}} は {{min}} から {{max}} の間にしてください。",
     "pick": "{{name}} のコマンド",
     "raw_ok": "一覧にない行はそのままコンソールに送信されます。",
+    "rejected": "サーバーがコマンドを拒否しました",
     "sent": "完了しました。",
     "too_many_args": "引数が多すぎます。使い方: {{usage}}"
   },
@@ -2116,6 +2117,7 @@
     "failed": "✗ {{agent}}: {{error}}",
     "restart_hint": "エージェントを開き直すと サバちゃん のツールが表示されます。",
     "some_failed": "一部のエージェントの変更に失敗",
+    "none_linked": "サバちゃんを追加したエージェントはありません",
     "is_linked": "✓ {{agent}}: サバちゃん あり",
     "is_not_linked": "· {{agent}}: サバちゃん なし (saba-chan agent link)"
   },

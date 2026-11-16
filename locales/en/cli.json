@@ -688,6 +688,7 @@
     "out_of_range": "{{label}} must be between {{min}} and {{max}}.",
     "pick": "Command for {{name}}",
     "raw_ok": "Lines not in this list are sent to the console as is.",
+    "rejected": "Server rejected the command",
     "sent": "Done.",
     "too_many_args": "Too many arguments. Usage: {{usage}}"
   },
@@ -1791,6 +1792,7 @@
     "failed": "✗ {{agent}}: {{error}}",
     "restart_hint": "Reopen the agent to see the Saba-chan tools.",
     "some_failed": "Some agents failed to change",
+    "none_linked": "No agent was linked",
     "is_linked": "✓ {{agent}}: Saba-chan added",
     "is_not_linked": "· {{agent}}: no Saba-chan (saba-chan agent link)"
   },

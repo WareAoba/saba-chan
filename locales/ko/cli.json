@@ -688,6 +688,7 @@
     "out_of_range": "{{label}}은(는) {{min}}에서 {{max}} 사이여야 합니다.",
     "pick": "{{name}}에 보낼 명령",
     "raw_ok": "목록에 없는 줄은 콘솔에 그대로 보냅니다.",
+    "rejected": "서버가 명령을 거절함",
     "sent": "완료.",
     "too_many_args": "인자가 너무 많음. 사용법: {{usage}}"
   },
@@ -2116,6 +2117,7 @@
     "failed": "✗ {{agent}}: {{error}}",
     "restart_hint": "에이전트를 다시 열면 사바쨩 도구가 보입니다.",
     "some_failed": "일부 에이전트 변경 실패",
+    "none_linked": "사바쨩을 추가한 에이전트 없음",
     "is_linked": "✓ {{agent}}: 사바쨩 있음",
     "is_not_linked": "· {{agent}}: 사바쨩 없음 (saba-chan agent link)"
   },
