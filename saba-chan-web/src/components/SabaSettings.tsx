@@ -169,7 +169,7 @@ export function SabaSettings({ api, server, running }: Omit<ServerPanelProps, 'm
         if (failed(res)) return toast(errorText(t, res), 'error');
         if (res?.revision) revision.current = res.revision;
         setOpened(next);
-        toast(running ? t('settings.saved_restart') : t('settings.saved'), 'ok');
+        toast(running && res?.restart_required?.length ? t('settings.saved_restart') : t('settings.saved'), 'ok');
     };
 
     return (
