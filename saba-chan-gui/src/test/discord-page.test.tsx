@@ -1,5 +1,4 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { cloudStateOf, DiscordPage as DiscordPageImpl } from '../components/discord/DiscordPage';
 import * as P from '../components/discord/nodePermissions';
@@ -63,35 +62,15 @@ const aliases = {
     palworld: { module_aliases: ['pal'], commands: {} },
 };
 
-function Harness({ save, initialView, botConfigSave, hostId = 'host-1', setHostId = () => {}, mods = modules }: { save?: unknown; initialView?: string; botConfigSave?: unknown; hostId?: string; setHostId?: (id: string) => void; mods?: unknown[] }) {
-    const [nodeSettings, setNodeSettings] = useState({});
-    const [cloudNodes, setCloudNodes] = useState([]);
-    const [cloudMembers, setCloudMembers] = useState({});
-    const [ma, setMa] = useState({});
-    const [ca, setCa] = useState({});
-    (window as unknown as { __nodeSettings?: unknown }).__nodeSettings = nodeSettings;
+/** 디스코드 칸은 스토어에서 읽는다 (시험마다 beforeEach가 연결된 호스트로 채운다) */
+function Harness({ save, initialView, botConfigSave, mods = modules }: { save?: unknown; initialView?: string; botConfigSave?: unknown; mods?: unknown[] }) {
     window.api.botConfigSave = botConfigSave as never;
     return (
         <DiscordPage
-            discordBotStatus="running"
-            discordCloudHostId={hostId}
-            setDiscordCloudHostId={setHostId}
-            relayConnected
-            relayConnecting={false}
             saveCurrentSettings={save}
             servers={servers}
             modules={mods}
             moduleAliasesPerModule={aliases}
-            discordModuleAliases={ma}
-            discordCommandAliases={ca}
-            setDiscordModuleAliases={setMa}
-            setDiscordCommandAliases={setCa}
-            nodeSettings={nodeSettings}
-            setNodeSettings={(v: unknown) => setNodeSettings((p) => (typeof v === 'function' ? v(p) : v))}
-            cloudNodes={cloudNodes}
-            setCloudNodes={setCloudNodes}
-            cloudMembers={cloudMembers}
-            setCloudMembers={(v: unknown) => setCloudMembers((p) => (typeof v === 'function' ? v(p) : v))}
             initialView={initialView}
         />
     );
@@ -110,14 +89,18 @@ async function openMemberLevels() {
 }
 
 describe('DiscordPage', () => {
-    beforeEach(() => {
+    beforeEach(async () => {
         Object.defineProperty(window, 'innerWidth', { value: 1280, writable: true, configurable: true });
         window.api = {
             relayListHostNodes: vi.fn().mockResolvedValue([{ guildId: 'g1', guildName: '사바 마을' }]),
             relayListNodeMembers: vi.fn().mockResolvedValue([{ id: 'u1', username: 'mint', displayName: '민트' }]),
-            botConfigLoad: vi.fn().mockResolvedValue({ prefix: '!saba', moduleAliases: {}, commandAliases: {} }),
+            botConfigLoad: vi.fn().mockResolvedValue({ prefix: '!saba', moduleAliases: {}, commandAliases: {}, cloud: { hostId: 'host-1' } }),
         } as unknown as typeof window.api;
         window.showToast = vi.fn();
+        // 데몬이 준 설정으로 채운다 (화면에서 고친 값으로 보지 않게)
+        useDiscordStore.getState()._resetForTest();
+        await useDiscordStore.getState().loadConfig({ attempts: 1 });
+        useDiscordStore.setState({ discordBotStatus: 'running', relayConnected: true, _botConfigLoaded: false });
     });
 
     it('모듈이 없으면 서버 봇 탭의 사용법 예시에 특정 게임 이름 대신 모듈이라는 말을 쓴다', async () => {
@@ -170,27 +153,26 @@ describe('DiscordPage', () => {
     });
 
     it('설정을 아직 읽지 못했으면 연결 버튼 없이 연결 확인 중을 보인다', async () => {
-        useDiscordStore.setState({ _botConfigLoaded: false });
-        await act(async () => render(<Harness save={vi.fn()} hostId="" />));
+        useDiscordStore.setState({ _botConfigLoaded: false, discordCloudHostId: '' });
+        await act(async () => render(<Harness save={vi.fn()} />));
         expect(screen.queryByText('Connect a Discord server')).toBeNull();
         expect(screen.getAllByText('Checking connection').length).toBeGreaterThan(0);
     });
 
     it('짝지었어도 노드 토큰을 저장하지 못하면 새 호스트로 바꾸지 않는다 (토큰 없는 호스트가 남지 않게)', async () => {
-        useDiscordStore.setState({ saveConfig: vi.fn().mockResolvedValue(true), _botConfigLoaded: true });
+        useDiscordStore.setState({ saveConfig: vi.fn().mockResolvedValue(true), _botConfigLoaded: true, discordCloudHostId: '' });
         window.api.relayInitiatePairing = vi
             .fn()
             .mockResolvedValue({ code: 'C', pollSecret: 'p', expiresAt: '2999-01-01T00:00:00Z' });
         window.api.relayPollPairingStatus = vi
             .fn()
             .mockResolvedValue({ status: 'claimed', hostId: 'h-new', nodeToken: 'tok', tokenSaved: false });
-        const setHostId = vi.fn();
         const save = vi.fn().mockResolvedValue(undefined);
-        await act(async () => render(<Harness save={save} hostId="" setHostId={setHostId} />));
+        await act(async () => render(<Harness save={save} />));
         await act(async () => fireEvent.click(screen.getByText('Connect a Discord server')));
         await waitFor(() => expect(window.api.relayPollPairingStatus).toHaveBeenCalled(), { timeout: 5000 });
         await act(async () => {});
-        expect(setHostId).not.toHaveBeenCalledWith('h-new');
+        expect(useDiscordStore.getState().discordCloudHostId).toBe('');
         expect(save).not.toHaveBeenCalled();
     });
 
@@ -318,7 +300,10 @@ describe('DiscordPage', () => {
                 : Promise.resolve([{ guildId: 'g2', guildName: '새 마을' }]),
         ) as never;
         const { rerender } = render(<Harness save={vi.fn()} />);
-        await act(async () => rerender(<Harness save={vi.fn()} hostId="host-2" />));
+        await act(async () => {
+            useDiscordStore.setState({ discordCloudHostId: 'host-2' });
+            rerender(<Harness save={vi.fn()} />);
+        });
         await waitFor(() => expect(screen.getByText('새 마을')).toBeTruthy());
         await act(async () => resolveOld([{ guildId: 'g1', guildName: '사바 마을' }]));
         expect(screen.queryByText('사바 마을')).toBeNull();

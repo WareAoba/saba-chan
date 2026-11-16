@@ -60,8 +60,6 @@ interface SettingsModalProps {
     onTestWaitingImage?: () => void;
     onTestLoadingScreen?: () => void;
     initialView?: string | null;
-    discordCloudRelayUrl?: string;
-    onDiscordCloudRelayUrlChange?: (value: string) => void;
 }
 
 /** 설정 화면 (앱의 설정 페이지) */
@@ -71,8 +69,6 @@ function SettingsModal({
     onTestWaitingImage,
     onTestLoadingScreen,
     initialView,
-    discordCloudRelayUrl,
-    onDiscordCloudRelayUrlChange,
 }: SettingsModalProps) {
     const { t, i18n } = useTranslation(['gui', 'common']);
     const daemonTarget = useDaemonTarget();
@@ -327,8 +323,6 @@ function SettingsModal({
                             ipcPort={ipcPort}
                             runningIpcPort={runningIpcPort}
                             onIpcPortSave={(port) => setOption({ ipcPort: port })}
-                            discordCloudRelayUrl={discordCloudRelayUrl}
-                            onDiscordCloudRelayUrlChange={onDiscordCloudRelayUrlChange}
                         />,
                     )}
 

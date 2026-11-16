@@ -37,7 +37,7 @@ import useExtensionInitStatus from './hooks/useExtensionInitStatus';
 import { useModalClose } from './hooks/useModalClose';
 import { useModulesRetry } from './hooks/useModulesRetry';
 import { useConsoleStore } from './stores/useConsoleStore';
-import { type DiscordData, setDiscordI18n, useDiscordStore } from './stores/useDiscordStore';
+import { setDiscordI18n, useDiscordStore } from './stores/useDiscordStore';
 import { setServerConsole } from './stores/serverActionsState';
 import { setServerI18n } from './stores/serverI18n';
 import { useServerStore } from './stores/useServerStore';
@@ -166,20 +166,12 @@ function App() {
     // 콘솔 줄 수 한도: 콘솔 이벤트 처리기가 지금 값을 읽는다
     const consoleBufferRef = useRef(consoleBufferSize);
     consoleBufferRef.current = consoleBufferSize;
-    const _settingsReady = useSettingsStore((s) => s.settingsReady);
 
     // ── Discord Store (Zustand) ──
-    const discordModuleAliases = useDiscordStore((s) => s.discordModuleAliases);
-    const discordCommandAliases = useDiscordStore((s) => s.discordCommandAliases);
-    const discordCloudRelayUrl = useDiscordStore((s) => s.discordCloudRelayUrl);
     const discordCloudHostId = useDiscordStore((s) => s.discordCloudHostId);
-    const nodeSettings = useDiscordStore((s) => s.nodeSettings);
-    const cloudNodes = useDiscordStore((s) => s.cloudNodes);
-    const cloudMembers = useDiscordStore((s) => s.cloudMembers);
     const discordBotStatus = useDiscordStore((s) => s.discordBotStatus);
     const discordReconnecting = useDiscordStore((s) => s.discordReconnecting);
     const relayConnected = useDiscordStore((s) => s.relayConnected);
-    const relayConnecting = useDiscordStore((s) => s.relayConnecting);
     const relayChecked = useDiscordStore((s) => s.relayChecked);
     const discordConfigLoaded = useDiscordStore((s) => s._settingsReady);
 
@@ -200,9 +192,6 @@ function App() {
 
     // 익스텐션 초기화 상태 (daemon.startup hook 진행 중이면 스피너 표시)
     const { initializing: extInitializing, inProgress: extInitInProgress } = useExtensionInitStatus();
-
-    // Discord store action aliases
-    const handleStartDiscordBot = useDiscordStore((s) => s.startBot);
 
     // 서버 동작은 스토어 액션이다 (stores/serverActions). 관리 모드로 켜면 여는 콘솔은 이 창의 콘솔 훅이 들고 있다
     useEffect(() => setServerConsole(openConsole), [openConsole]);
@@ -631,40 +620,6 @@ function App() {
         );
     }
 
-    // ── 디스코드 페이지 props (스토어는 데몬 JSON 그대로 두고, 화면 타입으로는 여기서 읽는다) ──
-    type DiscordProps = ComponentProps<typeof DiscordPage>;
-    const discordPageProps = {
-        discordBotStatus,
-        discordCloudRelayUrl,
-        discordCloudHostId,
-        setDiscordCloudHostId: (val: string) => useDiscordStore.getState().update({ discordCloudHostId: val }),
-        relayConnected,
-        relayConnecting,
-        handleStartDiscordBot,
-        saveCurrentSettings,
-        servers,
-        modules,
-        moduleAliasesPerModule,
-        discordModuleAliases,
-        discordCommandAliases,
-        setDiscordModuleAliases: (val: DiscordData['discordModuleAliases']) => useDiscordStore.getState().update({ discordModuleAliases: val }),
-        setDiscordCommandAliases: (val: DiscordData['discordCommandAliases']) => useDiscordStore.getState().update({ discordCommandAliases: val }),
-        nodeSettings: nodeSettings as DiscordProps['nodeSettings'],
-        setNodeSettings: (valOrFn: DiscordData['nodeSettings'] | ((prev: DiscordData['nodeSettings']) => DiscordData['nodeSettings'])) => {
-            const prev = useDiscordStore.getState().nodeSettings;
-            const next = typeof valOrFn === 'function' ? valOrFn(prev) : valOrFn;
-            useDiscordStore.getState().update({ nodeSettings: next });
-        },
-        cloudNodes,
-        setCloudNodes: (val: DiscordData['cloudNodes']) => useDiscordStore.getState().update({ cloudNodes: val }),
-        cloudMembers,
-        setCloudMembers: (valOrFn: DiscordData['cloudMembers'] | ((prev: DiscordData['cloudMembers']) => DiscordData['cloudMembers'])) => {
-            const prev = useDiscordStore.getState().cloudMembers;
-            const next = typeof valOrFn === 'function' ? valOrFn(prev) : valOrFn;
-            useDiscordStore.getState().update({ cloudMembers: next });
-        },
-    };
-
     // 설정 → 개발자 도구의 "로딩 화면 시험"
     const runLoadingScreenTest = () => {
         setPage('servers');
@@ -784,7 +739,7 @@ function App() {
                             />
                         </KeptPage>
                         <KeptPage active={page === 'discord'} ready={openingPhase === 'done'}>
-                            <DiscordPage {...discordPageProps} />
+                            <DiscordPage saveCurrentSettings={saveCurrentSettings} servers={servers} modules={modules} moduleAliasesPerModule={moduleAliasesPerModule} />
                         </KeptPage>
                         <KeptPage active={page === 'activity'} ready={openingPhase === 'done'}>
                             <ActivityPage />
@@ -793,10 +748,6 @@ function App() {
                         <KeptPage active={page === 'settings'} ready={openingPhase === 'done'}>
                             <div className="page page-scroll page-settings">
                                 <SettingsModal
-                                    discordCloudRelayUrl={discordCloudRelayUrl}
-                                    onDiscordCloudRelayUrlChange={(val: string) =>
-                                        useDiscordStore.getState().update({ discordCloudRelayUrl: val })
-                                    }
                                     onTestModal={setModal}
                                     onTestProgressBar={setProgressBar}
                                     initialView={settingsInitialView}
