@@ -112,10 +112,10 @@ pub fn ws_url(relay_base: &str) -> String {
 }
 
 /// 웹으로 보내는 이벤트. 화면은 목록을 다시 읽을 때만 쓰므로 종류와 인스턴스 id만 담는다
-/// (경로·콘솔 줄·오류 원문은 PC 밖으로 내보내지 않는다)
+/// (경로·콘솔 줄·오류 원문은 PC 밖으로 내보내지 않는다). 알림함이 바뀌면 웹 알림 종이 다시 읽는다
 fn web_event(event: &crate::events::Event) -> Option<Value> {
     let kind = event.kind.as_str();
-    if !(kind.starts_with("instance.") || kind.starts_with("module.") || kind == "action.run") {
+    if !(kind.starts_with("instance.") || kind.starts_with("module.") || kind == "action.run" || kind == crate::notices::CHANGED) {
         return None;
     }
     let mut data = serde_json::Map::new();
@@ -351,6 +351,11 @@ mod tests {
             Some(json!({ "t": "event", "id": 9, "kind": "instance.exit", "data": { "instanceId": "i1" } }))
         );
         assert!(web_event(&event("module.installed", json!({ "path": "C:/x" }))).is_some());
+        // 알림함이 바뀌면 웹 알림 종이 다시 읽는다: 종류만 보낸다
+        assert_eq!(
+            web_event(&event(crate::notices::CHANGED, json!({ "unread": 3 }))),
+            Some(json!({ "t": "event", "id": 9, "kind": "notices.changed", "data": {} }))
+        );
         // 화면이 쓰지 않는 이벤트는 보내지 않는다 (백업 오류 원문 등)
         assert_eq!(web_event(&event("backup.done", json!({ "error": "C:/x" }))), None);
     }
