@@ -2,7 +2,7 @@
  * 사바 스토리지 컴포넌트 탭의 "사바쨩 버전" 줄: 이 PC에 남겨 둔 직전 버전으로 되돌리거나 자동 업데이트로 돌아간다.
  * 고를 수 있는 버전·되돌리기·업데이터 띄우기는 데몬이 정한다. 화면은 데몬 답을 보여 주고 고른 것을 보낸다.
  */
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import i18n from '../i18n';
 
@@ -89,6 +89,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+    // 화면을 먼저 내려야 아래 상태 바꿈이 지운 window.api로 다시 읽지 않는다
+    cleanup();
     delete (window as { api?: unknown }).api;
     useUIStore.setState({ revertResult: null });
 });

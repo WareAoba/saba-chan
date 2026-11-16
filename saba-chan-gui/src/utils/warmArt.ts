@@ -12,7 +12,7 @@ const ART = [
     './saba/sleep.webp',
 ];
 
-export function warmTabArt() {
+export function warmTabArt(): () => void {
     const run = () => {
         for (const src of ART) {
             const img = new Image();
@@ -22,7 +22,7 @@ export function warmTabArt() {
         }
         document.fonts?.load?.("700 1em 'saba-hand'").catch(() => {});
     };
-    whenIdle(run);
+    return whenIdle(run);
 }
 
 type IdleWindow = Window & {
