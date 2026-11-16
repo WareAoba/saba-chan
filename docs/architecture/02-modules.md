@@ -467,6 +467,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
   - 첫 설치에서 고른 설정을 게임 설정 파일에 쓰지 못하면 설치는 실패다: `{success:false, error_code:"settings_write_failed", message}`. 로그만 남기고 성공을 돌려주지 않는다.
 - `get_installed_version`: `version`.
 - `get_credentials`: `success`, `rest_password`, 선택 `rest_username`. 데몬은 REST 자격증명만 쓴다 (`command.rs`). 사용자 이름은 `rest_username`이 있으면 그것, 없으면 `[protocols.rest] username`이고, 둘 다 없거나 비밀번호가 없으면 인증 없이 보낸다. 지금은 palworld만 구현한다.
+- `read_properties`: `success`, `properties{}`, 선택 `exists`(false면 파일이 없어 기본값을 보인다)·`message`. `import_settings`의 `settings{}`와 함께 키는 설정 이름(`[[settings.fields]] name`)만 쓰고 게임 파일 키나 설정 화면에 없는 키는 넣지 않는다(공용 `settings_from_file`). CLI `properties show`에 보인 키를 `properties set`(`PUT /properties`, 모르는 키는 `unknown_setting`)에 그대로 쓰고, 가져오기가 쓰이지 않는 키를 `module_settings`에 쌓지 않게 하려는 것이다. 적합성 키트가 잰다.
 - `import_settings`: `success`, `settings{}`. `port`는 인스턴스 필드로도 맞춘다(`ServerInstance::apply_imported_settings`). REST 접속값은 모듈 설정이라 `settings{}`의 그 설정 이름으로만 돌아온다. 마이그레이션에서는 `executable_path`(작업 폴더 기준 상대 경로, 모듈이 찾은 서버 실행 파일), `extra_args`(문자열 배열, 쓰던 시작 스크립트에만 있던 실행 인자. 모듈이 스스로 정하는 메모리·GC 같은 인자는 빼고 준다. 데몬은 인스턴스의 추가 실행 인자로 저장하고(`service/instance/create.rs` `apply_imported`), 문자열이 아닌 항목이나 줄바꿈이 있으면 받지 않는다)와 `detected`(판정 결과, 데몬은 내용을 보지 않고 생성 응답에 넘긴다)도 읽는다.
 - `config_files`: `success`, `files[]`(절대 경로). 선택 함수. 사바쨩이 고칠 수 있는 게임 설정 파일(설정 저장·시작 전 정책·약관이 쓰는 파일)이다. 데몬은 마이그레이션 때 지금 있는 것만 보관하고, 연결 해제(삭제) 때 그 내용으로 되돌린다(01 `POST /api/instances`·`DELETE /api/instance/:id`). minecraft `server.properties`·`eula.txt`, palworld `PalWorldSettings.ini`, zomboid 프로필 ini.
 - `instance_commands`: `success`, `commands[]`(명령 필드 + `group`), `components` (`[commands] hook = true`일 때).
@@ -838,7 +839,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 
 | # | 위치 | 내용 | 원칙 |
 |---|---|---|---|
-| 9 | `M:palworld/lifecycle.py`, `zomboid`/`palworld` `install_server` | 모듈이 플러그인(`extensions.*`)을 Python import로 직접 사용. 활성 여부도 스스로 `SABA_ENABLED_EXTENSIONS`로 확인. 데몬은 import 가드로 꺼진 익스텐션 import만 막는다 (`D:src/plugin/mod.rs`) | 플러그인 기능 주입은 데몬이 중개해야 하는데, 모듈과 플러그인이 직접 결합 |
+| 9 | `M:palworld/lifecycle.py`(ue4-ini), `zomboid`/`palworld` `install_server`(steamcmd), `M:terraria/lifecycle.py` `_xna()`(xna) | 모듈이 플러그인(`extensions.*`)을 Python import로 직접 사용. 데몬은 import 가드로 꺼진 익스텐션 import만 막는다 (`D:src/plugin/mod.rs`) | 플러그인 기능 주입은 데몬이 중개해야 하는데, 모듈과 플러그인이 직접 결합 |
 | 10 | `modules/daemon_rcon.py`, palworld, zomboid 콜백 | 모듈이 데몬 HTTP API를 역호출(rcon/rest/stdin). 토큰과 `SABA_IPC_URL`을 쓴다 | "매뉴얼"인 모듈이 능동 클라이언트로 동작. 경계가 모호함 |
 
 ---
