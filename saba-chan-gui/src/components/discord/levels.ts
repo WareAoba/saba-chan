@@ -380,12 +380,6 @@ export function lineAt(saved: LadderLevel[], draft: LadderLevel[], level: number
     return 0;
 }
 
-/** 줄을 `at` 칸에서 위(-1)·아래(1)로 한 칸 옮긴 자리. 더 못 가면 null */
-export function lineStep(draft: LadderLevel[], at: number, dir: -1 | 1) {
-    for (let i = at + dir; i >= 0 && i < draft.length; i += dir) if (lineSlot(draft[i])) return i;
-    return null;
-}
-
 /** 디스코드 되묻기 단계 */
 export const RISKS = ['safe', 'caution', 'danger'];
 

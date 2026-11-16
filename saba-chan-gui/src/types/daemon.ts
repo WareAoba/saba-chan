@@ -554,7 +554,6 @@ export interface GuiSettings {
     consoleBgColor: string;
     consoleTextColor: string;
     sidebarCompact: boolean;
-    windowOpacity: number;
     /** 창 바탕 반투명 (utils/themeManager WindowBackdropConfig) */
     windowBackdrop?: Partial<import('../utils/themeManager').WindowBackdropConfig>;
     consoleFontScale: number;
