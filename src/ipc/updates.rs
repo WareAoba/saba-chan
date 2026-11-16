@@ -77,6 +77,8 @@ pub struct UpdateState {
     release_check: Arc<std::sync::Mutex<Option<std::collections::BTreeMap<String, u64>>>>,
     /// 확인했지만 응답에 그 번호가 담기지 않은 판 번호와 그때 (`RELEASE_RECHECK` 뒤 한 번 더 본다)
     release_unconfirmed: Arc<std::sync::Mutex<Option<(ReleaseIds, std::time::Instant)>>>,
+    /// 확인 중인 heartbeat 애드온 판 번호 (`latestAddons`, 한 번에 하나)
+    addon_check: Arc<std::sync::Mutex<Option<String>>>,
     /// 앱 업데이트 적용 반복이 도는 중인가 (`spawn_core_apply`, 한 번에 하나)
     core_applying: Arc<std::sync::atomic::AtomicBool>,
     /// 상태가 바뀌었을 수 있다: 상태 알림 반복(`spawn_status_events`)을 깨운다
@@ -134,6 +136,7 @@ impl UpdateState {
             relay: None,
             release_check: Arc::default(),
             release_unconfirmed: Arc::default(),
+            addon_check: Arc::default(),
             core_applying: Arc::default(),
             apply_recheck: Arc::default(),
             status_changed: Arc::default(),
@@ -250,6 +253,30 @@ impl UpdateState {
         let mut live = self.live.lock().unwrap_or_else(|e| e.into_inner());
         live.seen = ids;
         live.save_to(&self.live_path);
+    }
+
+    /// heartbeat `latestAddons`에서 `channel`의 값이 확인을 마친 것과 다르고 확인 중이 아니면 그 값 (확인을 시작한다)
+    fn addon_revision_to_check(&self, revs: &Value, channel: &str) -> Option<String> {
+        let rev = revs.get(channel)?.as_str()?.to_string();
+        if self.live.lock().unwrap_or_else(|e| e.into_inner()).addons_seen.as_deref() == Some(rev.as_str()) {
+            return None;
+        }
+        let mut checking = self.addon_check.lock().unwrap_or_else(|e| e.into_inner());
+        if checking.is_some() {
+            return None;
+        }
+        *checking = Some(rev.clone());
+        Some(rev)
+    }
+
+    /// 애드온 판 번호 확인을 마쳤다. 성공했을 때만 본 것으로 남긴다 (실패면 다음 heartbeat가 다시 확인한다)
+    fn finish_addon_check(&self, rev: String, checked: bool) {
+        *self.addon_check.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        if checked {
+            let mut live = self.live.lock().unwrap_or_else(|e| e.into_inner());
+            live.addons_seen = Some(rev);
+            live.save_to(&self.live_path);
+        }
     }
 
     /// 적용 반복을 시작해도 되는가. 이미 돌고 있으면 그 반복이 새로 받아 보도록 남긴다
@@ -1157,6 +1184,31 @@ pub fn on_latest_releases(state: &UpdateState, ids: &Value, shutdown: tokio_util
         .await;
         // 성공한 확인만 본 것으로 남긴다: 실패·취소·꺼짐이면 다음 heartbeat가 같은 번호로 다시 확인한다
         state.finish_release_check(checking, checked);
+    });
+}
+
+/// 릴레이 heartbeat의 채널별 모듈·익스텐션 카탈로그 판 번호(`latestAddons`). 이 데몬 채널의 값이 바뀌면
+/// 0~60초 사이에서 늦춘 뒤 한 번 확인한다: 확인이 새 판을 찾으면 묻지 않고 바꿔 끼운다 (`check_and_follow_up`)
+pub fn on_latest_addons(state: &UpdateState, revs: &Value, shutdown: tokio_util::sync::CancellationToken) {
+    let revs = revs.clone();
+    let state = state.clone();
+    tokio::spawn(async move {
+        let cfg = state.manager.read().await.get_config();
+        if !cfg.enabled {
+            return;
+        }
+        let Some(rev) = state.addon_revision_to_check(&revs, &cfg.channel) else {
+            return;
+        };
+        let jitter = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.subsec_millis()) as u64 * 60;
+        let checked = tokio::select! {
+            _ = shutdown.cancelled() => false,
+            checked = async {
+                tokio::time::sleep(std::time::Duration::from_millis(jitter)).await;
+                check_and_follow_up(&state).await.map_err(|e| tracing::warn!("[Updates] Check after a new addon publish failed: {}", e)).is_ok()
+            } => checked,
+        };
+        state.finish_addon_check(rev, checked);
     });
 }
 
@@ -3155,6 +3207,24 @@ mod tests {
         let checking = state.release_ids_to_check(newer).unwrap();
         state.finish_release_check(checking, Some(Some(14)));
         assert_eq!(LiveState::load_from(&tmp.path().join("live-update.json")).seen["stable"], 13);
+    }
+
+    /// heartbeat `latestAddons`: 이 데몬 채널의 값이 바뀌면 확인한다. 본 것으로 남기는 것은 확인이 성공한 뒤다
+    #[test]
+    fn addon_revision_counts_as_seen_only_after_a_successful_check() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = state_in(tmp.path());
+        let revs = serde_json::json!({ "stable": "aaa", "beta": "bbb" });
+        assert!(state.addon_revision_to_check(&serde_json::json!({}), "beta").is_none(), "no value for the channel");
+        let checking = state.addon_revision_to_check(&revs, "beta").expect("a new revision is checked");
+        assert_eq!(checking, "bbb");
+        assert!(state.addon_revision_to_check(&revs, "beta").is_none(), "already being checked");
+        state.finish_addon_check(checking, false);
+        let checking = state.addon_revision_to_check(&revs, "beta").expect("a failed check is tried again");
+        state.finish_addon_check(checking, true);
+        assert!(state.addon_revision_to_check(&revs, "beta").is_none());
+        assert_eq!(LiveState::load_from(&tmp.path().join("live-update.json")).addons_seen.as_deref(), Some("bbb"));
+        assert!(state.addon_revision_to_check(&serde_json::json!({ "beta": "ccc" }), "beta").is_some(), "a new publish");
     }
 
     /// heartbeat가 부르지 않은 확인도 확인을 마친 가장 큰 릴리즈 id를 캐시 키로 쓴다
