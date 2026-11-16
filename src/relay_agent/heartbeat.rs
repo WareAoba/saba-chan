@@ -159,14 +159,14 @@ impl Session {
                 if self.apply_linked_guilds(&data).await {
                     send_again = true;
                 }
-                // 채널별 최신 릴리즈 id: 이 데몬이 받는 채널의 값이 바뀌었을 때만 확인한다 (ipc/updates.rs).
+                // 채널별 최신 릴리즈 id: 이 데몬이 받는 채널의 값이 바뀌었을 때만 확인한다 (ipc/updates).
                 // 그것이 없는 옛 릴레이는 새 릴리즈 알림(`updateHint`)을 대조한다
                 if let Some(ids) = data.get("latestReleases").filter(|v| v.is_object()) {
                     crate::ipc::updates::on_latest_releases(&self.server.update_state, ids, self.cancel.clone());
                 } else if let Some(hint) = data.get("updateHint") {
                     crate::ipc::updates::on_update_hint(&self.server.update_state, hint, self.cancel.clone());
                 }
-                // 채널별 모듈·익스텐션 카탈로그 판 번호: 이 데몬 채널의 값이 바뀌면 바로 새 판을 받는다 (ipc/updates.rs)
+                // 채널별 모듈·익스텐션 카탈로그 판 번호: 이 데몬 채널의 값이 바뀌면 바로 새 판을 받는다 (ipc/updates)
                 if let Some(revs) = data.get("latestAddons").filter(|v| v.is_object()) {
                     crate::ipc::updates::on_latest_addons(&self.server.update_state, revs, self.cancel.clone());
                 }

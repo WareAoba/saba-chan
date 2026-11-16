@@ -605,7 +605,7 @@ mod tests {
         let route = regex::Regex::new(r#"\.route\(\s*"([^"]+)"\s*,"#).unwrap();
         let method = regex::Regex::new(r"(?:^|[\s.:(])(get|post|put|patch|delete)\(").unwrap();
         let mut out = Vec::new();
-        for source in [include_str!("../ipc/mod.rs"), include_str!("../ipc/updates.rs")] {
+        for source in [include_str!("../ipc/mod.rs"), include_str!("../ipc/updates/mod.rs")] {
             let starts: Vec<_> = route
                 .captures_iter(source)
                 .map(|c| (c.get(0).unwrap().end(), c[1].to_string()))

@@ -1858,7 +1858,7 @@ mod route_coverage {
     #[test]
     fn every_daemon_route_is_reachable_from_the_cli() {
         let mut all = routes(include_str!("../../src/ipc/mod.rs"));
-        all.extend(routes(include_str!("../../src/ipc/updates.rs")));
+        all.extend(routes(include_str!("../../src/ipc/updates/mod.rs")));
         let used = calls(include_str!("client.rs"));
         assert!(all.len() > 100, "router parse: {}", all.len());
         let missing: Vec<&String> = all
