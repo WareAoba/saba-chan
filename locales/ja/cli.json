@@ -1847,7 +1847,7 @@
     "keys_form": "↑↓ 項目 · ←→ 値を変える · Space オン/オフ · Enter 入力 · / 検索 · Ctrl+S 保存 · Esc 戻る",
     "keys_content": "↑↓ スクロール · Esc 戻る · s 起動/停止 · Ctrl+K 検索 · ? ヘルプ · q 終了",
     "keys_backups": "c 今すぐバックアップ · Enter 復元 · d 削除",
-    "keys_players": "Enter キックコマンドを入力欄へ",
+    "keys_players": "F5 再読み込み · Enter キックコマンドを入力欄へ",
     "keys_edit": "e 変更 (コマンド行に入力)",
     "keys_wizard": "↑↓ 選択 · Enter 次へ · Esc 前の段階 · Ctrl+C やめる",
     "list": {

@@ -257,6 +257,8 @@ pub enum Action {
     Cancel,
     /// 쪽이나 고른 것이 바뀌었다: 그 화면에 필요한 것을 곧바로 읽는다
     Refresh,
+    /// 지금 상세 탭을 다시 읽는다 (자동으로 다시 읽지 않는 탭의 새로 고침)
+    Reload,
     /// 데스크톱 앱으로 바꾼다 (고른 서버를 넘긴다)
     SwitchToGui,
     Quit,
@@ -1188,6 +1190,7 @@ impl App {
                 self.output.open = !self.output.open;
                 return None;
             }
+            KeyCode::F(5) => return Some(Action::Reload),
             KeyCode::F(9) if self.can_switch_to_gui() => return Some(Action::SwitchToGui),
             KeyCode::PageUp if !self.is_form_focus() => {
                 self.scroll(true, 10);
@@ -2109,6 +2112,19 @@ mod tests {
         assert_eq!(a.on_key(key(KeyCode::Enter)), Some(Action::Run("backup restore 'my server' 'b 2'".into())));
         assert_eq!(a.on_key(key(KeyCode::Char('d'))), Some(Action::Run("backup delete 'my server' 'b 2'".into())));
         assert!(parses("backup restore 'my server' 'b 2'") && parses("backup delete x y") && parses("backup create x"));
+    }
+
+    /// 접속자 표는 F5를 눌러야 다시 읽는다 (게임에 사람 수를 주기적으로 묻지 않는다). r은 그대로 재시작이다
+    #[test]
+    fn the_players_table_reloads_on_f5() {
+        let mut a = app();
+        a.tab[Page::Servers.slot()] = 2;
+        let (k, _) = a.pane_want().unwrap();
+        a.apply_pane(k, super::super::data::PaneData::Rows(vec![json!({ "name": "steve" })]));
+        a.focus = Focus::Content;
+        assert_eq!(a.on_key(key(KeyCode::F(5))), Some(Action::Reload));
+        assert_eq!(a.on_key(key(KeyCode::Enter)), None);
+        assert_eq!(a.command.text, "server run 'my server' kick steve");
     }
 
     /// 무엇이든 찾기: Ctrl+K, 초성으로 찾고 Enter로 그 화면, Tab은 같은 명령을 명령 줄에

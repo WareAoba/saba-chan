@@ -1801,7 +1801,7 @@
     "keys_form": "↑↓ campos · ←→ mudar · Espaço ligar/desligar · Enter digitar · / buscar · Ctrl+S salvar · Esc voltar",
     "keys_content": "↑↓ rolar · Esc voltar · s iniciar/parar · Ctrl+K buscar · ? ajuda · q sair",
     "keys_backups": "c fazer backup agora · Enter restaurar · d apagar",
-    "keys_players": "Enter prepara um comando de expulsão",
+    "keys_players": "F5 atualizar · Enter prepara um comando de expulsão",
     "keys_edit": "e mudar (preenche a linha de comando)",
     "keys_wizard": "↑↓ escolher · Enter próximo · Esc etapa anterior · Ctrl+C desistir",
     "list": {

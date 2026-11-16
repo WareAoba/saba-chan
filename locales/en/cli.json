@@ -1522,7 +1522,7 @@
     "keys_form": "↑↓ fields · ←→ change · Space toggle · Enter type · / find · Ctrl+S save · Esc back",
     "keys_content": "↑↓ scroll · Esc back · s start/stop · Ctrl+K find · ? help · q quit",
     "keys_backups": "c back up now · Enter restore · d delete",
-    "keys_players": "Enter fills a kick command",
+    "keys_players": "F5 refresh · Enter fills a kick command",
     "keys_edit": "e edit (fills the command line)",
     "keys_wizard": "↑↓ pick · Enter next · Esc previous step · Ctrl+C give up",
     "list": {

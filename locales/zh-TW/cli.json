@@ -1801,7 +1801,7 @@
     "keys_form": "↑↓ 項目 · ←→ 變更值 · Space 開/關 · Enter 輸入 · / 搜尋 · Ctrl+S 儲存 · Esc 返回",
     "keys_content": "↑↓ 捲動 · Esc 返回 · s 啟動/停止 · Ctrl+K 搜尋 · ? 說明 · q 離開",
     "keys_backups": "c 立即備份 · Enter 還原 · d 刪除",
-    "keys_players": "Enter 填入踢出指令",
+    "keys_players": "F5 重新整理 · Enter 填入踢出指令",
     "keys_edit": "e 變更（填入指令列）",
     "keys_wizard": "↑↓ 選擇 · Enter 下一步 · Esc 上一步 · Ctrl+C 放棄",
     "list": {

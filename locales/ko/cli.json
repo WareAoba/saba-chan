@@ -1847,7 +1847,7 @@
     "keys_form": "↑↓ 칸 · ←→ 값 바꾸기 · Space 켜기/끄기 · Enter 입력 · / 찾기 · Ctrl+S 저장 · Esc 뒤로",
     "keys_content": "↑↓ 넘기기 · Esc 뒤로 · s 시작/정지 · Ctrl+K 찾기 · ? 도움말 · q 나가기",
     "keys_backups": "c 지금 백업 · Enter 되돌리기 · d 지우기",
-    "keys_players": "Enter 내보내기 명령 채우기",
+    "keys_players": "F5 새로 고침 · Enter 내보내기 명령 채우기",
     "keys_edit": "e 바꾸기 (명령 줄 채움)",
     "keys_wizard": "↑↓ 고르기 · Enter 다음 · Esc 이전 단계 · Ctrl+C 그만두기",
     "list": {

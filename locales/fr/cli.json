@@ -1801,7 +1801,7 @@
     "keys_form": "↑↓ champs · ←→ changer · Espace activer · Entrée saisir · / chercher · Ctrl+S enregistrer · Échap retour",
     "keys_content": "↑↓ défiler · Échap retour · s démarrer/arrêter · Ctrl+K chercher · ? aide · q quitter",
     "keys_backups": "c sauvegarder maintenant · Entrée restaurer · d supprimer",
-    "keys_players": "Entrée prépare une commande d'expulsion",
+    "keys_players": "F5 actualiser · Entrée prépare une commande d'expulsion",
     "keys_edit": "e modifier (remplit la ligne de commande)",
     "keys_wizard": "↑↓ choisir · Entrée suivant · Échap étape précédente · Ctrl+C abandonner",
     "list": {

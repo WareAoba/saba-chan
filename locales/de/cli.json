@@ -1801,7 +1801,7 @@
     "keys_form": "↑↓ Felder · ←→ ändern · Leertaste umschalten · Enter eingeben · / suchen · Strg+S speichern · Esc zurück",
     "keys_content": "↑↓ blättern · Esc zurück · s starten/stoppen · Strg+K suchen · ? Hilfe · q beenden",
     "keys_backups": "c jetzt sichern · Enter wiederherstellen · d löschen",
-    "keys_players": "Enter füllt einen Kick-Befehl ein",
+    "keys_players": "F5 aktualisieren · Enter füllt einen Kick-Befehl ein",
     "keys_edit": "e ändern (füllt die Befehlszeile)",
     "keys_wizard": "↑↓ wählen · Enter weiter · Esc vorheriger Schritt · Strg+C abbrechen",
     "list": {

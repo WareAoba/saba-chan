@@ -1847,7 +1847,7 @@
     "keys_form": "↑↓ 项目 · ←→ 更改值 · Space 开/关 · Enter 输入 · / 查找 · Ctrl+S 保存 · Esc 返回",
     "keys_content": "↑↓ 滚动 · Esc 返回 · s 启动/停止 · Ctrl+K 查找 · ? 帮助 · q 退出",
     "keys_backups": "c 立即备份 · Enter 恢复 · d 删除",
-    "keys_players": "Enter 填入踢出命令",
+    "keys_players": "F5 刷新 · Enter 填入踢出命令",
     "keys_edit": "e 更改（填入命令行）",
     "keys_wizard": "↑↓ 选择 · Enter 下一步 · Esc 上一步 · Ctrl+C 放弃",
     "list": {
