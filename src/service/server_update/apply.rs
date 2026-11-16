@@ -273,13 +273,16 @@ impl UpdateJob {
     /// 업데이트 전 백업 → 모듈 호출 → 결과 기록. 성공 여부를 돌려준다
     async fn run(&self, target: crate::supervisor::InstanceInstall, guard: &crate::instance::lock::InstanceLock) -> bool {
         // ── Phase 0: 업데이트 전 백업. 백업할 것이 없으면 그냥 진행, 실패하면 업데이트하지 않는다 ──
-        if let Err(r) = crate::service::backup::take_backup_held(&self.state, &self.id, crate::backup::BackupKind::PreUpdate, guard).await {
-            let reason = r.reason().unwrap_or("backup failed").to_string();
-            tracing::error!("Pre-update backup failed for '{}': {}", self.name, reason);
-            emit_update_failed(&self.state, &self.id, &reason).await;
-            self.fail(self.text.t("provision.backup_failed", &[("reason", &reason)]), Some(r.body));
-            return false;
-        }
+        let before = match crate::service::backup::take_backup_held(&self.state, &self.id, crate::backup::BackupKind::PreUpdate, guard).await {
+            Ok(made) => made.map(|b| b.name),
+            Err(r) => {
+                let reason = r.reason().unwrap_or("backup failed").to_string();
+                tracing::error!("Pre-update backup failed for '{}': {}", self.name, reason);
+                emit_update_failed(&self.state, &self.id, &reason).await;
+                self.fail(self.text.t("provision.backup_failed", &[("reason", &reason)]), Some(r.body));
+                return false;
+            }
+        };
 
         // ── Phase 1: supervisor lock을 최소 시간만 잡고 모듈 경로 복사 ──
         let lifecycle_path = self.state.supervisor.read().await.module_loader.get_module(&self.module_name).map(|m| m.entry_path());
@@ -304,10 +307,10 @@ impl UpdateJob {
             call.run(Some(progress)).await
         };
 
-        match result {
+        let (error, mut body) = match result {
             Ok(val) if val.get("success").and_then(Value::as_bool).unwrap_or(false) => {
                 self.succeeded().await;
-                true
+                return true;
             }
             Ok(val) => {
                 let err_msg = val
@@ -318,16 +321,20 @@ impl UpdateJob {
                     .unwrap_or_else(|| self.text.t("provision.update_failed", &[]));
                 tracing::error!("Server update failed for '{}': {}", self.name, err_msg);
                 emit_update_failed(&self.state, &self.id, &err_msg).await;
-                self.fail(err_msg, Some(val));
-                false
+                (err_msg, val)
             }
             Err(e) => {
                 tracing::error!("Server update error for '{}': {}", self.name, e);
                 emit_update_failed(&self.state, &self.id, &self.text.t("provision.script_failed", &[])).await;
-                self.fail(self.text.t("provision.script_failed", &[]), Some(crate::plugin::error_response(&e)));
-                false
+                (self.text.t("provision.script_failed", &[]), crate::plugin::error_response(&e))
             }
+        };
+        // 버전 설치와 같이 업데이트 전 백업으로 되돌린다 (반쯤 바뀐 월드·설정을 남기지 않는다)
+        if let Some(name) = before {
+            crate::service::instance::install::put_back(&self.state, &self.id, &name, guard, &mut body).await;
         }
+        self.fail(error, Some(body));
+        false
     }
 
     async fn succeeded(&self) {
@@ -469,6 +476,31 @@ mod tests {
         let mut shown = serde_json::to_value(state.provision_tracker.get(&id).unwrap()).unwrap();
         shown.as_object_mut().unwrap().remove("error");
         assert_eq!(shown, json!({ "step": 0, "total": 1, "label": "done", "message": "Update failed", "done": true, "percent": 100, "success": false, "function": "install_server", "module": "game" }));
+    }
+
+    /// 업데이트가 실패하면 버전 설치와 같이 업데이트 전 백업으로 되돌린다 (반쯤 바뀐 월드·설정을 남기지 않는다)
+    #[tokio::test]
+    async fn a_failed_update_puts_back_the_pre_update_backup() {
+        const MODULE: &str = "[module]\nschema_version = 1\nname = \"plain\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[install]\nmethod = \"steamcmd\"\n\n[backup]\npaths = [\"world\"]\n";
+        const HALF_UPDATE: &str = "import json, os, sys\ncfg = json.load(sys.stdin)\n\
+            open(os.path.join(cfg['install_dir'], 'world', 'level.dat'), 'w').write('half')\n\
+            print(json.dumps({'success': False, 'error': 'boom'}))\n";
+        let (state, id, tmp) = crate::service::backup::tests::server_with(MODULE, Some(HALF_UPDATE)).await;
+        let world = tmp.path().join("server/world");
+        std::fs::create_dir_all(&world).unwrap();
+        std::fs::write(world.join("level.dat"), "before").unwrap();
+        {
+            let mut sup = state.supervisor.write().await;
+            let mut inst = sup.instance_store.get(&id).cloned().unwrap();
+            inst.extension_data.insert(crate::instance::install_method_key("steamcmd"), json!(true));
+            sup.instance_store.update(&id, inst).unwrap();
+        }
+
+        let done = super::begin_server_update(&state, &id).await.ok().expect("the update starts");
+        assert!(!done.await.unwrap());
+        assert_eq!(std::fs::read_to_string(world.join("level.dat")).unwrap(), "before");
+        let shown = serde_json::to_value(state.provision_tracker.get(&id).unwrap()).unwrap();
+        assert!(shown["restored_backup"].as_str().is_some_and(|n| n.contains("pre-update")), "{shown}");
     }
 
     /// 업데이트 확인은 모듈 `[install]`을 그대로 받는다. 인스턴스에 남은 옛 사본(`steamcmd_app_id`)을 쓰지 않는다

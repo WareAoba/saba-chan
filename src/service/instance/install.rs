@@ -224,22 +224,29 @@ async fn run(state: IPCServer, module_name: String, version: String, request: Re
     let mut result = result;
     // 실패: 설치 전 백업으로 되돌린다
     if let Some(name) = before {
-        let restored = crate::service::backup::restore_held(&state, id, &name, guard, false).await;
         let body = match &mut result {
             Ok(body) | Err(body) => body,
         };
-        if body.is_object() {
-            match restored {
-                Ok(_) => body["restored_backup"] = json!(name),
-                Err(r) => {
-                    let reason = r.reason().unwrap_or("restore failed").to_string();
-                    tracing::error!("Could not put back the pre-install backup '{}' for '{}': {}", name, id, reason);
-                    body["kept_backup"] = json!(name);
-                }
-            }
-        }
+        put_back(&state, id, &name, guard, body).await;
     }
     result
+}
+
+/// 실패한 설치·업데이트: 그 전에 만든 백업으로 되돌리고(안전 백업 없이) 실패 본문에 적는다.
+/// 되돌렸으면 `restored_backup`, 되돌리지 못했으면 `kept_backup`(손으로 복원할 수 있게 남는다)
+pub(crate) async fn put_back(state: &IPCServer, id: &str, name: &str, guard: &InstanceLock, body: &mut Value) {
+    let restored = crate::service::backup::restore_held(state, id, name, guard, false).await;
+    if !body.is_object() {
+        return;
+    }
+    match restored {
+        Ok(_) => body["restored_backup"] = json!(name),
+        Err(r) => {
+            let reason = r.reason().unwrap_or("restore failed").to_string();
+            tracing::error!("Could not put back the backup '{}' for '{}': {}", name, id, reason);
+            body["kept_backup"] = json!(name);
+        }
+    }
 }
 
 /// 설치 오류 본문. 되돌리지 못한 파일은 422와 같은 칸으로도 싣는다
