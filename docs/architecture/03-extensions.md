@@ -128,7 +128,7 @@
   1. 부를 익스텐션마다 context를 따로 만들고, `extension_config`에는 그 익스텐션 자신의 설정만 `{<id>: {k: v}}` 형태로 넣는다(`ext/hooks.rs`). 다른 익스텐션의 설정은 넘기지 않는다. 명령(`plan_command`)도 같다.
   2. `context.extension_data`로 `condition`을 평가한다(bool, 0이 아닌 숫자, 비어 있지 않은 문자열이면 true).
   3. `python_modules[binding.module]` 경로를 정한다. 없는 모듈이면 그 호출은 Err 결과가 된다.
-- `HookPlan::run(timeout)`(`ext/hooks.rs`): **락 밖에서** 순서대로 실행한다. 결과에 `handled == true`가 있으면 **나머지 익스텐션을 건너뛴다**. 에러가 나면 기록하고 계속 진행한다(graceful).
+- `HookPlan::run(timeout)`(`ext/hooks.rs`): **락 밖에서** 순서대로 실행한다. 결과에 `handled == true`가 있으면 **나머지 익스텐션을 건너뛴다**. 에러가 나거나 `success:false`로 답하면(Python 예외·격리 거부 포함) warn으로 기록하고 계속 진행한다(graceful). 결과를 버리는 호출부도 이 기록이 남는다.
 - `run_hook` = `run_hook_timed(…, 120)`(`ext/hooks.rs`). `run_hook_to(ext_id, …)`(`ext/hooks.rs`)는 익스텐션 하나에만 보낸다.
 - 결과 병합: 디스패처는 병합하지 않고 `Vec<(ext_id, Result<Value>)>`를 반환한다. 해석은 호출부마다 다르다(아래 표).
 
@@ -141,9 +141,9 @@
 | `daemon.startup` | `src/main.rs` | daemon 기동 직후 | `tokio::spawn` 백그라운드, 120s | `{}` (+extension_config) | 결과마다 `success`(기본 true), `message`, `error` → `ExtensionInitTracker`(`/api/extensions/init-status`) |
 | `daemon.startup` (재발화) | `handlers/extension.rs` | `POST /api/extensions/:id/enable` 성공 후 | spawn, 120s | `{}` | `run_hook_to`로 **방금 켠 익스텐션에만** 보낸다. |
 | `daemon.shutdown` | `src/main.rs` | 종료 경로(Ctrl-C/SIGTERM, 종료 API, 워치독) | 동기(await), hook 120s, 전체 30s 상한 | `instances[] {id,name,module,extension_data,instance_dir}` | `handled` 여부를 로그로만 남긴다 |
-| `server.pre_start` | `supervisor/start.rs` `run_pre_start_hook` (non-managed start, managed start. 문맥은 `plan_start`) | 서버 시작, 시작 전 검사(이미 켜짐·모듈 의존성·필수 익스텐션·포트 충돌)를 통과한 뒤 | 동기, 120s | 공통 + `config`(시작 설정, 비밀 값은 `***`), `managed`(bool). 두 시작 방식이 같은 키를 받는다 | `handled:true` + `success!=true` → 에러를 반환한다. `success:true`이면 `log_follower{program,args,working_dir,description,interactive,strip_prefix,env_vars}`로 `ManagedProcess::spawn`(interactive) 또는 `spawn_log_follower`를 실행한다. 그 결과를 그대로 반환하고 기본 시작 로직을 건너뛴다. |
-| `server.stop` | `supervisor/stop.rs` `stop_server_inner` | `stop_server` 진입 직후, 정지 전 | 동기, 120s | 공통 | `handled:true`이면 cooldown을 기록하고 그대로 반환한다. 익스텐션이 Err이거나 `success:false`이면 실패를 반환한다 |
-| `server.status` | `supervisor/status.rs` `get_server_status` | `GET /api/instance/:id/status` | 동기, 120s | 공통 + `process_patterns` | `handled:true`이면 그대로 반환한다 |
+| `server.pre_start` | `supervisor/start.rs` `run_pre_start_hook` (non-managed start, managed start. 문맥은 `plan_start`) | 서버 시작, 시작 전 검사(이미 켜짐·모듈 의존성·필수 익스텐션·포트 충돌)를 통과한 뒤 | 동기, 120s | 공통 + `config`(시작 설정, 비밀 값은 `***`), `managed`(bool). 두 시작 방식이 같은 키를 받는다 | 결과는 `server.stop`·`server.status`와 같은 규칙(`extension::hook_answer`)으로 읽는다: `handled:true`인 답이 먼저, 없으면 익스텐션의 실패(호출 실패·예외·`success:false`)를 답으로 쓰고 데몬이 대신 띄우지 않는다. `handled:true` + `success!=true` → 에러를 반환한다. `success:true`이면 `log_follower{program,args,working_dir,description,interactive,strip_prefix,env_vars}`로 `ManagedProcess::spawn`(interactive) 또는 `spawn_log_follower`를 실행한다. 그 결과를 그대로 반환하고 기본 시작 로직을 건너뛴다. |
+| `server.stop` | `supervisor/stop.rs` `stop_server_inner` | `stop_server` 진입 직후, 정지 전 | 동기, 120s | 공통 | `handled:true`이면 cooldown을 기록하고 그대로 반환한다. 익스텐션이 Err이거나 `success:false`이면 실패를 반환한다(`extension::hook_answer`) |
+| `server.status` | `supervisor/status.rs` `get_server_status` | `GET /api/instance/:id/status` | 동기, 120s | 공통 + `process_patterns` | `handled:true`이면 그대로 반환한다. 맡은 답이 없고 익스텐션이 Err이거나 `success:false`이면 그 실패를 상태 답으로 준다(`extension::hook_answer`) |
 | `server.list_enrich` | `handlers/server.rs` `enrich_results` | `GET /api/servers`, `extension_data`가 비어 있지 않고 캐시에 답이 없는 인스턴스마다 **함께** 실행(한 번에 4개까지, `LIST_ENRICH_AT_ONCE`) | 동기, **10s**, 결과를 30s TTL 캐시(`ipc/mod.rs`) | `instance_id, instance_name, module, extension_data, instance_dir, process_patterns` | `handled`와 무관하게 첫 번째 Ok를 캐시한다(실패는 캐시하지 않음). `handled:true`이면 `status`와 `extension_status[<res.extension_id or "default">]`를 채운다. `handled:true` 결과의 `status_line`(짧은 한 줄, 경로·비밀값 금지)은 디스코드 `/사바쨩 상태`에 나간다(05 §4 heartbeat `statusLine`) |
 | `server.post_create` | `service/instance/create.rs` `create` | 인스턴스 생성(`POST /api/instances`), `instance_store.add` 성공 직후 | `tokio::spawn` 백그라운드, 120s. 결과를 기다리지 않고 바로 네이티브 프로비저닝으로 넘어간다 | 공통 + `migration` | 결과를 버린다. 프로비저닝과 동시에 돈다 |
 | `server.pre_delete` | `handlers/instance/delete.rs` `pre_delete_hook` | 인스턴스 삭제 | 동기, 120s | 공통 | `handled`이면 2초 대기한다(파일 잠금 해제용) |

@@ -501,7 +501,8 @@ impl Supervisor {
         ready::after_start(&rt, &id, &name, result, console, &patterns, timeout);
     }
 
-    /// `server.pre_start` hook을 부른다 (락 밖). 익스텐션이 시작을 맡았으면(handled) 그 결과를 돌려주고, 맡은 곳이 없으면 `None`.
+    /// `server.pre_start` hook을 부른다 (락 밖). 익스텐션이 시작을 맡았으면(handled) 그 결과를, 맡을 수 있는 익스텐션이 실패했으면
+    /// 그 실패를 돌려주고(`extension::hook_answer`), 둘 다 없으면 `None`.
     /// 맡아 띄웠으면 익스텐션이 준 `log_follower`를 붙인다. 문맥은 `plan_start`가 만든다
     async fn run_pre_start_hook(
         sup: &tokio::sync::RwLock<Self>,
@@ -515,45 +516,47 @@ impl Supervisor {
         let server_name = instance.name.as_str();
         let host_context = sup.read().await.host_context(&instance.id);
         let results = crate::plugin::with_instance(host_context, crate::extension::run_hook(&ext_mgr, "server.pre_start", ctx)).await;
-        for (ext_id, result) in &results {
-            if let Ok(val) = result {
-                if val.get("handled").and_then(|h| h.as_bool()) == Some(true) {
-                    // Extension handled but failed → ensure error/message fields exist
-                    if val.get("success").and_then(|s| s.as_bool()) != Some(true) {
-                        let mut fail_val = val.clone();
-                        if let Some(obj) = fail_val.as_object_mut() {
-                            obj.entry("error".to_string())
-                                .or_insert_with(|| json!("Extension failed to start server"));
-                            obj.entry("message".to_string())
-                                .or_insert_with(|| json!("Extension handled the start request but reported failure"));
-                        }
-                        let err_detail = fail_val.get("error").and_then(|e| e.as_str()).unwrap_or("unknown");
-                        tracing::warn!(
-                            ext = ext_id,
-                            error = err_detail,
-                            "Extension hook '{} handled but failed for '{}'",
-                            hook_label,
-                            server_name
-                        );
-                        return Some(fail_val);
-                    }
-                    // 익스텐션이 띄우는 사이 정지가 들어왔으면 그 정지(server.stop)는 이미 끝났다: 다시 꺼서 되돌린다
-                    if starting.stop_requested(&*sup.read().await) {
-                        Self::undo_extension_start(sup, &instance.id, module_name).await;
-                        return Some(start_cancelled(&instance.name));
-                    }
-                    // Extension이 시작 성공 → log_follower가 있으면 로그 스트리머 등록
-                    if let Some(log_cfg) = val.get("log_follower") {
-                        if let Err(blocked) = Self::attach_log_follower(sup, instance, module_name, ext_id, log_cfg).await {
-                            return Some(blocked);
-                        }
-                    }
-                    announce_started(&starting.runtime, &instance.id, &instance.name, &crate::audit::current(), false);
-                    return Some(val.clone());
-                }
+        let (ext_id, val) = match crate::extension::hook_answer(&results)? {
+            crate::extension::HookAnswer::Handled(ext_id, val) => (ext_id, val),
+            // 시작을 맡을 수 있는 익스텐션이 실패했다: 데몬이 대신 띄우면 같은 서버가 두 번 뜰 수 있다
+            crate::extension::HookAnswer::Failed(mut error) => {
+                tracing::warn!("Extension hook '{} failed for '{}'; not starting it natively", hook_label, server_name);
+                error["server"] = json!(server_name);
+                return Some(error);
+            }
+        };
+        // Extension handled but failed → ensure error/message fields exist
+        if val.get("success").and_then(|s| s.as_bool()) != Some(true) {
+            let mut fail_val = val.clone();
+            if let Some(obj) = fail_val.as_object_mut() {
+                obj.entry("error".to_string())
+                    .or_insert_with(|| json!("Extension failed to start server"));
+                obj.entry("message".to_string())
+                    .or_insert_with(|| json!("Extension handled the start request but reported failure"));
+            }
+            let err_detail = fail_val.get("error").and_then(|e| e.as_str()).unwrap_or("unknown");
+            tracing::warn!(
+                ext = ext_id,
+                error = err_detail,
+                "Extension hook '{} handled but failed for '{}'",
+                hook_label,
+                server_name
+            );
+            return Some(fail_val);
+        }
+        // 익스텐션이 띄우는 사이 정지가 들어왔으면 그 정지(server.stop)는 이미 끝났다: 다시 꺼서 되돌린다
+        if starting.stop_requested(&*sup.read().await) {
+            Self::undo_extension_start(sup, &instance.id, module_name).await;
+            return Some(start_cancelled(&instance.name));
+        }
+        // Extension이 시작 성공 → log_follower가 있으면 로그 스트리머 등록
+        if let Some(log_cfg) = val.get("log_follower") {
+            if let Err(blocked) = Self::attach_log_follower(sup, instance, module_name, ext_id, log_cfg).await {
+                return Some(blocked);
             }
         }
-        None
+        announce_started(&starting.runtime, &instance.id, &instance.name, &crate::audit::current(), false);
+        Some(val.clone())
     }
 
     /// 시작을 맡은 익스텐션이 준 `log_follower`(콘솔 다리)를 띄워 managed 저장소에 둔다. 실행 검사에서 막히면 그 응답을 `Err`로

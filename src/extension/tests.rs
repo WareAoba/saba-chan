@@ -509,7 +509,7 @@ fn install_checks_package_then_swaps_folder() {
     let remote: Vec<RemoteExtensionInfo> = serde_json::from_value(json!([
         {"id": "helper", "name": "H", "version": "0.1.0", "download_url": "x"}
     ])).unwrap();
-    assert_eq!(mgr.missing_dependencies("box", &remote), ["helper"]);
+    assert_eq!(mgr.missing_dependencies(&mgr.discovered["box"].manifest, &remote), ["helper"]);
 }
 
 /// `a-b`와 `a_b`는 같은 폴더(`a_b`)를 쓴다: 다른 id가 이미 쓰는 폴더는 설치로 바꾸지 않는다 (일반 설치·폴더에 둔 zip 둘 다)
@@ -643,6 +643,74 @@ fn hook_context_carries_only_the_called_extensions_settings() {
         let id = call.ext_id.as_str();
         assert_eq!(call.context["extension_config"], json!({ id: { "token": format!("{id}-secret") } }), "{id}");
     }
+}
+
+/// hook이 실패로 답하면(`success:false`: Python 예외, 격리 거부) 호출부가 결과를 버려도 데몬 로그에 남는다
+#[tokio::test]
+async fn a_hook_that_answers_failure_is_logged() {
+    use tracing_subscriber::prelude::*;
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("failing");
+    std::fs::create_dir_all(&dir).unwrap();
+    let manifest = json!({
+        "id": "failing", "name": "failing", "version": "0.1.0",
+        "python_modules": { "m": "m.py" },
+        "hooks": { "server.post_create": { "module": "m", "function": "f" } },
+    });
+    std::fs::write(dir.join("manifest.json"), manifest.to_string()).unwrap();
+    std::fs::write(
+        dir.join("m.py"),
+        "import json, sys\nprint(json.dumps({'success': False, 'error_code': 'hook_broke', 'message': 'disk full'}))\n",
+    )
+    .unwrap();
+    crate::sandbox::consent_test_component(&dir.join("m.py"));
+    let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
+    mgr.discover().unwrap();
+    mgr.enabled.insert("failing".to_string());
+
+    let logs = crate::daemon_log::DaemonLogBuffer::new();
+    let _guard = tracing::subscriber::set_default(tracing_subscriber::registry().with(crate::daemon_log::DaemonLogLayer::new(logs.clone())));
+    let results = mgr.plan_hook("server.post_create", json!({}), None).run(30).await;
+    assert_eq!(results[0].1.as_ref().unwrap()["error_code"], "hook_broke", "{results:?}");
+    let warned = logs.recent_where(50, |e| e.level == "warn" && e.message.contains("failing") && e.message.contains("hook_broke"));
+    assert_eq!(warned.len(), 1, "{:?}", logs.get_since(None, None));
+}
+
+/// 패키지 받기는 업데이터의 받기(멈춤 기한·재시도·크기 상한)를 쓴다: 서버가 한 번 5xx로 답해도 다시 받는다
+#[tokio::test]
+async fn an_extension_download_retries_a_server_error() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        let responses: [&[u8]; 2] = [
+            b"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+            b"HTTP/1.1 200 OK\r\nContent-Length: 7\r\nConnection: close\r\n\r\npackage",
+        ];
+        for response in responses {
+            let (mut sock, _) = listener.accept().await.unwrap();
+            let mut buf = [0u8; 2048];
+            let _ = sock.read(&mut buf).await;
+            let _ = sock.write_all(response).await;
+        }
+    });
+    let bytes = ExtensionManager::download_package(&format!("http://{addr}/ext.zip")).await.unwrap();
+    assert_eq!(bytes, b"package");
+}
+
+/// 시작·정지·상태 hook의 결과는 한 규칙으로 읽는다: 맡은 답, 없으면 맡을 수 있는 익스텐션의 실패, 둘 다 없으면 데몬이 한다
+#[test]
+fn start_stop_and_status_hooks_read_their_results_by_one_rule() {
+    let ok = |v: Value| -> Result<Value> { Ok(v) };
+    let failed = ok(json!({ "success": false, "error_code": "module_exception" }));
+    let handled = ok(json!({ "handled": true, "success": true }));
+    let results = vec![("a".to_string(), failed), ("b".to_string(), handled)];
+    assert!(matches!(hook_answer(&results), Some(HookAnswer::Handled("b", _))), "the extension that took it answers");
+    let results = vec![("a".to_string(), ok(json!({ "success": true }))), ("b".to_string(), Err(anyhow::anyhow!("crashed")))];
+    assert!(matches!(hook_answer(&results), Some(HookAnswer::Failed(v)) if v["success"] == false), "a failure is not covered up");
+    let results = vec![("a".to_string(), ok(json!({ "success": false, "error_code": "isolation_unsupported" })))];
+    assert!(matches!(hook_answer(&results), Some(HookAnswer::Failed(v)) if v["error_code"] == "isolation_unsupported"));
+    assert_eq!(hook_answer(&[("a".to_string(), ok(json!({ "success": true })))]), None, "nobody took it: the daemon does it");
 }
 
 #[test]

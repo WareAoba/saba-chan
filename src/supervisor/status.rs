@@ -26,12 +26,14 @@ impl Supervisor {
             let (ext_mgr, ctx) = hook;
             let host_context = sup.read().await.host_context(&instance.id);
             let results = crate::plugin::with_instance(host_context, crate::extension::run_hook(&ext_mgr, "server.status", ctx)).await;
-            for (_ext_id, result) in &results {
-                if let Ok(val) = result {
-                    if val.get("handled").and_then(|h| h.as_bool()) == Some(true) {
-                        return Ok(val.clone());
-                    }
+            match crate::extension::hook_answer(&results) {
+                Some(crate::extension::HookAnswer::Handled(_, val)) => return Ok(val.clone()),
+                // 상태를 맡을 수 있는 익스텐션이 실패했으면 데몬이 본 "꺼짐"으로 덮지 않는다
+                Some(crate::extension::HookAnswer::Failed(mut error)) => {
+                    error["server"] = json!(instance.name);
+                    return Ok(error);
                 }
+                None => {}
             }
         }
 
