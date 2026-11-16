@@ -2135,7 +2135,7 @@ fn old_backups_are_kept_while_the_updater_watches_the_new_daemon() {
     std::fs::write(manager.install_root.join(&core), b"new").unwrap();
     std::fs::write(manager.install_root.join(&core_old), b"old").unwrap();
 
-    crate::live_apply::begin_watch(&manager.staging_dir);
+    crate::live_apply::begin_watch(&manager.staging_dir).unwrap();
     manager.cleanup_old_files();
     assert!(manager.install_root.join(&core_old).exists(), "kept while the watch is on");
 

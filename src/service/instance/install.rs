@@ -110,7 +110,7 @@ fn request(payload: &Value) -> Result<Request, Failure> {
 
 /// 인스턴스를 잡는다: 켜져 있거나 백업·복원·삭제 중이면 409. 설정은 잡은 뒤에 읽는다
 async fn hold_target(state: &IPCServer, module_name: &str, id: &str) -> Result<Target, Failure> {
-    let not_found = || Failure::instance_not_found(&id);
+    let not_found = || Failure::instance_not_found(id);
     match state.supervisor.read().await.instance_store.get(id) {
         Some(inst) if inst.module_name == module_name => {}
         Some(_) => return Err(super::invalid_field("instance_id", format!("Instance '{}' is not a '{}' server", id, module_name))),

@@ -1757,7 +1757,7 @@ async fn roll_back_with(
     let targets = previous
         .exes
         .iter()
-        .map(|(_, exe)| if is_gui_exe(&exe) { "gui".to_string() } else { exe.to_string_lossy().into_owned() })
+        .map(|(_, exe)| if is_gui_exe(exe) { "gui".to_string() } else { exe.to_string_lossy().into_owned() })
         .collect();
     hand_off_to_updater(state, body, targets, true).await
 }
@@ -1798,7 +1798,7 @@ async fn hand_off_to_updater(state: UpdateState, body: LaunchUpdaterRequest, tar
         .unwrap_or_default();
     let restart = gui_must_restart(&targets, &body.relaunch, body.gui_stays);
     let (guis, relaunch) = restart_plan(restart, body.relaunch, &guis, resident, daemon_line);
-    let gui_restart = !guis.is_empty() || relaunch.first().is_some_and(|exe| is_gui_exe(exe));
+    let gui_restart = !guis.is_empty() || relaunch.first().is_some_and(is_gui_exe);
     let mut args = updater_args(ticket, saba_chan_updater_lib::profile::Profile::load(), relaunch, saba_chan_updater_lib::autostart::service_relaunch());
     if rollback {
         args.insert(1, "--rollback".to_string());
@@ -1913,14 +1913,14 @@ fn restart_plan(
 
 /// GUI를 끄고 다시 띄워야 하는가: GUI가 적용 대상이거나, 부른 GUI가 남을 줄 모른다(옛 GUI는 성공 응답에 끝나므로 다시 띄워 준다)
 fn gui_must_restart(targets: &[String], requested: &[String], gui_stays: bool) -> bool {
-    targets.iter().any(|k| k == "gui") || (!gui_stays && requested.first().is_some_and(|exe| is_gui_exe(exe)))
+    targets.iter().any(|k| k == "gui") || (!gui_stays && requested.first().is_some_and(is_gui_exe))
 }
 
 /// 업데이터가 다시 띄울 것: 떠 있던 GUI가 있으면 그 GUI(요청이 이미 GUI면 그대로), 없으면 요청대로.
 /// 떠 있던 GUI가 트레이만 들고 있었으면(`resident`) 트레이 모드로 다시 띄운다
 fn relaunch_target(requested: Vec<String>, guis: &[(u32, std::path::PathBuf)], resident: bool) -> Vec<String> {
     match guis.first() {
-        Some((_, exe)) if !requested.first().is_some_and(|r| is_gui_exe(r)) => {
+        Some((_, exe)) if !requested.first().is_some_and(is_gui_exe) => {
             let mut line = vec![exe.to_string_lossy().into_owned()];
             if resident {
                 line.push(crate::tray_host::TRAY_ARG.to_string());
@@ -2371,6 +2371,7 @@ fn load_updater_config_from(file: &ConfigFile) -> UpdateConfig {
 
 /// 사용자가 바꾼 설정: 디스크에 먼저 저장하고, 저장했을 때만 관리자 설정을 바꾼다.
 /// 저장하지 못하면 아무것도 바꾸지 않고 500 `save_failed`로 답한다 (다시 켜면 되돌아가는 설정을 성공으로 보이지 않게)
+#[allow(clippy::result_large_err)] // 오류는 바로 돌려줄 HTTP 응답
 fn adopt_config(mgr: &mut UpdateManager, file: &ConfigFile, cfg: UpdateConfig) -> Result<(), axum::response::Response> {
     save_updater_config_to(file, &cfg).map_err(|e| {
         tracing::warn!("[Updates] Failed to persist update config: {}", e);
