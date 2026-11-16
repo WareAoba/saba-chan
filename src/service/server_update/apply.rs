@@ -136,7 +136,7 @@ pub(crate) fn updatable(
     let instance = match supervisor.instance_store.get(id) {
         Some(inst) => inst.clone(),
         None => {
-            return Err(Failure::coded(StatusCode::NOT_FOUND, "instance_not_found", format!("Instance not found: {}", id)));
+            return Err(Failure::instance_not_found(&id));
         }
     };
 

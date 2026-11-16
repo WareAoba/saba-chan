@@ -282,7 +282,7 @@ pub async fn client_launch(State(state): State<IPCServer>, Json(body): Json<serd
     }
     if let Some(id) = instance.as_ref().filter(|_| remote.is_none()) {
         if state.supervisor.read().await.instance_store.get(id).is_none() {
-            return super::error(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id));
+            return crate::service::Failure::instance_not_found(&id).into_response();
         }
     }
     // 띄울 화면이 없으면(CLI는 화면이나 터미널 프로그램 없음, GUI는 데스크톱 화면 없음) 띄운 척하지 않는다: 부른 쪽이 닫히지 않게

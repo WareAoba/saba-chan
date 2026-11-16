@@ -88,7 +88,7 @@ pub async fn get_instance(
             (StatusCode::OK, Json(body)).into_response()
         }
         None => {
-            super::error(StatusCode::NOT_FOUND, "instance_not_found", format!("Instance not found: {}", id))
+            crate::service::Failure::instance_not_found(&id).into_response()
         }
     }
 }
@@ -115,7 +115,7 @@ pub async fn rename_instance(
     };
     let mut supervisor = state.supervisor.write().await;
     let Some(mut instance) = supervisor.instance_store.get(&id).cloned() else {
-        return fail(StatusCode::NOT_FOUND, format!("Instance not found: {}", id), "not_found");
+        return crate::service::Failure::instance_not_found(&id).into_response();
     };
     if instance.name == new_name {
         return Json(json!({ "success": true, "id": id, "name": new_name, "previous": new_name })).into_response();
@@ -158,7 +158,7 @@ pub async fn launch_preview(
     };
     match crate::supervisor::Supervisor::launch_preview(&state.supervisor, &id, &draft, extra.as_deref()).await {
         Ok(v) => (StatusCode::OK, Json(v)).into_response(),
-        Err(e) if e.downcast_ref::<crate::supervisor::InstanceNotFound>().is_some() => (StatusCode::NOT_FOUND, Json(crate::plugin::error_response(&e))).into_response(),
+        Err(e) if e.downcast_ref::<crate::supervisor::InstanceNotFound>().is_some() => crate::service::Failure::instance_not_found(&id).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(crate::plugin::error_response(&e))).into_response(),
     }
 }
@@ -180,7 +180,7 @@ mod tests {
             async move { crate::ipc::internal::into_internal(super::launch_preview(State(state), Path(id), super::LooseJson(None)).await.into_response()).await }
         };
         let missing = preview("nope").await;
-        assert_eq!((missing.status.as_u16(), missing.body["error"].as_str()), (404, Some("Instance 'nope' not found")), "{}", missing.body);
+        assert_eq!((missing.status.as_u16(), missing.body["error_code"].as_str()), (404, Some("instance_not_found")), "{}", missing.body);
         let orphan = preview("orphan").await;
         assert_eq!(orphan.status.as_u16(), 500, "{}", orphan.body);
     }

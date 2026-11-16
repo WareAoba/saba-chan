@@ -7,7 +7,7 @@ use axum::{
 };
 use serde_json::{json, Value};
 
-use crate::service::lifecycle::{instance_not_found, start, user_restart, user_stop};
+use crate::service::lifecycle::{start, user_restart, user_stop};
 
 use super::super::{ModuleInfo, ModuleListResponse, IPCServer, ProtocolsInfo, ServerStopRequest};
 
@@ -554,7 +554,7 @@ pub async fn get_instance_status(
             }
         }
     } else {
-        super::error(StatusCode::NOT_FOUND, "instance_not_found", format!("Server '{}' not found", id))
+        crate::service::Failure::instance_not_found(&id).into_response()
     }
 }
 
@@ -590,7 +590,7 @@ pub async fn restart_instance_handler(
 pub async fn instance_events_handler(Path(id): Path<String>, State(state): State<IPCServer>) -> impl IntoResponse {
     let supervisor = state.supervisor.read().await;
     if supervisor.instance_store.get(&id).is_none() {
-        return instance_not_found(&id).into_response();
+        return crate::service::Failure::instance_not_found(&id).into_response();
     }
     Json(json!({ "events": supervisor.exit_events(&id) })).into_response()
 }

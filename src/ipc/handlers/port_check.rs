@@ -19,17 +19,14 @@ async fn resolve(state: &IPCServer, id: &str) -> Option<String> {
     sup.instance_store.find(id).map(|i| i.id.clone())
 }
 
-fn not_found(id: &str) -> axum::response::Response {
-    super::error(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id))
-}
 
 /// POST /api/instance/:id/port-check
 pub async fn check(Path(id): Path<String>, State(state): State<IPCServer>) -> axum::response::Response {
-    let Some(id) = resolve(&state, &id).await else { return not_found(&id) };
+    let Some(id) = resolve(&state, &id).await else { return crate::service::Failure::instance_not_found(&id).into_response() };
     match crate::port_check::check(&state, std::slice::from_ref(&id)).await {
         Ok(mut reports) => match reports.pop() {
             Some(report) => Json(report).into_response(),
-            None => not_found(&id),
+            None => crate::service::Failure::instance_not_found(&id).into_response(),
         },
         Err(e) => {
             let status = match e {
@@ -55,7 +52,7 @@ pub async fn check(Path(id): Path<String>, State(state): State<IPCServer>) -> ax
 
 /// GET /api/instance/:id/port-check
 pub async fn last(Path(id): Path<String>, State(state): State<IPCServer>) -> axum::response::Response {
-    let Some(id) = resolve(&state, &id).await else { return not_found(&id) };
+    let Some(id) = resolve(&state, &id).await else { return crate::service::Failure::instance_not_found(&id).into_response() };
     match crate::port_check::last(&id) {
         Some(report) => Json(report).into_response(),
         None => Json(json!({ "instanceId": id, "verdict": "not_checked" })).into_response(),
@@ -64,13 +61,13 @@ pub async fn last(Path(id): Path<String>, State(state): State<IPCServer>) -> axu
 
 /// GET /api/instance/:id/address
 pub async fn address(Path(id): Path<String>, State(state): State<IPCServer>) -> axum::response::Response {
-    let Some(id) = resolve(&state, &id).await else { return not_found(&id) };
+    let Some(id) = resolve(&state, &id).await else { return crate::service::Failure::instance_not_found(&id).into_response() };
     let labels: std::collections::HashMap<String, String> = {
         let sup = state.supervisor.read().await;
         let module = sup.instance_store.get(&id).and_then(|i| sup.module_loader.get_module(&i.module_name).ok());
         module.and_then(|m| m.metadata.settings).map(|s| s.fields.into_iter().map(|f| (f.name, f.label)).collect()).unwrap_or_default()
     };
-    let Some(target) = crate::port_check::targets(&state, std::slice::from_ref(&id)).await.pop() else { return not_found(&id) };
+    let Some(target) = crate::port_check::targets(&state, std::slice::from_ref(&id)).await.pop() else { return crate::service::Failure::instance_not_found(&id).into_response() };
     let mut ports: Vec<serde_json::Value> = Vec::new();
     for p in &target.ports {
         let protocol = json!(p.protocol);

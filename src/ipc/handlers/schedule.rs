@@ -106,7 +106,7 @@ pub async fn upcoming_schedules(axum::extract::Query(q): axum::extract::Query<Up
 pub async fn get_schedule(Path(id): Path<String>, State(state): State<IPCServer>) -> Response {
     let supervisor = state.supervisor.read().await;
     let Some(instance) = supervisor.instance_store.get(&id) else {
-        return error(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id));
+        return crate::service::Failure::instance_not_found(&id).into_response();
     };
     let meta = supervisor.module_loader.get_module(&instance.module_name).ok().map(|m| m.metadata);
     Json(json!({
@@ -134,7 +134,7 @@ pub async fn put_schedule(Path(id): Path<String>, State(state): State<IPCServer>
     }
     let mut supervisor = state.supervisor.write().await;
     let Some(mut instance) = supervisor.instance_store.get(&id).cloned() else {
-        return error(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id));
+        return crate::service::Failure::instance_not_found(&id).into_response();
     };
     if body.revision.as_ref().is_some_and(|r| *r != schedule_revision(&instance)) {
         return error(StatusCode::CONFLICT, "schedule_changed", "The schedule was changed elsewhere; read it again");

@@ -278,7 +278,7 @@ pub(crate) async fn players(state: &IPCServer, id: &str) -> Outcome {
     let call = {
         let sup = state.supervisor.read().await;
         let Some(instance) = sup.instance_store.get(id) else {
-            return fail(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id));
+            return Err(Failure::instance_not_found(id));
         };
         let Some(function) = sup.module_loader.get_module(&instance.module_name).ok().and_then(|m| m.metadata.players_function) else {
             return fail(StatusCode::NOT_IMPLEMENTED, "not_supported", "This server's module cannot list players".into());

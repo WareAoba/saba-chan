@@ -30,7 +30,7 @@ async fn start_unrecorded(state: &IPCServer, id: &str) -> Outcome {
             })
     };
     let Some((instance, managed)) = picked else {
-        return Err(instance_not_found(id));
+        return Err(Failure::instance_not_found(id));
     };
 
     // 점검 중에 들어온 정지도 시작을 취소하도록 세대를 점검 전에 잡는다.
@@ -123,10 +123,6 @@ async fn instance_key_of(state: &IPCServer, key: &str) -> Option<(String, String
         .map(|i| (i.id.clone(), i.name.clone()))
 }
 
-pub(crate) fn instance_not_found(id: &str) -> Failure {
-    Failure::coded(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id))
-}
-
 /// 정지 뒤 시작. 꺼져 있으면 시작만 한다. 작업 기록에는 `restart` 한 줄로 남는다.
 /// 답은 시작 답에 `stopped`(정지했는가)를 더한 것. 정지가 실패하면 그 답을 그대로 준다
 pub(crate) async fn restart(state: &IPCServer, id: &str, force: bool) -> Outcome {
@@ -172,7 +168,7 @@ async fn restart_unrecorded(state: &IPCServer, id: &str, mode: StopMode) -> Outc
         })
     };
     let Some((inst_id, stop_timeout, old_pid)) = picked else {
-        return Err(instance_not_found(id));
+        return Err(Failure::instance_not_found(id));
     };
     // 이 재시작의 정지가 올린 세대보다 더 올랐으면 그사이 다른 정지·시작이 들어온 것이다.
     // 기준은 정지가 알려 준 값이다: 정지 전에 따로 읽으면 그 틈에 끼어든 자동 재시작 시작까지 세어 스스로 취소한다
@@ -512,7 +508,7 @@ async fn stop_recorded(state: &IPCServer, key: &str, mode: StopMode) -> Outcome 
 
 async fn stop_unrecorded(state: &IPCServer, key: &str, force: bool) -> Outcome {
     let Some((id, name)) = instance_key_of(state, key).await else {
-        return Err(instance_not_found(key));
+        return Err(Failure::instance_not_found(key));
     };
     let id = id.as_str();
     let _transition = crate::instance::transition::Transition::begin(id, crate::instance::transition::Kind::Stopping);
@@ -557,7 +553,7 @@ async fn stop_unrecorded(state: &IPCServer, key: &str, force: bool) -> Outcome {
             Err(e) => Err(lifecycle_failure(&e, "stop", "stop_failed")),
         }
     } else {
-        Err(Failure::coded(StatusCode::NOT_FOUND, "instance_not_found", format!("Server '{}' not found", name)))
+        Err(Failure::instance_not_found(&name))
     }
 }
 
