@@ -273,6 +273,26 @@ fn port_conflicts(
         .collect()
 }
 
+/// `POST /api/instance/:id/port-conflicts`: 저장하지 않은 설정 초안(PATCH와 같은 키, `port`는 인스턴스 칸)을 저장 값에 덮어
+/// 다른 서버와 겹치는 포트를 목록의 `port_conflicts`와 같은 기준(꺼진 서버 포함)으로 답한다. 아무것도 저장하지 않는다
+pub(crate) async fn draft_port_conflicts(state: &IPCServer, id: &str, draft: &serde_json::Map<String, Value>) -> Outcome {
+    let supervisor = state.supervisor.read().await;
+    let all_instances = supervisor.instance_store.list();
+    let Some(mut target) = all_instances.iter().find(|i| i.id == id).cloned() else {
+        return Err(Failure::instance_not_found(id));
+    };
+    for (key, value) in draft {
+        if key == "port" {
+            target.port = crate::validator::port_value(value);
+        } else {
+            target.module_settings.insert(key.clone(), value.clone());
+        }
+    }
+    let every_id = all_instances.iter().map(|i| i.id.clone()).collect();
+    let conflicts = port_conflicts(&target, all_instances, &every_id, &supervisor.rest_port_settings());
+    Ok(json!({ "success": true, "port_conflicts": conflicts }))
+}
+
 /// 접속자 목록 (`GET /api/instance/:id/players`와 채팅이 같이 쓴다)
 pub(crate) async fn players(state: &IPCServer, id: &str) -> Outcome {
     let fail = |status: StatusCode, code: &str, error: String| Err(Failure::coded(status, code, error));
@@ -335,6 +355,37 @@ pub(crate) async fn players(state: &IPCServer, id: &str) -> Outcome {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 고치는 중인 설정 초안의 포트를 데몬이 확인한다: 초안을 저장 값에 덮어 자기 자신을 뺀 다른 서버(꺼진 서버 포함)와 비교하고,
+    /// 아무것도 저장하지 않는다. 없는 서버는 404
+    #[tokio::test]
+    async fn draft_ports_are_checked_against_the_other_servers() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let mut a = crate::instance::ServerInstance::new("a", "plain");
+        a.port = Some(25565);
+        let mut b = crate::instance::ServerInstance::new("b", "plain");
+        b.port = Some(25570);
+        let (a_id, b_id) = (a.id.clone(), b.id.clone());
+        sup.instance_store.add(a).unwrap();
+        sup.instance_store.add(b).unwrap();
+        let state = IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let check = |id: &str, draft: Value| {
+            let (state, id) = (state.clone(), id.to_string());
+            async move { draft_port_conflicts(&state, &id, draft.as_object().unwrap()).await }
+        };
+
+        let clash = check(&b_id, json!({ "port": "25565" })).await.unwrap();
+        assert_eq!(clash["port_conflicts"], json!([{ "port": 25565, "port_type": "port", "conflict_name": "a", "conflict_id": a_id, "conflict_port_type": "port" }]));
+        assert_eq!(check(&b_id, json!({ "port": 25570 })).await.unwrap()["port_conflicts"], json!([]), "its own saved port is not a conflict");
+        assert_eq!(check(&b_id, json!({})).await.unwrap()["port_conflicts"], json!([]));
+        assert_eq!(state.supervisor.read().await.instance_store.get(&b_id).unwrap().port, Some(25570), "nothing is saved");
+        assert_eq!(check("missing", json!({})).await.unwrap_err().status, StatusCode::NOT_FOUND);
+    }
 
     /// 캐시에 답이 없는 서버들의 `server.list_enrich`는 함께 돈다 (차례로 돌면 목록이 서버 수만큼 늦는다).
     /// 캐시에 있는 서버는 부르지 않고, 받은 답은 캐시에 남는다

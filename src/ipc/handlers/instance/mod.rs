@@ -136,6 +136,22 @@ pub async fn rename_instance(
     Json(json!({ "success": true, "id": id, "name": new_name, "previous": previous })).into_response()
 }
 
+/// POST /api/instance/:id/port-conflicts — 저장하지 않은 설정 초안 `{settings?}`(launch-preview와 같다)의 포트가
+/// 다른 서버와 겹치는지. 응답 `{success, port_conflicts}` (`service::servers::draft_port_conflicts`)
+pub async fn draft_port_conflicts(
+    State(state): State<IPCServer>,
+    Path(id): Path<String>,
+    LooseJson(body): LooseJson<Value>,
+) -> impl IntoResponse {
+    let body = body.map(|Json(b)| b).unwrap_or(Value::Null);
+    let draft = match body.get("settings") {
+        None | Some(Value::Null) => serde_json::Map::new(),
+        Some(Value::Object(m)) => m.clone(),
+        Some(_) => return super::error(StatusCode::BAD_REQUEST, "invalid_body", "settings must be an object"),
+    };
+    super::answer(crate::service::servers::draft_port_conflicts(&state, &id, &draft).await)
+}
+
 /// POST /api/instance/:id/launch-preview — 실행 인자 미리보기 `{settings?, extra_args?}`.
 /// 서버를 띄우지도 파일을 고치지도 않는다. 응답 모양은 `Supervisor::launch_preview`
 pub async fn launch_preview(

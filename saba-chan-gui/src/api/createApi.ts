@@ -594,6 +594,9 @@ export function createApi({
             if (extraArgs !== undefined && extraArgs !== null) body.extra_args = extraArgs;
             return call('post', `/api/instance/${encodeURIComponent(id)}/launch-preview`, body, 15000);
         },
+        // 고치는 중인 설정 초안의 포트가 다른 서버와 겹치는지 (데몬이 판정, 아무것도 저장하지 않는다)
+        instancePortConflicts: (id: string, settings: ApiBody) =>
+            call('post', `/api/instance/${encodeURIComponent(id)}/port-conflicts`, { settings }),
         // 초기화가 지울 것 (범위마다 지금 있는 항목과 크기). 모듈이 알려 주지 않으면 error_code not_supported
         instanceResetPreview: (instanceId: string) => call('get', `/api/instance/${encodeURIComponent(instanceId)}/server/reset`),
         instanceResetServer: (instanceId: string, body: { scope?: string; backup?: boolean } = {}) =>

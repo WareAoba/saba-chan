@@ -28,7 +28,7 @@ const listDraft = (value: unknown): string[] => (Array.isArray(value) ? value.ma
 // biome-ignore lint/suspicious/noExplicitAny: 모듈이 선언한 설정 값은 종류가 제각각이다
 export type SettingValues = Record<string, any>;
 
-/** checkPortConflicts·validateAllSettings가 돌려주는 칸별 오류 */
+/** validateAllSettings가 돌려주는 칸별 오류 */
 export interface SettingValidationError {
     errorType: string;
     min?: number;

@@ -118,6 +118,8 @@ pub static ROUTES: &[Route] = &[
     allow("POST", "/api/instance/{id}/rename"),
     // 저장하지 않은 설정 초안으로 실행 줄을 만든다: 모듈이 초안의 경로로 프로그램을 부를 수 있다
     deny("POST", "/api/instance/{id}/launch-preview"),
+    // 고치는 중인 설정의 포트가 다른 서버와 겹치는지 (읽기만 한다). 웹은 설정을 고치는 동안 그리지 않는다
+    not_on_web("POST", "/api/instance/{id}/port-conflicts"),
     allow("GET", "/api/provision-progress/{name}"),
     allow("DELETE", "/api/provision-progress/{name}"),
     allow("GET", "/api/instance/{id}/check-update"),

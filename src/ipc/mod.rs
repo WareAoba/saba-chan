@@ -892,6 +892,7 @@ impl IPCServer {
             .route("/api/instance/{id}/rename", post(handlers::instance::rename_instance))
             .route("/api/instance/{id}", get(handlers::instance::get_instance).delete(handlers::instance::delete_instance).patch(handlers::instance::update_instance_settings))
             .route("/api/instance/{id}/launch-preview", post(handlers::instance::launch_preview))
+            .route("/api/instance/{id}/port-conflicts", post(handlers::instance::draft_port_conflicts))
             // ── Provision progress ──
             .route("/api/provision-progress/{name}", get(handlers::instance::get_provision_progress).delete(handlers::instance::dismiss_provision_progress))
             // ── Server update ──

@@ -552,11 +552,16 @@ pub fn instance_ports(instance: &ServerInstance, port_fields: &[&str]) -> Vec<(S
 
 /// 모듈 설정에 든 포트 값 (수나 숫자 문자열)
 fn setting_port(instance: &ServerInstance, name: &str) -> Option<u16> {
-    let value = instance.module_settings.get(name).and_then(|v| match v {
+    instance.module_settings.get(name).and_then(port_value)
+}
+
+/// 포트 값 (숫자나 숫자 글자). 비었거나 범위 밖이면 None
+pub fn port_value(value: &Value) -> Option<u16> {
+    let value = match value {
         Value::Number(n) => n.as_u64(),
         Value::String(s) => s.trim().parse().ok(),
         _ => None,
-    });
+    };
     value.and_then(|p| u16::try_from(p).ok())
 }
 
