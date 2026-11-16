@@ -195,7 +195,7 @@ async fn run(state: IPCServer, module_name: String, version: String, request: Re
     // 받은 파일로 켜도록 버전·실행 파일·작업 폴더를 함께 맞춘다 (클라이언트가 따로 저장하지 않는다).
     // 실행 파일 백업을 지우기 전에 저장해, 저장하지 못하면 실행 파일도 되돌린다
     let commit = |sup: &mut Supervisor, installed: &Value| match own {
-        Some((id, _)) => save_installed(sup, id, &version, installed, &install_dir),
+        Some((id, _)) => save_installed(sup, id, Some(&version), installed, &install_dir),
         None => Ok(()),
     };
     let result = Supervisor::install_server(
@@ -307,21 +307,22 @@ fn installing(message: String) -> crate::ipc::ProvisionProgress {
     crate::ipc::ProvisionProgress { label: "install".to_string(), done: false, percent: None, ..crate::ipc::ProvisionProgress::finished(message, None) }
 }
 
-/// 설치가 끝난 인스턴스에 버전과 받은 실행 파일·작업 폴더를 저장한다. 모듈이 경로를 알려 주지 않으면 버전만
-pub(crate) fn save_installed(sup: &mut Supervisor, id: &str, version: &str, result: &Value, install_dir: &str) -> anyhow::Result<()> {
+/// 설치 결과를 인스턴스에 적는다 (첫 설치·버전 설치가 같이 쓴다): 받은 버전(`version`이 있으면), 실행 파일
+/// (`executable_path`, 예전 모듈은 `jar_path`)과 작업 폴더(`install_path`, 없으면 실행 파일의 폴더, 그것도 없으면 `install_dir`)
+pub(crate) fn save_installed(sup: &mut Supervisor, id: &str, version: Option<&str>, result: &Value, install_dir: &str) -> anyhow::Result<()> {
     let Some(mut inst) = sup.instance_store.get(id).cloned() else {
         anyhow::bail!("instance {} is gone", id);
     };
-    let method = sup.module_loader.get_module(&inst.module_name).ok().and_then(|m| m.metadata.install.map(|i| i.method)).unwrap_or_default();
-    inst.record_installed_version(&method, version);
+    if let Some(version) = version {
+        let method = sup.module_loader.get_module(&inst.module_name).ok().and_then(|m| m.metadata.install.map(|i| i.method)).unwrap_or_default();
+        inst.record_installed_version(&method, version);
+    }
     let exe = ["executable_path", "jar_path"].iter().find_map(|k| result.get(*k).and_then(Value::as_str)).filter(|p| !p.is_empty());
-    if let Some(exe) = exe {
-        let folder = result
-            .get("install_path")
-            .and_then(Value::as_str)
-            .filter(|p| !p.is_empty())
+    let reported = result.get("install_path").and_then(Value::as_str).filter(|p| !p.trim().is_empty());
+    if exe.is_some() || reported.is_some() {
+        let folder = reported
             .map(str::to_string)
-            .or_else(|| std::path::Path::new(exe).parent().map(|p| p.to_string_lossy().into_owned()))
+            .or_else(|| exe.and_then(|e| std::path::Path::new(e).parent()).map(|p| p.to_string_lossy().into_owned()))
             .unwrap_or_else(|| install_dir.to_string());
         // 확인되지 않은 모듈이 알려 준 폴더는 인스턴스 폴더 안만 (작업 폴더는 다음 격리 실행에 쓰기를 받는다)
         let entry = sup.module_loader.get_module(&inst.module_name).ok().map(|m| m.entry_path());
@@ -332,7 +333,9 @@ pub(crate) fn save_installed(sup: &mut Supervisor, id: &str, version: &str, resu
             tracing::warn!("Ignoring a server folder outside the instance folder from an unverified module: {}", folder);
             install_dir.to_string()
         };
-        inst.executable_path = Some(exe.to_string());
+        if let Some(exe) = exe {
+            inst.executable_path = Some(exe.to_string());
+        }
         inst.working_dir = Some(folder);
     }
     sup.instance_store.update(id, inst)
