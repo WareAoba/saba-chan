@@ -1,3 +1,4 @@
+import { formatBytes } from '@gui/components/monitor/systemMetrics';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../store';
@@ -10,18 +11,6 @@ interface Backup {
     created: number;
     kind: string;
     size: number;
-}
-
-export function sizeText(bytes: number) {
-    if (!Number.isFinite(bytes)) return '';
-    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-    let v = bytes;
-    let i = 0;
-    while (v >= 1024 && i < units.length - 1) {
-        v /= 1024;
-        i++;
-    }
-    return `${v >= 10 || i === 0 ? Math.round(v) : v.toFixed(1)} ${units[i]}`;
 }
 
 export function BackupsPanel({ api, server, running }: { api: WebApi; server: Pick<Server, 'id'>; running: boolean }) {
@@ -104,7 +93,7 @@ export function BackupsPanel({ api, server, running }: { api: WebApi; server: Pi
                                         {t(`backups.kind.${b.kind}`, { defaultValue: b.kind })}
                                     </span>
                                 </div>
-                                <div className="row-sub">{sizeText(b.size)}</div>
+                                <div className="row-sub">{formatBytes(b.size)}</div>
                             </div>
                             <div className="row-actions">
                                 <Button disabled={running || busy} onClick={() => restore(b)}>
