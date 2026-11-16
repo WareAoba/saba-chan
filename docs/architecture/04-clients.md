@@ -62,7 +62,7 @@ Daemon 라우터의 기준 위치: `src/ipc/mod.rs`(`router()`, 인증 미들웨
 
 | window.api 함수 | 호출 대상 | 라우트 존재 |
 |---|---|---|
-| serverList | GET /api/servers?notices_after=<본 마지막 알림 id> (port_conflict_stops가 있으면 `notify` 명령으로 OS 알림. 받은 가장 큰 `id`를 기억해 다음 조회에 실어 같은 알림을 두 번 띄우지 않는다). 서버마다 `managed`(runner가 맡는지, `Supervisor::uses_managed_start`)가 실린다(`ipc/mod.rs`, `handlers/server.rs`) | ✓ 643 |
+| serverList | GET /api/servers. `{ notices: true }`(메인 창의 `fetchServers`만)이면 `?notices_after=<본 마지막 알림 id>`를 실어 port_conflict_stops를 받고 `notify` 명령으로 OS 알림을 띄운다(받은 가장 큰 `id`를 기억해 같은 알림을 두 번 띄우지 않는다). 다른 조회와 메인 밖 창(`install.ts` `mainWindow`: 콘솔 팝아웃·트레이 팝업·펫 창)은 알림을 빼고 받는다. 서버마다 `managed`(runner가 맡는지, `Supervisor::uses_managed_start`)가 실린다(`ipc/mod.rs`, `handlers/server.rs`) | ✓ 643 |
 | instanceStart | POST /api/instance/:id/start (managed 여부와 포트 검사는 데몬이 정한다. 404는 서버 없음 문구, 409는 데몬 문구, 422(데몬이 켜기 전에 거절: 익스텐션·의존성·지원 OS)는 본문 그대로, 그 밖은 시작 실패 문구로 감싼다) | ✓ 646 |
 | instanceStatus | GET /api/instance/:id/status (id가 없으면 이름으로 찾는다). | ✓ |
 | moduleList | GET /api/modules | ✓ 651 |
