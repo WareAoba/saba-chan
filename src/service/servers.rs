@@ -301,7 +301,7 @@ pub(crate) async fn players(state: &IPCServer, id: &str) -> Outcome {
         let Some(instance) = sup.instance_store.get(id) else {
             return Err(Failure::instance_not_found(id));
         };
-        let Some(function) = sup.module_loader.get_module(&instance.module_name).ok().and_then(|m| m.metadata.players_function) else {
+        let Some(function) = sup.module_loader.get_module(&instance.module_name).ok().and_then(|m| m.metadata.players_function.clone()) else {
             return fail(StatusCode::NOT_IMPLEMENTED, "not_supported", "This server's module cannot list players".into());
         };
         if sup.tracker.get_pid(id).is_none() {

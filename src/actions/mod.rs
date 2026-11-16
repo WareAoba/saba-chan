@@ -1094,7 +1094,7 @@ async fn resolve_in(server: &IPCServer, id: &str, instance: Option<&str>, input:
         if server.supervisor.read().await.instance_store.get(instance).is_none() {
             return Err(ActionError::new(404, "instance_not_found", format!("Instance not found: {}", instance)));
         }
-        let query = instance_module(server, instance).await.and_then(|m| m.metadata.queries.into_iter().find(|q| q.name == name));
+        let query = instance_module(server, instance).await.and_then(|m| m.metadata.queries.iter().find(|q| q.name == name).cloned());
         let Some(query) = query else { return Err(ActionError::new(404, "unknown_action", format!("Unknown action: {}", id))) };
         if let Some(key) = input.keys().find(|k| !query.inputs.iter().any(|i| &i.name == *k)) {
             return Err(bad_input(key, "unknown field"));
@@ -2143,7 +2143,7 @@ async fn record_admin(server: &IPCServer, r: &Resolved, caller: &Caller, ok: boo
         let module_name = instance.map(|i| i.module_name.clone()).or_else(|| r.input.get("module_name").and_then(Value::as_str).map(str::to_string));
         let module = module_name.and_then(|m| sup.module_loader.get_module(&m).ok()).map(|m| m.metadata);
         let input = Value::Object(r.input.clone());
-        let (_, args) = crate::audit::redact(module.as_ref(), instance, None, Some(&input));
+        let (_, args) = crate::audit::redact(module.as_deref(), instance, None, Some(&input));
         (instance.map(|i| i.name.clone()), args)
     };
     let event = crate::audit::Event {

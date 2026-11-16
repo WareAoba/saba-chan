@@ -129,7 +129,7 @@ async fn hold_target(state: &IPCServer, module_name: &str, id: &str) -> Result<T
     };
     let dir = sup.instance_store.instance_dir(id);
     let module = sup.module_loader.get_module(module_name).ok();
-    let install = InstanceInstall::of(inst, &dir, module.as_ref().map(|m| &m.metadata), state.host_context(id));
+    let install = InstanceInstall::of(inst, &dir, module.as_ref().map(|m| &*m.metadata), state.host_context(id));
     Ok(Target { id: id.to_string(), name: inst.name.clone(), install, executable: sup.resolve_executable(inst, module_name), guard })
 }
 
@@ -314,7 +314,7 @@ pub(crate) fn save_installed(sup: &mut Supervisor, id: &str, version: Option<&st
         anyhow::bail!("instance {} is gone", id);
     };
     if let Some(version) = version {
-        let method = sup.module_loader.get_module(&inst.module_name).ok().and_then(|m| m.metadata.install.map(|i| i.method)).unwrap_or_default();
+        let method = sup.module_loader.get_module(&inst.module_name).ok().and_then(|m| m.metadata.install.as_ref().map(|i| i.method.clone())).unwrap_or_default();
         inst.record_installed_version(&method, version);
     }
     let exe = ["executable_path", "jar_path"].iter().find_map(|k| result.get(*k).and_then(Value::as_str)).filter(|p| !p.is_empty());

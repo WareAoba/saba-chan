@@ -144,6 +144,10 @@ impl Supervisor {
 
                     // snapshot 기반 검색 — 시스템 콜 없음
                     let processes = process_monitor::find_by_name_and_cmd_in(process_snapshot, process_name, &cmd_patterns);
+                    // 후보가 없으면 주인 가리기(인스턴스마다 실행 파일 경로 풀기)를 2초마다 하지 않는다
+                    if processes.is_empty() {
+                        continue;
+                    }
 
                     // 같은 게임 인스턴스가 여럿이면 폴더로 주인을 가리고, 다른 인스턴스가 잡은 PID는 빼고 고른다
                     let siblings: Vec<&crate::instance::ServerInstance> = all_instances_snapshot

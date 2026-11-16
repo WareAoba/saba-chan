@@ -130,7 +130,7 @@ pub(crate) async fn record(
         let instance = sup.instance_store.find(key);
         let module = instance.and_then(|i| sup.module_loader.get_module(&i.module_name).ok()).map(|m| m.metadata);
         // 비밀 인자·설정값은 가려서 남긴다
-        let (command, args) = crate::audit::redact(module.as_ref(), instance, command, args);
+        let (command, args) = crate::audit::redact(module.as_deref(), instance, command, args);
         match instance {
             Some(i) => (i.id.clone(), Some(i.name.clone()), command, args),
             None => (key.to_string(), None, command, args),

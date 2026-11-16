@@ -212,8 +212,8 @@ async fn plan(state: &IPCServer, id: &str) -> Result<Option<Plan>, Failure> {
             return Ok(None);
         };
         let instance_dir = supervisor.instance_store.instance_dir(id);
-        let base = server_base(&instance, &instance_dir, module.as_ref().map(|m| &m.metadata));
-        let boundary = crate::module_paths::Boundary::for_instance(&instance, &instance_dir, module.as_ref().map(|m| &m.metadata));
+        let base = server_base(&instance, &instance_dir, module.as_ref().map(|m| &*m.metadata));
+        let boundary = crate::module_paths::Boundary::for_instance(&instance, &instance_dir, module.as_ref().map(|m| &*m.metadata));
         let hook_call = module.as_ref().filter(|_| spec.hook).map(|m| {
             let mut cfg = serde_json::Map::new();
             cfg.insert("working_dir".into(), json!(base.to_string_lossy()));
@@ -324,7 +324,7 @@ async fn bare_plan(state: &IPCServer, id: &str) -> Result<Plan, Failure> {
         restore_roots: Vec::new(),
         spec: Default::default(),
         keep: instance.backup_keep.map(|k| k as usize).unwrap_or(DEFAULT_KEEP),
-        boundary: crate::module_paths::Boundary::for_instance(instance, &supervisor.instance_store.instance_dir(id), supervisor.module_loader.get_module(&instance.module_name).ok().as_ref().map(|m| &m.metadata)),
+        boundary: crate::module_paths::Boundary::for_instance(instance, &supervisor.instance_store.instance_dir(id), supervisor.module_loader.get_module(&instance.module_name).ok().as_ref().map(|m| &*m.metadata)),
         module_name: instance.module_name.clone(),
     })
 }
@@ -354,7 +354,7 @@ async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, prote
     let resume = if live { plan.spec.resume_command.clone() } else { None };
     let failures = if live {
         state.supervisor.read().await.module_loader.get_module(&plan.module_name).ok()
-            .and_then(|m| m.metadata.commands.map(|c| c.failure_patterns))
+            .and_then(|m| m.metadata.commands.as_ref().map(|c| c.failure_patterns.clone()))
             .unwrap_or_default()
     } else {
         Vec::new()
@@ -507,7 +507,7 @@ pub(crate) async fn list(state: &IPCServer, id: &str) -> Outcome {
 async fn has_snapshots(state: &IPCServer, id: &str) -> bool {
     let supervisor = state.supervisor.read().await;
     let Some(instance) = supervisor.instance_store.get(id) else { return false };
-    supervisor.module_loader.get_module(&instance.module_name).ok().and_then(|m| m.metadata.backup).is_some_and(|b| b.snapshots)
+    supervisor.module_loader.get_module(&instance.module_name).ok().is_some_and(|m| m.metadata.backup.as_ref().is_some_and(|b| b.snapshots))
 }
 
 // ── 게임 자동 백업 (스냅샷) ──
@@ -774,7 +774,7 @@ async fn transfer(state: &IPCServer, id: &str) -> Result<Transfer, Failure> {
     let module = supervisor.module_loader.get_module(&instance.module_name).ok();
     Ok(Transfer {
         dir: backup::backups_dir(&instance_dir),
-        server: server_base(instance, &instance_dir, module.as_ref().map(|m| &m.metadata)),
+        server: server_base(instance, &instance_dir, module.as_ref().map(|m| &*m.metadata)),
         instance: instance_dir,
         name: instance.name.clone(),
         module: instance.module_name.clone(),
@@ -898,7 +898,7 @@ pub(crate) async fn restore_held(state: &IPCServer, id: &str, name: &str, _guard
         };
         let instance_dir = supervisor.instance_store.instance_dir(id);
         let module = supervisor.module_loader.get_module(&instance.module_name).ok();
-        let metadata = module.as_ref().map(|m| &m.metadata);
+        let metadata = module.as_ref().map(|m| &*m.metadata);
         (vec![server_base(instance, &instance_dir, metadata), instance_dir.clone()], crate::module_paths::Boundary::for_instance(instance, &instance_dir, metadata))
     };
     // 모듈이 지금 백업하는 경로(훅·설정이 가리키는 서버 폴더 밖 데이터)도 이 인스턴스의 것이다. 지워진 폴더도 되살린다
@@ -968,7 +968,7 @@ pub(crate) async fn announce(state: &IPCServer, id: &str, message: &str) -> Resu
             .instance_store
             .get(id)
             .and_then(|i| supervisor.module_loader.get_module(&i.module_name).ok())
-            .and_then(|m| m.metadata.announce_command)
+            .and_then(|m| m.metadata.announce_command.clone())
     };
     let result = match cmd {
         Some(cmd) => run_command(state, id, &cmd, json!({ "message": message })).await,

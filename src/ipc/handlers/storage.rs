@@ -47,7 +47,7 @@ fn plan_of(sup: &crate::supervisor::Supervisor) -> storage::Plan {
             storage::PlannedInstance {
                 id: inst.id.clone(),
                 name: inst.name.clone(),
-                server_dir: crate::module_paths::server_dir(inst, &instance_dir, metadata.as_ref()),
+                server_dir: crate::module_paths::server_dir(inst, &instance_dir, metadata.as_deref()),
                 instance_dir,
             }
         })
@@ -209,7 +209,7 @@ async fn start_server_move(state: IPCServer, req: MoveRequest) -> Response {
             .get_module(&instance.module_name)
             .ok()
             .map(|m| m.metadata);
-        let server_dir = crate::module_paths::server_dir(&instance, &instance_dir, metadata.as_ref());
+        let server_dir = crate::module_paths::server_dir(&instance, &instance_dir, metadata.as_deref());
         let subdir = metadata
             .as_ref()
             .and_then(|m| m.install.as_ref())

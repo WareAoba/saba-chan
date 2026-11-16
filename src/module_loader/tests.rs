@@ -1233,18 +1233,18 @@ fn loader_reports_broken_modules_and_missing_entry() {
 
     let mut m = modules[0].clone();
     assert!(!m.matches_dir(&good), "no signatures, no match");
-    m.metadata.dir_signatures = vec!["server.jar".into(), "lifecycle.py".into()];
+    std::sync::Arc::make_mut(&mut m.metadata).dir_signatures = vec!["server.jar".into(), "lifecycle.py".into()];
     assert!(m.matches_dir(&good));
-    m.metadata.dir_signatures.push("missing.txt".into());
+    std::sync::Arc::make_mut(&mut m.metadata).dir_signatures.push("missing.txt".into());
     assert!(!m.matches_dir(&good));
 
     // 한 항목 안의 `|`는 그중 하나, `*`는 파일 이름 패턴 (Paper·Fabric처럼 jar 이름이 버전마다 다른 서버)
     std::fs::write(good.join("paper-1.21.4-15.jar"), "").unwrap();
-    m.metadata.dir_signatures = vec!["missing.jar|paper-*.jar".into(), "lifecycle.py".into()];
+    std::sync::Arc::make_mut(&mut m.metadata).dir_signatures = vec!["missing.jar|paper-*.jar".into(), "lifecycle.py".into()];
     assert!(m.matches_dir(&good));
-    m.metadata.dir_signatures = vec!["missing.jar|purpur-*.jar".into()];
+    std::sync::Arc::make_mut(&mut m.metadata).dir_signatures = vec!["missing.jar|purpur-*.jar".into()];
     assert!(!m.matches_dir(&good));
-    m.metadata.dir_signatures = vec!["../*".into()];
+    std::sync::Arc::make_mut(&mut m.metadata).dir_signatures = vec!["../*".into()];
     assert!(!m.matches_dir(&good), "patterns stay inside the folder");
 }
 

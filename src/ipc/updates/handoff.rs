@@ -124,7 +124,7 @@ async fn installed_addon_requires(state: &UpdateState) -> Vec<(String, std::coll
     if let Some(sup) = &state.supervisor
         && let Ok(modules) = sup.read().await.list_modules()
     {
-        addons.extend(modules.into_iter().map(|m| (format!("module-{}", m.metadata.name), m.metadata.dependencies)));
+        addons.extend(modules.into_iter().map(|m| (format!("module-{}", m.metadata.name), m.metadata.dependencies.clone())));
     }
     if let Some(ext) = &state.extension_manager {
         addons.extend(ext.read().await.list().into_iter().map(|e| {
