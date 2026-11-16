@@ -147,43 +147,6 @@ fn test_component_info_requires_empty_by_default() {
     assert!(info.requires.is_none());
 }
 
-// 모듈/익스텐션 핫로드 (재시작 불필요)
-
-#[test]
-fn test_module_extension_no_restart_in_apply_result() {
-    use crate::ApplyComponentResult;
-
-    // Module의 ApplyComponentResult는 restart_needed: false여야 함
-    let module_result = ApplyComponentResult {
-        component: "module-minecraft".to_string(),
-        success: true,
-        message: "Module 'minecraft' updated".to_string(),
-        stopped_processes: Vec::new(),
-        restart_needed: false,
-    };
-    assert!(!module_result.restart_needed, "모듈 업데이트는 재시작 불필요");
-
-    // Extension의 ApplyComponentResult는 restart_needed: false여야 함
-    let ext_result = ApplyComponentResult {
-        component: "ext-docker".to_string(),
-        success: true,
-        message: "Extension 'docker' updated".to_string(),
-        stopped_processes: Vec::new(),
-        restart_needed: false,
-    };
-    assert!(!ext_result.restart_needed, "익스텐션 업데이트는 재시작 불필요");
-
-    // CoreDaemon은 재시작 필요
-    let daemon_result = ApplyComponentResult {
-        component: "saba-core".to_string(),
-        success: true,
-        message: "Saba-Core updated (restart required)".to_string(),
-        stopped_processes: Vec::new(),
-        restart_needed: true,
-    };
-    assert!(daemon_result.restart_needed, "코어 데몬 업데이트는 재시작 필요");
-}
-
 #[test]
 fn test_component_apply_priority_categories() {
     // 모듈/익스텐션/Locales는 프로세스 중단 불필요 (우선순위 2)
@@ -903,7 +866,7 @@ async fn an_unknown_archive_format_is_not_applied_as_success() {
     }
 
     let core = tmp.path().join("saba-chan-updater-linux-x64.tgz");
-    assert!(manager.apply_binary_update("saba-chan-updater", &core.to_string_lossy()).await.is_err());
+    assert!(manager.apply_binary_update(&Component::Updater, &core.to_string_lossy()).await.is_err());
     let gui = tmp.path().join("saba-chan-gui-linux-x64.7z");
     assert!(manager.apply_gui_update(&gui.to_string_lossy()).await.is_err());
 }
@@ -1114,7 +1077,7 @@ async fn a_unix_core_apply_keeps_the_previous_runner_for_rollback() {
     }
     let before = manager.exe_backups();
 
-    manager.apply_binary_update("saba-core", &zip_path.to_string_lossy()).await.unwrap();
+    manager.apply_binary_update(&Component::CoreDaemon, &zip_path.to_string_lossy()).await.unwrap();
     assert_eq!(std::fs::read(manager.install_root.join("saba-runner")).unwrap(), b"new");
 
     manager.roll_back_exes_since(&before).unwrap();
@@ -2447,4 +2410,34 @@ async fn a_shared_check_does_not_hold_the_manager_while_it_asks_the_relay() {
     assert!(check.await.unwrap().is_err());
     let status = manager.read().await.get_status();
     assert!(!status.checking && status.error.as_deref().is_some_and(|e| e.starts_with("Relay check failed")), "{status:?}");
+}
+
+/// 떠 있는 CLI(사용자가 연 터미널)를 기다리지 않는다: 데몬이 관리자 쓰기 잠금을 쥔 채 적용하므로 기다리면 다른 업데이트 요청이 막힌다
+#[cfg(unix)]
+#[tokio::test]
+async fn a_cli_apply_does_not_wait_for_a_running_cli() {
+    use std::io::Write;
+    let tmp = tempfile::tempdir().unwrap();
+    let mut manager = UpdateManager::new(UpdateConfig::default(), tmp.path().join("modules").to_str().unwrap());
+    manager.install_root = tmp.path().join("install");
+    std::fs::create_dir_all(&manager.install_root).unwrap();
+    let cli = manager.install_root.join("saba-chan-cli");
+    std::fs::copy("/bin/sleep", &cli).unwrap();
+    let mut running = std::process::Command::new(&cli).arg("60").spawn().unwrap();
+    let zip_path = tmp.path().join("saba-chan-cli-linux-x64.zip");
+    {
+        let mut zw = zip::ZipWriter::new(std::fs::File::create(&zip_path).unwrap());
+        zw.start_file("saba-chan-cli", zip::write::SimpleFileOptions::default().unix_permissions(0o755)).unwrap();
+        zw.write_all(b"new").unwrap();
+        zw.finish().unwrap();
+    }
+
+    let started = std::time::Instant::now();
+    let applied = manager.apply_binary_update(&Component::Cli, &zip_path.to_string_lossy()).await;
+    let _ = running.kill();
+    let _ = running.wait();
+
+    applied.unwrap();
+    assert!(started.elapsed() < std::time::Duration::from_secs(10), "waited {:?}", started.elapsed());
+    assert_eq!(std::fs::read(&cli).unwrap(), b"new");
 }

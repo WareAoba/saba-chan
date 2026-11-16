@@ -51,24 +51,17 @@ impl UpdateManager {
         ))
     }
 
-    pub(crate) async fn apply_binary_update(&self, binary_name: &str, staged_path: &str) -> Result<Vec<PathBuf>> {
+    pub(crate) async fn apply_binary_update(&self, component: &Component, staged_path: &str) -> Result<Vec<PathBuf>> {
         let staged = Path::new(staged_path);
-
         let exe_dir = self.install_root.clone();
+        let binary_name = component.manifest_key();
 
-        // 대상 프로세스가 실행 중이라면 종료를 대기
-        let exe = |name: &str| format!("{name}{}", std::env::consts::EXE_SUFFIX);
-        let process_names: Vec<String> = match binary_name {
-            n if n.contains("daemon") || n.contains("core") => vec![exe("saba-core")],
-            n if n.contains("cli") => vec![exe("saba-chan-cli")],
-            n if n.contains("gui") => GUI_EXE_NAMES.iter().map(|n| n.to_string()).collect(),
-            _ => vec![],
-        };
-        for proc in &process_names {
-            if ProcessChecker::is_running(proc) {
+        // 데몬만 끝나길 기다린다. CLI·업데이터는 떠 있어도 실행 파일을 비켜 두고 바꾼다
+        if *component == Component::CoreDaemon {
+            let proc = format!("saba-core{}", std::env::consts::EXE_SUFFIX);
+            if ProcessChecker::is_running(&proc) {
                 tracing::info!("[Updater] Waiting for {} to exit before applying update...", proc);
-                let exited = ProcessChecker::wait_for_exit(proc, 15).await;
-                if !exited {
+                if !ProcessChecker::wait_for_exit(&proc, 15).await {
                     tracing::warn!("[Updater] {} did not exit within timeout, attempting update anyway", proc);
                 }
             }
@@ -76,7 +69,7 @@ impl UpdateManager {
 
         tracing::info!("[Updater] Applying binary update: {} in {}", binary_name, exe_dir.display());
 
-        let files = Self::extract_or_restore(staged, &exe_dir, binary_name)?;
+        let files = Self::extract_or_restore(staged, &exe_dir, &binary_name)?;
 
         std::fs::remove_file(staged).ok();
         tracing::info!("[Updater] Binary '{}' updated", binary_name);

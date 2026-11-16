@@ -1248,11 +1248,8 @@ async fn silent_apply_locales(manager: &Arc<RwLock<UpdateManager>>) {
     // 2. 적용
     let mut mgr = manager.write().await;
     match mgr.apply_single_component(&Component::Locales).await {
-        Ok(result) if result.success => {
+        Ok(()) => {
             tracing::info!("[Updates] Locales silently applied");
-        }
-        Ok(result) => {
-            tracing::warn!("[Updates] Silent locales apply returned failure: {}", result.message);
         }
         Err(e) => {
             tracing::warn!("[Updates] Silent locales apply failed: {}", e);
@@ -1363,8 +1360,8 @@ async fn download_components_with(state: UpdateState, body: DownloadRequest) -> 
 
 /// POST /api/updates/apply — 다운로드된 업데이트 적용
 ///
-/// - 모듈: 데몬이 직접 적용 (파일 교체)
-/// - 데몬/GUI/CLI·업데이터: 적용하지 않고 `requires_updater: true`로 돌려준다. 실제 적용은 `POST /api/updates/launch-updater`
+/// - 모듈·익스텐션·번역·CLI: 데몬이 직접 적용 (파일 교체. 실행 중인 CLI는 비켜 두고 바꾼다)
+/// - 데몬/GUI/업데이터(`Component::needs_daemon_down`): 적용하지 않고 `requires_updater: true`로 돌려준다. 실제 적용은 `POST /api/updates/launch-updater`
 ///
 /// Body: `{ "components": ["module-minecraft", "saba-core"] }` (선택 적용, 비어있으면 전체)
 #[derive(Deserialize, Default)]
@@ -1411,9 +1408,7 @@ async fn apply_updates_with(state: UpdateState, body: ApplyRequest) -> impl Into
     // 데몬이 일부만 적용하다 중간에 죽는 문제를 방지하기 위해
     // **모든** 컴포넌트를 업데이터 exe에 위임한다.
     // 업데이터가 프로세스 종료 후 올바른 순서로 일괄 적용.
-    let any_needs_restart = targets.iter().any(|c| matches!(c,
-        Component::Gui | Component::Updater | Component::CoreDaemon
-    ));
+    let any_needs_restart = targets.iter().any(Component::needs_daemon_down);
 
     if any_needs_restart {
         // 전부 업데이터에 위임 — 데몬은 아무것도 직접 적용하지 않음
@@ -1441,7 +1436,7 @@ async fn apply_updates_with(state: UpdateState, body: ApplyRequest) -> impl Into
             }
             let applying = if body.untouched_only { mgr.apply_untouched_addon(comp).await } else { mgr.apply_single_component(comp).await };
             match applying {
-                Ok(result) if result.success => {
+                Ok(()) => {
                     // 고른 판으로 바꾸기를 기다리던 것이면 기다림을 지운다 (바뀐 판이 무엇이든 그 기다림은 끝났다)
                     if is_addon(comp) {
                         if let Err(e) = addon_pins::update(&comp.manifest_key(), |c| c.pending_version = None) {
@@ -1450,9 +1445,6 @@ async fn apply_updates_with(state: UpdateState, body: ApplyRequest) -> impl Into
                     }
                     applied.push(comp.display_name());
                     applied_keys.push(comp.manifest_key());
-                }
-                Ok(result) => {
-                    errors.push(format!("{}: {}", comp.display_name(), result.message));
                 }
                 Err(e) => {
                     errors.push(format!("{}: {}", comp.display_name(), e));

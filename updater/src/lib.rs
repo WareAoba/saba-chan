@@ -148,6 +148,11 @@ impl Component {
         }
     }
 
+    /// 바꾸려면 데몬이 내려가야 하는 구성요소 (업데이터가 적용한다). 나머지는 데몬이 떠 있는 채로 바꾼다
+    pub fn needs_daemon_down(&self) -> bool {
+        matches!(self, Component::Gui | Component::Updater | Component::CoreDaemon)
+    }
+
     /// 구성요소 종류: `module`·`extension`(애드온, 사용자가 골라 받는다), 그 밖은 `app`(데몬이 묻지 않고 적용한다).
     /// `/api/updates/status`·`check`의 `kind`
     pub fn kind(&self) -> &'static str {
@@ -310,21 +315,6 @@ pub fn unmet_requires(component_key: &str, requires: &HashMap<String, String>, i
 }
 
 // 업데이트 적용 관련 구조체 정의 (2-flow 아키텍처)
-
-/// 개별 컴포넌트 적용 결과
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ApplyComponentResult {
-    /// 컴포넌트 manifest 키 (예: "module-minecraft", "saba-core")
-    pub component: String,
-    /// 적용 성공 여부
-    pub success: bool,
-    /// 결과 메시지
-    pub message: String,
-    /// 업데이트 적용을 위해 중단한 프로세스 목록 (데몬 IPC 경유 적용 시)
-    pub stopped_processes: Vec<String>,
-    /// 재시작 필요 여부
-    pub restart_needed: bool,
-}
 
 /// 주기 확인 간격 (시간). 연결 여부와 상관없는 안전망이다
 pub const CHECK_EVERY_HOURS: u32 = 24;
@@ -1337,13 +1327,9 @@ impl UpdateManager {
             }
             on_progress(i, key, &applied);
             match self.apply_single_component(&Component::from_manifest_key(key)).await {
-                Ok(result) if result.success => {
+                Ok(()) => {
                     tracing::info!("[Apply] {} ✓", key);
                     applied.push(key.clone());
-                }
-                Ok(result) => {
-                    tracing::warn!("[Apply] {} failed: {}", key, result.message);
-                    failed.push(format!("{}: {}", key, result.message));
                 }
                 Err(e) => {
                     tracing::error!("[Apply] {} error: {}", key, e);
@@ -1372,10 +1358,8 @@ impl UpdateManager {
         match component {
             Component::Module(name) => self.apply_module_update(name, staged_path).await,
             Component::Extension(name) => self.apply_extension_update(name, staged_path).await,
-            Component::Cli => self.apply_binary_update("saba-cli", staged_path).await,
-            // 업데이터 자신(Windows는 실행 중인 exe의 이름을 바꿀 수 있다)과 데몬은 같은 방식
-            Component::Updater => self.apply_binary_update("saba-chan-updater", staged_path).await,
-            Component::CoreDaemon => self.apply_binary_update("saba-core", staged_path).await,
+            // CLI·업데이터 자신(실행 중인 exe는 비켜 두고 바꾼다)과 데몬은 같은 방식
+            Component::Cli | Component::Updater | Component::CoreDaemon => self.apply_binary_update(component, staged_path).await,
             Component::Gui => self.apply_gui_update(staged_path).await,
             Component::Installer => self.apply_installer_update(staged_path),
             // 옆 폴더에 다 푼 뒤 이름 바꾸기로 통째로 바꾸고 판 번호(`locales/version`)를 적는다: 읽는 쪽이 반쯤 바뀐 묶음을 보지 않는다
@@ -1651,20 +1635,20 @@ impl UpdateManager {
     ///
     /// Flow 1 (백그라운드 워커): IPC 커맨드를 통해 데몬이 직접 적용한 후 재시작
     /// Flow 2 (GUI/CLI): 직접 적용, self-update flow로 전환
-    pub async fn apply_single_component(&mut self, component: &Component) -> Result<ApplyComponentResult> {
+    pub async fn apply_single_component(&mut self, component: &Component) -> Result<()> {
         self.apply_single_component_with(component, false).await
     }
 
     /// 묻지 않는 모듈·익스텐션 교체: 교체 순간의 폴더가 카탈로그에서 깐 그대로일 때만 바꾼다 (`integrity::matches_install_record`).
     /// 사용자가 넣거나 고친 파일이 있으면 폴더를 건드리지 않고 실패로 돌려준다
-    pub async fn apply_untouched_addon(&mut self, component: &Component) -> Result<ApplyComponentResult> {
+    pub async fn apply_untouched_addon(&mut self, component: &Component) -> Result<()> {
         if !matches!(component, Component::Module(_) | Component::Extension(_)) {
             anyhow::bail!("{} is not a module or an extension", component.manifest_key());
         }
         self.apply_single_component_with(component, true).await
     }
 
-    async fn apply_single_component_with(&mut self, component: &Component, untouched_only: bool) -> Result<ApplyComponentResult> {
+    async fn apply_single_component_with(&mut self, component: &Component, untouched_only: bool) -> Result<()> {
         // 업데이터·데몬의 개별 적용도 지난 적용이 남긴 것부터 정리한다 (같은 프로세스가 적용하므로 안전하다)
         self.settle_interrupted_updates();
         let comp = self.status.components.iter()
@@ -1681,51 +1665,24 @@ impl UpdateManager {
         let files = if untouched_only { self.replace_untouched_addon(component, staged_path)? } else { self.apply_one(component, staged_path).await? };
         Self::record_files(component, &files);
 
-        let message = match component {
-            Component::Module(name) => format!("Module '{}' updated", name),
-            Component::Extension(name) => format!("Extension '{}' updated", name),
-            Component::CoreDaemon => "Saba-Core updated (restart required)".to_string(),
-            other => format!("{} updated", other.display_name()),
-        };
-        let result = ApplyComponentResult {
-            component: component.manifest_key(),
-            success: true,
-            message,
-            stopped_processes: Vec::new(), // IPC 커맨드 경유 시 해당 없음
-            // 데몬은 새 프로세스로, GUI는 업데이터가 다시 띄운다
-            restart_needed: matches!(component, Component::CoreDaemon | Component::Gui),
-        };
-
+        tracing::info!("[UpdateManager] {} updated", component.manifest_key());
         // 적용 성공 시 상태 업데이트
         self.mark_component_applied(component);
 
         // 로컬 매니페스트에 버전 기록
-        if result.success {
-            if let Some(comp_state) = self.status.components.iter()
-                .find(|c| &c.component == component)
-            {
-                if let Err(e) = Self::update_installed_version_at(
-                    &self.installed_manifest_file,
-                    &component.manifest_key(),
-                    &comp_state.current_version,
-                ) {
-                    tracing::warn!("[UpdateManager] Failed to update installed manifest for {}: {}", component.manifest_key(), e);
-                }
-            }
-
-            // 코어 컴포넌트가 업데이트된 경우, 레지스트리의 DisplayVersion도 갱신
-            if matches!(component, Component::CoreDaemon) {
-                if let Some(core_comp) = self.status.components.iter()
-                    .find(|c| matches!(c.component, Component::CoreDaemon))
-                {
-                    if let Err(e) = self.update_registry_display_version(&core_comp.current_version) {
-                        tracing::warn!("[UpdateManager] Failed to update registry DisplayVersion: {}", e);
-                    }
-                }
+        if let Some(comp_state) = self.status.components.iter().find(|c| &c.component == component) {
+            if let Err(e) = Self::update_installed_version_at(&self.installed_manifest_file, &component.manifest_key(), &comp_state.current_version) {
+                tracing::warn!("[UpdateManager] Failed to update installed manifest for {}: {}", component.manifest_key(), e);
             }
         }
 
-        Ok(result)
+        // 코어 컴포넌트가 업데이트된 경우, 레지스트리의 DisplayVersion도 갱신
+        if matches!(component, Component::CoreDaemon) {
+            if let Some(core_comp) = self.status.components.iter().find(|c| matches!(c.component, Component::CoreDaemon)) {
+                self.update_registry_display_version(&core_comp.current_version);
+            }
+        }
+        Ok(())
     }
 
     /// 컴포넌트의 적용 완료 상태를 표시
