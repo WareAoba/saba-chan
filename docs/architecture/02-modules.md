@@ -82,7 +82,6 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 #### `[config]` (`ConfigSection`)
 | 키 | 타입 | 사용처 |
 |---|---|---|
-| `executable_path` | String | `/api/modules` 응답에 그대로 노출. 데몬은 이 값으로 실행하지 않음 |
 | `server_executable` | String | `working_dir + server_executable`로 실행파일 자동 해석 (`mod.rs`), 설치 시 백업 대상, 마이그레이션 (`instance/create.rs`) |
 | `process_name` | String | 인스턴스 생성 시 `instance.process_name`에 복사 → auto-detect (`instance/create.rs`, `mod.rs`) |
 | `default_port` | u16 | 인스턴스 생성 시 `instance.port` 기본값 |
@@ -92,7 +91,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 | `announce_command` | String | 게임 안 공지에 쓰는 `[[commands.fields]]` 이름 (예약 재시작 예고 등) |
 | `kick_command` | String | 내보내기에 쓰는 `[[commands.fields]]` 이름. 자동 강퇴(01 문서 §사용 모드)가 닉네임을 내보낼 때 쓴다. 그 명령의 첫 입력에 닉네임, 둘째 입력이 있으면 이유를 넣는다. 없는 명령 이름이면 `config.kick_command` 참조 오류다 |
 
-`java_path`·`ram` 같은 게임 설정은 `[config]`가 아니라 `[[settings.fields]]`에 있다. `[config]`의 모르는 키는 경고 뒤 무시한다.
+`java_path`·`ram` 같은 게임 설정은 `[config]`가 아니라 `[[settings.fields]]`에 있다. `[config]`의 모르는 키는 경고 뒤 무시한다. `executable_path`는 0.1.14-beta.4에서 지웠다: 데몬도 클라이언트도 읽지 않았고 `/api/modules` 응답에만 실려 있었다. 서버 실행 파일 이름은 `server_executable`, 실제 경로는 인스턴스의 `executable_path`(01)다. 옛 module.toml에 남아 있으면 모르는 키 경고로 넘긴다.
 
 #### `[detection]` (`DetectionSection`)
 | 키 | 타입 | 사용처 |

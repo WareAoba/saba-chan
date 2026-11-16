@@ -145,7 +145,6 @@ fn module_info(
         warnings: meta.warnings,
         unmet_dependencies,
         path: m.path,
-        executable_path: meta.executable_path,
         server_executable: meta.server_executable,
         icon: icon_base64,
         interaction_mode: meta.interaction_mode,
