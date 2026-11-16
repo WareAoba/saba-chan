@@ -377,7 +377,6 @@ pub struct ModuleInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub unsupported_reason: Option<String>,
     pub path: String,
-    pub executable_path: Option<String>,
     /// `[config] server_executable`: 모듈이 찾는 서버 실행 파일 이름. 클라이언트는 실행 파일 고르기의 파일 종류로 쓴다
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub server_executable: Option<String>,
@@ -1360,7 +1359,6 @@ mod tests {
             warnings: Vec::new(),
             unmet_dependencies: Vec::new(),
             path: "/modules/palworld".to_string(),
-            executable_path: None,
             server_executable: None,
             icon: None,
             interaction_mode: None,

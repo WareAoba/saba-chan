@@ -24,7 +24,6 @@ pub struct ModuleMetadata {
     pub entry: String,  // 모듈 폴더 기준 Python 진입 파일 (보통 lifecycle.py)
     pub process_name: Option<String>,  // config.process_name
     pub default_port: Option<u16>,  // config.default_port
-    pub executable_path: Option<String>,  // config.executable_path
     #[serde(default)]
     pub server_executable: Option<String>,  // config.server_executable (바이너리 파일명, e.g. "PalServer.exe")
     #[serde(default)]

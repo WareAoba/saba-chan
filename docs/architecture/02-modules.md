@@ -82,7 +82,6 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 #### `[config]` (`ConfigSection`)
 | 키 | 타입 | 사용처 |
 |---|---|---|
-| `executable_path` | String | `/api/modules` 응답에 그대로 노출. 데몬은 이 값으로 실행하지 않음 |
 | `server_executable` | String | `working_dir + server_executable`로 실행파일 자동 해석 (`mod.rs`), 설치 시 백업 대상, 마이그레이션 (`instance/create.rs`) |
 | `process_name` | String | 인스턴스 생성 시 `instance.process_name`에 복사 → auto-detect (`instance/create.rs`, `mod.rs`) |
 | `default_port` | u16 | 인스턴스 생성 시 `instance.port` 기본값 |
@@ -92,7 +91,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 | `announce_command` | String | 게임 안 공지에 쓰는 `[[commands.fields]]` 이름 (예약 재시작 예고 등) |
 | `kick_command` | String | 내보내기에 쓰는 `[[commands.fields]]` 이름. 자동 강퇴(01 문서 §사용 모드)가 닉네임을 내보낼 때 쓴다. 그 명령의 첫 입력에 닉네임, 둘째 입력이 있으면 이유를 넣는다. 없는 명령 이름이면 `config.kick_command` 참조 오류다 |
 
-`java_path`·`ram` 같은 게임 설정은 `[config]`가 아니라 `[[settings.fields]]`에 있다. `[config]`의 모르는 키는 경고 뒤 무시한다.
+`java_path`·`ram` 같은 게임 설정은 `[config]`가 아니라 `[[settings.fields]]`에 있다. `[config]`의 모르는 키는 경고 뒤 무시한다. `executable_path`는 0.1.14-beta.4에서 지웠다: 데몬도 클라이언트도 읽지 않았고 `/api/modules` 응답에만 실려 있었다. 서버 실행 파일 이름은 `server_executable`, 실제 경로는 인스턴스의 `executable_path`(01)다. 옛 module.toml에 남아 있으면 모르는 키 경고로 넘긴다.
 
 #### `[detection]` (`DetectionSection`)
 | 키 | 타입 | 사용처 |
@@ -442,7 +441,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 
 ### 2.2 모듈 측 디스패치 관례
 
-세 모듈과 `__example` 모두 모듈 최상위에 `FUNCTIONS` 표를 두고 진입점은 공용 `daemon_rcon.run_lifecycle(FUNCTIONS)`이다. SDK 최소 버전은 §2.5의 표를 따른다. palworld는 표의 함수마다 `ExtensionMissing`을 공용 `extension_required` 답(§2.5)으로 바꾸는 감싸기를 더해 넘긴다.
+세 모듈과 `__example` 모두 모듈 최상위에 `FUNCTIONS` 표를 두고 진입점은 공용 `daemon_rcon.run_lifecycle(FUNCTIONS)`이다. SDK 최소 버전은 §2.5의 표를 따른다. palworld는 표의 함수마다 `ExtensionMissing`(공용 `load_extension`이 준 `extension_required` 답, §2.5)을 그 답으로 돌려주는 감싸기를 더해 넘긴다.
 
 1. `sys.argv[1]`을 읽는다.
 2. stdin JSON을 읽는다. 비어 있으면 `{}`로 두고, 해석할 수 없으면 함수를 부르지 않고 `{"success":false,"message":"Invalid JSON config on stdin: ..."}`로 답한다.
@@ -576,13 +575,19 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
   - `list_dir(path)`: 폴더 항목 이름(정렬). 없는 폴더는 빈 목록, 읽지 못하는 폴더는 `OSError`(빈 폴더로 보고 넘어가지 않는다).
   - `fetch_json(url, *, timeout=15, user_agent="saba-chan")`: url의 JSON 응답. HTTP 오류·연결 실패·JSON이 아닌 답은 예외 그대로 올린다.
   - `extension_data_dir(extension_id)`: 익스텐션이 받은 파일을 두는 폴더 `SABA_EXTENSION_DATA_ROOT/<id>`(03 §익스텐션 데이터 폴더). 환경 변수가 없으면 `EnvironmentError`.
+- 0.1.14-beta.4 공용 도우미 (모듈이 따로 갖던 것, `SINCE` `0.1.14-beta.4`):
+  - `setting_default(module_dir, name)`: 설정 칸의 기본값(`[[settings.fields]] default`, 없으면 `None`). 코드에 기본값을 다시 적지 않는다.
+  - `player_capacity(config)`: `player_count()`의 가벼운 답. 설정 `max_players`(`config_value`)가 양의 정수면 `{success:true, max}`, 아니면 `{success:true}`. 1분 갱신(`players_detail` 없음)에 게임에 묻지 않는 모듈이 그대로 돌려주고, 목록 답에도 `max`를 같은 규칙으로 싣는다.
+  - `java_heap(value)`: 메모리 설정 → JVM 힙 크기. 크기 단위가 붙은 값(`4G`·`1024M`·`512K`)은 그대로, GB 숫자는 `G`(소수는 `M`: 0.5 → `512M`), 비었거나 읽을 수 없으면 `auto_heap_mb()`. `COMPACT_OBJECT_HEADERS`는 Java 25 이상에 넣는 `-XX:+UseCompactObjectHeaders`(JEP 519).
+  - `safe_name(name)`: 사용자가 정한 이름(서버·월드·파일)이 한 단계 경로 조각인지. 빈 값, 구분자·드라이브 `:`·Windows가 받지 않는 글자(`<>"|?*`)·제어 문자, Windows가 잘라 내는 끝 공백·점(`.`·`..` 포함)이 있으면 `False`. 여러 단계 이름은 조각마다 본다. 경로를 합칠 때는 그다음 `safe_join`이 루트 밖으로 나가지 않는지 본다.
+  - `load_extension(i18n, extension_id)`: 모듈이 쓰는 익스텐션 패키지 `extensions.<id>`(`-`는 `_`)를 `(패키지, None)`으로 돌려준다. 없거나 꺼져 있으면(import 가드의 `ModuleNotFoundError`) `(None, extension_required 답)`. 익스텐션 안의 다른 import 실패는 그대로 올린다(익스텐션 고장을 '없음'으로 덮지 않는다).
 - 배포: 데몬 실행 파일에 공용 파일이 들어 있다. 첫 lifecycle 실행 때 데몬 전용 `<data_dir>/python-shared/`에 쓴다. 이 경로만 공용 유틸리티의 import 경로로 쓴다. 모듈 폴더는 `PYTHONPATH`에 넣지 않는다. 적합성 키트의 `--shared-libs`에는 `<data_dir>/python-shared/`를 지정한다.
 
 **경로 도우미와 SDK 버전 (0.1.10)**
 
 `daemon_rcon.safe_join(root, *parts)`는 이름 조각을 합친 실제 경로가 `root` 안이면 `Path`로 돌려준다. 절대 경로, 드라이브, `..`, 구분자가 든 이름 조각과 루트 밖으로 나가는 링크는 `PathOutside`다. `run_lifecycle`은 이 예외를 `{success:false, error_code:"module_path_outside", message, path}`로 바꾼다.
 
-`daemon_rcon.py` 머리의 `SINCE`가 공용 SDK 이름의 최소 버전 표다. `i18n`의 이름도 같은 표에 넣는다.
+`daemon_rcon.py` 머리의 `SINCE`가 공용 SDK 이름의 최소 버전 표다. 모듈이 쓰는 상수(`COMPACT_OBJECT_HEADERS`)와 `i18n`의 이름도 같은 표에 넣는다.
 
 | 공개 이름 | 처음 제공한 코어 버전 |
 |---|---|
@@ -598,10 +603,11 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 | `setting_file_keys`, `format_setting`, `settings_to_file`, `settings_from_file`, `read_key_values`, `update_key_values`, `stop_timeout`, `request_console`, `request_terminate`, `graceful_stop`, `load_diagnose_rules`, `diagnose_lines`, `tail_lines`, `progress`, `download`, `ChecksumMismatch`, `safe_extract` | `0.1.11-0` (0.1.11 미리보기부터 받도록 `-0`) |
 | `setting_defaults_to_file`, `stop_command`, `delete_paths`, `chat_reply` | `0.1.14-0` |
 | `rcon_access`, `remote_access_values`, `enforce_remote_access`, `auto_heap_mb`, `java_release_major`, `diagnose_log`, `extension_required`, `list_dir`, `fetch_json`, `extension_data_dir` | `0.1.14-beta.2` |
+| `setting_default`, `player_capacity`, `java_heap`, `COMPACT_OBJECT_HEADERS`, `safe_name`, `load_extension` | `0.1.14-beta.4` |
 
 이력 근거: 공개 태그 `test23`(`f493b78e`, 코어 `0.1.1`)에 `i18n.I18n`이 있다. 기존 통신·설정·프로세스 함수는 `97db8a0e`(`0.1.2` 릴리스 커밋)에 있다. 루프백 함수는 `1862c5c0`(`0.1.7` 릴리스 커밋)에는 없고 `77333cab`(`0.1.8` 릴리스 커밋)에 있다. 공개 origin에는 `test`~`test23` 태그만 있다. 따라서 `0.1.2`·`0.1.8` 값은 릴리스 커밋에 근거한 보수적 값이며 최초 공개 배포 태그로 확정한 값은 아니다.
 
-`saba_audit.py`는 `daemon_rcon`·`i18n`의 import와 별칭 사용을 표와 비교한다. 선언이 없거나 낮으면 `sdk_version` finding으로 실패하며 함수 이름·현재 선언·필요 버전을 알린다. 모듈은 `[module.dependencies] saba-core = ">=<버전>"`으로 최소 버전을 선언한다. 범위·상한은 지원하지 않는다. 익스텐션 감사의 기존 호환성은 manifest의 코어 의존성도 같은 방법으로 읽어 유지한다.
+`saba_audit.py`는 `daemon_rcon`·`i18n`의 import와 별칭 사용을 표와 비교한다. 선언이 없거나 낮으면 `sdk_version` finding으로 실패하며 함수 이름·현재 선언·필요 버전을 알린다. 버전은 SemVer 순서로 비교한다: 미리보기 꼬리표도 조각마다 견주므로 `0.1.14-beta.2` 선언은 `0.1.14-beta.4` 이름을 쓰지 못한다(`-0`은 그 판의 모든 미리보기보다 앞선다). 모듈은 `[module.dependencies] saba-core = ">=<버전>"`으로 최소 버전을 선언한다. 범위·상한은 지원하지 않는다. 익스텐션 감사의 기존 호환성은 manifest의 코어 의존성도 같은 방법으로 읽어 유지한다.
 
 데몬·CLI 감사는 Rust가 TOML 선언을 읽어 검사기에 넘긴다. 데몬이 쓰는 Python은 3.11 이상이다(01 §Python). 단독 `saba_audit.py`로 `module.toml`을 읽으려면 `tomllib`이 필요하다. Python 3.10에서 이 단독 실행은 명확히 실패하며 `saba-core module audit` 사용을 안내한다. 선언 누락 finding으로 잘못 바꾸지 않는다.
 
@@ -724,7 +730,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 | 서버 종류 | 설정 `server_type`(`install = true`): vanilla, paper, folia, purpur, pufferfish, spigot, craftbukkit, fabric, quilt, forge, neoforge. 판정·설치 소스·실행 대상은 `M:minecraft/server_types.py`의 표(`SERVER_TYPES`, versions.list 접두사, Main-Class, 폴더 흔적)만 읽는다. 판정은 jar 안의 `META-INF/versions.list`(번들된 서버 jar 이름)와 MANIFEST Main-Class, 그다음 폴더 흔적(`config/paper-global.yml`, `purpur.yml`, `.fabric/`, `libraries/net/neoforged/neoforge/<버전>/` 등)으로 한다. 설치는 모든 종류가 된다. jar를 받는 종류: vanilla(Mojang), paper·folia(PaperMC Fill v3, 안정 채널, sha256 검사), purpur(Purpur API, md5), fabric(Fabric meta 서버 런처 → `fabric-server-launch.jar`), pufferfish(Pufferfish Jenkins, 그 버전의 가장 새 성공 빌드, 공식 체크섬 없음). 공식 설치기를 돌리는 종류: quilt(Quilt 설치기 `install server … --download-server`), forge(promotions의 추천 판, 없으면 최신 판, `--installServer`), neoforge(그 버전의 가장 새 안정판, 없으면 베타), spigot·craftbukkit(BuildTools `--compile`, 몇 분 걸림, Linux는 git 필요). 설치기 jar는 maven `.sha256`으로 확인하고(BuildTools는 공식 체크섬이 없다), 고정 판 포터블 Java(`<서버 폴더>/java/`)로 서버 폴더 안의 `.saba-install-*` 폴더에서 돌린 뒤 그 폴더를 지운다. 메이븐 저장소와 임시 파일도 그 폴더에 둔다. 설치기가 끝난 뒤 고른 종류로 판정되지 않으면 실패다. 1.17+ Forge/NeoForge는 `@libraries/…/<버전>/win_args.txt`(또는 unix)로 띄운다. 고른 종류와 서버 파일이 다르면 `validate`가 `SERVER_TYPE_MISMATCH` 경고를 낸다 |
 | 플러그인·모드 | `M:minecraft/plugins.py`가 `plugins/*.jar`·`mods/*.jar`의 `paper-plugin.yml`·`plugin.yml`·`fabric.mod.json`·`quilt.mod.json`·`META-INF/(neoforge.)mods.toml`을 읽어 판정한다(파일 이름은 보지 않는다, `.jar.disabled`는 꺼짐). `instance_commands()`가 plugin.yml에 선언된 명령을 자유 입력 한 칸(`{args}`)으로, `M:minecraft/plugin_catalog/<slug>.json`(플러그인 id `match`가 키, 공식 문서·소스 기준)의 명령을 입력 칸까지 준다. 한국어 문구는 `plugin_catalog/locales/ko.json`, 없으면 데이터의 영어. 카탈로그 22종 740개(EssentialsX·Spawn·Chat·Discord, LuckPerms, WorldEdit, WorldGuard, Multiverse Core·Portals·NetherPortals·Inventories, CoreProtect, GriefPrevention, Geyser, Floodgate, ViaVersion, PlaceholderAPI, Vault, spark, Chunky, ChunkyBorder, Citizens). 콘솔에서 못 쓰는 명령은 각 파일 `player_only`에 이름만 적는다 |
 | 설치 | `install.method="download"`. `ServerInstaller`(`installer.py`)가 Mojang `version_manifest_v2`에서 버전 목록을 받아 jar를 내려받는다. Java는 `JavaDetector`와 `JavaDownloader`(`java.py`, Adoptium API)로 감지하거나 `<working_dir>/java/`에 번들로 받는다. 내려받기·체크섬·압축 풀기는 공용 `download`·`safe_extract`(§2.5)를 쓴다 |
-| 실행 | `get_launch_command`가 `java -Xmx/-Xms{ram}`, 자바 실행 프로필, `jvm_args`, 실행 대상(`server_types.launch_target`: `-jar <서버 jar> nogui` 또는 Forge/NeoForge 인자 파일)을 만든다. 인자 파일로 뜨는 Forge/NeoForge는 설치기의 run.bat처럼 `user_jvm_args.txt`의 인자도 넣되(사용자 인자 앞), 사바쨩이 정하는 메모리·실행 프로필 GC·콘솔 인코딩 옵션은 뺀다(`_managed_jvm_arg`, 실험·진단 옵션 잠금 풀기는 남긴다). 가져오기의 `import_settings`는 쓰던 시작 스크립트(start.bat·run.sh 등) 실행 줄(java 또는 java를 담은 변수 뒤에 `-jar`·`-cp`·`@인자 파일`이 오는 첫 줄, `_script_java_args`. 안내 문구처럼 실행 대상이 없는 줄은 건너뛴다)의 JVM 인자 중 같은 기준으로 고른 것을 `extra_args`로 돌려준다(변수가 남은 인자는 뺀다). 메모리도 user_jvm_args.txt, 그다음 이 실행 줄의 `-Xmx`에서 읽고, 실행할 때 입력받는 값(`-Xmx%RAM%G`)이면 가져오지 않는다. 시작 전에 `[remote_access.rcon]` 값을 맞춘다(`_enforce_rcon_policy`, 공용 `enforce_remote_access`): 관리형 시작이면 `enable-rcon=false`, 관리형 시작을 끈 서버는 데몬이 준 포트·비밀번호로 `enable-rcon=true`(§1.2 RCON 정책). `ram`이 비었으면 `SABA_HOST_MEMORY`로 정한다(공용 `auto_heap_mb`, §2.5: 8G, PC − 1.5GB가 8G 미만이면 4G, 4G 미만이면 PC − 1.5GB, 최소 2G, 모르면 8G). 설정 `java_tuning`(기본 켬)이 힙 크기로 프로필을 고른다(`_java_tuning`): 6G 이하 소규모(Aikar G1에서 `AlwaysPreTouch`를 빼고 `-Xms1G`, Java 12 이상이면 `-XX:G1PeriodicGCInterval=60000`), 16G 미만 표준(Aikar G1, Xms=Xmx), 16G 이상 대규모(Aikar G1에 Aikar 문서의 12GB 초과용 값: NewSize 40·MaxNewSize 50·영역 16M·Reserve 15·IHOP 20). 설정 `java_gc`(`g1` 기본, `zgc`)가 `zgc`이고 Java 21 이상이면 힙 크기와 상관없이 세대별 ZGC(Java 21·22는 `-XX:+ZGenerational`)를 쓴다. 6G 이하는 소규모처럼 `-Xms1G`에 `AlwaysPreTouch`를 빼고, 그 위는 Xms=Xmx다. Java 25 이상이면 `-XX:+UseCompactObjectHeaders`를 더한다. 사용자가 `jvm_args`·`extra_args`에 `-XX:+Use…GC`를 넣으면 프로필의 GC 옵션을 넣지 않는다. 끄면 `-Xmx`·`-Xms`만 넣는다. 받을 Java는 `JavaDownloader.preferred_major`: 그 버전의 최대 Java를 알면(BuildTools `javaVersions`) 고정 판 중 25에 가장 가까운 판, 모르면 최소 요구 이상에서 가장 낮은 고정 판 |
+| 실행 | `get_launch_command`가 `java -Xmx/-Xms{ram}`, 자바 실행 프로필, `jvm_args`, 실행 대상(`server_types.launch_target`: `-jar <서버 jar> nogui` 또는 Forge/NeoForge 인자 파일)을 만든다. 인자 파일로 뜨는 Forge/NeoForge는 설치기의 run.bat처럼 `user_jvm_args.txt`의 인자도 넣되(사용자 인자 앞), 사바쨩이 정하는 메모리·실행 프로필 GC·콘솔 인코딩 옵션은 뺀다(`_managed_jvm_arg`, 실험·진단 옵션 잠금 풀기는 남긴다). 가져오기의 `import_settings`는 쓰던 시작 스크립트(start.bat·run.sh 등) 실행 줄(java 또는 java를 담은 변수 뒤에 `-jar`·`-cp`·`@인자 파일`이 오는 첫 줄, `_script_java_args`. 안내 문구처럼 실행 대상이 없는 줄은 건너뛴다)의 JVM 인자 중 같은 기준으로 고른 것을 `extra_args`로 돌려준다(변수가 남은 인자는 뺀다). 메모리도 user_jvm_args.txt, 그다음 이 실행 줄의 `-Xmx`에서 읽고, 실행할 때 입력받는 값(`-Xmx%RAM%G`)이면 가져오지 않는다. 시작 전에 `[remote_access.rcon]` 값을 맞춘다(`_enforce_rcon_policy`, 공용 `enforce_remote_access`): 관리형 시작이면 `enable-rcon=false`, 관리형 시작을 끈 서버는 데몬이 준 포트·비밀번호로 `enable-rcon=true`(§1.2 RCON 정책). 힙 크기는 공용 `java_heap`(§2.5)이 정한다: `ram`이 비었거나 읽을 수 없으면 `SABA_HOST_MEMORY`로 정한다(`auto_heap_mb`: 8G, PC − 1.5GB가 8G 미만이면 4G, 4G 미만이면 PC − 1.5GB, 최소 2G, 모르면 8G). 설정 `java_tuning`(기본 켬)이 힙 크기로 프로필을 고른다(`_java_tuning`): 6G 이하 소규모(Aikar G1에서 `AlwaysPreTouch`를 빼고 `-Xms1G`, Java 12 이상이면 `-XX:G1PeriodicGCInterval=60000`), 16G 미만 표준(Aikar G1, Xms=Xmx), 16G 이상 대규모(Aikar G1에 Aikar 문서의 12GB 초과용 값: NewSize 40·MaxNewSize 50·영역 16M·Reserve 15·IHOP 20). 설정 `java_gc`(`g1` 기본, `zgc`)가 `zgc`이고 Java 21 이상이면 힙 크기와 상관없이 세대별 ZGC(Java 21·22는 `-XX:+ZGenerational`)를 쓴다. 6G 이하는 소규모처럼 `-Xms1G`에 `AlwaysPreTouch`를 빼고, 그 위는 Xms=Xmx다. Java 25 이상이면 공용 `COMPACT_OBJECT_HEADERS`(`-XX:+UseCompactObjectHeaders`)를 더한다. 사용자가 `jvm_args`·`extra_args`에 `-XX:+Use…GC`를 넣으면 프로필의 GC 옵션을 넣지 않는다. 끄면 `-Xmx`·`-Xms`만 넣는다. 받을 Java는 `JavaDownloader.preferred_major`: 그 버전의 최대 Java를 알면(BuildTools `javaVersions`) 고정 판 중 25에 가장 가까운 판, 모르면 최소 요구 이상에서 가장 낮은 고정 판 |
 | 설정 | `ServerPropertiesManager`(`properties.py`)가 공용 `read_key_values`·`update_key_values`(§2.5)로 `server.properties`를 읽고 쓴다(UTF-8로 쓴다). saba 키와 파일 키는 settings 필드의 `file_key`, 변환은 `settings_to_file`·`settings_from_file`이 한다. 값은 Java Properties 이스케이프로 읽고 쓴다(`minecraft\:normal` ↔ `minecraft:normal`, `_unescape_property`·`_escape_property`). 새 파일과 설정 초기화의 값은 module.toml 설정 기본값(공용 `setting_defaults_to_file`)에 `[remote_access]` 값을 얹은 것이다(`properties._default_properties`): 설정 화면이 보이는 기본값과 같다. 동봉 `server.properties`는 1.21.9 서버가 만든 키 목록의 기준 파일일 뿐이다(`test_module_toml`) |
 | 명령 | `[commands] hook = true`(설치된 플러그인·모드 명령은 위 행). module.toml에는 23개, 전부 `method="console"`(콘솔 stdin): say, give, save-all, save-flush, save-off, save-on, list, weather, difficulty, gamemode(플레이어 필수), time, gamerule, tp, kick, ban, pardon, op, deop, whitelist(on·off·list·reload), whitelist-add, whitelist-remove(플레이어 필수), seed, stop |
 | 정지 | managed는 데몬이 stdin으로 `stop`을 보낸다. 모듈 `stop()`은 공용 `graceful_stop`(§2.5)에 요청 함수만 넘긴다. force가 아니면 콘솔 `stop`(`instance_id` 필요) → SIGTERM(POSIX) 순서로 요청하고, non-managed면 `stop_timeout`만큼 기다린 뒤에만 `force_kill`한다. 콘솔 없이 다시 붙은 managed 서버(`managed:true`)면 요청만 보내고 바로 돌려준다(기다림과 강제 종료는 데몬). 둘 다 보낼 수 없으면(콘솔 없는 Windows) 끝내지 않고 `graceful_stop_unavailable`로 답한다(§3.4). `command()`도 `daemon_stdin_command`로 콘솔에 보낸다 (`:1425-`) |
@@ -742,7 +748,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 | 정지 | stdin이 없어 데몬이 모듈 `stop()`을 부른다. 공용 `graceful_stop`(§2.5)으로 REST 정지를 요청하고 `stop_timeout` 안에 안 끝나면 강제 종료한다. REST를 쓸 수 없으면 끝내지 않고 `graceful_stop_unavailable`로 답한다(§3.4) |
 | 설정 | `PalWorldSettings.ini`의 `OptionSettings=(...)`를 **`extensions.ue4_ini`** 익스텐션으로 파싱한다. 파일 키는 settings 필드의 `file_key`이다. 로그 진단은 `[[diagnose]]` 규칙이다(콘솔 줄이 없으면 `[launch] diagnose_files`의 `Pal/Saved/Logs/Pal.log`). 동봉된 `DefaultPalWorldSettings.ini`가 기본값이다. settings 117개. 목록 값 키(`_LIST_KEYS`, 지금은 `DenyTechnologyList`)는 화면의 `PALBOX,RepairBench`를 INI에 `("PALBOX","RepairBench")`로 쓰고 읽을 때 쉼표 형태로 되돌린다. `configure()`는 저장마다 `[remote_access]` 값(`RESTAPIEnabled=True`·`RCONEnabled=False`)을 쓴다 |
 | 명령 | 10개, 모두 `/v1/api/...` REST로 간다(모듈 안의 REST 호출은 `PalworldRestClient` 하나를 거친다). announce, info, players, metrics, settings, save, shutdown은 `method="rest"`라 데몬이 바로 보낸다. kick, ban, unban은 `method="module"`이라 lifecycle `command()`를 거친다. 거기서 `resolve_player_id`가 닉네임을 SteamID로 바꾼다. kick·ban은 이름이 정확히 같은 사람만 찾고, unban만 한 사람에게만 맞는 부분 일치를 받는다. `kick_command = "kick"`(자동 강퇴)이 닉네임을 넘기기 때문이다. 표시 이름은 다른 모듈과 맞춘다(shutdown → 정지, announce → 공지). `protocol_mode`와 상관없이 늘 REST로 보낸다. |
-| 의존성 | `extensions.ue4_ini`는 `try`로 불러온다. 익스텐션이 없으면 모듈은 로드되고, INI를 만지는 함수만 `extension_required`를 돌려준다 |
+| 의존성 | `extensions.ue4_ini`는 INI를 만질 때 공용 `load_extension`으로 불러온다(`_ue4_ini`). 익스텐션이 없으면 모듈은 로드되고, INI를 만지는 함수만 `extension_required`를 돌려준다 |
 | 미등록 | `get_installed_version`, `list_versions`·`get_version_details`, `status`(데몬이 추적 PID로 답한다) |
 
 ### 4.3 zomboid (`M:zomboid/`, lifecycle 1,209줄, toml 1,942줄)
@@ -751,7 +757,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 |---|---|
 | protocols | `supported=["stdin"]`, console, `stop_command="quit"`. `[remote_access.rcon]`: 관리형 시작이면 `RCONPassword`를 비워 RCON을 끄고, 관리형 시작을 끈 서버는 데몬이 준 값을 `RCONPort`·`RCONPassword`에 쓴다 |
 | 설치 | `steamcmd`, app_id 380870, `download_size` 6.3GB. steamcmd 익스텐션의 `install_for_module`로 설치하고, 익스텐션을 불러올 수 없으면 `extension_required`를 돌려준다. 브랜치: `list_versions`가 `STEAM_BRANCHES`(`public`·`unstable`·`legacy41`, 이름은 locales `versions.<id>`)를 주고, `install_server`는 `version`으로 온 브랜치를 `install_for_module(beta=...)`로 받는다(목록 밖이면 `errors.unknown_branch`로 거절, `version`이 없으면 `[install].beta`, 그것도 없으면 지금 브랜치 그대로) |
-| 실행 | `StartServer64.bat`나 `start-server.sh`를 **파싱**해서(`_parse_bat`, `_parse_sh`, `_parse_java_cmdline`) 번들 Java, classpath, native lib을 찾는다. 그다음 `java ... zombie.network.GameServer -servername <name> -cachedir=...`를 직접 구성한다. `ram`(GB)이 비었으면 minecraft와 같은 공용 `auto_heap_mb`로 정한다(`_heap_size`). 동봉 JRE의 `release` 파일 `JAVA_VERSION`(공용 `java_release_major`)이 25 이상이면 `-XX:+UseCompactObjectHeaders`를 더한다(스크립트에 이미 있으면 두지 않는다, 버전을 못 읽으면 넣지 않는다). GC는 기본으로 스크립트(공식 ZGC) 그대로이고, 설정 `java_gc = "g1"`이면 GC 옵션(`-XX:+Use…GC`, `ZGenerational`)을 `-XX:+UseG1GC` 하나로 바꾼다(`_gc_flags`). 동봉 JRE는 바꾸지 않는다. 사용자가 더한 `extra_args`는 모듈이 넣는다(`extra_args_placed: true`): JVM 인자(`-D`·`-X`·`-javaagent:` 등, `_is_jvm_arg`)는 `-cp` 앞에(스크립트에 이미 있으면 거듭 넣지 않는다), 나머지는 게임 인자로 메인 클래스 뒤에 둔다. 가져오기의 `import_settings`는 쓰던 스크립트 java 줄의 JVM 인자 중 공식 스크립트 인자·메모리·GC·라이브러리 경로·데이터 폴더(`_managed_jvm_arg`)가 아닌 것을 `extra_args`로 돌려준다(Steam 업데이트가 스크립트를 되돌려도 남게). `ProjectZomboid64.json`은 읽지 않는다. 사용자가 만든 스크립트에 값을 모르는 변수(`%NAME%`, `$X`, 실행할 때 입력받는 값)가 남으면 그 인자는 실행·가져오기 모두에서 뺀다(게임 인자는 값을 받는 옵션째로, `_known_game_args`). classpath 변수를 모르면 `java/` 폴더로 만든다. `set "VAR=값"`과 `%~dp0`도 읽는다 |
+| 실행 | `StartServer64.bat`나 `start-server.sh`를 **파싱**해서(`_parse_bat`, `_parse_sh`, `_parse_java_cmdline`) 번들 Java, classpath, native lib을 찾는다. 그다음 `java ... zombie.network.GameServer -servername <name> -cachedir=...`를 직접 구성한다. 힙 크기는 minecraft와 같은 공용 `java_heap`으로 정한다(`ram`은 GB 숫자, 비었거나 읽을 수 없으면 `auto_heap_mb`). 동봉 JRE의 `release` 파일 `JAVA_VERSION`(공용 `java_release_major`)이 25 이상이면 공용 `COMPACT_OBJECT_HEADERS`를 더한다(스크립트에 이미 있으면 두지 않는다, 버전을 못 읽으면 넣지 않는다). GC는 기본으로 스크립트(공식 ZGC) 그대로이고, 설정 `java_gc = "g1"`이면 GC 옵션(`-XX:+Use…GC`, `ZGenerational`)을 `-XX:+UseG1GC` 하나로 바꾼다(`_gc_flags`). 동봉 JRE는 바꾸지 않는다. 사용자가 더한 `extra_args`는 모듈이 넣는다(`extra_args_placed: true`): JVM 인자(`-D`·`-X`·`-javaagent:` 등, `_is_jvm_arg`)는 `-cp` 앞에(스크립트에 이미 있으면 거듭 넣지 않는다), 나머지는 게임 인자로 메인 클래스 뒤에 둔다. 가져오기의 `import_settings`는 쓰던 스크립트 java 줄의 JVM 인자 중 공식 스크립트 인자·메모리·GC·라이브러리 경로·데이터 폴더(`_managed_jvm_arg`)가 아닌 것을 `extra_args`로 돌려준다(Steam 업데이트가 스크립트를 되돌려도 남게). `ProjectZomboid64.json`은 읽지 않는다. 사용자가 만든 스크립트에 값을 모르는 변수(`%NAME%`, `$X`, 실행할 때 입력받는 값)가 남으면 그 인자는 실행·가져오기 모두에서 뺀다(게임 인자는 값을 받는 옵션째로, `_known_game_args`). classpath 변수를 모르면 `java/` 폴더로 만든다. `set "VAR=값"`과 `%~dp0`도 읽는다 |
 | 설정 | `IniManager`가 공용 `read_key_values`·`update_key_values`로 `Zomboid/Server/<servername>.ini`를 다룬다. saba 키 → INI 키는 settings 필드의 `file_key`이다. 로그 진단은 `[[diagnose]]` 규칙으로 `server-console.txt`를 본다. settings 117개. `[backup] hook = true`라 `backup_paths()`가 세이브 위치를 계산한다 |
 | 명령 | 23개. kick, banuser는 `method="module"`이라 lifecycle `command()`를 거친다(이유가 없으면 `-r`을 붙이지 않고, 서버가 콘솔에 찍은 답을 `message`로 돌려준다. 값의 큰따옴표는 `error_code="invalid_argument"`·`rule="quote"`로 거절). 나머지는 `console`(콘솔 stdin): servermsg, players, save, kick, banuser, unbanuser, adduser, setaccesslevel, teleport, teleportto, createhorde, godmod, invisible, startrain, stoprain, chopper, gunshot, additem, addxp, showoptions, reloadoptions, changeoption, quit |
 | 정지 | managed는 데몬이 stdin으로 `quit`을 보낸다. 모듈 `stop()`(non-managed, stdin 없는 managed)은 공용 `graceful_stop`으로 force가 아니면 콘솔 `quit`(`instance_id` 필요) → SIGTERM(POSIX) 순서로 요청하고, non-managed면 `stop_timeout`만큼 기다린 뒤에만 강제 종료한다. managed(`managed:true`)면 요청만 보내고 바로 돌려준다(기다림과 강제 종료는 데몬). 둘 다 보낼 수 없으면(콘솔 없는 Windows) 끝내지 않고 `graceful_stop_unavailable`로 답한다(§3.4). PID 확인·종료는 공용 헬퍼를 쓴다. `status()`는 없다(데몬이 추적 PID로 답한다). |
@@ -762,7 +768,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 - 공식 TerrariaServer.exe(XNA Framework 4.0 필요)를 stdin으로 다룬다(`protocols.supported = ["stdin"]`). `requires_extensions = ["xna"]`: XNA 재배포 파일은 익스텐션 `xna`가 서버 폴더에 넣는다(03).
 - 설정 파일은 `serverconfig.txt`(`[config_files]`, 가져오기 해제 때 되돌린다). 실행 인자 모양은 `module.toml`의 `arg`에서 읽는다.
 - 접속·퇴장 줄은 공식 로컬라이즈 문구(12개 언어)로 알아보고, 1분 접속자 수는 데몬의 공용 계산(접속·퇴장 패턴이 둘 다 있을 때)을 쓴다. 아이콘은 `icon.png`.
-- `saba-core >=0.1.14-beta.2`를 요구한다(공용 `extension_required`·`fetch_json`). `status()`는 없다(데몬이 추적 PID로 답한다).
+- `saba-core >=0.1.14-beta.4`를 요구한다(공용 `load_extension`·`setting_default`·`player_capacity`·`safe_name`·`fetch_json`). `status()`는 없다(데몬이 추적 PID로 답한다).
 
 ### 4.5 __example (`M:__example/`)
 
@@ -776,7 +782,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 
 ### 4.6 i18n과 locales
 
-- 모듈 측: `I18n(MODULE_DIR)`이 `locales/<SABA_LANG>.json`을 읽고, 없으면 `en`으로 대체한다. 키 구조는 `module`, `aliases`(언어별 별명, §2 `[aliases]`), `settings`, `settings_note`(`version_hidden`: 버전 때문에 숨긴 설정의 까닭 한 문장, §1.2 `versions`), `commands`, `presets`, `queries`, `agreements`, `errors`, `messages`, `rcon`, `reset` 등이다(minecraft ko.json 기준). `queries.<name>.label`·`description`과 `[errors]` 코드의 `errors.<code>`는 데몬도 읽는다: 액션 목록(`GET /api/actions?instance=`)과 heartbeat `actions`의 조회 제목·설명(`actions::module_locale`, `<모듈 폴더>/locales/<lang>.json`). `reset.label`·`reset.description`은 서버 초기화(`reset_server`)가 무엇을 지우고 남기는지 GUI 초기화 화면에 보여 주는 문구다(모듈마다 다르다: minecraft는 JAR·eula.txt만 남김, palworld는 설정만 기본값으로, zomboid는 월드 세이브만 지움).
+- 모듈 측: `I18n(MODULE_DIR)`이 `locales/<SABA_LANG>.json`을 읽고, 없으면 `en`으로 대체한다. 키 구조는 `module`, `aliases`(언어별 별명, §2 `[aliases]`), `settings`, `settings_note`(`version_hidden`: 버전 때문에 숨긴 설정의 까닭 한 문장, §1.2 `versions`), `commands`, `presets`, `queries`, `agreements`, `errors`, `messages`, `reset` 등이다(minecraft ko.json 기준). `queries.<name>.label`·`description`과 `[errors]` 코드의 `errors.<code>`는 데몬도 읽는다: 액션 목록(`GET /api/actions?instance=`)과 heartbeat `actions`의 조회 제목·설명(`actions::module_locale`, `<모듈 폴더>/locales/<lang>.json`). `reset.label`·`reset.description`은 서버 초기화(`reset_server`)가 무엇을 지우고 남기는지 GUI 초기화 화면에 보여 주는 문구다(모듈마다 다르다: minecraft는 JAR·eula.txt만 남김, palworld는 설정만 기본값으로, zomboid는 월드 세이브만 지움).
 - 인터페이스 측: `GET /api/module/:name/locales`가 그 모듈 폴더(`module.path`, ZIP 모듈은 `.extracted/<name>`)의 `locales/*.json`을 하나의 맵으로 묶어 돌려준다 (`D:src/ipc/handlers/config.rs`). GUI는 이를 `mod_<name>` 네임스페이스로 쓴다.
 
 ---
@@ -839,7 +845,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 
 | # | 위치 | 내용 | 원칙 |
 |---|---|---|---|
-| 9 | `M:palworld/lifecycle.py`(ue4-ini), `zomboid`/`palworld` `install_server`(steamcmd), `M:terraria/lifecycle.py` `_xna()`(xna) | 모듈이 플러그인(`extensions.*`)을 Python import로 직접 사용. 데몬은 import 가드로 꺼진 익스텐션 import만 막는다 (`D:src/plugin/mod.rs`) | 플러그인 기능 주입은 데몬이 중개해야 하는데, 모듈과 플러그인이 직접 결합 |
+| 9 | `M:palworld/lifecycle.py` `_ue4_ini()`(ue4-ini), `zomboid`/`palworld` `install_server`(steamcmd), `M:terraria/lifecycle.py` `validate`·`install_server`(xna) | 모듈이 플러그인(`extensions.*`)을 Python import로 직접 사용(공용 `load_extension` 한 길로 모았다). 데몬은 import 가드로 꺼진 익스텐션 import만 막는다 (`D:src/plugin/mod.rs`) | 플러그인 기능 주입은 데몬이 중개해야 하는데, 모듈과 플러그인이 직접 결합 |
 | 10 | `modules/daemon_rcon.py`, palworld, zomboid 콜백 | 모듈이 데몬 HTTP API를 역호출(rcon/rest/stdin). 토큰과 `SABA_IPC_URL`을 쓴다 | "매뉴얼"인 모듈이 능동 클라이언트로 동작. 경계가 모호함 |
 
 ---

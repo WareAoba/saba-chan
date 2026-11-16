@@ -110,7 +110,9 @@ def sdk_version(value):
     parts = release.split(".")
     if len(parts) != 3 or not all(part.isdigit() for part in parts) or (separator and not prerelease):
         return None
-    return tuple(int(part) for part in parts) + (not separator,)
+    # SemVer 순서: 미리보기는 정식보다 앞서고, 미리보기끼리는 조각마다 (숫자 < 글자, 숫자는 크기로) 비교한다 (beta.2 < beta.10)
+    tags = tuple((0, int(tag), "") if tag.isdigit() else (1, 0, tag) for tag in prerelease.split(".")) if separator else ()
+    return tuple(int(part) for part in parts) + (not separator, tags)
 
 
 def sdk_findings(tree, rel, versions, declared):

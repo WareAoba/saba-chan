@@ -298,7 +298,6 @@ export interface ModuleInfo {
     /** os · arch */
     unsupported_reason?: string;
     path: string;
-    executable_path: string | null;
     server_executable?: string;
     icon: string | null;
     interaction_mode: string | null;
