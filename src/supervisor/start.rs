@@ -813,6 +813,16 @@ impl Supervisor {
                 r.run_generation += 1;
             });
             s.tracker.track(&instance.id, pid);
+            // 띄운 프로세스의 손잡이를 남겨 둔다: 정지 요청 없이 끝나면 모니터가 종료 코드로 가른다
+            #[cfg(windows)]
+            let launched = match (child, console_handle) {
+                (Some(child), _) => Some(process::LaunchedExit::from_child(pid, child)),
+                (None, Some(handle)) => Some(process::LaunchedExit::from_handle(pid, handle)),
+                (None, None) => None,
+            };
+            #[cfg(not(windows))]
+            let launched = child.map(|child| process::LaunchedExit::from_child(pid, child));
+            s.runtime.with(&instance.id, |r| r.launched = launched);
         }
         tracing::info!("Non-managed server '{}' started with PID {}", server_name, pid);
         announce_started(&starting.runtime, &instance.id, &instance.name, &crate::audit::current(), false);

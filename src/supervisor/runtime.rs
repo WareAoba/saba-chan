@@ -37,6 +37,8 @@ pub(crate) struct InstanceRuntime {
     pub stop_gate: Arc<tokio::sync::Mutex<()>>,
     /// 모듈 `instance_commands()` 결과와 읽은 때 (`ipc/handlers/command.rs`)
     pub commands: Option<(Instant, crate::commands::InstanceCommands)>,
+    /// 데몬이 직접 띄운 non-managed 서버의 끝 (모니터가 종료 코드로 가른다)
+    pub launched: Option<super::process::LaunchedExit>,
 }
 
 #[derive(Default)]

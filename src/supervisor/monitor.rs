@@ -87,15 +87,25 @@ impl Supervisor {
                         }
                         continue;
                     }
-                    tracing::warn!("Process {} for instance '{}' is no longer running, removing from tracker", pid, instance.name);
-                    // tracker에서 제거하여 다음 사이클에서 다시 감지할 수 있도록 함
-                    self.tracker.untrack(&instance.id);
                     // 사바쨩이 시키지 않았는데 사라진 non-managed 서버 (managed는 위에서 판정했다)
                     let judged = dead.iter().any(|(id, _)| *id == instance.id) || self.managed_store.get(&instance.id).await.is_some();
-                    if !judged && !self.runtime.existing(&instance.id, |r| r.stop_requested.is_some()).unwrap_or(false) {
-                        let verdict = crash::ExitVerdict { kind: crash::ExitKind::UnknownExit, exit_code: None, signal: None, evidence: "exit status unknown".into() };
-                        let event = crash::ExitEvent { at: saba_runner::now(), verdict, restart_in_secs: None, note: None, note_code: None, note_args: None };
-                        self.record_exit(&instance.id, &instance.name, event, None, None);
+                    let unrequested = !judged && !self.runtime.existing(&instance.id, |r| r.stop_requested.is_some()).unwrap_or(false);
+                    // 데몬이 띄운 프로세스면 그 손잡이로 종료 상태를 안다. 끝을 아직 받지 못했으면(사라진 바로 그때) 다음 순회에 본다
+                    let launched = self
+                        .runtime
+                        .existing(&instance.id, |r| r.launched.as_ref().filter(|l| l.pid == pid).map(|l| l.ended()))
+                        .flatten();
+                    if unrequested && launched == Some(None) {
+                        continue;
+                    }
+                    tracing::warn!("Process {} for instance '{}' is no longer running, removing from tracker", pid, instance.name);
+                    let started_at = self.tracker.get_start_time(&instance.id);
+                    // tracker에서 제거하여 다음 사이클에서 다시 감지할 수 있도록 함
+                    self.tracker.untrack(&instance.id);
+                    self.runtime.existing(&instance.id, |r| r.launched = None);
+                    if unrequested {
+                        let ran_secs = started_at.map_or(u64::MAX, |t| saba_runner::now().saturating_sub(t));
+                        self.judge_unrequested_exit(instance, launched.flatten(), ran_secs);
                     }
                 }
                 continue;

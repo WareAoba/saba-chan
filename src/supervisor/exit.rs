@@ -4,11 +4,6 @@ use super::*;
 use super::stop::announce_stopped;
 
 impl Supervisor {
-    /// 백그라운드 프로세스 모니터링 (주기적 실행)
-    ///
-    /// `process_snapshot`은 write lock 획득 전에 미리 스캔한 프로세스 목록입니다.
-    /// 이를 통해 비용이 큰 시스템 콜(sysinfo)이 write lock 밖에서 실행되어
-    /// GUI read 요청에 대한 블로킹을 최소화합니다.
     /// 끝난 managed 프로세스가 왜 끝났는지 가르고, 크래시면 재시작을 예약한다. `may_restart`가 false면 예약하지 않는다
     pub(super) async fn judge_exit(&mut self, instance_id: &str, proc: &ManagedProcess, may_restart: bool) {
         use managed_process::LogLevel;
@@ -98,6 +93,38 @@ impl Supervisor {
             (crash::ExitKind::UserStop, Some(origin)) => announce_stopped(instance_id, &instance.name, kind, &origin),
             (crash::ExitKind::InGameStop, _) => announce_stopped(instance_id, &instance.name, kind, &crate::audit::Origin::new("game")),
             _ => {}
+        }
+    }
+
+    /// 정지 요청 없이 사라진 non-managed 서버를 판정한다. 데몬이 띄운 프로세스라 종료 상태(`exit`)를 알면 managed와 같은
+    /// `crash::classify`로 가른다(코드 0이면 서버 창·게임 안에서 끈 정상 정지). 콘솔이 없어 콘솔 문구는 보지 않는다.
+    /// 모르면(데몬을 다시 켠 뒤 붙었거나 자동 감지한 프로세스, 런처가 넘겨 준 PID) 원인 모를 종료다. 다시 띄우지 않는다
+    pub(super) fn judge_unrequested_exit(&mut self, instance: &crate::instance::ServerInstance, exit: Option<managed_process::ProcessExit>, ran_secs: u64) {
+        let verdict = match exit {
+            Some(exit) => {
+                let artifacts = self.module_loader.get_module(&instance.module_name).map(|m| m.metadata.crash_artifacts.clone()).unwrap_or_default();
+                let crash_files = match instance.working_dir.as_deref().filter(|d| !d.is_empty()) {
+                    Some(dir) => crash::new_crash_files(std::path::Path::new(dir), &artifacts, saba_runner::now().saturating_sub(ran_secs)),
+                    None => Vec::new(),
+                };
+                crash::classify(&crash::ExitFacts {
+                    stop_requested: false,
+                    exit: Some(exit),
+                    console_tail: &[],
+                    graceful_patterns: &[],
+                    new_crash_files: &crash_files,
+                    ran_secs,
+                    ready: None,
+                })
+            }
+            None => crash::ExitVerdict { kind: crash::ExitKind::UnknownExit, exit_code: None, signal: None, evidence: "exit status unknown".into() },
+        };
+        tracing::info!("'{}' exited: {:?} ({})", instance.name, verdict.kind, verdict.evidence);
+        let kind = verdict.kind;
+        let event = crash::ExitEvent { at: saba_runner::now(), verdict, restart_in_secs: None, note: None, note_code: None, note_args: None };
+        self.record_exit(&instance.id, &instance.name, event, None, None);
+        if kind == crash::ExitKind::InGameStop {
+            announce_stopped(&instance.id, &instance.name, kind, &crate::audit::Origin::new("game"));
         }
     }
 
