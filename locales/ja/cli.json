@@ -200,6 +200,9 @@
     "tts_pitch": "読み上げサバちゃんのピッチ",
     "tts_pitch_value": "{{value}}半音",
     "bad_duration": "期間 {{value}} を認識できません。例: 30m, 6h, 7d (28日まで), forever, off",
+    "duration_forever": "無期限",
+    "duration_off": "解除,オフ",
+    "duration_units": "分,時間,日,週",
     "mod_slowmode": "スロー",
     "mod_lock": "ロック",
     "mod_auto_clear": "自動清掃",
@@ -533,6 +536,7 @@
     "pair_expected": "KEY=VALUE の形式が必要です: 「{{got}}」",
     "timeout": "デーモンの応答タイムアウト ({{path}})",
     "body_read": "{{path}} の応答の受信に失敗: {{error}}",
+    "daemon_identity": "デーモンの身元確認に失敗しました",
     "unknown_command": "存在しないコマンド: {{path}}。`saba-chan-cli help` でコマンド一覧を確認してください。",
     "not_supported": "{{module}} モジュールはこの機能に非対応"
   },

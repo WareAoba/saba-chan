@@ -200,6 +200,9 @@
     "tts_pitch": "Высота Читающей Saba-chan",
     "tts_pitch_value": "{{value}} полутонов",
     "bad_duration": "Длительность {{value}} не распознана. Например: 30m, 6h, 7d (до 28 дней), forever, off",
+    "duration_forever": "навсегда",
+    "duration_off": "снять,выкл",
+    "duration_units": "мин,ч,д,нед",
     "mod_slowmode": "Медленный режим",
     "mod_lock": "Блокировка",
     "mod_auto_clear": "Автоочистка",
@@ -533,6 +536,7 @@
     "pair_expected": "Нужен формат KEY=VALUE: «{{got}}»",
     "timeout": "Демон не ответил вовремя ({{path}})",
     "body_read": "Не удалось получить ответ {{path}}: {{error}}",
+    "daemon_identity": "Не удалось проверить подлинность демона",
     "unknown_command": "Нет такой команды: {{path}}. Список команд: `saba-chan-cli help`.",
     "not_supported": "Модуль {{module}} не поддерживает эту функцию"
   },

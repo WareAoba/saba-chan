@@ -200,6 +200,9 @@
     "tts_pitch": "Tonhöhe Vorlesende Saba-chan",
     "tts_pitch_value": "{{value}} Halbtöne",
     "bad_duration": "Dauer {{value}} nicht erkannt. Beispiele: 30m, 6h, 7d (bis 28 Tage), forever, off",
+    "duration_forever": "unbegrenzt",
+    "duration_off": "aus",
+    "duration_units": "min,std,t,w",
     "mod_slowmode": "Langsamer Modus",
     "mod_lock": "Sperren",
     "mod_auto_clear": "Automatisch leeren",
@@ -533,6 +536,7 @@
     "pair_expected": "KEY=VALUE erwartet: „{{got}}“",
     "timeout": "Zeitüberschreitung beim Daemon ({{path}})",
     "body_read": "Antwort von {{path}} nicht lesbar: {{error}}",
+    "daemon_identity": "Identitätsprüfung des Daemons fehlgeschlagen",
     "unknown_command": "Unbekannter Befehl: {{path}}. Befehlsliste: `saba-chan-cli help`",
     "not_supported": "Modul {{module}} unterstützt diese Funktion nicht"
   },

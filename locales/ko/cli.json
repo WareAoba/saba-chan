@@ -200,6 +200,9 @@
     "tts_pitch": "읽어주는 사바쨩 피치",
     "tts_pitch_value": "{{value}}반음",
     "bad_duration": "기간 {{value}}을(를) 인식할 수 없음. 예: 30m, 6h, 7d (28일까지), forever, off",
+    "duration_forever": "무기한",
+    "duration_off": "해제,끄기",
+    "duration_units": "분,시간,일,주",
     "mod_slowmode": "슬로우",
     "mod_lock": "잠금",
     "mod_auto_clear": "자동 청소",
@@ -533,6 +536,7 @@
     "pair_expected": "KEY=VALUE 형식이어야 함: \"{{got}}\"",
     "timeout": "데몬 응답 시간 초과 ({{path}})",
     "body_read": "{{path}} 응답 수신 실패: {{error}}",
+    "daemon_identity": "데몬 신원 확인 실패",
     "unknown_command": "없는 명령: {{path}}. `saba-chan-cli help`로 명령 목록을 확인해 주세요.",
     "not_supported": "{{module}} 모듈은 이 기능을 지원하지 않음"
   },

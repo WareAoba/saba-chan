@@ -200,6 +200,9 @@
     "tts_pitch": "Reading Saba-chan pitch",
     "tts_pitch_value": "{{value}} semitones",
     "bad_duration": "Unrecognized duration {{value}}. Examples: 30m, 6h, 7d (up to 28 days), forever, off",
+    "duration_forever": "forever",
+    "duration_off": "off",
+    "duration_units": "min,h,d,w",
     "mod_slowmode": "Slow mode",
     "mod_lock": "Lock",
     "mod_auto_clear": "Auto clear",
@@ -533,6 +536,7 @@
     "pair_expected": "Expected KEY=VALUE: \"{{got}}\"",
     "timeout": "Daemon response timed out ({{path}})",
     "body_read": "Failed to receive response from {{path}}: {{error}}",
+    "daemon_identity": "Daemon identity check failed",
     "unknown_command": "No such command: {{path}}. Run `saba-chan-cli help` to see the commands.",
     "not_supported": "Module {{module}} does not support this"
   },

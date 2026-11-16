@@ -200,6 +200,9 @@
     "tts_pitch": "Hauteur de Saba-chan lectrice",
     "tts_pitch_value": "{{value}} demi-tons",
     "bad_duration": "Durée {{value}} non reconnue. Ex. : 30m, 6h, 7d (28 jours max), forever, off",
+    "duration_forever": "toujours",
+    "duration_off": "désactiver",
+    "duration_units": "min,h,j,sem",
     "mod_slowmode": "Mode lent",
     "mod_lock": "Verrouiller",
     "mod_auto_clear": "Nettoyage automatique",
@@ -533,6 +536,7 @@
     "pair_expected": "Format KEY=VALUE attendu : « {{got}} »",
     "timeout": "Délai de réponse du daemon dépassé ({{path}})",
     "body_read": "Échec de réception de la réponse de {{path}} : {{error}}",
+    "daemon_identity": "Échec de la vérification d'identité du démon",
     "unknown_command": "Commande inconnue : {{path}}. Liste des commandes : `saba-chan-cli help`.",
     "not_supported": "Module {{module}} : fonction non prise en charge"
   },

@@ -200,6 +200,9 @@
     "tts_pitch": "会朗读的 Saba-chan 音调",
     "tts_pitch_value": "{{value}} 半音",
     "bad_duration": "无法识别时长 {{value}}。例：30m、6h、7d（最长 28 天）、forever、off",
+    "duration_forever": "永久",
+    "duration_off": "解除,关闭",
+    "duration_units": "分钟,小时,天,周",
     "mod_slowmode": "慢速模式",
     "mod_lock": "锁定",
     "mod_auto_clear": "自动清理",
@@ -533,6 +536,7 @@
     "pair_expected": "必须是 KEY=VALUE 格式：“{{got}}”",
     "timeout": "守护进程响应超时（{{path}}）",
     "body_read": "{{path}} 响应接收失败：{{error}}",
+    "daemon_identity": "守护进程身份验证失败",
     "unknown_command": "没有此命令：{{path}}。运行 `saba-chan-cli help` 查看命令列表。",
     "not_supported": "{{module}} 模块不支持此功能"
   },

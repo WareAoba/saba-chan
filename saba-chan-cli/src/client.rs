@@ -168,7 +168,7 @@ impl Api {
     pub async fn call(&self, method: Method, path: &str, body: Option<Value>, timeout: Duration) -> Result<Value> {
         if self.token.read().ok().and_then(|t| t.clone()).is_some() && !self.daemon_identity_valid().await? {
             if let Ok(mut token) = self.token.write() { *token = read_token(); }
-            if !self.daemon_identity_valid().await? { anyhow::bail!("IPC endpoint identity check failed"); }
+            if !self.daemon_identity_valid().await? { return Err(CliError::Failed(t!("err.daemon_identity")).into()); }
         }
         let mut resp = self.send(&method, path, body.as_ref(), timeout).await?;
         // 데몬이 다시 뜨면 토큰이 바뀐다 → 한 번 다시 읽고 재시도
@@ -178,7 +178,7 @@ impl Api {
                 *t = fresh;
             }
             if self.token.read().ok().and_then(|t| t.clone()).is_some() && !self.daemon_identity_valid().await? {
-                anyhow::bail!("IPC endpoint identity check failed");
+                return Err(CliError::Failed(t!("err.daemon_identity")).into());
             }
             resp = self.send(&method, path, body.as_ref(), timeout).await?;
         }

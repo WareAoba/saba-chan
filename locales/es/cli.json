@@ -200,6 +200,9 @@
     "tts_pitch": "Tono de Saba-chan lectora",
     "tts_pitch_value": "{{value}} semitonos",
     "bad_duration": "Duración {{value}} no reconocida. Ejemplos: 30m, 6h, 7d (hasta 28 días), forever, off",
+    "duration_forever": "siempre",
+    "duration_off": "quitar",
+    "duration_units": "min,h,d,sem",
     "mod_slowmode": "Modo lento",
     "mod_lock": "Bloquear",
     "mod_auto_clear": "Limpieza automática",
@@ -533,6 +536,7 @@
     "pair_expected": "Se esperaba el formato KEY=VALUE: «{{got}}»",
     "timeout": "Tiempo de espera del daemon agotado ({{path}})",
     "body_read": "Error al recibir la respuesta de {{path}}: {{error}}",
+    "daemon_identity": "Falló la verificación de identidad del daemon",
     "unknown_command": "Comando inexistente: {{path}}. Consulta la lista con `saba-chan-cli help`.",
     "not_supported": "El módulo {{module}} no admite esta función"
   },
