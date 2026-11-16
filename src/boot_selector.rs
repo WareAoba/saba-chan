@@ -279,8 +279,11 @@ fn render_boot_screen(default_mode: BootMode) {
     println!();
     // Line 7: countdown + spinner placeholder (row 7 from top, 1-indexed)
     println!();
-    println!();
-    println!("  {}Press [DEL] to change boot target{}", DIM, RESET);
+    // 키 입력은 Windows에서만 읽는다 (`poll_key_fallback`): 다른 OS에서는 안내하지 않는다
+    if cfg!(windows) {
+        println!();
+        println!("  {}Press [DEL] to change boot target{}", DIM, RESET);
+    }
     let _ = std::io::stdout().flush();
 }
 

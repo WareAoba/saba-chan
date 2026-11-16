@@ -65,7 +65,7 @@
 
 - 마지막 선택을 `config.json`의 `boot` 네임스페이스에 `{"last_mode":"gui"|"cli"|"daemononly"}` 형태로 저장한다(`boot_selector.rs`).
 - 5초 카운트다운 동안 DEL 키를 누르면 메뉴가 열린다(↑/↓, 1-3, Enter).
-- **키 입력은 Windows에서만 구현돼 있다.** 비 Windows에서는 `poll_key_fallback`이 그냥 sleep하므로(`boot_selector.rs`) 메뉴를 열 수 없고, 항상 마지막 모드로 자동 부팅한다. 화면의 "Press [DEL]" 안내만 남아 있다.
+- **키 입력은 Windows에서만 구현돼 있다.** 비 Windows에서는 `poll_key_fallback`이 그냥 sleep하므로(`boot_selector.rs`) 메뉴를 열 수 없고, 항상 마지막 모드로 자동 부팅한다. 그래서 "Press [DEL]" 안내도 Windows에서만 보인다.
 
 ### 1.3 환경변수 목록 (코어가 읽는 것)
 
@@ -962,10 +962,8 @@ REST 자격증명 조회의 `get_credentials` 재진입은 바깥 호출의 자�
 
 ### 9.C 데드 코드와 반쯤 구현된 기능
 
-- 비 Windows 부트 선택기는 키 입력을 지원하지 않는데도 DEL 안내를 표시한다(`boot_selector.rs`).
 - `python_env`의 데이터 디렉토리가 `constants::resolve_data_dir()`와 어긋난다(§6). 같은 파일 상단 주석은 `<data_dir>`라고 적고 있다.
 - `install_server` 진행 콜백은 `step/total`을 그대로 넘기지만, 완료될 때는 `step:0,total:1`로 덮어쓴다(`service/instance/provision.rs` `install_new_server`). 백그라운드 설치의 진행 단계 정보가 사라진다.
-- 핸들러 주석(`updates.rs`)에는 "업데이터 exe를 스폰하여 적용"이 남아 있지만, 실제로는 `requires_updater`를 돌려주고 적용은 `launch-updater`가 한다(모듈 머리 주석 `updates.rs`). README/docs 내용은 이 문서에서 근거로 쓰지 않았다.
 
 ### 9.D 테스트 계약 (`tests/daemon_integration.rs`)
 
