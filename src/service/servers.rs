@@ -40,7 +40,6 @@ where
 struct InstanceSnapshot {
     info: ServerInfo,
     instance_dir: String,
-    process_patterns: Vec<String>,
 }
 
 /// 데몬 락 안에서 인스턴스 하나를 목록 한 줄로 옮긴다. `tracked`: (켜짐, PID, 시작 시간)
@@ -50,7 +49,6 @@ fn snapshot(
     module: Option<&crate::module_loader::LoadedModule>,
     (running, pid, start_time): (bool, Option<u32>, Option<u64>),
 ) -> InstanceSnapshot {
-    let process_patterns = module.as_ref().map(|m| m.metadata.process_patterns.clone()).unwrap_or_default();
     let chat_patterns = module.as_ref().is_some_and(|m| !m.metadata.chat_patterns.is_empty());
     let kick_on_join = module.as_ref().is_some_and(|m| m.metadata.kick_command.is_some() && !m.metadata.player_join_patterns.is_empty());
     let managed = supervisor.uses_managed_start(instance);
@@ -120,7 +118,6 @@ fn snapshot(
                 .unwrap_or_default(),
         },
         instance_dir: supervisor.instance_store.instance_dir(&instance.id).to_string_lossy().to_string(),
-        process_patterns,
     }
 }
 
@@ -174,7 +171,6 @@ pub(crate) async fn list(state: &IPCServer, notices_after: u64) -> Outcome {
             "module": &s.info.module,
             "extension_data": &s.info.extension_data,
             "instance_dir": &s.instance_dir,
-            "process_patterns": &s.process_patterns,
         });
         (s.info.id.clone(), ctx)
     }).collect();

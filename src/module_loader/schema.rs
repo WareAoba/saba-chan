@@ -80,8 +80,6 @@ pub struct ModuleMetadata {
     /// [extension.*] 섹션들을 범용으로 저장 (예: extensions["<ext_id>"] = {...})
     #[serde(default)]
     pub extensions: std::collections::HashMap<String, serde_json::Value>,
-    #[serde(default)]
-    pub process_patterns: Vec<String>,  // [detection].process_patterns — 컨테이너 내 서버 프로세스 탐지용
     /// 커맨드라인 인수 패턴 — java.exe 같은 범용 프로세스를 구분하기 위한 추가 매칭 패턴
     /// 예: ["server.jar"] (Minecraft), ["zombie.network.GameServer"] (Zomboid)
     #[serde(default)]

@@ -298,8 +298,6 @@ struct ConfigSection {
 #[schemars(deny_unknown_fields)]
 struct DetectionSection {
     #[serde(default)]
-    process_patterns: Option<Vec<String>>,
-    #[serde(default)]
     cmd_patterns: Option<Vec<String>>,
     /// 디렉토리 내 파일/폴더 시그니처 — 전부 있어야 이 게임의 서버 폴더로 본다
     #[serde(default)]
@@ -755,9 +753,6 @@ impl ModuleToml {
                     .collect();
                 ext_map
             },
-            process_patterns: self.detection.as_ref()
-                .and_then(|d| d.process_patterns.clone())
-                .unwrap_or_default(),
             cmd_patterns: self.detection.as_ref()
                 .and_then(|d| d.cmd_patterns.clone())
                 .unwrap_or_default(),

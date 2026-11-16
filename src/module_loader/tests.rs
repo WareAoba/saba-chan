@@ -323,7 +323,8 @@ common_paths = ["C:\\PZServer"]
 "#;
     let meta = parse_module_toml(toml).unwrap();
     assert_eq!(meta.process_name.as_deref(), Some("java.exe"));
-    assert_eq!(meta.process_patterns.len(), 2);
+    // 읽는 곳이 없어 지운 `process_patterns`가 남은 옛 모듈도 읽는다. 새 모듈에는 스키마가 막는다
+    assert!(module_json_schema()["definitions"]["DetectionSection"]["properties"].get("process_patterns").is_none());
     assert_eq!(meta.cmd_patterns.len(), 3);
     assert!(meta.cmd_patterns.contains(&"zombie.network.GameServer".to_string()));
     assert!(meta.cmd_patterns.contains(&"ProjectZomboid".to_string()));
