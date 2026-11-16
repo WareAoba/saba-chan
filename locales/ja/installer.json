@@ -127,6 +127,7 @@
   "updater": {
     "modeUpdate": "アップデート",
     "appTitle": "Saba-chan アップデーター",
+    "applyOnly": "このアップデーターは Saba-chan が更新を適用するときだけ実行されます。",
     "minimize": "最小化",
     "close": "閉じる",
     "loadingTitle": "更新中...",

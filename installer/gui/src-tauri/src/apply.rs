@@ -526,18 +526,19 @@ fn spawn_detached(cmd: &str, extra_args: &[String], after_update: bool) -> Resul
 /// `--apply ...`로 띄운 실행. 창 없이 적용했으면 그 종료 코드로 끝난다
 pub(crate) fn run(args: &[String]) {
 
+    // 파일 로거: <data_dir>/logs/saba-updater.log — 프로세스가 GUI 서브시스템이므로 stderr 대신 파일을 쓴다.
+    // 열지 못하면 stderr로 물러선다 (데몬은 이미 내려갔으므로 여기서 끝나면 앱이 꺼진 채 남는다)
+    let log_dir = saba_chan_updater_lib::constants::resolve_data_dir().join("logs");
+    let log_file = std::fs::create_dir_all(&log_dir).and_then(|()| {
+        std::fs::OpenOptions::new().create(true).write(true).truncate(true).open(log_dir.join("saba-updater.log"))
+    });
+    let log_error = log_file.as_ref().err().map(|e| e.to_string());
+    let writer = match log_file {
+        Ok(file) => tracing_subscriber::fmt::writer::BoxMakeWriter::new(std::sync::Mutex::new(file)),
+        Err(_) => tracing_subscriber::fmt::writer::BoxMakeWriter::new(std::io::stderr),
+    };
     tracing_subscriber::fmt()
-        .with_writer({
-            // 파일 로거: %TEMP%\saba-updater.log — 프로세스가 GUI 서브시스템이므로 stderr 대신 파일 사용
-            let log_path = std::env::temp_dir().join("saba-updater.log");
-            let file = std::fs::OpenOptions::new()
-                .create(true)
-                .write(true)
-                .truncate(true)
-                .open(&log_path)
-                .expect("Failed to open log file");
-            std::sync::Mutex::new(file)
-        })
+        .with_writer(writer)
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
@@ -545,6 +546,9 @@ pub(crate) fn run(args: &[String]) {
         .with_target(false)
         .with_ansi(false)
         .init();
+    if let Some(e) = log_error {
+        tracing::warn!("[Apply] Cannot open the log file in {}: {}", log_dir.display(), e);
+    }
 
     // 인자 파싱: --apply [--relaunch <exe> [extra...]]
     let apply_pos = args.iter().position(|a| a == "--apply").unwrap_or(0);
@@ -583,7 +587,7 @@ pub(crate) fn run(args: &[String]) {
     };
     if !accepted {
         tracing::error!("[Apply] Missing or stale launch token; refusing to apply");
-        eprintln!("이 업데이터는 사바쨩이 업데이트를 적용할 때만 실행됩니다.");
+        eprintln!("{}", updater_text(load_setting("language").as_deref(), "applyOnly"));
         std::process::exit(1);
     }
 
@@ -634,7 +638,7 @@ pub(crate) fn run(args: &[String]) {
             .manage(manager)
             .manage(apply_config)
             .setup(|app| {
-                let win = crate::main_window(app.handle(), crate::Page::Update, update_title(load_setting("language").as_deref()))?;
+                let win = crate::main_window(app.handle(), crate::Page::Update, updater_text(load_setting("language").as_deref(), "appTitle"))?;
                 // JS의 appWindow.show()가 블로킹되는 문제를 회피:
                 // Rust setup에서 직접 윈도우를 표시하고 포커스 강제 획득
                 win.show().ok();
@@ -662,20 +666,12 @@ pub(crate) fn run(args: &[String]) {
 }
 
 
-#[cfg(feature = "window")]
-/// 사용자 언어에 맞는 업데이트 창 제목
-fn update_title(language: Option<&str>) -> &'static str {
-    match language {
-        Some("ko") => "사바쨩 — 업데이트중!",
-        Some("ja") => "Saba-chan — 更新中...",
-        Some("zh-CN") | Some("zh-TW") => "Saba-chan — 更新中...",
-        Some("es") => "Saba-chan — Actualizando...",
-        Some("pt-BR") => "Saba-chan — Atualizando...",
-        Some("ru") => "Saba-chan — Обновление...",
-        Some("de") => "Saba-chan — Aktualisierung...",
-        Some("fr") => "Saba-chan — Mise à jour...",
-        _ => "Saba-chan — Updating...",
-    }
+include!(concat!(env!("OUT_DIR"), "/updater_texts.rs"));
+
+/// 업데이트 창 문구 (`locales/<lang>/installer.json`의 `updater.<key>`, 빌드 때 묶는다). 그 언어에 없으면 영어
+fn updater_text(language: Option<&str>, key: &str) -> &'static str {
+    let find = |lang: &str| UPDATER_TEXTS.iter().find(|(l, k, _)| *l == lang && *k == key).map(|(_, _, text)| *text);
+    language.and_then(find).or_else(|| find("en")).unwrap_or_default()
 }
 
 /// 적용이 끝난 뒤의 정리: 옛 업데이터를 치우고, 명령 실행기(`bin\saba-chan.exe`)가 생겼으면 그 폴더를 사용자 PATH에 넣는다
