@@ -150,7 +150,7 @@ async fn size_of(state: &IPCServer, kind: &str, id: Option<&str>, dir: &Path) ->
         return item.bytes;
     }
     let dir = dir.to_path_buf();
-    tokio::task::spawn_blocking(move || crate::system_monitor::dir_size(&dir))
+    tokio::task::spawn_blocking(move || crate::utils::dir_size(&dir))
         .await
         .unwrap_or(0)
 }

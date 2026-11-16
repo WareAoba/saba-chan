@@ -149,7 +149,7 @@ pub struct Measured {
 /// 폴더 크기. `skip` 안은 세지 않는다 (링크는 따라가지 않는다)
 fn size_without(path: &Path, skip: &[PathBuf]) -> u64 {
     if skip.is_empty() {
-        return crate::system_monitor::dir_size(path);
+        return crate::utils::dir_size(path);
     }
     let mut total = 0;
     let mut stack = vec![path.to_path_buf()];
@@ -182,7 +182,7 @@ pub fn measure(plan: &Plan, mounts: &[String]) -> Vec<Item> {
     let mut counted: Vec<PathBuf> = Vec::new();
     for inst in &plan.instances {
         let backups_dir = crate::backup::backups_dir(&inst.instance_dir);
-        let backup_bytes = crate::system_monitor::dir_size(&backups_dir);
+        let backup_bytes = crate::utils::dir_size(&backups_dir);
         *backups.entry(mount(&inst.instance_dir)).or_default() += backup_bytes;
         // 인스턴스 폴더(백업 빼고)와 그 밖의 서버 폴더. 다른 서버와 함께 쓰는 폴더는 한 번만 센다
         let mut bytes = size_without(&inst.instance_dir, &[backups_dir]);
@@ -191,7 +191,7 @@ pub fn measure(plan: &Plan, mounts: &[String]) -> Vec<Item> {
                 .iter()
                 .any(|c| saba_chan_updater_lib::paths_overlap(c, &inst.server_dir))
         {
-            bytes += crate::system_monitor::dir_size(&inst.server_dir);
+            bytes += crate::utils::dir_size(&inst.server_dir);
             counted.push(inst.server_dir.clone());
         }
         items.push(Item {
@@ -224,7 +224,7 @@ pub fn measure(plan: &Plan, mounts: &[String]) -> Vec<Item> {
                 name: None,
                 path: Some(dir.clone()),
                 mount: mount(dir),
-                bytes: crate::system_monitor::dir_size(dir),
+                bytes: crate::utils::dir_size(dir),
             });
         }
     }

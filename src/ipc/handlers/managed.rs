@@ -460,7 +460,7 @@ fn reset_scope(scope: &Value, base: &std::path::Path, boundary: &crate::module_p
             for path in item["paths"].as_array().into_iter().flatten().filter_map(Value::as_str) {
                 let Some(path) = boundary.resolve(std::path::Path::new(path)) else { continue };
                 let Ok(meta) = std::fs::symlink_metadata(&path) else { continue };
-                size += if meta.is_dir() { crate::system_monitor::dir_size(&path) } else { meta.len() };
+                size += if meta.is_dir() { crate::utils::dir_size(&path) } else { meta.len() };
                 backup |= backed_up.iter().any(|b| saba_chan_updater_lib::paths_overlap(b, &path));
                 let name = path.strip_prefix(base).unwrap_or(&path).to_string_lossy().replace('\\', "/");
                 shown.push(if meta.is_dir() { format!("{name}/") } else { name });

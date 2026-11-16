@@ -557,7 +557,6 @@ async fn stop_unrecorded(state: &IPCServer, key: &str, force: bool) -> Outcome {
     }
 }
 
-// NOTE: sync_gui_config は config::save_gui_config に統合されました (portConflictCheck 同期含む)
 /// 실행 전 비밀번호: 빈 REST 비밀번호는 GUI "비밀번호 자동 생성"(`autoGeneratePasswords`, 기본 켬)이 켜져 있을 때만 채운다.
 /// 꺼져 있으면 비워 두고, 모듈이 게임 설정의 값을 쓰거나 스스로 만든다(`rest_credentials`로 데몬에 돌아온다).
 /// 채우는 곳은 모듈이 선언한 설정(`[protocols.rest] password_setting`)이다: 선언이 없으면 만들지 않는다. `key`: 인스턴스 id 또는 이름
