@@ -48,8 +48,7 @@ impl Supervisor {
             ready: (!ready_patterns.is_empty()).then(|| became_ready || ready::any_match(&ready_patterns, &tail)),
         });
 
-        let auto_restart = setting_flag(&instance, "auto_restart", true);
-        let on_unknown = setting_flag(&instance, "restart_on_unknown_exit", false);
+        let Effective { auto_restart, restart_on_unknown_exit: on_unknown, .. } = Effective::of(&instance);
         let mut attempt = None;
         let (restart_in, note, note_code) = if may_restart && crash::wants_restart(verdict.kind, auto_restart, on_unknown) {
             let planned = self.runtime.with(instance_id, |r| crash::next_restart_delay(&mut r.restart_history, Instant::now()).map(|delay| (delay, r.run_generation)));

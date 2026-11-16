@@ -79,6 +79,7 @@ pub async fn get_instance(
             body["version_hidden"] = json!(version_hidden);
             body["stored"] = Value::Object(crate::instance::stored_settings(instance, &fields));
             body["revision"] = json!(instance.settings_revision());
+            body["effective"] = json!(crate::supervisor::Effective::of(instance));
             // 이 데몬이 메모리 상한을 거는가 (다른 PC의 데몬을 보는 클라이언트가 자기 OS로 짐작하지 않게)
             body["memory_limit_supported"] = json!(crate::instance::MEMORY_LIMIT_ENFORCED);
             // 이 OS에서는 걸리지 않는 상한이 저장돼 있다 (상한을 거절하기 전 릴리스가 저장한 값, `update_instance_settings`)

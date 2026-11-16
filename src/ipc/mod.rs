@@ -310,7 +310,8 @@ pub struct ServerInfo {
     /// 모듈 설정 칸마다 저장된 값 (0.1.14-beta.2~): 공통 칸(`constants::INSTANCE_FIELDS`)은 인스턴스 칸, 나머지는 `module_settings`.
     /// 값이 없는 칸은 빠진다. 화면은 어느 쪽이 진짜인지 고르지 않고 이것을 읽는다 (`instance::stored_settings`)
     #[serde(default)]
-    pub stored: serde_json::Map<String, serde_json::Value>,
+    pub stored: serde_json::Map<String, serde_json::Value>,    /// 자동 재시작·자동 정지·응답 없음 감시에 데몬이 실제로 쓰는 값 (`supervisor::Effective`). 화면은 기본값을 따로 두지 않고 이것을 칸 값으로 쓴다
+    pub effective: crate::supervisor::Effective,
 }
 
 /// 포트 충돌 요약 (서버 목록 API에서 반환)

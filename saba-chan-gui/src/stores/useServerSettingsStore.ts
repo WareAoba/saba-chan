@@ -20,28 +20,27 @@ import { failed } from '../utils/apiResult';
  * (디스코드 호출어는 디스코드 화면 — components/discord/InstanceWordsTab)
  */
 
-/** 크래시 자동 재시작 설정 (module_settings 에 저장, 기본값은 데몬과 같다: 켜짐 / 원인 모를 종료는 꺼짐) */
+/** 'true'·'false' 글자로 온 값도 참거짓으로, 아니면 `dflt` */
 const asFlag = <D extends boolean | null>(v: unknown, dflt: D): boolean | D =>
     v === true || v === 'true' ? true : v === false || v === 'false' ? false : dflt;
-const restartFlagsOf = (server: Server | null | undefined) => ({
-    auto_restart: asFlag(server?.module_settings?.auto_restart, true),
-    restart_on_unknown_exit: asFlag(server?.module_settings?.restart_on_unknown_exit, false),
-});
 
-/** 접속자 없을 때 자동 정지 칸 값 (데몬 module_settings, 기본값은 데몬 `supervisor::idle`과 같다: 꺼짐·30분·15분) */
-const idleStopOf = (server: Server | null | undefined) => ({
-    idle_stop: asFlag(server?.module_settings?.idle_stop, false),
-    idle_stop_minutes: String(server?.module_settings?.idle_stop_minutes ?? 30),
-    idle_stop_grace_minutes: String(server?.module_settings?.idle_stop_grace_minutes ?? 15),
-});
-
-/** 응답 없음 감시 칸 값 (데몬 module_settings, 기본값은 데몬 `supervisor::watchdog`과 같다: 알림만·10분) */
-const unresponsiveOf = (server: Server | null | undefined) => ({
-    unresponsive_action: ['off', 'notify', 'restart'].includes(String(server?.module_settings?.unresponsive_action))
-        ? String(server?.module_settings?.unresponsive_action)
-        : 'notify',
-    unresponsive_minutes: String(server?.module_settings?.unresponsive_minutes ?? 10),
-});
+/**
+ * 크래시 자동 재시작·접속자 없을 때 자동 정지·응답 없음 감시 칸 값: 데몬이 실제로 쓰는 값(서버 정보 `effective`,
+ * 저장 값이 없으면 데몬 기본값)을 그대로 읽는다. 기본값은 데몬에만 있다. 숫자 칸은 글자로
+ */
+const behaviorOf = (server: Server | null | undefined): SettingsValues => {
+    const e = server?.effective;
+    if (!e) return {};
+    return {
+        auto_restart: e.auto_restart,
+        restart_on_unknown_exit: e.restart_on_unknown_exit,
+        idle_stop: e.idle_stop,
+        idle_stop_minutes: String(e.idle_stop_minutes),
+        idle_stop_grace_minutes: String(e.idle_stop_grace_minutes),
+        unresponsive_action: e.unresponsive_action,
+        unresponsive_minutes: String(e.unresponsive_minutes),
+    };
+};
 
 /** 램 상한 칸 값 (MiB, 비면 제한 없음): 데몬 인스턴스 최상위 memory_limit_mb */
 const memoryLimitOf = (server: Server | null | undefined) =>
@@ -309,12 +308,7 @@ export const useServerSettingsStore = create<ServerSettingsState>()((set, get) =
                 initial.server_version = String(savedVersion);
             }
 
-            Object.assign(
-                initial,
-                restartFlagsOf(latestServer),
-                idleStopOf(latestServer),
-                unresponsiveOf(latestServer),
-            );
+            Object.assign(initial, behaviorOf(latestServer));
             initial.memory_limit_mb = memoryLimitOf(latestServer);
             initial.stop_timeout = stopTimeoutOf(latestServer);
             initial.auto_update = autoUpdateOf(latestServer);
@@ -328,9 +322,7 @@ export const useServerSettingsStore = create<ServerSettingsState>()((set, get) =
                           _extension_data: { ...latestServer.extension_data },
                       }
                     : {}),
-                ...restartFlagsOf(latestServer),
-                ...idleStopOf(latestServer),
-                ...unresponsiveOf(latestServer),
+                ...behaviorOf(latestServer),
                 memory_limit_mb: memoryLimitOf(latestServer),
                 stop_timeout: stopTimeoutOf(latestServer),
                 auto_update: autoUpdateOf(latestServer),
@@ -634,9 +626,7 @@ export const useServerSettingsStore = create<ServerSettingsState>()((set, get) =
                                 setSettingsValues((prev) => ({
                                     ...prev,
                                     ...updated.module_settings,
-                                    ...restartFlagsOf(updated),
-                                    ...idleStopOf(updated),
-                                    ...unresponsiveOf(updated),
+                                    ...behaviorOf(updated),
                                     memory_limit_mb: memoryLimitOf(updated),
                                     stop_timeout: stopTimeoutOf(updated),
                                     auto_update: autoUpdateOf(updated),
@@ -799,30 +789,16 @@ export const useServerSettingsStore = create<ServerSettingsState>()((set, get) =
             if (controllersOnly !== null && controllersOnly !== openedChat.controllers_only)
                 convertedSettings.controllers_only = controllersOnly;
 
-            // 크래시 자동 재시작 (데몬이 module_settings 에서 읽는다)
+            // 크래시 자동 재시작·응답 없음 감시·접속자 없을 때 자동 정지: 연 때의 값(데몬 effective)에서 바꾼 칸만 보낸다.
             // 토글은 handleSettingChange를 거쳐 'true'·'false' 글자로 올 수 있다
-            // 바꿨을 때만 보낸다
-            const openedFlags = restartFlagsOf(settingsServer);
-            for (const key of ['auto_restart', 'restart_on_unknown_exit'] as const) {
+            const openedBehavior = behaviorOf(settingsServer);
+            for (const key of ['auto_restart', 'restart_on_unknown_exit', 'idle_stop'] as const) {
                 const flag = asFlag(settingsValues[key], null);
-                if (flag !== null && flag !== openedFlags[key]) convertedSettings[key] = flag;
+                if (flag !== null && flag !== openedBehavior[key]) convertedSettings[key] = flag;
             }
-
-            // 응답 없음 감시: 바꾼 칸만 보낸다
-            const openedWatch = unresponsiveOf(settingsServer);
-            for (const key of ['unresponsive_action', 'unresponsive_minutes'] as const) {
+            for (const key of ['unresponsive_action', 'unresponsive_minutes', 'idle_stop_minutes', 'idle_stop_grace_minutes'] as const) {
                 const value = String(settingsValues[key] ?? '').trim();
-                if (settingsValues[key] !== undefined && value !== '' && value !== openedWatch[key])
-                    convertedSettings[key] = value;
-            }
-
-            // 접속자 없을 때 자동 정지: 바꾼 칸만 보낸다
-            const openedIdle = idleStopOf(settingsServer);
-            const idleStop = asFlag(settingsValues.idle_stop, null);
-            if (idleStop !== null && idleStop !== openedIdle.idle_stop) convertedSettings.idle_stop = idleStop;
-            for (const key of ['idle_stop_minutes', 'idle_stop_grace_minutes'] as const) {
-                const value = String(settingsValues[key] ?? '').trim();
-                if (settingsValues[key] !== undefined && value !== '' && value !== openedIdle[key])
+                if (settingsValues[key] !== undefined && value !== '' && value !== openedBehavior[key])
                     convertedSettings[key] = value;
             }
 

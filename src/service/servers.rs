@@ -118,6 +118,7 @@ fn snapshot(
                 .and_then(|m| m.metadata.settings.as_ref())
                 .map(|s| crate::instance::stored_settings(instance, &s.fields))
                 .unwrap_or_default(),
+            effective: crate::supervisor::Effective::of(instance),
         },
         instance_dir: supervisor.instance_store.instance_dir(&instance.id).to_string_lossy().to_string(),
         process_patterns,
