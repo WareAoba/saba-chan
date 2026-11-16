@@ -1051,8 +1051,8 @@ struct DaemonUpdateBody {
 }
 
 /// PUT /api/daemon/update {auto} — 자동 업데이트(확인·받기·적용)를 켜고 끈다. 켜면 바로 한 번 확인한다
-async fn put_daemon_update(State(state): State<UpdateState>, Json(body): Json<DaemonUpdateBody>) -> impl IntoResponse {
-    let cfg = {
+async fn put_daemon_update(State(state): State<UpdateState>, Json(body): Json<DaemonUpdateBody>) -> axum::response::Response {
+    {
         let mut mgr = state.manager.write().await;
         let mut cfg = mgr.get_config();
         if body.auto {
@@ -1060,11 +1060,9 @@ async fn put_daemon_update(State(state): State<UpdateState>, Json(body): Json<Da
             cfg.auto_download = true;
         }
         cfg.auto_apply = body.auto;
-        mgr.update_config(cfg.clone());
-        cfg
-    };
-    if let Err(e) = save_updater_config(&cfg) {
-        tracing::warn!("[Updates] Failed to persist update config: {}", e);
+        if let Err(resp) = adopt_config(&mut mgr, &ConfigFile::default_location(), cfg) {
+            return resp;
+        }
     }
     if body.auto {
         let state = state.clone();
@@ -1074,7 +1072,7 @@ async fn put_daemon_update(State(state): State<UpdateState>, Json(body): Json<Da
             }
         });
     }
-    Json(json!({ "success": true, "auto": body.auto }))
+    Json(json!({ "success": true, "auto": body.auto })).into_response()
 }
 
 /// 데몬 기동 후 업데이트를 주기적으로 확인한다. 24시간마다.
@@ -2315,9 +2313,8 @@ async fn set_config(
     }
 
     let channel_changed = mgr.get_config().channel != cfg.channel;
-    mgr.update_config(cfg.clone());
-    if let Err(e) = save_updater_config(&cfg) {
-        tracing::warn!("[Updates] Failed to persist update config: {}", e);
+    if let Err(resp) = adopt_config(&mut mgr, &ConfigFile::default_location(), cfg.clone()) {
+        return resp;
     }
     drop(mgr);
     // 채널을 바꾸면 곧바로 확인해 자동 적용 길을 탄다 (내림은 하지 않는다: 확인이 낮은 판을 거절한다)
@@ -2368,6 +2365,17 @@ fn load_updater_config_from(file: &ConfigFile) -> UpdateConfig {
             cfg
         }
     }
+}
+
+/// 사용자가 바꾼 설정: 디스크에 먼저 저장하고, 저장했을 때만 관리자 설정을 바꾼다.
+/// 저장하지 못하면 아무것도 바꾸지 않고 500 `save_failed`로 답한다 (다시 켜면 되돌아가는 설정을 성공으로 보이지 않게)
+fn adopt_config(mgr: &mut UpdateManager, file: &ConfigFile, cfg: UpdateConfig) -> Result<(), axum::response::Response> {
+    save_updater_config_to(file, &cfg).map_err(|e| {
+        tracing::warn!("[Updates] Failed to persist update config: {}", e);
+        crate::ipc::handlers::error(axum::http::StatusCode::INTERNAL_SERVER_ERROR, "save_failed", format!("Failed to save update settings: {e}"))
+    })?;
+    mgr.update_config(cfg);
+    Ok(())
 }
 
 fn save_updater_config(cfg: &UpdateConfig) -> std::io::Result<()> {
@@ -3298,6 +3306,22 @@ mod tests {
         assert_eq!(loaded.install_root, None);
         save_updater_config_to(&file, &loaded).unwrap();
         assert!(file.section("updates").get("install_root").is_none());
+    }
+
+    /// 설정을 디스크에 저장하지 못하면 관리자 설정도 바꾸지 않고 500 `save_failed`로 답한다
+    #[tokio::test]
+    async fn an_update_setting_that_cannot_be_saved_is_not_adopted() {
+        let dir = tempfile::tempdir().unwrap();
+        let not_a_dir = dir.path().join("file");
+        std::fs::write(&not_a_dir, b"x").unwrap();
+        let state = UpdateState::new();
+        let mut mgr = state.manager.write().await;
+        let before = mgr.get_config().auto_apply;
+        let mut cfg = mgr.get_config();
+        cfg.auto_apply = !before;
+        let resp = adopt_config(&mut mgr, &ConfigFile::at(&not_a_dir), cfg).unwrap_err();
+        assert_eq!(resp.status(), axum::http::StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(mgr.get_config().auto_apply, before);
     }
 
     /// 모르는 채널은 저장하지 않는다

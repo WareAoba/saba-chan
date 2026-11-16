@@ -60,6 +60,22 @@ pub(crate) fn error(status: axum::http::StatusCode, code: &str, message: impl In
     Failure::coded(status, code, message).into_response()
 }
 
+/// 설정 저장 실패를 응답으로: 그사이 바뀜 409 `settings_changed`(지금 `revision`을 싣는다), 틀린 값 400, 디스크 실패 500 `save_failed`
+pub(crate) fn config_error(e: crate::config_store::ConfigStoreError) -> axum::response::Response {
+    use crate::config_store::ConfigStoreError;
+    use axum::{http::StatusCode, response::IntoResponse};
+    match e {
+        ConfigStoreError::RevisionConflict(revision) => Failure::new(
+            StatusCode::CONFLICT,
+            serde_json::json!({ "success": false, "error": "The settings were changed elsewhere; read them again", "error_code": "settings_changed", "revision": revision }),
+        )
+        .into_response(),
+        ConfigStoreError::InvalidRelayUrl(msg) => error(StatusCode::BAD_REQUEST, "invalid_relay_url", msg),
+        ConfigStoreError::InvalidData(msg) => error(StatusCode::BAD_REQUEST, "invalid_request", msg),
+        e @ (ConfigStoreError::Io(_) | ConfigStoreError::Serialization(_)) => error(StatusCode::INTERNAL_SERVER_ERROR, "save_failed", e.to_string()),
+    }
+}
+
 /// 서비스 함수의 결과를 HTTP 응답으로 (성공은 200)
 pub(crate) fn answer(result: Outcome) -> axum::response::Response {
     use axum::response::IntoResponse;

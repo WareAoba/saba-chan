@@ -8,13 +8,13 @@ import { SabaSpinner, SabaToggle } from '../ui/SabaUI';
 import { failed } from '../../utils/apiResult';
 
 
-const KNOWN_ERRORS = ['INVALID_PATH', 'INVALID_ARCHIVE', 'INVALID_CONFIG', 'WRITE_FAILED'];
+const KNOWN_ERRORS = ['invalid_path', 'invalid_archive', 'invalid_config', 'write_failed'];
 const SKIP_REASONS = ['exists', 'running', 'working_dir_in_use', 'invalid_id', 'save_failed', 'name_taken', 'busy'];
 
 /** 데몬 오류({success:false, error, error_code}) → 한 줄 */
 export function dataTransferErrorText(res: ApiBody | null | undefined, t: TFunction) {
     const code = res?.error_code;
-    if (code && KNOWN_ERRORS.includes(code)) return t(`data_transfer.err_${code.toLowerCase()}`);
+    if (code && KNOWN_ERRORS.includes(code)) return t(`data_transfer.err_${code}`);
     return res?.error || t('data_transfer.err_generic');
 }
 
