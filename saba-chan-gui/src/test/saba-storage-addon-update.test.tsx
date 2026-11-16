@@ -148,3 +148,13 @@ describe('익스텐션 업데이트 단추', () => {
         expect(window.api.addonUnpin).toHaveBeenCalledWith('ext-steamcmd');
     });
 });
+
+describe('익스텐션 재스캔', () => {
+    it('브리지가 실패를 돌려주면(던지지 않음) 데몬 오류를 알린다', async () => {
+        ext.extensions = [{ id: 'steamcmd', name: 'SteamCMD', version: '0.1.9', enabled: true }];
+        fakeApi([], [], { extensionRescan: vi.fn().mockResolvedValue({ success: false, error: 'rescan exploded' }) });
+        await openTab(2);
+        await act(async () => fireEvent.click(screen.getByRole('button', { name: i18n.t('gui:extensions.rescan') })));
+        await waitFor(() => expect(window.showToast).toHaveBeenCalledWith('rescan exploded', 'error', 5000, undefined));
+    });
+});
