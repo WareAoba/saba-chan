@@ -140,7 +140,7 @@ updater-lib 파일 구성(859c3fd에서 나눔): `lib.rs`는 컴포넌트 정의
    - **단계**(`phase`, `<staging>/live-update.json`에 남긴다): `idle` → `waiting` → `applying`(업데이터를 띄움) → 새 데몬이 뜰 때 완료 마커를 읽어(한 마커는 한 번, `marker_seen`) 앱 구성요소를 바꾼 성공이면 `done`, `result:"rolled_back"`이면 `ready`(`rolled_back`. 설정에 `failed_release`가 없으면 데몬이 마커의 `version`(되돌린 코어 판)으로 남긴다), `result:"deferred"`면 `ready`(`wait_pid_timeout`. 판은 받아 둔 릴리즈 판). 보이는 판(`phase.version`)은 마커의 릴리즈 판(`release.version`)이고 없으면 `version`이다(`update_phase::adopt_startup_marker`). 마커가 없는데 이전 데몬이 `waiting`·`applying`을 남겼으면 `idle`. `done`은 `POST /api/updates/phase/ack`나 24시간 뒤 `idle`이다. 모듈·익스텐션·번역 자동 교체는 단계를 바꾸지 않는다.
 2. **다운로드**: `POST /api/updates/download` → staging 디렉터리로 받는다.
    - Windows: `%APPDATA%/saba-chan/updates/`
-   - Unix: `~/.cache/saba-chan/updates/` (`constants.rs`)
+   - Unix: `~/.cache/saba-chan/updates/` (`constants.rs`). `SABA_DATA_DIR`이 있으면 어느 OS든 `<data_dir>/updates/`
    - 진행률은 데몬 이벤트 `update.progress`로 받는다(0.1.14-beta.2~, 01 §`GET /api/events`). updater-lib `UpdateManager::set_download_listener`가 받기 시작·0.2초마다 바뀐 받은 크기·끝을 듣고, 데몬이 퍼센트를 계산해 낸다. 단계·구성요소 상태가 바뀌면 `update.status`를 낸다. 데몬은 받기를 관리자 잠금 밖에서 한다(updater-lib `download_shared`·`download_available_shared`: 준비와 상태 기록만 잠깐 잠그고, 받기끼리는 차례로). 그래서 받는 중에도 `GET /api/updates/status`·`update.status`가 기다리지 않는다.
 3. **apply 분기**: `POST /api/updates/apply {components:[…]}` (`updates.rs`). 본문이 없거나 공백이면 전체 대상, 깨진 JSON이면 400 `invalid_body`다. download도 같다
    - 대상에 `Gui`, `Updater`, `CoreDaemon` 중 하나라도 있으면 **전부 updater exe에 맡긴다**(`updates.rs`). 이때 daemon은 `staging/pending.json`(`state.rs`)과 `staging/apply-targets.json`(`state.rs`)을 쓰고 `{requires_updater:true, needs_updater:[…]}`를 응답한다.

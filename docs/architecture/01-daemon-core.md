@@ -174,7 +174,7 @@ PC 주인이 디스코드에서 받은 일회용 링크로 브라우저(사바�
 - 모듈·익스텐션 폴더(`updater/src/component_dirs.rs` `resolve`)는 `SABA_MODULES_PATH`/`SABA_EXTENSIONS_DIR` → `config.json`의 `paths.modules`/`paths.extensions`(절대 경로만, 아니면 기본값) → `<data_dir>/modules`·`<data_dir>/extensions` 순이다. 기본 폴더 이름과 기본 설치 폴더(`default_install_dir`: Windows `%ProgramW6432%`(없으면 `%ProgramFiles%`, `C:\Program Files`)`\Saba-chan`, Unix `~/.local/share/saba-chan`)는 `constants.rs`에 한 번만 둔다.
 - 사용자는 폴더 하나(X)를 고르고 실제 폴더는 `X/modules`, `X/extensions`다(익스텐션은 `import extensions.<id>` 때문에 이름이 `extensions`여야 한다). 고를 수 없는 폴더: 상대 경로, 드라이브 루트·홈 폴더, 데이터 폴더를 품는 폴더, 지금 폴더와 겹치거나 다른 종류 폴더와 겹치는 폴더(`target_for`, 오류 코드 `not_absolute`·`root_or_home`·`contains_data_dir`·`same_as_current`·`overlaps_current`·`overlaps_other`).
 - 옮기기(`relocate`): 같은 볼륨이면 rename 한 번. 아니면 옆 `.<이름>.saba-moving`에 복사하고 파일마다 크기와 SHA-256을 맞춘 뒤 대상 이름으로 바꾸고, 그다음 `config.json`을 쓴다. 어느 단계든 실패하면 만든 것을 지우고 설정을 바꾸지 않는다. 원본은 설정을 쓴 뒤에만 지우고, 지우지 못한 것은 `left_behind`로 알린다. 대상이 비어 있지 않거나(`not_empty`), 쓸 수 없거나(`not_writable`), 원본에 링크가 있으면(`has_link`) 거절한다. 사바쨩이 만든 폴더에는 `.saba-chan-dir` 표시를 두고, 제거기는 표시가 있는 폴더만 지운다(05 §제거). 0.1.8·0.1.9 데몬은 `paths`를 읽지 않는다.
-- 업데이트 스테이징 디렉토리: Windows는 `<data_dir>/updates`, Unix는 `~/.cache/saba-chan/updates`(`constants.rs`).
+- 업데이트 스테이징 디렉토리: Windows는 `<data_dir>/updates`, Unix는 `~/.cache/saba-chan/updates`(`constants.rs`). `SABA_DATA_DIR`이 있으면 어느 OS든 `<data_dir>/updates`다.
 - Python 런타임은 **위의 `<data_dir>`와 다른 경로**를 쓴다(§6).
 
 ### 1.6 단일 인스턴스 처리
