@@ -55,7 +55,7 @@ pub use marker::UpdateCompletionMarker;
 pub(crate) use apply::swap_dir_untouched;
 pub use apply::{carry_swap_dot_entries, replace_dir, Replacing, SWAP_FINGERPRINT};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -627,36 +627,58 @@ fn path_parts(p: &Path) -> Vec<String> {
         .collect()
 }
 
-const ZIP_ENTRY_LIMIT: usize = 20_000;
-const ZIP_EXPANDED_LIMIT: u64 = 1024 * 1024 * 1024;
+/// zip 하나의 상한. `what`은 오류 문구의 주어다 ("Archive", "Module archive", "Extension package").
+/// 데몬의 모듈·익스텐션 패키지 풀기(`saba-core` `archive.rs`)도 이 규칙(`check_zip`·`zip_entry_path`·`copy_zip_entry`)을 쓴다
+#[derive(Debug, Clone, Copy)]
+pub struct ZipLimits {
+    pub what: &'static str,
+    pub entries: usize,
+    pub expanded: u64,
+}
 
-/// zip을 열고 파일 수와 풀린 크기(적힌 값)가 한도 안인지 본다
-fn open_zip(staged: &Path) -> Result<zip::ZipArchive<std::fs::File>> {
-    let mut archive = zip::ZipArchive::new(std::fs::File::open(staged)?)?;
-    if archive.len() > ZIP_ENTRY_LIMIT {
-        anyhow::bail!("Archive has too many files");
+/// 업데이트 zip의 상한
+const UPDATE_ZIP: ZipLimits = ZipLimits { what: "Archive", entries: 20_000, expanded: 1024 * 1024 * 1024 };
+
+/// 헤더에 적힌 항목 수·크기로 먼저 거른다 (풀기 전에 빨리 거절). 실제 크기는 풀면서 다시 센다(`copy_zip_entry`)
+pub fn check_zip<R: std::io::Read + std::io::Seek>(archive: &mut zip::ZipArchive<R>, limits: &ZipLimits) -> Result<()> {
+    if archive.len() > limits.entries {
+        anyhow::bail!("{} has too many files", limits.what);
     }
     let mut declared = 0u64;
     for i in 0..archive.len() {
         declared = declared.saturating_add(archive.by_index(i)?.size());
-        if declared > ZIP_EXPANDED_LIMIT {
-            anyhow::bail!("Archive expands beyond the size limit");
+        if declared > limits.expanded {
+            anyhow::bail!("{} expands beyond the size limit", limits.what);
         }
     }
+    Ok(())
+}
+
+/// zip을 열고 업데이트 상한(`UPDATE_ZIP`) 안인지 본다
+fn open_zip(staged: &Path) -> Result<zip::ZipArchive<std::fs::File>> {
+    let mut archive = zip::ZipArchive::new(std::fs::File::open(staged)?)?;
+    check_zip(&mut archive, &UPDATE_ZIP)?;
     Ok(archive)
 }
 
-/// 엔트리가 풀릴 상대 경로. 밖으로 나가는 경로는 거부한다
-fn zip_entry_path<R: std::io::Read>(entry: &zip::read::ZipFile<'_, R>, staged: &Path) -> Result<PathBuf> {
-    // enclosed_name은 `a/../b`를 받아 주므로 tar와 같이 평범한 칸만 받는다 (`..`를 지나면 링크 검사가 빗나간다)
-    match entry.enclosed_name().filter(|p| p.components().all(|c| matches!(c, std::path::Component::Normal(_)))) {
-        Some(rel) => Ok(rel),
-        None => anyhow::bail!("Unsafe path in archive {}: {}", staged.display(), String::from_utf8_lossy(entry.name_raw())),
+/// 엔트리가 풀릴 상대 경로. 보통 이름 조각만 받고(`..`·절대 경로·드라이브, Windows의 `name:stream` 거부), 링크 항목은 거부한다.
+/// enclosed_name은 `a/../b`를 받아 주므로 tar와 같이 평범한 칸만 받는다 (`..`를 지나면 링크 검사가 빗나간다).
+/// Windows에서 `name:stream`은 파일이 아니라 그 파일의 대체 데이터 스트림을 가리킨다
+pub fn zip_entry_path<R: std::io::Read>(entry: &zip::read::ZipFile<'_, R>, limits: &ZipLimits) -> Result<PathBuf> {
+    let plain = |part: std::path::Component| {
+        matches!(part, std::path::Component::Normal(name) if !(cfg!(windows) && name.to_string_lossy().contains(':')))
+    };
+    let Some(rel) = entry.enclosed_name().filter(|p| p.components().all(plain)) else {
+        anyhow::bail!("{} contains an invalid path", limits.what);
+    };
+    if entry.unix_mode().is_some_and(|mode| mode & 0o170000 == 0o120000) {
+        anyhow::bail!("{} contains a link", limits.what);
     }
+    Ok(rel)
 }
 
-/// 엔트리 내용을 `out`에 옮긴다 (끝까지 읽으면 zip이 CRC를 확인한다). `expanded`는 이 zip에서 지금까지 푼 크기
-fn copy_zip_entry(entry: &mut impl std::io::Read, out: &mut impl std::io::Write, expanded: &mut u64) -> std::io::Result<()> {
+/// 엔트리 내용을 `out`에 옮긴다 (끝까지 읽으면 zip이 CRC를 확인한다). `expanded`는 이 zip에서 지금까지 실제로 푼 크기
+pub fn copy_zip_entry(entry: &mut impl std::io::Read, out: &mut impl std::io::Write, expanded: &mut u64, limits: &ZipLimits) -> Result<()> {
     let mut buffer = [0u8; 64 * 1024];
     loop {
         let count = entry.read(&mut buffer)?;
@@ -664,8 +686,8 @@ fn copy_zip_entry(entry: &mut impl std::io::Read, out: &mut impl std::io::Write,
             return Ok(());
         }
         *expanded = expanded.saturating_add(count as u64);
-        if *expanded > ZIP_EXPANDED_LIMIT {
-            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Archive expands beyond the size limit"));
+        if *expanded > limits.expanded {
+            anyhow::bail!("{} expands beyond the size limit", limits.what);
         }
         out.write_all(&buffer[..count])?;
     }
@@ -678,16 +700,15 @@ pub fn verify_zip(staged: &Path) -> Result<()> {
     let mut expanded = 0u64;
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i)?;
-        zip_entry_path(&entry, staged)?;
-        copy_zip_entry(&mut entry, &mut std::io::sink(), &mut expanded)?;
+        zip_entry_path(&entry, &UPDATE_ZIP).with_context(|| format!("Unsafe entry in {}", staged.display()))?;
+        copy_zip_entry(&mut entry, &mut std::io::sink(), &mut expanded, &UPDATE_ZIP)?;
     }
     Ok(())
 }
 
-/// zip을 `target_dir`에 푼다. 모든 압축 해제는 이 함수를 거친다.
+/// 업데이트 zip을 `target_dir`에 푼다 (업데이트 적용의 모든 zip 풀기가 이 함수를 거친다).
 ///
-/// 엔트리 경로는 `enclosed_name()`으로 검사해 `..`나 절대 경로로
-/// `target_dir` 밖에 쓰는 엔트리(zip-slip)를 거부한다. `before_write`는
+/// 엔트리 경로·링크 항목은 `zip_entry_path`로 거른다. `before_write`는
 /// 파일을 쓰기 직전에 호출된다(실행 중 바이너리를 비켜 두는 데 쓴다).
 /// 대상 폴더 안의 기존 링크(Windows 정션 포함)를 따라 밖에 쓰지 않는다.
 /// 쓴 파일 경로를 돌려준다(무결성 기록용).
@@ -701,7 +722,7 @@ pub fn extract_zip(
     let mut expanded = 0u64;
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i)?;
-        let rel = zip_entry_path(&entry, staged)?;
+        let rel = zip_entry_path(&entry, &UPDATE_ZIP).with_context(|| format!("Unsafe entry in {}", staged.display()))?;
         reject_links_below(target_dir, &rel)?;
         let out_path = target_dir.join(&rel);
         if entry.is_dir() {
@@ -717,22 +738,22 @@ pub fn extract_zip(
         let mut partial = out_path.clone().into_os_string();
         partial.push(".update-new");
         let partial = PathBuf::from(partial);
-        let wrote = std::fs::File::create(&partial).and_then(|mut f| {
-            copy_zip_entry(&mut entry, &mut f, &mut expanded)?;
-            f.sync_all()
+        let wrote = std::fs::File::create(&partial).map_err(anyhow::Error::from).and_then(|mut f| {
+            copy_zip_entry(&mut entry, &mut f, &mut expanded, &UPDATE_ZIP)?;
+            Ok(f.sync_all()?)
         });
         // 리눅스 zip의 실행 파일은 실행 권한을 지닌다 (zip에 적힌 권한 중 실행 비트만 옮긴다)
         #[cfg(unix)]
         let wrote = wrote.and_then(|_| {
             use std::os::unix::fs::PermissionsExt;
             match entry.unix_mode() {
-                Some(mode) if mode & 0o111 != 0 => std::fs::set_permissions(&partial, std::fs::Permissions::from_mode(0o755)),
+                Some(mode) if mode & 0o111 != 0 => Ok(std::fs::set_permissions(&partial, std::fs::Permissions::from_mode(0o755))?),
                 _ => Ok(()),
             }
         });
-        if let Err(e) = wrote.and_then(|_| std::fs::rename(&partial, &out_path)) {
+        if let Err(e) = wrote.and_then(|_| Ok(std::fs::rename(&partial, &out_path)?)) {
             let _ = std::fs::remove_file(&partial);
-            return Err(e.into());
+            return Err(e);
         }
         written.push(out_path);
     }
