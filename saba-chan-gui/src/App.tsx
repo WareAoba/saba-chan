@@ -308,13 +308,14 @@ function App() {
         });
 
         // Post-update completion notification
-        window.api.onUpdateCompleted((data) => {
+        const offUpdateCompleted = window.api.onUpdateCompleted((data) => {
             setTimeout(() => announceUpdateCompleted(data, t), 1500);
         });
 
         return () => {
             // Cleanup IPC listeners on unmount / Fast Refresh re-run
             if (typeof offStatus === 'function') offStatus();
+            if (typeof offUpdateCompleted === 'function') offUpdateCompleted();
         };
     }, []);
 
@@ -414,11 +415,14 @@ function App() {
     // 처음에 데몬이 늦었거나 꺼져 있어 모듈 목록을 못 받았으면, 데몬이 살아 있는 동안 받을 때까지 다시 받는다
     useModulesRetry(backgroundDaemonStatus);
 
-    // ── Main initialization + auto-refresh ──
-    // biome-ignore lint/correctness/useExhaustiveDependencies: fetchServers/t/setModal are intentionally omitted — adding them would cause interval re-registration on every action
+    // 목록은 처음과 데몬이 준비됐을 때 곧바로 받는다 (주기 조회는 아래 효과가 한 차례 뒤부터 돈다)
+    // biome-ignore lint/correctness/useExhaustiveDependencies: daemonReady가 바뀔 때 다시 받는다
     useEffect(() => {
         fetchServers();
+    }, [daemonReady, fetchServers]);
 
+    // ── 다른 창·셸이 보내는 요청 (언어가 바뀌면 닫기 질문을 그 언어로 다시 붙인다) ──
+    useEffect(() => {
         // 다른 인터페이스(CLI의 `gui`)가 이 창을 띄우며 고른 서버를 연다
         const offOpenServer = window.api.onOpenServer((p) => {
             if (p?.instanceId) useUIStore.getState().revealServer(p.instanceId);
@@ -437,7 +441,7 @@ function App() {
             if (typeof offOpenServer === 'function') offOpenServer();
             if (typeof offOpenRoute === 'function') offOpenRoute();
         };
-    }, [autoRefresh, refreshInterval, daemonReady]);
+    }, [t, setModal]);
 
     // 목록 자동 새로고침 (데몬 준비 전에는 스킵). 데몬 이벤트가 바뀜을 바로 알리면(DaemonEvents) 놓친 것만 메우게 느리게 돈다
     const extensionStatus = useServerStore((s) => s.servers.some((srv) => Object.keys(srv.extension_status || {}).length > 0));

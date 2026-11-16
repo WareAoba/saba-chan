@@ -953,12 +953,8 @@ export function createApi({
         addonPin: (key: string, version: string) =>
             call('post', `/api/updates/addons/${encodeURIComponent(key)}/pin`, { version }, 600000),
         addonUnpin: (key: string) => call('delete', `/api/updates/addons/${encodeURIComponent(key)}/pin`, undefined, 600000),
-        onUpdatesAvailable: (callback: Listener) => {
-            hub.on('updates:available', callback);
-        },
-        onUpdateCompleted: (callback: Listener) => {
-            hub.on('updates:completed', callback);
-        },
+        onUpdatesAvailable: (callback: Listener) => hub.on('updates:available', callback),
+        onUpdateCompleted: (callback: Listener) => hub.on('updates:completed', callback),
 
         // ── 설정: 데몬 가동 중이면 API, 부트스트랩이면 로컬 ──
         settingsLoad: async (): Promise<Partial<GuiSettings> | null> => {
