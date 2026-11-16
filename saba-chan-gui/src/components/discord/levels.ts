@@ -434,22 +434,6 @@ export function defaultMembers(
 }
 
 /**
- * 릴레이에 남은 부여값 중 데몬과 다른 것 (가져오기 후보).
- * 데몬은 자동으로 가져오지 않는다: 원본이 둘이 되지 않게 사용자가 골라서 데몬에 쓴다.
- */
-export function importCandidates(
-    perm: GuildPermissions | null | undefined,
-    relayMembers: DiscordMember[] | null | undefined,
-) {
-    const members = perm?.members || {};
-    const owner = String(perm?.ownerDiscordId ?? '');
-    return (relayMembers || []).filter(
-        (m) =>
-            grantable(perm).includes(m?.level as number) && String(m.id) !== owner && members[String(m.id)] !== m.level,
-    );
-}
-
-/**
  * 릴레이가 보낸 소유자가 고정된 소유자와 다르면 그 id (같거나 모르면 null).
  * 필드 이름은 로드맵 스레드 구현을 따른다: relayOwnerDiscordId.
  */

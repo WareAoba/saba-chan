@@ -1603,7 +1603,6 @@
     "import_none": "서버쨩에서 가져올 권한 없음",
     "import_confirm": "위 {{count}}명의 레벨을 이 PC로 가져올까요?",
     "import_not_candidate": "{{member}}: 가져올 대상이 아님. 대상은 `saba-chan-cli perm import <서버>`로 확인해 주세요.",
-    "import_partial": "{{ok}}명 가져옴, {{failed}}명 실패",
     "imported": "{{guild}}에 {{count}}명의 레벨 가져옴",
     "level": {
       "owner": "소유자",

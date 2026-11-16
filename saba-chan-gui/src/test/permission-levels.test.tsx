@@ -293,10 +293,6 @@ describe('권한 레벨 계산', () => {
         expect(L.defaultMembers(base(), undefined)).toEqual([]);
     });
 
-    it('가져오기 후보는 데몬 값과 다른 릴레이 부여값만 (소유자 제외)', () => {
-        expect(L.importCandidates(base(), relayMembers).map((m) => m.id)).toEqual(['1003']);
-    });
-
     it('릴레이 소유자가 고정된 소유자와 다를 때만 불일치', () => {
         expect(L.ownerMismatch(base())).toBeNull();
         expect(L.ownerMismatch(base({ relayOwnerDiscordId: '1001' }))).toBeNull();
@@ -321,7 +317,8 @@ describe('권한 화면', () => {
     afterEach(() => {
         for (const k of API) delete (window.api as unknown as Record<string, unknown>)[k];
         delete (window.api as Partial<typeof window.api>).discordSettingsSet;
-        delete (window.api as Partial<typeof window.api>).relayListLegacyMembers;
+        delete (window.api as Partial<typeof window.api>).permissionsImportCandidates;
+        delete (window.api as Partial<typeof window.api>).permissionsImport;
         window.showToast = undefined;
     });
 
@@ -451,41 +448,47 @@ describe('권한 화면', () => {
         expect(within(level('Admin')).getByRole('button', { name: 'Mint' })).toBeInTheDocument();
     });
 
-    it('릴레이에 남은 부여값(legacy-members)을 골라 가져온다: 디스코드 멤버 목록에는 레벨이 없다', async () => {
-        window.api.relayListLegacyMembers = vi.fn(async () => relayMembers);
+    // 후보는 데몬이 고른다 (릴레이에 남은 부여값 중 데몬과 다른 것). 화면은 받은 후보를 보이고 고른 id만 보낸다
+    const candidates = { success: true, candidates: [relayMembers[2]] };
+
+    it('데몬이 고른 가져오기 후보를 골라 데몬에 한 번에 가져오게 한다', async () => {
+        window.api.permissionsImportCandidates = vi.fn(async () => candidates);
+        window.api.permissionsImport = vi.fn(async () => ({ success: true }));
         await openPeople({ members: relayMembers.map(({ level, ...m }) => m) });
-        expect(window.api.relayListLegacyMembers).toHaveBeenCalledWith('g1');
+        // 권한을 읽은 뒤 한 번만 묻는다 (릴레이를 거치는 조회)
+        expect(window.api.permissionsImportCandidates).toHaveBeenCalledTimes(1);
+        expect(window.api.permissionsImportCandidates).toHaveBeenCalledWith('g1');
         fireEvent.click(screen.getByRole('button', { name: /Import levels given earlier/ }));
         fireEvent.click(screen.getByRole('checkbox', { name: 'Newbie' }));
         fireEvent.click(screen.getByRole('button', { name: 'Import 1' }));
         await flush();
-        expect(window.api.permissionsSetMember).toHaveBeenCalledWith('g1', '1003', 0);
+        expect(window.api.permissionsImport).toHaveBeenCalledWith('g1', ['1003']);
+        expect(window.api.permissionsSetMember).not.toHaveBeenCalled();
     });
 
-    it('새로고침하면 릴레이에 남은 부여값도 다시 읽는다', async () => {
-        window.api.relayListLegacyMembers = vi.fn(async () => relayMembers);
+    it('새로고침하면 가져오기 후보도 다시 읽는다', async () => {
+        window.api.permissionsImportCandidates = vi.fn(async () => candidates);
         await openPeople({ members: relayMembers.map(({ level, ...m }) => m), onRefreshMembers: vi.fn() });
         fireEvent.click(screen.getByRole('button', { name: /Import levels given earlier/ }));
         expect(screen.getByRole('checkbox', { name: 'Newbie' })).toBeInTheDocument();
 
         fireEvent.click(screen.getByRole('checkbox', { name: 'Newbie' }));
-        let release!: (members: typeof relayMembers) => void;
-        vi.mocked(window.api.relayListLegacyMembers).mockReturnValue(
+        let release!: (res: typeof candidates) => void;
+        vi.mocked(window.api.permissionsImportCandidates).mockReturnValue(
             new Promise((r) => (release = r as typeof release)),
         );
         fireEvent.click(screen.getByRole('button', { name: /Refresh/ }));
         // 응답 전에는 옛 후보로 가져올 수 없다
         await flush();
         expect(screen.queryByRole('button', { name: /^Import \d/ })).toBeNull();
-        await act(async () => release(relayMembers));
+        await act(async () => release(candidates));
         // 후보가 비었다 다시 생기면 묶음은 접힌 채로 다시 그린다
         fireEvent.click(screen.getByRole('button', { name: /Import levels given earlier/ }));
         expect(screen.getByRole('checkbox', { name: 'Newbie' })).not.toBeChecked();
 
-        vi.mocked(window.api.relayListLegacyMembers).mockResolvedValue([]);
+        vi.mocked(window.api.permissionsImportCandidates).mockResolvedValue({ success: true, candidates: [] });
         fireEvent.click(screen.getByRole('button', { name: /Refresh/ }));
         await flush();
-        expect(window.api.relayListLegacyMembers).toHaveBeenCalledTimes(3);
         expect(screen.queryByRole('checkbox', { name: 'Newbie' })).toBeNull();
     });
 

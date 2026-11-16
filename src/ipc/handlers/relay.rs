@@ -420,25 +420,16 @@ pub async fn list_node_members(
     }
 }
 
-// ── GET /api/relay/node/:guild_id/legacy-members ──
-// 권한을 등록한 멤버 목록(`/api/nodes/:id/members`, `[{id, username, displayName, level}]`) 그대로. 실패하면 오류로 답한다(빈 목록을 돌려주지 않는다)
-
-pub async fn list_node_legacy_members(
-    Path(guild_id): Path<String>,
-    Query(params): Query<RelayQueryParams>,
-    State(state): State<IPCServer>,
-) -> Response {
-    let base = signed_base(&state, params.relay_url.as_deref()).await;
-    let client = match client() {
-        Ok(c) => c,
-        Err(r) => return r,
-    };
-    let path = format!("/api/nodes/{}/members", encode_path_segment(&guild_id));
-    match send(apply_signed_headers(client.get(format!("{}{}", base, path)), "GET", &path, None)).await {
-        Ok((code, Some(data))) if code.is_success() && data.is_array() => (StatusCode::OK, Json(data)).into_response(),
-        Ok((code, Some(data))) if !code.is_success() => relayed(code, data),
-        Ok(_) => invalid_response(StatusCode::BAD_GATEWAY),
-        Err(r) => r,
+/// 릴레이에 남은 권한 부여값 (`/api/nodes/:id/members`, `[{id, username, displayName, level}]`). 권한 가져오기(`permissions.rs`)가 읽는다.
+/// 실패하면 그 오류 응답을 돌려준다(빈 목록으로 바꾸지 않는다)
+pub(crate) async fn legacy_members(state: &IPCServer, guild_id: &str) -> Result<Vec<Value>, Response> {
+    let base = signed_base(state, None).await;
+    let client = client()?;
+    let path = format!("/api/nodes/{}/members", encode_path_segment(guild_id));
+    match send(apply_signed_headers(client.get(format!("{}{}", base, path)), "GET", &path, None)).await? {
+        (code, Some(Value::Array(members))) if code.is_success() => Ok(members),
+        (code, Some(data)) if !code.is_success() => Err(relayed(code, data)),
+        (code, _) => Err(invalid_response(code)),
     }
 }
 

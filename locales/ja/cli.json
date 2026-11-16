@@ -1603,7 +1603,6 @@
     "import_none": "サーバーちゃん から取り込める権限なし",
     "import_confirm": "上の {{count}} 人のレベルをこの PC に取り込みますか？",
     "import_not_candidate": "{{member}}: 取り込み対象ではありません。対象は `saba-chan-cli perm import <server>` で確認してください。",
-    "import_partial": "{{ok}} 人を取り込み、{{failed}} 人は失敗",
     "imported": "{{guild}} に {{count}} 人のレベルを取り込み済み",
     "level": {
       "owner": "オーナー",

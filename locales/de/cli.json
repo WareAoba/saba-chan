@@ -1967,7 +1967,6 @@
     "import_none": "Keine Berechtigungen zum Übernehmen von Server-chan",
     "import_confirm": "Stufen der {{count}} Mitglieder oben auf diesen PC übernehmen?",
     "import_not_candidate": "{{member}}: nicht übernehmbar. Kandidaten: `saba-chan-cli perm import <server>`",
-    "import_partial": "{{ok}} übernommen, {{failed}} fehlgeschlagen",
     "imported": "Stufen von {{count}} Mitgliedern in {{guild}} übernommen",
     "level": {
       "owner": "Besitzer",

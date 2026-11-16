@@ -978,6 +978,10 @@ impl IPCServer {
                 get(handlers::permissions::get_command_board),
             )
             .route(
+                "/api/permissions/{guild_id}/import",
+                get(handlers::permissions::import_candidates).post(handlers::permissions::import_members),
+            )
+            .route(
                 "/api/permissions/{guild_id}/members/{discord_id}",
                 axum::routing::put(handlers::permissions::set_member).delete(handlers::permissions::remove_member),
             )
@@ -1035,7 +1039,6 @@ impl IPCServer {
             .route("/api/relay/host/{host_id}/status", get(handlers::relay::check_host_status))
             .route("/api/relay/host/{host_id}/nodes", get(handlers::relay::list_host_nodes))
             .route("/api/relay/node/{guild_id}/members", get(handlers::relay::list_node_members))
-            .route("/api/relay/node/{guild_id}/legacy-members", get(handlers::relay::list_node_legacy_members))
             .route(
                 "/api/relay/node/{guild_id}/channels",
                 get(handlers::relay::get_node_channels).put(handlers::relay::put_node_channels),

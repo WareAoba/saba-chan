@@ -781,6 +781,14 @@ impl Api {
             None => self.delete(&path).await,
         }
     }
+    /// GET /api/permissions/:guildId/import — 가져오기 후보 `{candidates:[{id, level, username?, displayName?}]}` (데몬이 고른다)
+    pub async fn import_candidates(&self, guild: &str) -> Result<Value> {
+        self.get(&format!("/api/permissions/{}/import", seg(guild))).await
+    }
+    /// POST /api/permissions/:guildId/import `{members:[id]}` — 고른 후보를 한 번에 가져온다. 답은 권한 + `imported:[{id, level}]`
+    pub async fn import_members(&self, guild: &str, members: &[String]) -> Result<Value> {
+        self.post(&format!("/api/permissions/{}/import", seg(guild)), json!({ "members": members })).await
+    }
     /// GET /api/sandbox/{unisolated|extension-gui} — `{components:[{component, fingerprint, current}]}`
     pub async fn consents(&self, kind: &str) -> Result<Value> {
         self.get(&format!("/api/sandbox/{}", kind)).await
@@ -993,14 +1001,6 @@ impl Api {
         self.get(&with_query(
             &format!("/api/relay/node/{}/members", seg(guild_id)),
             &[("withStatus", Some("1".to_string())), ("relayUrl", relay_url.map(str::to_string))],
-        ))
-        .await
-    }
-    /// GET /api/relay/node/:guildId/legacy-members — 릴레이에 남은 권한 부여값 `[{id, username, displayName, level}]`
-    pub async fn legacy_members(&self, guild_id: &str, relay_url: Option<&str>) -> Result<Value> {
-        self.get(&with_query(
-            &format!("/api/relay/node/{}/legacy-members", seg(guild_id)),
-            &[("relayUrl", relay_url.map(str::to_string))],
         ))
         .await
     }
