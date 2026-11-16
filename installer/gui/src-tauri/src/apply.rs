@@ -416,7 +416,6 @@ fn marks_update(cmd: &str, install_root: Option<&Path>) -> bool {
     install_root.is_none_or(|root| Path::new(cmd).starts_with(root))
 }
 
-#[cfg(feature = "window")]
 /// GUI 설정(`config.json`의 `gui`)에서 키 값 읽기
 fn load_setting(key: &str) -> Option<String> {
     saba_chan_updater_lib::config_file::ConfigFile::default_location()
