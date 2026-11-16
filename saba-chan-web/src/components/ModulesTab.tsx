@@ -130,7 +130,7 @@ function GameModules({ api }: { api: WebApi }) {
 
     const installed = new Set(modules.map(moduleIdOf));
     const available = Array.isArray(catalog) ? catalog.filter((m) => !installed.has(m.id)) : [];
-    const updates = moduleUpdates(modules, catalog);
+    const updates = moduleUpdates(modules);
     const latestOf = new Map<string, string | undefined>(updates.map((u) => [u.id, u.latest]));
     const byName = new Map(modules.map((m) => [m.name, m]));
     return (

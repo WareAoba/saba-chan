@@ -189,6 +189,14 @@ impl UpdateState {
         self.status_changed.notify_one();
     }
 
+    /// 마지막으로 알린 상태에서 구성요소 하나(`module-<이름>` 등)의 새 판. 확인이 찾았을 때만.
+    /// 업데이트 잠금을 기다리지 않는다: 모듈 목록이 적용 중에도 바로 답하게
+    pub fn announced_latest(&self, key: &str) -> Option<String> {
+        let last = self.announced.lock().unwrap_or_else(|e| e.into_inner());
+        let comp = last.as_ref()?["components"].as_array()?.iter().find(|c| c["component"] == key)?;
+        (comp["update_available"] == true).then(|| comp["latest_version"].as_str().map(str::to_string)).flatten()
+    }
+
     /// 상태 본문이 지난번 알린 것과 다르면 `update.status`로 낸다
     async fn announce_status(&self) {
         let body = status_body(self).await;
@@ -389,11 +397,14 @@ async fn status_body(state: &UpdateState) -> Value {
         .filter(|c| !matches!(c.component, Component::Locales))
         .map(|c| {
             let key = c.component.manifest_key();
+            let choice = pins.get(&key).cloned().unwrap_or_default();
             json!({
                 "display_name": c.component.display_name(),
                 "current_version": c.current_version,
                 "latest_version": c.latest_version,
                 "update_available": c.update_available,
+                // 바꿔 끼울 새 판 (고정·바꾸기 대기면 null). 화면의 "업데이트 있음"은 이것으로 판정한다
+                "update_version": addon_update_version(&choice, c),
                 "downloaded": c.downloaded,
                 "installed": c.installed,
                 // 사용자가 고른 판 `{version, until_newer_than}` (고정하지 않았으면 null)
@@ -421,6 +432,11 @@ async fn status_body(state: &UpdateState) -> Value {
         // 설치된 번역 판 (locales/version). 바뀌면 GUI·TUI가 번역을 다시 읽는다
         "locales_version": crate::chat::i18n::installed_version(),
     })
+}
+
+/// 구성요소 하나의 바꿔 끼울 새 판 (`AddonChoice::update_version`). 확인이 새 판을 찾았을 때만
+fn addon_update_version(choice: &addon_pins::AddonChoice, c: &saba_chan_updater_lib::ComponentVersion) -> Option<String> {
+    choice.update_version(c.latest_version.as_deref().filter(|_| c.update_available), &c.current_version)
 }
 
 /// 상태가 바뀔 때마다(`UpdateState::status_may_have_changed`) 상태 본문을 다시 만들어, 달라졌으면 `update.status`로 낸다.
@@ -3101,6 +3117,20 @@ mod tests {
     }
 
     use super::*;
+
+    /// 모듈 목록은 업데이트 잠금을 기다리지 않고 마지막으로 알린 상태에서 확인이 찾은 새 판만 읽는다
+    #[test]
+    fn the_module_list_reads_the_last_announced_new_version() {
+        let state = UpdateState::new();
+        assert_eq!(state.announced_latest("module-a"), None, "nothing announced yet");
+        *state.announced.lock().unwrap() = Some(json!({ "components": [
+            { "component": "module-a", "update_available": true, "latest_version": "1.1.0" },
+            { "component": "module-b", "update_available": false, "latest_version": "1.0.0" },
+        ] }));
+        assert_eq!(state.announced_latest("module-a").as_deref(), Some("1.1.0"));
+        assert_eq!(state.announced_latest("module-b"), None);
+        assert_eq!(state.announced_latest("module-c"), None);
+    }
 
     /// 릴리즈 빌드에서는 앱이 업데이트 출처를 바꿀 수 없다 (거부는 저장 전에 끝난다)
     #[cfg(not(feature = "mock-relay"))]

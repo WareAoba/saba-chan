@@ -779,7 +779,7 @@ impl App {
 
     // ── 버튼 ──
 
-    /// 고른 모듈·익스텐션의 새 판 (업데이트 확인 결과에서, 지금 판과 다를 때만)
+    /// 고른 모듈·익스텐션의 바꿔 끼울 새 판 (데몬이 업데이트 상태에 판정해 준 `update_version`. 고정·바꾸기 대기면 없다)
     pub fn newer_version(&self) -> Option<String> {
         if self.page != Page::Addons {
             return None;
@@ -787,8 +787,7 @@ impl App {
         let id = self.selected()?;
         let component = if self.tab_index() == 0 { format!("module-{id}") } else { format!("ext-{id}") };
         let c = self.snap.updates.as_ref()?.get("components")?.as_array()?.iter().find(|c| s(c, "component") == component)?;
-        let (now, latest) = (s(c, "current_version"), s(c, "latest_version"));
-        (c.get("update_available").and_then(Value::as_bool) == Some(true) && !latest.is_empty() && latest != now).then(|| latest.to_string())
+        c.get("update_version").and_then(Value::as_str).map(str::to_string)
     }
 
     fn when(&self, w: When) -> bool {
@@ -2158,10 +2157,11 @@ mod tests {
         a.snap.modules = vec![json!({ "name": "minecraft" }), json!({ "name": "palworld" })];
         a.go(Page::Addons);
         a.list_state.select(Some(1));
-        let comp = |now: &str, latest: &str| json!({ "components": [{ "component": "module-palworld", "current_version": now, "latest_version": latest, "update_available": true }] });
-        a.snap.updates = Some(comp("0.1.12", "0.1.12"));
-        assert!(!lines(&a).iter().any(|l| l.starts_with("update")), "the same version is not an update");
-        a.snap.updates = Some(comp("0.1.12", "0.1.13"));
+        // "업데이트 있음"은 데몬이 판정한 `update_version`만 본다 (고정했거나 바꾸기를 기다리면 데몬이 주지 않는다)
+        let comp = |update: Value| json!({ "components": [{ "component": "module-palworld", "current_version": "0.1.12", "latest_version": "0.1.13", "update_available": true, "update_version": update }] });
+        a.snap.updates = Some(comp(Value::Null));
+        assert!(!lines(&a).iter().any(|l| l.starts_with("update")), "a pinned module is not an update");
+        a.snap.updates = Some(comp(json!("0.1.13")));
         a.focus = Focus::Actions;
         a.button = 0;
         assert_eq!(a.on_key(key(KeyCode::Enter)), Some(Action::RunAll(vec!["update download module-palworld".into(), "update apply module-palworld".into()])));

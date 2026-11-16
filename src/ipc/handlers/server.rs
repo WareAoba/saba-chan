@@ -98,7 +98,12 @@ pub async fn version_handler(State(state): State<IPCServer>) -> impl IntoRespons
 }
 
 /// 모듈 목록 한 줄. 별명은 module.toml(언어 없는 낱말)에 `lang`(앱 언어)의 모듈 locales 별명을 더한다 (`chat::api::locale_aliases`)
-fn module_info(m: crate::module_loader::LoadedModule, versions: &std::collections::BTreeMap<String, String>, lang: &str) -> ModuleInfo {
+fn module_info(
+    m: crate::module_loader::LoadedModule,
+    versions: &std::collections::BTreeMap<String, String>,
+    lang: &str,
+    updates: &crate::ipc::updates::UpdateState,
+) -> ModuleInfo {
     let installed: std::collections::HashMap<String, String> = versions.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
     let unmet_dependencies = m
         .metadata
@@ -114,7 +119,9 @@ fn module_info(m: crate::module_loader::LoadedModule, versions: &std::collection
         })
     });
     let trust = crate::module_audit::module_trust(&m.path);
-    let addon = addon_choice(&format!("{}{}", saba_chan_updater_lib::relay::MODULE_PREFIX, m.metadata.name), &m.metadata.version);
+    let key = format!("{}{}", saba_chan_updater_lib::relay::MODULE_PREFIX, m.metadata.name);
+    let addon = addon_choice(&key, &m.metadata.version);
+    let update_version = addon.update_version(updates.announced_latest(&key).as_deref(), &m.metadata.version);
     let localized = crate::chat::api::locale_aliases(std::path::Path::new(&m.path), lang).unwrap_or_default();
     let unsupported_reason = m.metadata.unsupported_on(std::env::consts::OS, std::env::consts::ARCH).map(str::to_string);
     let mut meta = m.metadata;
@@ -159,6 +166,7 @@ fn module_info(m: crate::module_loader::LoadedModule, versions: &std::collection
         lists: meta.lists,
         functions: None,
         addon,
+        update_version,
     }
 }
 
@@ -172,12 +180,13 @@ async fn module_list_response(
     failed: Vec<crate::module_loader::ModuleLoadError>,
     versions: &std::collections::BTreeMap<String, String>,
     lang: &str,
+    updates: &crate::ipc::updates::UpdateState,
 ) -> axum::response::Response {
     match modules {
         Ok(modules) => {
             // 구현한 함수 목록: 캐시에 없으면 짧게만 기다린다(느린 모듈은 null, 묻기는 뒤에서 마저). 데몬 락 밖에서, 모듈끼리 동시에
             let asks: Vec<_> = modules.iter().map(|m| tokio::spawn(crate::plugin::module_functions_for_list(m.entry_path()))).collect();
-            let mut modules: Vec<ModuleInfo> = modules.into_iter().map(|m| module_info(m, versions, lang)).collect();
+            let mut modules: Vec<ModuleInfo> = modules.into_iter().map(|m| module_info(m, versions, lang, updates)).collect();
             for (info, ask) in modules.iter_mut().zip(asks) {
                 info.functions = ask.await.ok().flatten();
             }
@@ -195,7 +204,7 @@ pub async fn list_modules(State(state): State<IPCServer>) -> impl IntoResponse {
         let supervisor = state.supervisor.read().await;
         (supervisor.list_modules(), supervisor.module_loader.load_errors())
     };
-    module_list_response(modules, failed, &versions, &state.config_store.ui_language().await).await
+    module_list_response(modules, failed, &versions, &state.config_store.ui_language().await, &state.update_state).await
 }
 
 /// POST /api/modules/refresh - 모듈 캐시를 새로고침하고 다시 발견
@@ -213,7 +222,7 @@ pub async fn refresh_modules(State(state): State<IPCServer>) -> impl IntoRespons
     }
     let versions = component_versions(&state).await;
     let failed = state.supervisor.read().await.module_loader.load_errors();
-    module_list_response(modules, failed, &versions, &state.config_store.ui_language().await).await
+    module_list_response(modules, failed, &versions, &state.config_store.ui_language().await, &state.update_state).await
 }
 
 /// GET /api/modules/schema - module.toml 스키마 v1 (JSON Schema)

@@ -29,6 +29,7 @@ const newer = (component: string, latest: string, kind = 'module') => ({
     update_available: true,
     current_version: '0.1.13',
     latest_version: latest,
+    update_version: latest,
 });
 
 function fakeApi(modules: Record<string, unknown>[], components: Record<string, unknown>[], overrides: Record<string, unknown> = {}) {
@@ -95,9 +96,9 @@ describe('모듈 업데이트 단추', () => {
         ).toBeTruthy();
     });
 
-    it('버전을 고정한 카드에는 업데이트 단추가 없다', async () => {
+    it('버전을 고정해 데몬이 업데이트할 판을 주지 않은 카드에는 업데이트 단추가 없다', async () => {
         const pinned = { ...MINECRAFT, pinned: { version: '0.1.13', until_newer_than: '0.1.14' } };
-        fakeApi([pinned], [newer('module-minecraft', '0.1.14')]);
+        fakeApi([pinned], [{ ...newer('module-minecraft', '0.1.14'), update_version: null }]);
         await openTab(1);
         await waitFor(() => expect(window.api.updaterStatus).toHaveBeenCalled());
         await waitFor(() => expect(card('마인크래프트')).toBeTruthy());
