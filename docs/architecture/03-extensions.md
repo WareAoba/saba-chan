@@ -164,7 +164,7 @@ manifest에 발화되지 않는 hook을 새로 선언하면 `parse_manifest`가 
 - 인스턴스 문맥 없이 부른다: HOST 작업(`instance.stdin`·`instance.rcon`·`instance.rest`)은 `no_instance`다. 그래서 이벤트마다 게임 서버에 명령을 보내지 못한다.
 - 상한: 익스텐션마다 줄 하나와 일꾼 하나. 디스패처는 줄에 넣기만 하므로 버스를 막지 않는다. 한 익스텐션의 hook은 한 번에 하나씩(기본 120s 타임아웃) 돌고, 느리거나 실패하거나 패닉해도 다른 익스텐션의 hook은 기다리지 않는다. 줄은 32건까지, 넘치면 가장 오래된 것을 버리고 줄이 빌 때까지 경고를 한 번 남긴다. 디스패처가 버스(256)에 뒤처지면 놓친 수를 경고로 남긴다.
 
-- 업데이트 적용(`POST /api/instance/:id/apply-update`, `service/server_update/apply.rs` `begin_server_update_holding`)과 네이티브 프로비저닝(`service/instance/provision.rs` `install_new_server`)은 hook을 거치지 않는다. **module의 `lifecycle.py install_server`를 직접 호출**하고, module이 `from extensions.steamcmd import SteamCMD`로 익스텐션을 Python 라이브러리처럼 import한다. apply-update는 `install_method_<방식>`이 켜진 인스턴스만 받는다(`updatable`).
+- 업데이트 적용(`POST /api/instance/:id/apply-update`, `service/server_update/apply.rs` `begin_server_update_holding`)과 네이티브 프로비저닝(`service/instance/provision.rs` `install_new_server`)은 hook을 거치지 않는다. **module의 `lifecycle.py install_server`를 직접 호출**하고, module이 공용 `load_extension(i18n, "steamcmd")`(02 §2.5)로 익스텐션을 Python 라이브러리처럼 import한다. apply-update는 `install_method_<방식>`이 켜진 인스턴스만 받는다(`updatable`).
 
 ### 2.4 hook × extension 매트릭스
 
@@ -337,7 +337,7 @@ slot 이름·창·종류는 `SLOT_TABLE` 한 곳에 있다. 종류: `inline`은 
 ### 5.2 steamcmd
 
 - `SteamCMD` 클래스: 포터블 SteamCMD 탐색/설치, `install(...)`, `update`, buildid·브랜치 비교로 `check_update`. `check_update`는 설치된 빌드를 받은 때(appmanifest `LastUpdated`)와 그 브랜치의 빌드가 올라온 때(`app_info_print` branches의 `timeupdated`)를 `local_build_time`·`remote_build_time`으로 함께 답한다(Steam이 주지 않으면 `null`). 받은 SteamCMD 압축은 데몬 공용 `safe_extract`(02 §2.5)로 포터블 폴더에 바로 풀고, 풀기가 실패하면 실행 파일을 지워 다음 호출이 다시 받게 한다. 설치 시간 초과 때의 프로세스 트리 종료는 데몬 공용 `force_kill`이다.
-- daemon hook으로 실제로 쓰이는 것은 `server.check_update` 하나뿐이다. 설치는 module의 `lifecycle.py install_server`가 `from extensions.steamcmd import install_for_module`로 직접 수행한다(palworld·zomboid).
+- daemon hook으로 실제로 쓰이는 것은 `server.check_update` 하나뿐이다. 설치는 module의 `lifecycle.py install_server`가 `load_extension`으로 불러온 steamcmd의 `install_for_module`로 직접 수행한다(palworld·zomboid).
 - `install_for_module(module_dir, install_dir, beta=None, executable=None)`: 모듈 module.toml `[install]`(`method = "steamcmd"`, `app_id`, `anonymous`, `beta`, `download_size`)을 읽어 SteamCMD를 준비하고 설치·업데이트한다. 앱 ID를 모듈 코드에 다시 적지 않는다. `[install]`에 steamcmd 앱 ID가 없으면 `ValueError`. `beta` 인자(인스턴스가 고른 브랜치, 02 §3.3 `list_versions`)가 있으면 `[install].beta`보다 먼저 쓴다. 반환은 `SteamCMD.install`과 같고, SteamCMD 준비·설치 중 오류도 예외 대신 공용 `errors.install_failed` 실패(`{success:false, message}`)로 답한다. `executable`(설치 폴더 기준 서버 실행 파일, steamcmd 0.1.11)을 주면 모듈 `install_server`가 그대로 돌려줄 `install_path`·`executable_path`(받은 파일이 없으면 `""`)를 붙인다. palworld·zomboid는 이것을 쓰고 `[module.dependencies] ext-steamcmd = ">=0.1.11"`이다.
 - 설치 진행률은 SteamCMD 출력의 `progress:` 줄 → 설치 폴더 appmanifest의 `BytesDownloaded`/`BytesToDownload`(`_manifest_progress`) → 늘어난 디스크 크기와 모듈이 적은 어림 총량(module.toml `[install] download_size`, `_disk_progress`) 순으로 읽는다. 앱 ID별 크기 같은 게임 지식은 그 게임의 module.toml에만 둔다. `download_size`가 없는 모듈은 디스크 크기로 어림하지 않는다. 출력은 파이프에서 버퍼에 묶이기 쉽다. 디스크 크기가 어림 총량을 넘으면(미리 잡은 파일 크기·받기 임시 파일) 진행률을 올리지 않고 직전 값을 유지한다.
 - instance_fields는 `install_method_steamcmd`(설치 방식 표시, hook 조건)와 `steamcmd_beta`(사용자가 고른 브랜치) 둘뿐이다. daemon이 module의 `[install] method`를 보고 **범용 규칙**(`install_method_<방식>`, `<방식>_beta`)으로 채운다(`ServerInstance::apply_install_extension_data`, `record_installed_version`). 앱 ID·익명 로그인·플랫폼 같은 모듈 값은 인스턴스에 복사하지 않아 `steamcmd_app_id`·`steamcmd_anonymous`·`steamcmd_platform` 필드는 지웠다(0.1.14-beta.2, `min_app_version` 0.1.14-beta.2). core에 steamcmd 이름은 없다.
@@ -345,13 +345,13 @@ slot 이름·창·종류는 `SLOT_TABLE` 한 곳에 있다. 종류: `inline`은 
 ### 5.4 ue4-ini (디렉토리명 `ue4_ini`)
 
 - `parse_option_settings(ini_path, section)`와 `write_option_settings(ini_path, props, section, quoted_keys, bare_keys)`를 제공하는 **순수 Python 라이브러리**다(`ue4_ini.py`). `section`(대괄호는 있어도 없어도 된다)은 필수이고 기본값(특정 게임의 섹션)이 없다. 읽기도 그 섹션의 `OptionSettings` 줄만 본다(ue4-ini 0.1.12, palworld는 `[module.dependencies] ext-ue4-ini = ">=0.1.12"`). hook도 권한(`permissions`)도 선언하지 않는다. 쓰기는 데몬 공용 `atomic_write`(02-modules §2.5)를 그대로 쓴다(`min_app_version` 0.1.12): 같은 폴더 임시 파일에 쓰고 바꾸되, 격리 실행처럼 권한을 옮기지 못하거나 임시 파일을 만들 수 없으면 원래 파일을 제자리에서 덮어쓴다. 값의 따옴표는 기본으로 값 모양(True/False·숫자·괄호 목록은 그대로, 나머지는 따옴표)으로 정하고, 모듈이 형식을 아는 키는 `quoted_keys`(숫자처럼 보여도 문자열)·`bare_keys`(열거형·빈 목록)로 덮어쓴다. 줄바꿈이 든 값은 OptionSettings 줄을 깨므로 쓰지 않고 False를 돌려준다.
-- palworld가 `requires_extensions = ["steamcmd", "ue4-ini"]`로 요구한다(`M:palworld/module.toml`). `try/except ImportError`로 import하고 INI를 건드리는 함수만 `extension_required`를 돌려준다. disable하면 import 가드가 import를 막는다(2.1).
+- palworld가 `requires_extensions = ["steamcmd", "ue4-ini"]`로 요구한다(`M:palworld/module.toml`). INI를 건드릴 때 공용 `load_extension`으로 import하고, 없으면 그 함수만 `extension_required`를 돌려준다. disable하면 import 가드가 import를 막는다(2.1).
 
 ### 5.5 module → extension 참조 방식
 
 1. `module.toml [install] requires_extensions = [...]`. 모듈을 설치하면(데몬 `POST /api/modules/manifest/:id/install`, 설치기) 요구하는 익스텐션을 받고 켠다(02-modules §5.2). 앱 업데이트로 모듈이 바뀌어도 새로 필요해진 것 중 없는 것을 받고 켠다(02-modules §5.3). 인스턴스에 복사하지 않는다: 인스턴스가 쓰는 익스텐션은 지금 모듈의 이 목록과 인스턴스 `required_extensions`(인스턴스가 더한 것, 예전 판이 만들 때 복사해 둔 모듈 목록도 그대로 읽는다)의 합이다(`Supervisor::effective_required_extensions`). 생성 시점에 검증하고(`service/instance/create.rs` `create`), 시작 시점에 관리형·비관리형 모두 다시 검증한다(`supervisor/start.rs` `plan_start` → `extension_required`, `installed_and_enabled_set`). module 기능 엔드포인트에서도 검사한다(`handlers/managed.rs`). `[module.dependencies]`의 `ext-<id>` 버전 요구도 시작 시 검사한다(`supervisor/start.rs` `unmet_module_dependencies`).
 2. `module.toml [extensions.<id>]` 섹션은 `metadata.extensions["<id>"]`로 그대로 파싱된다(`module_loader/raw.rs`). settings_changed context의 `module_extensions`로 전달된다.
-3. Python 레벨: `from extensions.<pkg> import …`. PYTHONPATH 주입과 import 가드에 의존한다. 모듈은 `SABA_ENABLED_EXTENSIONS`를 따로 읽지 않고, import가 실패하면(없음·꺼짐, 가드의 `ModuleNotFoundError`) `error_code: "extension_required"`, `missing_extensions`로 답한다(palworld·zomboid `install_server`).
+3. Python 레벨: 공용 `load_extension(i18n, "<id>")`(02 §2.5, `extensions.<pkg>`를 import한다). PYTHONPATH 주입과 import 가드에 의존한다. 모듈은 `SABA_ENABLED_EXTENSIONS`를 따로 읽지 않고, 그 익스텐션 import가 실패하면(없음·꺼짐, 가드의 `ModuleNotFoundError`) 받은 `extension_required` 답(`missing_extensions`)을 돌려준다(palworld·zomboid `install_server`, terraria `validate`·`install_server`). 익스텐션 안의 다른 import 실패는 '없음'으로 보지 않고 예외로 올린다.
 
 ---
 
