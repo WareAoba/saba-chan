@@ -675,7 +675,9 @@
     "minutes_ago": "há {{count}} min",
     "yesterday": "Ontem",
     "click_to_open": "clique para abrir",
-    "click_to_update": "clique para atualizar"
+    "click_to_update": "clique para atualizar",
+    "open_backups": "Abrir backups",
+    "open_schedule": "Abrir agendamentos"
   },
   "updates": {
     "no_updates": "Todos os componentes na versão mais recente",

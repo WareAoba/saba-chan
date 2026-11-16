@@ -280,7 +280,9 @@ pub(crate) async fn backup_targets(state: &IPCServer, id: &str) -> Vec<PathBuf> 
 /// 모듈이 백업을 지원하지 않으면 수동 백업만 오류이고, 자동 백업(업데이트 전·예약)은 건너뛴다
 pub(crate) async fn take_backup(state: &IPCServer, id: &str, kind: BackupKind) -> Result<Option<BackupInfo>, Failure> {
     let Some(guard) = InstanceLock::take(id).map(|g| g.purpose(Purpose::Backup)) else {
-        return Err(Failure::coded(StatusCode::CONFLICT, "backup_busy", "A backup or restore is already running for this instance"));
+        let busy = Err(Failure::coded(StatusCode::CONFLICT, "backup_busy", "A backup or restore is already running for this instance"));
+        announce_done(state, id, kind, &busy).await;
+        return busy;
     };
     let (state, id) = (state.clone(), id.to_string());
     detached(async move {
@@ -298,6 +300,16 @@ async fn detached<T: Send + 'static>(work: impl std::future::Future<Output = Res
 /// 이미 작업 잠금을 잡은 호출자(업데이트)용 `take_backup`
 pub(crate) async fn take_backup_held(state: &IPCServer, id: &str, kind: BackupKind, _guard: &InstanceLock) -> Result<Option<BackupInfo>, Failure> {
     take_backup_locked(state, id, kind, None, &[]).await
+}
+
+/// 백업 한 번의 결과를 알린다 (`backup.done`). 백업할 것이 없었으면 알리지 않는다
+async fn announce_done(state: &IPCServer, id: &str, kind: BackupKind, result: &Result<Option<BackupInfo>, Failure>) {
+    let instance = state.supervisor.read().await.instance_store.get(id).map(|i| i.name.clone()).unwrap_or_default();
+    crate::events::emit("backup.done", match result {
+        Ok(None) => return,
+        Ok(Some(made)) => json!({ "instanceId": id, "instance": instance, "kind": kind, "name": made.name, "ok": true }),
+        Err(e) => json!({ "instanceId": id, "instance": instance, "kind": kind, "ok": false, "code": e.code(), "error": e.reason() }),
+    });
 }
 
 /// `also`의 경로를 더한다. 이미 담는 경로 안에 있는 것은 빼고, 담는 경로를 품는 것은 그 경로들을 대신한다
@@ -330,8 +342,15 @@ async fn bare_plan(state: &IPCServer, id: &str) -> Result<Plan, Failure> {
 }
 
 /// `protect`: 정리에서 빼 둘 백업 이름 (복원 중인 백업)
-/// `also`: 지금 설정이 가리키지 않아도 함께 담을 경로 (복원이 덮을 경로). 없는 것과 이미 담는 경로와 겹치는 것은 뺀다
+/// `also`: 지금 설정이 가리키지 않아도 함께 담을 경로 (복원이 덮을 경로). 없는 것과 이미 담는 경로와 겹치는 것은 뺀다.
+/// 결과는 시작 전에 실패한 것(모듈 hook 등)까지 `backup.done`으로 알린다
 async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, protect: Option<String>, also: &[PathBuf]) -> Result<Option<BackupInfo>, Failure> {
+    let result = make_backup(state, id, kind, protect, also).await;
+    announce_done(state, id, kind, &result).await;
+    result
+}
+
+async fn make_backup(state: &IPCServer, id: &str, kind: BackupKind, protect: Option<String>, also: &[PathBuf]) -> Result<Option<BackupInfo>, Failure> {
     let mut plan = match plan(state, id).await? {
         Some(plan) => plan,
         None if kind == BackupKind::Manual => {
@@ -435,11 +454,6 @@ async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, prote
             }
         }
     }
-    let instance = state.supervisor.read().await.instance_store.get(id).map(|i| i.name.clone()).unwrap_or_default();
-    crate::events::emit("backup.done", match &result {
-        Ok(made) => json!({ "instanceId": id, "instance": instance, "kind": kind, "name": made.name, "ok": true }),
-        Err(e) => json!({ "instanceId": id, "instance": instance, "kind": kind, "ok": false, "error": e.to_string() }),
-    });
     result.map(Some).map_err(|e| {
         let (status, mut body) = backup_error(&e);
         // 백업 실패 코드는 `cause`로 옮기고, 자동 저장이 꺼진 채라는 것을 앞세운다
@@ -690,7 +704,7 @@ pub(crate) async fn create_from(state: &IPCServer, id: &str, source: Source) -> 
         let instance = state.supervisor.read().await.instance_store.get(&id).map(|i| i.name.clone()).unwrap_or_default();
         crate::events::emit("backup.done", match &made {
             Ok(b) => json!({ "instanceId": id, "instance": instance, "kind": b.kind, "name": b.name, "ok": true }),
-            Err(e) => json!({ "instanceId": id, "instance": instance, "kind": BackupKind::Snapshot, "ok": false, "error": e.reason() }),
+            Err(e) => json!({ "instanceId": id, "instance": instance, "kind": BackupKind::Snapshot, "ok": false, "code": e.code(), "error": e.reason() }),
         });
         made
     })
@@ -1427,8 +1441,13 @@ else:
         let toml = format!("{NO_BACKUP}\n[backup]\npaths = []\nhook = true\n");
         let hook = "import json\nprint(json.dumps({'success': False, 'error_code': 'backup_failed', 'message': 'no world'}))\n";
         let (state, id, _tmp) = server_with(&toml, Some(hook)).await;
-        let err = take_backup(&state, &id, BackupKind::PreUpdate).await.err().expect("hook failure must not mean 'nothing to back up'");
+        let mut events = crate::events::bus().subscribe(None);
+        let err = take_backup(&state, &id, BackupKind::Scheduled).await.err().expect("hook failure must not mean 'nothing to back up'");
         assert_eq!(code(err).await, "backup_failed");
+        // 백업을 시작하기 전에 실패해도 실패를 알린다 (알림함의 예약 백업 실패)
+        let done: Vec<_> = std::iter::from_fn(|| events.rx.try_recv().ok()).filter(|e| e.kind == "backup.done" && e.data["instanceId"] == id.as_str()).collect();
+        assert_eq!(done.len(), 1, "{done:?}");
+        assert_eq!((&done[0].data["ok"], &done[0].data["kind"], &done[0].data["code"]), (&json!(false), &json!("scheduled"), &json!("backup_failed")));
     }
 
     #[tokio::test]

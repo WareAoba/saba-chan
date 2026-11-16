@@ -675,7 +675,9 @@
     "minutes_ago": "{{count}}分钟前",
     "yesterday": "昨天",
     "click_to_open": "点击打开",
-    "click_to_update": "点击更新"
+    "click_to_update": "点击更新",
+    "open_backups": "打开备份",
+    "open_schedule": "打开计划"
   },
   "updates": {
     "no_updates": "所有组件均为最新。",

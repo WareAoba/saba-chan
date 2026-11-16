@@ -4,7 +4,8 @@ import { ActivityBar } from '../components/shell/ActivityBar';
 import { DaemonEvents } from '../components/shell/DaemonEvents';
 import i18n from '../i18n';
 import { eventToast, normalizeEvent, subscribeDaemonEvents } from '../utils/daemonEvents';
-import { applyServerUpdateFromNotice, SERVER_UPDATE_ACTION } from '../utils/serverUpdateNotice';
+import { SERVER_UPDATE_ACTION } from '../utils/noticeView';
+import { applyServerUpdateFromNotice } from '../utils/serverUpdateNotice';
 
 const t = i18n.getFixedT('en', 'gui');
 const flush = () => act(async () => {});

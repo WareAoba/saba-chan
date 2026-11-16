@@ -1,13 +1,14 @@
 import type { Notice } from '@gui/types/global';
-import { groupNotices, noticeTime, toNotice } from '@gui/utils/noticeView';
+import { groupNotices, noticeHintKey, noticeScreen, noticeTime, toNotice } from '@gui/utils/noticeView';
 import clsx from 'clsx';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useData } from '../store';
 import type { PcEvent, WebApi } from '../types';
 import { Icon } from './icons';
+import { webScreen } from './ScreenLink';
 
-/** 이 이벤트가 오면 알림함이 바뀌었을 수 있다 (데몬이 알림함에 넣는 계기 중 웹 세션에 오는 것, 01 §2.2 `/api/notices`) */
+/** 이 이벤트가 오면 알림함이 바뀌었을 수 있다 (`notices.changed`, 그것을 보내지 않는 예전 데몬은 알림함에 넣는 계기 중 웹 세션에 오는 것, 01 §2.2 `/api/notices`) */
 const MAY_ADD = new Set([
     'instance.exit',
     'instance.started',
@@ -22,9 +23,11 @@ const MAY_ADD = new Set([
 
 /**
  * 머리의 종 버튼과 알림 패널. 데몬 알림함(앱 알림 창과 같은 목록·같은 읽음 상태)을 서버별로 묶어 보인다.
- * 패널을 열면 모두 읽음이 된다. 웹은 알림을 눌러 할 일(패치노트·업데이트 창)이 없어 보여 주기만 한다
+ * 패널을 열면 모두 읽음이 된다. 누르면 그 서버의 화면을 여는 알림(예약 백업·예약 작업 실패)은 앱처럼 그 화면으로 가고,
+ * 앱에서만 할 수 있는 일(패치노트·업데이트 창·서버 업데이트)의 알림은 보여 주기만 한다
  */
 export function NoticeBell({ api }: { api: WebApi }) {
+    const { t } = useTranslation();
     const { t: tg } = useTranslation('gui');
     const [notices, setNotices] = useState<Notice[]>([]);
     const [open, setOpen] = useState(false);
@@ -112,19 +115,44 @@ export function NoticeBell({ api }: { api: WebApi }) {
                         groups.map((g) => (
                             <section key={g.key} className="notice-group">
                                 <div className="notice-group-name">{g.label}</div>
-                                {g.notices.map((n) => (
-                                    <div key={n.id} className="notice-item">
-                                        <span
-                                            className={clsx('notice-dot', n.read ? 'read' : n.type)}
-                                            aria-hidden="true"
-                                        />
-                                        <div className="notice-msg">
-                                            {n.message}
-                                            {n.detail && <small>{n.detail}</small>}
-                                        </div>
-                                        <span className="notice-time">{noticeTime(n.timestamp, tg)}</span>
-                                    </div>
-                                ))}
+                                {g.notices.map((n) => {
+                                    const body = (
+                                        <>
+                                            <span
+                                                className={clsx('notice-dot', n.read ? 'read' : n.type)}
+                                                aria-hidden="true"
+                                            />
+                                            <div className="notice-msg">
+                                                {n.message}
+                                                {n.detail && <small>{n.detail}</small>}
+                                            </div>
+                                            <span className="notice-time">{noticeTime(n.timestamp, tg)}</span>
+                                        </>
+                                    );
+                                    const target = noticeScreen(n);
+                                    const screen = target && webScreen(target, t);
+                                    if (!screen || !n.action) {
+                                        return (
+                                            <div key={n.id} className="notice-item">
+                                                {body}
+                                            </div>
+                                        );
+                                    }
+                                    return (
+                                        <button
+                                            key={n.id}
+                                            type="button"
+                                            className="notice-item notice-item-link"
+                                            onClick={() => {
+                                                setOpen(false);
+                                                screen.open();
+                                            }}
+                                        >
+                                            {body}
+                                            <span className="notice-action">{tg(noticeHintKey(n.action))} ↗</span>
+                                        </button>
+                                    );
+                                })}
                             </section>
                         ))
                     )}

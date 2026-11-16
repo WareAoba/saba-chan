@@ -32,7 +32,17 @@
   "errors": {
     "agreement_required": "Para iniciar el servidor hay que aceptar {{names}}. Acéptalo en Saba-chan del PC.",
     "memory_limit_at_start": "El servidor se detuvo al alcanzar el límite de memoria ({{limit}} MiB) durante el inicio. Sube el límite por encima del ajuste de RAM o déjalo vacío.",
-    "runner_missing": "Falta saba-runner; inicio gestionado no disponible. Desactiva el inicio gestionado de este servidor o reinstala Saba-chan."
+    "runner_missing": "Falta saba-runner; inicio gestionado no disponible. Desactiva el inicio gestionado de este servidor o reinstala Saba-chan.",
+    "backup_save_rejected": "El servidor rechazó el comando de guardado",
+    "backup_save_unconfirmed": "El servidor no confirmó el guardado",
+    "backup_server_stopped": "El servidor se detuvo durante la copia",
+    "backup_file_locked": "El servidor está usando un archivo",
+    "autosave_not_resumed": "No se pudo reactivar el guardado automático tras la copia",
+    "command_failed": "El servidor rechazó el comando",
+    "not_running": "El servidor estaba detenido",
+    "check_failed": "Error al comprobar actualizaciones",
+    "instance_busy": "Hay otra tarea (copia o restauración) en curso",
+    "backup_busy": "Hay otra tarea (copia o restauración) en curso"
   },
   "chatbot": {
     "memo_template": "<!-- Las líneas de ayuda como esta y los títulos que dejes vacíos no se envían a Saba-chan parlante. Rellena solo lo que necesites. -->\n\n## Ambiente\n<!-- Describe cómo se habla aquí y hasta dónde pueden llegar las bromas. Si lo dejas vacío, usa su personalidad por defecto. -->\n\n## Cómo llamar a la gente\n<!-- Escribe los nombres especiales con los que Saba-chan debe llamar a alguien. Ejemplo: a la persona marcada (propietario) la llama \"amo\". -->\n\n## Palabras de este servidor\n<!-- Apodos, memes y abreviaturas que solo se usan aquí, con su significado. -->\n\n## Información del servidor de juego\n<!-- Reglas, horarios y otras cosas que Saba-chan puede contar a quien pregunte. -->\n"
@@ -368,6 +378,16 @@
     "source_agent": "Agente de IA de este PC",
     "source_restart": "Reinicio automático",
     "source_idle": "Detención automática sin jugadores",
-    "source_watchdog": "Vigilancia sin respuesta"
+    "source_watchdog": "Vigilancia sin respuesta",
+    "not_restarted": "{{exit}} · No se pudo reiniciar",
+    "scheduled_backup_failed": "{{name}} · Error en la copia programada",
+    "scheduled_task_failed": "{{name}} · Error en la tarea programada",
+    "task_restart": "Reinicio",
+    "task_announce": "Anuncio",
+    "task_update": "Actualización",
+    "task_start": "Inicio",
+    "task_stop": "Detención",
+    "task_save": "Guardado",
+    "task_command": "Comando del juego"
   }
 }

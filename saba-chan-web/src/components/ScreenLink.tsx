@@ -7,7 +7,7 @@ import { useApp } from '../store';
  * 화면 주소(@gui/utils/screenAddress, 앱과 같다) → 웹에서 가는 길과 여는 일.
  * 웹은 디스코드 탭이 한 화면이라 디스코드 서버 안 탭까지는 가지 않는다. 웹에 없는 화면(설정·작업 기록)은 null
  */
-function webScreen(to: string, t: TFunction) {
+export function webScreen(to: string, t: TFunction) {
     const screen = parseScreen(to);
     if (screen?.page === 'discord') {
         return { path: [t('tabs.discord')], open: () => useApp.getState().setTab('discord') };
