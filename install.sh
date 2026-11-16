@@ -128,6 +128,8 @@ picked = [r for r in json.load(open(sys.argv[1])).get("releases") or [] if takes
 print((picked[0] if picked else {}).get("manifestUrl") or "")' "$TMP/latest.json" "$CHANNEL") || MANIFEST_URL=
 fi
 [ -n "$MANIFEST_URL" ] || die "이 PC용 릴리즈가 아직 없어요." "No release for this platform yet."
+# /latest는 공유 캐시 응답이라 manifestUrl을 경로만 준다
+case "$MANIFEST_URL" in /*) MANIFEST_URL="$RELAY$MANIFEST_URL" ;; esac
 curl -fsS -H 'X-Saba-Client: 1' "$MANIFEST_URL" >"$TMP/manifest.json" || die "manifest를 받지 못했어요." "Could not download the manifest."
 
 # CLI 항목: 맨 위 플랫폼이 이 플랫폼이면 components, 아니면 platforms.<플랫폼>.components
