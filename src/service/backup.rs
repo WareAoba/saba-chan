@@ -205,7 +205,7 @@ async fn plan(state: &IPCServer, id: &str) -> Result<Option<Plan>, Failure> {
     let (spec, base, dir, keep, hook_call, lookup, boundary, module_name) = {
         let supervisor = state.supervisor.read().await;
         let Some(instance) = supervisor.instance_store.get(id).cloned() else {
-            return Err(Failure::instance_not_found(&id));
+            return Err(Failure::instance_not_found(id));
         };
         let module = supervisor.module_loader.get_module(&instance.module_name).ok();
         let Some(spec) = module.as_ref().and_then(|m| m.metadata.backup.clone()) else {
@@ -315,7 +315,7 @@ fn add_paths(paths: &mut Vec<PathBuf>, also: &[PathBuf]) {
 async fn bare_plan(state: &IPCServer, id: &str) -> Result<Plan, Failure> {
     let supervisor = state.supervisor.read().await;
     let Some(instance) = supervisor.instance_store.get(id) else {
-        return Err(Failure::instance_not_found(&id));
+        return Err(Failure::instance_not_found(id));
     };
     Ok(Plan {
         dir: backup::backups_dir(&supervisor.instance_store.instance_dir(id)),
@@ -480,7 +480,7 @@ fn backup_error(e: &anyhow::Error) -> (StatusCode, Value) {
 pub(crate) async fn backups_dir(state: &IPCServer, id: &str) -> Result<PathBuf, Failure> {
     let supervisor = state.supervisor.read().await;
     if supervisor.instance_store.get(id).is_none() {
-        return Err(Failure::instance_not_found(&id));
+        return Err(Failure::instance_not_found(id));
     }
     Ok(backup::backups_dir(&supervisor.instance_store.instance_dir(id)))
 }
@@ -550,7 +550,7 @@ async fn game_snapshots(state: &IPCServer, id: &str) -> Result<Vec<GameSnapshot>
     let (call, boundary, module_name) = {
         let supervisor = state.supervisor.read().await;
         let Some(instance) = supervisor.instance_store.get(id).cloned() else {
-            return Err(Failure::instance_not_found(&id));
+            return Err(Failure::instance_not_found(id));
         };
         let Some(module) = supervisor.module_loader.get_module(&instance.module_name).ok().filter(|m| m.metadata.backup.as_ref().is_some_and(|b| b.snapshots)) else {
             return Ok(Vec::new());
@@ -768,7 +768,7 @@ struct Transfer {
 async fn transfer(state: &IPCServer, id: &str) -> Result<Transfer, Failure> {
     let supervisor = state.supervisor.read().await;
     let Some(instance) = supervisor.instance_store.get(id) else {
-        return Err(Failure::instance_not_found(&id));
+        return Err(Failure::instance_not_found(id));
     };
     let instance_dir = supervisor.instance_store.instance_dir(id);
     let module = supervisor.module_loader.get_module(&instance.module_name).ok();
@@ -894,7 +894,7 @@ pub(crate) async fn restore_held(state: &IPCServer, id: &str, name: &str, _guard
     let (mut roots, boundary) = {
         let supervisor = state.supervisor.read().await;
         let Some(instance) = supervisor.instance_store.get(id) else {
-            return Err(Failure::instance_not_found(&id));
+            return Err(Failure::instance_not_found(id));
         };
         let instance_dir = supervisor.instance_store.instance_dir(id);
         let module = supervisor.module_loader.get_module(&instance.module_name).ok();

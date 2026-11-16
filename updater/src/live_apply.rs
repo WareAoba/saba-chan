@@ -1509,7 +1509,7 @@ mod tests {
             release_version: Some("0.1.15".into()),
         };
         assert_eq!(live.report_version(), "0.1.15", "the relay counts rollbacks per release");
-        begin_watch(&manager.staging_dir);
+        begin_watch(&manager.staging_dir).unwrap();
         // 적용과 새 데몬
         std::fs::rename(manager.install_root.join(core), manager.install_root.join(core_old)).unwrap();
         std::fs::write(manager.install_root.join(core), b"0.1.14").unwrap();

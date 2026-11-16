@@ -247,7 +247,7 @@ pub(crate) async fn list(state: &IPCServer, id: &str) -> Outcome {
     let (instance, metadata, route) = {
         let supervisor = state.supervisor.read().await;
         let Some(instance) = supervisor.instance_store.get(id).cloned() else {
-            return Err(Failure::instance_not_found(&id));
+            return Err(Failure::instance_not_found(id));
         };
         let metadata = supervisor.module_loader.get_module(&instance.module_name).ok().map(|m| m.metadata);
         let running = supervisor.is_running(&instance.id).await;
@@ -400,7 +400,7 @@ pub(crate) async fn rcon_for(supervisor: &tokio::sync::RwLock<crate::supervisor:
     let instance = match supervisor_guard.instance_store.get(id).cloned() {
         Some(instance) => instance,
         None => {
-            return Err(Failure::instance_not_found(&id));
+            return Err(Failure::instance_not_found(id));
         }
     };
 
@@ -528,7 +528,7 @@ pub(crate) async fn rest_for(
     let instance = match supervisor.instance_store.get(id).cloned() {
         Some(instance) => instance,
         None => {
-            return Err(Failure::instance_not_found(&id));
+            return Err(Failure::instance_not_found(id));
         }
     };
 

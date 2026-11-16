@@ -127,6 +127,7 @@ pub(super) fn load_updater_config_from(file: &ConfigFile) -> UpdateConfig {
 
 /// 사용자가 바꾼 설정: 디스크에 먼저 저장하고, 저장했을 때만 관리자 설정을 바꾼다.
 /// 저장하지 못하면 아무것도 바꾸지 않고 500 `save_failed`로 답한다 (다시 켜면 되돌아가는 설정을 성공으로 보이지 않게)
+#[allow(clippy::result_large_err)] // 오류는 바로 돌려줄 HTTP 응답
 pub(super) fn adopt_config(mgr: &mut UpdateManager, file: &ConfigFile, cfg: UpdateConfig) -> Result<(), axum::response::Response> {
     save_updater_config_to(file, &cfg).map_err(|e| {
         tracing::warn!("[Updates] Failed to persist update config: {}", e);
