@@ -200,6 +200,9 @@
     "tts_pitch": "会朗读的 Saba-chan 音调",
     "tts_pitch_value": "{{value}} 半音",
     "bad_duration": "无法识别时长 {{value}}。例：30m、6h、7d（最长 28 天）、forever、off",
+    "duration_forever": "永久",
+    "duration_off": "解除,关闭",
+    "duration_units": "分钟,小时,天,周",
     "mod_slowmode": "慢速模式",
     "mod_lock": "锁定",
     "mod_auto_clear": "自动清理",
@@ -533,6 +536,7 @@
     "pair_expected": "必须是 KEY=VALUE 格式：“{{got}}”",
     "timeout": "守护进程响应超时（{{path}}）",
     "body_read": "{{path}} 响应接收失败：{{error}}",
+    "daemon_identity": "守护进程身份验证失败",
     "unknown_command": "没有此命令：{{path}}。运行 `saba-chan-cli help` 查看命令列表。",
     "not_supported": "{{module}} 模块不支持此功能"
   },
@@ -688,6 +692,7 @@
     "out_of_range": "{{label}} 必须在 {{min}} 到 {{max}} 之间。",
     "pick": "{{name}} 的命令",
     "raw_ok": "不在列表中的行将原样发送到控制台。",
+    "rejected": "服务器拒绝了该命令",
     "sent": "完成。",
     "too_many_args": "参数过多。用法：{{usage}}"
   },
@@ -1847,7 +1852,7 @@
     "keys_form": "↑↓ 项目 · ←→ 更改值 · Space 开/关 · Enter 输入 · / 查找 · Ctrl+S 保存 · Esc 返回",
     "keys_content": "↑↓ 滚动 · Esc 返回 · s 启动/停止 · Ctrl+K 查找 · ? 帮助 · q 退出",
     "keys_backups": "c 立即备份 · Enter 恢复 · d 删除",
-    "keys_players": "Enter 填入踢出命令",
+    "keys_players": "F5 刷新 · Enter 填入踢出命令",
     "keys_edit": "e 更改（填入命令行）",
     "keys_wizard": "↑↓ 选择 · Enter 下一步 · Esc 上一步 · Ctrl+C 放弃",
     "list": {
@@ -2116,6 +2121,7 @@
     "failed": "✗ {{agent}}: {{error}}",
     "restart_hint": "重新打开代理后会显示 Saba-chan 工具。",
     "some_failed": "部分代理更改失败",
+    "none_linked": "没有添加 Saba-chan 的代理",
     "is_linked": "✓ {{agent}}：已添加 Saba-chan",
     "is_not_linked": "· {{agent}}：未添加 Saba-chan（saba-chan agent link）"
   },

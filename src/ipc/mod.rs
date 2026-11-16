@@ -417,6 +417,9 @@ pub struct ModuleInfo {
     /// 사용자가 고른 판: `pinned {version, until_newer_than}`, 바꾸기가 켜진 서버를 기다리면 `pending_version` (없으면 둘 다 빠진다)
     #[serde(flatten)]
     pub addon: saba_chan_updater_lib::addon_pins::AddonChoice,
+    /// 바꿔 끼울 새 판 (`AddonChoice::update_version`, 업데이트 상태의 같은 칸과 같은 판정). 없거나 고정·바꾸기 대기면 빠진다
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub update_version: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1377,6 +1380,7 @@ mod tests {
             lists: Vec::new(),
             functions: None,
             addon: Default::default(),
+            update_version: None,
             commands,
         }
     }

@@ -4,7 +4,7 @@ import { cloudStateOf, DiscordPage as DiscordPageImpl } from '../components/disc
 import { useDiscordStore } from '../stores/useDiscordStore';
 import type { ComponentType } from 'react';
 
-/** 시험에 필요한 props만 넘기려고 느슨하게 받는다 */
+/** 디스코드 칸은 스토어에서 읽으므로 props 없이 그린다 */
 const DiscordPage = DiscordPageImpl as unknown as ComponentType<Record<string, unknown>>;
 
 const stateOf = () => {
@@ -95,23 +95,13 @@ describe('실패로 정해진 뒤의 확인', () => {
 
 describe('디스코드 화면', () => {
     it('릴레이 확인이 실패로 정해지면 연결 화면에 실패와 이유를 보인다', async () => {
-        useDiscordStore.setState({ _botConfigLoaded: true, relayError: 'connect ECONNREFUSED' });
+        useDiscordStore.setState({ _botConfigLoaded: true, relayError: 'connect ECONNREFUSED', discordBotStatus: 'connecting' });
         window.api.relayListHostNodes = vi.fn() as never;
         window.showToast = vi.fn();
         Object.defineProperty(window, 'innerWidth', { value: 1280, writable: true, configurable: true });
         await act(async () =>
             render(
-                <DiscordPage
-                    discordBotStatus="connecting"
-                    discordCloudHostId="host"
-                    setDiscordCloudHostId={() => {}}
-                    relayConnected={false}
-                    relayConnecting={false}
-                    setDiscordPrefixes={() => {}}
-                    setNodeSettings={() => {}}
-                    setCloudNodes={() => {}}
-                    setCloudMembers={() => {}}
-                />,
+                <DiscordPage />,
             ),
         );
         expect(screen.getByText(/connect ECONNREFUSED/)).toBeTruthy();
@@ -123,18 +113,9 @@ describe('디스코드 화면', () => {
         window.api.relayListHostNodes = vi.fn().mockResolvedValue({ error: 'old nodes error' }) as never;
         window.showToast = vi.fn();
         Object.defineProperty(window, 'innerWidth', { value: 1280, writable: true, configurable: true });
-        const props = {
-            discordBotStatus: 'connecting',
-            discordCloudHostId: 'host',
-            setDiscordCloudHostId: () => {},
-            relayConnecting: false,
-            setDiscordPrefixes: () => {},
-            setNodeSettings: () => {},
-            setCloudNodes: () => {},
-            setCloudMembers: () => {},
-        };
-        const view = await act(async () => render(<DiscordPage {...props} relayConnected={true} />));
-        await act(async () => view.rerender(<DiscordPage {...props} relayConnected={false} />));
+        useDiscordStore.setState({ discordBotStatus: 'connecting', relayConnected: true });
+        await act(async () => render(<DiscordPage />));
+        await act(async () => useDiscordStore.setState({ relayConnected: false }));
         expect(screen.queryByText(/old nodes error/)).toBeNull();
     });
 
@@ -142,20 +123,10 @@ describe('디스코드 화면', () => {
         window.api.relayListHostNodes = vi.fn().mockResolvedValue({ error: 'old nodes error' }) as never;
         window.showToast = vi.fn();
         Object.defineProperty(window, 'innerWidth', { value: 1280, writable: true, configurable: true });
-        const props = {
-            discordBotStatus: 'connecting',
-            discordCloudHostId: 'host',
-            setDiscordCloudHostId: () => {},
-            relayConnecting: false,
-            setDiscordPrefixes: () => {},
-            setNodeSettings: () => {},
-            setCloudNodes: () => {},
-            setCloudMembers: () => {},
-        };
-        const view = await act(async () => render(<DiscordPage {...props} relayConnected={true} />));
+        useDiscordStore.setState({ discordBotStatus: 'connecting', relayConnected: true });
+        await act(async () => render(<DiscordPage />));
         // 연결된 동안 노드 목록이 실패해 그 오류가 남은 채로 릴레이가 끊겼다
-        useDiscordStore.setState({ relayError: 'connect ECONNREFUSED' });
-        await act(async () => view.rerender(<DiscordPage {...props} relayConnected={false} />));
+        await act(async () => useDiscordStore.setState({ relayError: 'connect ECONNREFUSED', relayConnected: false }));
         expect(screen.getByText(/connect ECONNREFUSED/)).toBeTruthy();
         expect(screen.queryByText(/old nodes error/)).toBeNull();
 

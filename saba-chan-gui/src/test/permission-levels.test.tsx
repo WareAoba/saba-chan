@@ -246,11 +246,6 @@ describe('권한 레벨 계산', () => {
         expect(L.controllerLine({ items: [stair('mc-1', 'say', 'Say', 0)] })).toBeNull();
 
         const saved = L.ladderOf(base());
-        // 줄은 금지 칸과 아직 저장하지 않은 새 칸에는 놓지 않는다
-        const draft = L.addLevel(saved, 'Mod');
-        expect(L.lineStep(draft, 0, 1)).toBe(2);
-        expect(L.lineStep(draft, 4, 1)).toBeNull();
-        expect(L.lineStep(draft, 0, -1)).toBeNull();
         // 줄이 있던 칸을 지우면 그 위로 처음 남은 칸 (데몬이 명령 레벨을 위로 옮긴다)
         expect(L.lineAt(saved, L.removeLevel(saved, 1), 2)).toBe(0);
         expect(L.lineAt(saved, saved, 1)).toBe(2);

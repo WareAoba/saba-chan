@@ -3,13 +3,10 @@ import { art } from '../art';
 import { useApp } from '../store';
 import { Icon } from './icons';
 
-/** 내려받는 곳 — 사이트 첫 화면 */
-const SITE = 'https://saba-chan.online';
-const SITE_NAME = 'saba-chan.online';
-
+/** 내려받는 곳 — 사이트 첫 화면. 웹은 사이트와 같은 호스트의 /remote/ 아래에 놓이므로 이 화면을 연 곳이다 */
 const SiteLink = () => (
-    <a href={SITE} target="_blank" rel="noopener noreferrer">
-        {SITE_NAME}
+    <a href={window.location.origin} target="_blank" rel="noopener noreferrer">
+        {window.location.host}
     </a>
 );
 

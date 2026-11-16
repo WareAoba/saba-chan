@@ -79,6 +79,8 @@ pub async fn run(ctx: &Ctx, cmd: AgentCmd) -> Result<()> {
         rows.push(json!({ "agent": agent.key(), "state": state }));
     }
     let failures = rows.iter().filter(|r| s(r, "state") == "failed").count();
+    // 링크하려 했는데 한 곳에도 넣지 못했으면(에이전트가 없음) 실패다
+    let none_linked = link && !rows.iter().any(|r| s(r, "state") == "linked");
     let v = json!({ "agents": rows, "command": [exe.to_string_lossy(), "mcp"] });
     ctx.out.data(&v, |v| {
         for r in v["agents"].as_array().into_iter().flatten() {
@@ -95,12 +97,15 @@ pub async fn run(ctx: &Ctx, cmd: AgentCmd) -> Result<()> {
             };
             say!("{line}");
         }
-        if link {
+        if link && !none_linked {
             say!("{}", output::dim(&t!("agent.restart_hint")));
         }
     });
     if failures > 0 {
         return Err(failed(t!("agent.some_failed")));
+    }
+    if none_linked {
+        return Err(failed(t!("agent.none_linked")));
     }
     Ok(())
 }

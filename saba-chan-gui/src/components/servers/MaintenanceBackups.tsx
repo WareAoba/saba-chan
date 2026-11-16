@@ -5,7 +5,7 @@ import type { Server } from '../../stores/useServerStore';
 import type { ToastType } from '../../types/global';
 import type { ApiBody } from '../../types/daemon';
 import { safeShowToast } from '../../utils/helpers';
-import { formatBytes } from '../../utils/schedule';
+import { formatBytes } from '../monitor/systemMetrics';
 import { gameNameOf } from '../../utils/serverView';
 import { Icon } from '../Icon';
 import { useContextMenu } from '../ui/ContextMenu';

@@ -200,6 +200,9 @@
     "tts_pitch": "Tono de Saba-chan lectora",
     "tts_pitch_value": "{{value}} semitonos",
     "bad_duration": "Duración {{value}} no reconocida. Ejemplos: 30m, 6h, 7d (hasta 28 días), forever, off",
+    "duration_forever": "siempre",
+    "duration_off": "quitar",
+    "duration_units": "min,h,d,sem",
     "mod_slowmode": "Modo lento",
     "mod_lock": "Bloquear",
     "mod_auto_clear": "Limpieza automática",
@@ -533,6 +536,7 @@
     "pair_expected": "Se esperaba el formato KEY=VALUE: «{{got}}»",
     "timeout": "Tiempo de espera del daemon agotado ({{path}})",
     "body_read": "Error al recibir la respuesta de {{path}}: {{error}}",
+    "daemon_identity": "Falló la verificación de identidad del daemon",
     "unknown_command": "Comando inexistente: {{path}}. Consulta la lista con `saba-chan-cli help`.",
     "not_supported": "El módulo {{module}} no admite esta función"
   },
@@ -688,6 +692,7 @@
     "out_of_range": "{{label}} debe estar entre {{min}} y {{max}}.",
     "pick": "Comando para {{name}}",
     "raw_ok": "Las líneas que no están en la lista se envían tal cual a la consola.",
+    "rejected": "El servidor rechazó el comando",
     "sent": "Hecho.",
     "too_many_args": "Demasiados argumentos. Uso: {{usage}}"
   },
@@ -1801,7 +1806,7 @@
     "keys_form": "↑↓ campos · ←→ cambiar · Espacio activar · Enter escribir · / buscar · Ctrl+S guardar · Esc atrás",
     "keys_content": "↑↓ desplazar · Esc atrás · s iniciar/detener · Ctrl+K buscar · ? ayuda · q salir",
     "keys_backups": "c copiar ahora · Enter restaurar · d borrar",
-    "keys_players": "Enter prepara un comando de expulsión",
+    "keys_players": "F5 actualizar · Enter prepara un comando de expulsión",
     "keys_edit": "e cambiar (rellena la línea de comandos)",
     "keys_wizard": "↑↓ elegir · Enter siguiente · Esc paso anterior · Ctrl+C abandonar",
     "list": {
@@ -2116,6 +2121,7 @@
     "failed": "✗ {{agent}}: {{error}}",
     "restart_hint": "Al volver a abrir el agente aparecen las herramientas de Saba-chan.",
     "some_failed": "Error al cambiar algunos agentes",
+    "none_linked": "No se vinculó ningún agente",
     "is_linked": "✓ {{agent}}: con Saba-chan",
     "is_not_linked": "· {{agent}}: sin Saba-chan (saba-chan agent link)"
   },

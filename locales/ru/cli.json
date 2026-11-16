@@ -200,6 +200,9 @@
     "tts_pitch": "Высота Читающей Saba-chan",
     "tts_pitch_value": "{{value}} полутонов",
     "bad_duration": "Длительность {{value}} не распознана. Например: 30m, 6h, 7d (до 28 дней), forever, off",
+    "duration_forever": "навсегда",
+    "duration_off": "снять,выкл",
+    "duration_units": "мин,ч,д,нед",
     "mod_slowmode": "Медленный режим",
     "mod_lock": "Блокировка",
     "mod_auto_clear": "Автоочистка",
@@ -533,6 +536,7 @@
     "pair_expected": "Нужен формат KEY=VALUE: «{{got}}»",
     "timeout": "Демон не ответил вовремя ({{path}})",
     "body_read": "Не удалось получить ответ {{path}}: {{error}}",
+    "daemon_identity": "Не удалось проверить подлинность демона",
     "unknown_command": "Нет такой команды: {{path}}. Список команд: `saba-chan-cli help`.",
     "not_supported": "Модуль {{module}} не поддерживает эту функцию"
   },
@@ -688,6 +692,7 @@
     "out_of_range": "{{label}} должно быть от {{min}} до {{max}}.",
     "pick": "Команда для {{name}}",
     "raw_ok": "Строки не из списка отправляются в консоль как есть.",
+    "rejected": "Сервер отклонил команду",
     "sent": "Готово.",
     "too_many_args": "Слишком много аргументов. Использование: {{usage}}"
   },
@@ -1801,7 +1806,7 @@
     "keys_form": "↑↓ поля · ←→ изменить · Пробел вкл/выкл · Enter ввод · / поиск · Ctrl+S сохранить · Esc назад",
     "keys_content": "↑↓ листать · Esc назад · s запуск/стоп · Ctrl+K поиск · ? справка · q выход",
     "keys_backups": "c сделать копию · Enter восстановить · d удалить",
-    "keys_players": "Enter подставит команду кика",
+    "keys_players": "F5 обновить · Enter подставит команду кика",
     "keys_edit": "e изменить (заполнит командную строку)",
     "keys_wizard": "↑↓ выбрать · Enter далее · Esc предыдущий шаг · Ctrl+C отказаться",
     "list": {
@@ -2116,6 +2121,7 @@
     "failed": "✗ {{agent}}: {{error}}",
     "restart_hint": "Откройте агента заново, чтобы увидеть инструменты Saba-chan.",
     "some_failed": "Не удалось изменить часть агентов",
+    "none_linked": "Ни один агент не подключён",
     "is_linked": "✓ {{agent}}: Saba-chan есть",
     "is_not_linked": "· {{agent}}: Saba-chan нет (saba-chan agent link)"
   },

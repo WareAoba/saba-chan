@@ -42,7 +42,16 @@ interface DialogArgs {
     [key: string]: unknown;
 }
 
-export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub, 'on' | 'dispatch' | 'live'> }) {
+/** mainWindow: 포트 충돌 정지 알림을 받아 띄우는 창인가 (메인 창 하나만. 팝아웃·팝업 창이 지난 알림을 다시 띄우지 않게) */
+export function createApi({
+    invoke,
+    hub,
+    mainWindow = true,
+}: {
+    invoke: Invoke;
+    hub: Pick<EventHub, 'on' | 'dispatch' | 'live'>;
+    mainWindow?: boolean;
+}) {
     const { request, call } = createDaemonClient(invoke);
     const get = <T = ApiBody>(path: string, opts?: RequestOptions) => request<T>('get', path, undefined, opts);
     const post = (path: string, body?: unknown, opts?: RequestOptions) => request('post', path, body, opts);
@@ -215,7 +224,10 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
     let noticesAfter = 0;
 
     const api = {
-        serverList: async (): Promise<ApiResult<ServerListResponse>> => {
+        // notices: 포트 충돌 정지 알림을 받아 OS 알림을 띄운다 (메인 창의 목록 조회 fetchServers만).
+        // 서버 하나를 다시 읽는 조회가 커서를 먼저 가져가 앱 안 토스트가 빠지지 않게 다른 조회는 알림을 빼고 받는다
+        serverList: async ({ notices = false }: { notices?: boolean } = {}): Promise<ApiResult<ServerListResponse>> => {
+            const takeNotices = notices && mainWindow;
             const notifyConflicts = (data: ApiBody) => {
                 // 포트 충돌로 강제 정지된 서버가 있으면 OS 알림
                 for (const evt of data?.port_conflict_stops || []) {
@@ -230,6 +242,11 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
                 }
             };
             try {
+                if (!takeNotices) {
+                    const { data } = await get<ServerListResponse>('/api/servers');
+                    if (data) delete data.port_conflict_stops;
+                    return data;
+                }
                 const { data } = await get<ServerListResponse>(`/api/servers?notices_after=${noticesAfter}`);
                 if (Array.isArray(data?.port_conflict_stops)) {
                     // 겹친 조회는 같은 커서로 같은 알림을 받는다: 먼저 처리한 응답 뒤의 것만 남긴다
@@ -246,7 +263,7 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
                 if (error.response) {
                     const { status, data } = error.response;
                     // 401 재시도(토큰 다시 읽기)는 daemon_request가 이미 했다
-                    if (status === 401) return { error: 'Authentication failed. Daemon token may have changed.' };
+                    if (status === 401) return { error: t('server.auth_failed') };
                     return { error: t('server.list_failed', { status, error: data?.error || error.message }) };
                 }
                 return connectionError(error);
@@ -936,12 +953,8 @@ export function createApi({ invoke, hub }: { invoke: Invoke; hub: Pick<EventHub,
         addonPin: (key: string, version: string) =>
             call('post', `/api/updates/addons/${encodeURIComponent(key)}/pin`, { version }, 600000),
         addonUnpin: (key: string) => call('delete', `/api/updates/addons/${encodeURIComponent(key)}/pin`, undefined, 600000),
-        onUpdatesAvailable: (callback: Listener) => {
-            hub.on('updates:available', callback);
-        },
-        onUpdateCompleted: (callback: Listener) => {
-            hub.on('updates:completed', callback);
-        },
+        onUpdatesAvailable: (callback: Listener) => hub.on('updates:available', callback),
+        onUpdateCompleted: (callback: Listener) => hub.on('updates:completed', callback),
 
         // ── 설정: 데몬 가동 중이면 API, 부트스트랩이면 로컬 ──
         settingsLoad: async (): Promise<Partial<GuiSettings> | null> => {

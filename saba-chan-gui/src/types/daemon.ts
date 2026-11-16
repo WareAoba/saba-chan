@@ -320,6 +320,8 @@ export interface ModuleInfo {
     pinned?: AddonPin;
     /** 고른 버전이 켜진 서버가 꺼지기를 기다리는 중 */
     pending_version?: string;
+    /** 데몬이 판정한 업데이트할 새 버전 (고정·바꾸기 대기면 없다. 업데이트 상태 components의 같은 칸과 같다) */
+    update_version?: string;
 }
 
 // ── 모듈·익스텐션 버전 고르기 (/api/updates/addons/{key}, key는 module-<이름>·ext-<id>) ──
@@ -552,7 +554,6 @@ export interface GuiSettings {
     consoleBgColor: string;
     consoleTextColor: string;
     sidebarCompact: boolean;
-    windowOpacity: number;
     /** 창 바탕 반투명 (utils/themeManager WindowBackdropConfig) */
     windowBackdrop?: Partial<import('../utils/themeManager').WindowBackdropConfig>;
     consoleFontScale: number;

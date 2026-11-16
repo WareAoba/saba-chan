@@ -229,6 +229,7 @@ pub async fn run(ctx: &Ctx, server: Option<&str>) -> Result<()> {
                         viewing = refresh_view(&ctx, &app, tx.clone(), false);
                         refresh_pane(&ctx, &mut app, &tx, &mut pane_loading, &mut seq, &mut task, false);
                     }
+                    Flow::Reload => refresh_pane(&ctx, &mut app, &tx, &mut pane_loading, &mut seq, &mut task, true),
                     Flow::Stay => {}
                 }
             }
@@ -244,6 +245,7 @@ pub async fn run(ctx: &Ctx, server: Option<&str>) -> Result<()> {
                         viewing = refresh_view(&ctx, &app, tx.clone(), false);
                         refresh_pane(&ctx, &mut app, &tx, &mut pane_loading, &mut seq, &mut task, false);
                     }
+                    Flow::Reload => refresh_pane(&ctx, &mut app, &tx, &mut pane_loading, &mut seq, &mut task, true),
                     Flow::Stay => {}
                 }
             }
@@ -304,9 +306,9 @@ pub async fn run(ctx: &Ctx, server: Option<&str>) -> Result<()> {
                     refreshing = refresh(&ctx, &app, tx.clone(), refreshing);
                 }
                 viewing = refresh_view(&ctx, &app, tx.clone(), viewing);
-                // 접속자는 몇 초마다 새로, 다른 탭은 아직 못 읽었을 때만
-                let live = ticks % REFRESH_EVERY == 1 && app.page == app::Page::Servers && app.tab_key() == "players";
-                refresh_pane(&ctx, &mut app, &tx, &mut pane_loading, &mut seq, &mut task, live);
+                // 상세 탭은 아직 못 읽었을 때만. 접속자도 열 때와 r을 누를 때만 읽는다
+                // (모듈이 게임 콘솔에 사람 수를 물으므로 주기적으로 묻지 않는다)
+                refresh_pane(&ctx, &mut app, &tx, &mut pane_loading, &mut seq, &mut task, false);
             }
             Msg::Event(kind) => {
                 if refreshes_on(&kind) {
@@ -363,6 +365,8 @@ pub async fn run(ctx: &Ctx, server: Option<&str>) -> Result<()> {
 enum Flow {
     Stay,
     Refresh,
+    /// 지금 상세 탭만 다시 읽는다
+    Reload,
     /// 끝낸다 (터미널에 남길 말)
     Quit(Option<String>),
 }
@@ -390,6 +394,7 @@ async fn act(
             Flow::Stay
         }
         Some(Action::Refresh) => Flow::Refresh,
+        Some(Action::Reload) => Flow::Reload,
         Some(Action::RunAll(lines)) => {
             ctx.follow_daemon_port();
             app.port = ctx.api.port;
