@@ -458,8 +458,8 @@ export function serverPowerActions(get: () => ServerState, fetchServers: () => P
                 internal.guiOps.add(id);
                 get().setServers((prev) => prev.map((s) => (s.id === id ? { ...s, status: 'stopping' } : s)));
 
-                const useGraceful = srv?.module_settings?.graceful_stop;
-                const result = await window.api.instanceStop(id, { force: useGraceful === false });
+                // 정지 방식(모듈 설정 graceful_stop)은 데몬이 고른다
+                const result = await window.api.instanceStop(id);
                 const opt = internal.optimistic.get(id);
                 if (opt?.pending) internal.optimistic.set(id, { status: 'stopping' });
 
@@ -563,8 +563,7 @@ export function serverPowerActions(get: () => ServerState, fetchServers: () => P
             internal.guiOps.add(id);
             setProgressBar({ message: t('servers.restarting_toast', { name }), indeterminate: true });
             try {
-                const force = srv.module_settings?.graceful_stop === false;
-                const result = await window.api.instanceRestart(id, { force });
+                const result = await window.api.instanceRestart(id);
                 notifyPortMoved(result, srv);
                 const outcome = controlOutcome(result);
                 if (outcome.kind === 'cancelled') {

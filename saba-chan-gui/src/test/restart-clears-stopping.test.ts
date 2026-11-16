@@ -33,6 +33,6 @@ describe('재시작이 끝난 뒤 상태', () => {
         const { result, setModal } = setupServerStore({ servers: [{ id: 'a', name: 'A', module: 'game', status: 'running' } as never] });
         await act(async () => result.current.restartServer('a', { confirmed: true }));
         expect(setModal).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'question' }));
-        expect(window.api.instanceRestart).toHaveBeenCalledWith('a', { force: false });
+        expect(window.api.instanceRestart).toHaveBeenCalledWith('a');
     });
 });

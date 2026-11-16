@@ -38,9 +38,23 @@ fn empty_since() -> &'static Mutex<HashMap<String, (u64, u64)>> {
     EMPTY.get_or_init(Default::default)
 }
 
+/// 자동 정지를 그만둔 실행: 인스턴스마다 그 프로세스를 켠 시각 (Unix 초)
+fn given_up() -> &'static Mutex<HashMap<String, u64>> {
+    static GIVEN_UP: OnceLock<Mutex<HashMap<String, u64>>> = OnceLock::new();
+    GIVEN_UP.get_or_init(Default::default)
+}
+
+/// 다시 해도 정지할 수 없는 서버(저장 후 종료를 요청할 길이 없다): `started`에 켠 이 실행에서는 더 정지하지 않는다
+pub fn give_up(instance_id: &str, started: u64) {
+    given_up().lock().unwrap_or_else(|e| e.into_inner()).insert(instance_id.to_string(), started);
+}
+
 /// 켜진 서버를 한 번 본다. 지금 정지해야 하면 비어 있던 것으로 알릴 분(`rule.minutes`).
 /// `started`는 그 프로세스를 켠 시각: 다시 켠 서버는 처음부터 센다
 pub fn observe(instance_id: &str, rule: Option<Rule>, started: u64, players: Option<u32>, now: u64) -> Option<u64> {
+    if given_up().lock().unwrap_or_else(|e| e.into_inner()).get(instance_id).is_some_and(|at| *at == started) {
+        return None;
+    }
     let mut map = empty_since().lock().unwrap_or_else(|e| e.into_inner());
     let (Some(rule), Some(0)) = (rule, players) else {
         map.remove(instance_id);
@@ -58,6 +72,7 @@ pub fn observe(instance_id: &str, rule: Option<Rule>, started: u64, players: Opt
 /// 꺼졌거나 지운 서버는 잊는다
 pub fn forget(instance_id: &str) {
     empty_since().lock().unwrap_or_else(|e| e.into_inner()).remove(instance_id);
+    given_up().lock().unwrap_or_else(|e| e.into_inner()).remove(instance_id);
 }
 
 /// 마지막 정지가 자동 정지였을 때: 정지한 시각(Unix 초)과 비어 있던 분. 서버 목록(`ServerInfo.idle_stopped`)이 꺼진 서버에 싣는다

@@ -117,7 +117,7 @@ tokio::task_local! {
 }
 
 /// 인스턴스 설정의 참/거짓 값 (`true`/`false` 문자열도 받는다)
-fn setting_flag(instance: &crate::instance::ServerInstance, key: &str, default: bool) -> bool {
+pub(crate) fn setting_flag(instance: &crate::instance::ServerInstance, key: &str, default: bool) -> bool {
     match instance.module_settings.get(key) {
         Some(Value::Bool(b)) => *b,
         Some(Value::String(s)) if s == "true" => true,
