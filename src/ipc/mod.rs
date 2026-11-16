@@ -760,7 +760,7 @@ impl IPCServer {
         // 시험은 실제 설정 파일을 건드리지 않는다: 데몬마다 빈 데이터 폴더
         #[cfg(test)]
         let data_dir = tempfile::tempdir().expect("test data dir").keep();
-        let config_store = Arc::new(crate::config_store::ConfigStore::new(&data_dir));
+        let config_store = crate::config_store::ConfigStore::new(&data_dir);
 
         let stop_requested = tokio_util::sync::CancellationToken::new();
         let client_registry = ClientRegistry::new();
@@ -769,10 +769,10 @@ impl IPCServer {
         // 모듈의 HOST 통로도 여기서 붙인다: 건너뛰면 감독자가 부르는 모듈(정지·접속자)이 `no_instance`로 실패한다.
         // 시작 때 다른 작업(data_roots 보충)이 잠금을 쥐고 있으면 새로 만들어 쓰고, 잠금이 풀린 뒤 감독자에 붙인다
         let runtime = crate::plugin::host::Runtime::new(&supervisor, credentials.clone());
-        let (extension_manager, provision_tracker) = match supervisor.try_read() {
+        let (extension_manager, provision_tracker, skip_port_check) = match supervisor.try_read() {
             Ok(sup) => {
                 let _ = sup.host_runtime.set(runtime);
-                (sup.extension_manager.clone(), sup.provision_tracker.clone())
+                (sup.extension_manager.clone(), sup.provision_tracker.clone(), sup.skip_port_check.clone())
             }
             Err(_) => {
                 let extension_manager = crate::supervisor::Supervisor::new_extension_manager();
@@ -782,21 +782,26 @@ impl IPCServer {
                     }
                 }
                 let provision_tracker = ProvisionTracker::new();
+                let skip_port_check = Arc::new(std::sync::atomic::AtomicBool::new(false));
                 match tokio::runtime::Handle::try_current() {
                     Ok(handle) => {
-                        let (supervisor, extension_manager, provision_tracker) = (supervisor.clone(), extension_manager.clone(), provision_tracker.clone());
+                        let (supervisor, extension_manager, provision_tracker, skip_port_check) =
+                            (supervisor.clone(), extension_manager.clone(), provision_tracker.clone(), skip_port_check.clone());
                         handle.spawn(async move {
                             let mut sup = supervisor.write().await;
                             let _ = sup.host_runtime.set(runtime);
                             sup.extension_manager = extension_manager;
                             sup.provision_tracker = provision_tracker;
+                            sup.skip_port_check = skip_port_check;
                         });
                     }
                     Err(_) => tracing::warn!("[Host] no async runtime to attach the module host channel"),
                 }
-                (extension_manager, provision_tracker)
+                (extension_manager, provision_tracker, skip_port_check)
             }
         };
+        // 포트 검사 여부는 전역 설정 하나(gui.portConflictCheck): 저장소가 저장할 때마다 감독자의 스위치를 맞춘다
+        let config_store = Arc::new(config_store.sharing_port_check(skip_port_check));
         let relay_agent = crate::relay_agent::RelayAgent::new();
         Self {
             supervisor: supervisor.clone(),
@@ -1104,14 +1109,6 @@ impl IPCServer {
 
     pub async fn start(self) -> Result<()> {
         tracing::info!("IPC HTTP server starting on {}", self.listen_addr);
-
-        // 포트 충돌 검사 여부는 전역 설정 하나(gui.portConflictCheck). 저장 시에도 갱신된다.
-        let check_ports = self.config_store.get_gui_settings().await.port_conflict_check;
-        self.supervisor
-            .read()
-            .await
-            .skip_port_check
-            .store(!check_ports, std::sync::atomic::Ordering::Relaxed);
 
         handlers::diagnostics::mark_started();
         let router = self.router();

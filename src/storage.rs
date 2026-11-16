@@ -149,7 +149,7 @@ pub struct Measured {
 /// 폴더 크기. `skip` 안은 세지 않는다 (링크는 따라가지 않는다)
 fn size_without(path: &Path, skip: &[PathBuf]) -> u64 {
     if skip.is_empty() {
-        return crate::system_monitor::dir_size(path);
+        return crate::utils::dir_size(path);
     }
     let mut total = 0;
     let mut stack = vec![path.to_path_buf()];
@@ -182,7 +182,7 @@ pub fn measure(plan: &Plan, mounts: &[String]) -> Vec<Item> {
     let mut counted: Vec<PathBuf> = Vec::new();
     for inst in &plan.instances {
         let backups_dir = crate::backup::backups_dir(&inst.instance_dir);
-        let backup_bytes = crate::system_monitor::dir_size(&backups_dir);
+        let backup_bytes = crate::utils::dir_size(&backups_dir);
         *backups.entry(mount(&inst.instance_dir)).or_default() += backup_bytes;
         // 인스턴스 폴더(백업 빼고)와 그 밖의 서버 폴더. 다른 서버와 함께 쓰는 폴더는 한 번만 센다
         let mut bytes = size_without(&inst.instance_dir, &[backups_dir]);
@@ -191,7 +191,7 @@ pub fn measure(plan: &Plan, mounts: &[String]) -> Vec<Item> {
                 .iter()
                 .any(|c| saba_chan_updater_lib::paths_overlap(c, &inst.server_dir))
         {
-            bytes += crate::system_monitor::dir_size(&inst.server_dir);
+            bytes += crate::utils::dir_size(&inst.server_dir);
             counted.push(inst.server_dir.clone());
         }
         items.push(Item {
@@ -224,7 +224,7 @@ pub fn measure(plan: &Plan, mounts: &[String]) -> Vec<Item> {
                 name: None,
                 path: Some(dir.clone()),
                 mount: mount(dir),
-                bytes: crate::system_monitor::dir_size(dir),
+                bytes: crate::utils::dir_size(dir),
             });
         }
     }
@@ -308,6 +308,8 @@ struct State {
     measured_at: Option<Instant>,
     running: bool,
     job: Option<MoveJob>,
+    /// `invalidate`마다 오른다. 재기 전과 다르면 그 측정은 옮기기 중간 값이라 "방금 잼"으로 두지 않는다
+    generation: u64,
 }
 
 impl Storage {
@@ -319,6 +321,7 @@ impl Storage {
             state.running = true;
             let plan = plan();
             let shared = self.inner.clone();
+            let generation = state.generation;
             std::thread::spawn(move || {
                 let items = measure(&plan, &mounts);
                 let mut state = shared.lock().unwrap_or_else(|e| e.into_inner());
@@ -326,7 +329,9 @@ impl Storage {
                     items,
                     at_ms: Some(now_ms()),
                 };
-                state.measured_at = Some(Instant::now());
+                if state.generation == generation {
+                    state.measured_at = Some(Instant::now());
+                }
                 state.running = false;
             });
         }
@@ -340,7 +345,9 @@ impl Storage {
 
     /// 파일을 옮겼다: 다음 요청에 다시 잰다
     pub fn invalidate(&self) {
-        self.inner.lock().unwrap_or_else(|e| e.into_inner()).measured_at = None;
+        let mut state = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        state.measured_at = None;
+        state.generation += 1;
     }
 
     /// 새 옮기기 작업을 건다. 다른 작업이 진행 중이면 false
@@ -543,6 +550,30 @@ pub fn plan_server_move(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 재는 사이 옮기기가 끝나 무효화했으면, 늦게 끝난 측정을 "방금 잼"으로 두지 않고 다음 요청에 다시 잰다
+    #[test]
+    fn a_measurement_started_before_an_invalidation_is_not_kept_as_fresh() {
+        let tmp = tempfile::tempdir().unwrap();
+        for i in 0..3000 {
+            std::fs::write(tmp.path().join(format!("f{i}")), b"x").unwrap();
+        }
+        let plan = || Plan {
+            instances: vec![],
+            modules: None,
+            extensions: None,
+            data_dir: tmp.path().to_path_buf(),
+            install_dir: None,
+            instances_dir: tmp.path().join("instances"),
+        };
+        let storage = Storage::default();
+        assert!(storage.get(false, plan, vec![]).1, "the first request starts measuring");
+        storage.invalidate();
+        while storage.inner.lock().unwrap().running {
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        assert!(storage.get(false, plan, vec![]).1, "measured again after the move");
+    }
 
     /// 아직 없는 자리·링크를 거친 자리도 그 디스크로 찾는다 (macOS의 `/var` → `/private/var`)
     #[test]

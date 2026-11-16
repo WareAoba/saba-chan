@@ -127,6 +127,7 @@
   "updater": {
     "modeUpdate": "更新",
     "appTitle": "Saba-chan 更新程序",
+    "applyOnly": "此更新程序仅在 Saba-chan 应用更新时运行。",
     "minimize": "最小化",
     "close": "关闭",
     "loadingTitle": "更新中...",

@@ -41,7 +41,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use saba_chan_updater_lib::{
-    addon_pins, Component, DownloadProgress, IntegrityStatus, UpdateConfig, UpdateManager,
+    addon_pins, is_gui_exe, Component, DownloadProgress, IntegrityStatus, UpdateConfig, UpdateManager,
 };
 
 use super::update_phase::{self, Decision, LiveState, Phase, PhaseState, ReadyReason};
@@ -1067,8 +1067,8 @@ struct DaemonUpdateBody {
 }
 
 /// PUT /api/daemon/update {auto} — 자동 업데이트(확인·받기·적용)를 켜고 끈다. 켜면 바로 한 번 확인한다
-async fn put_daemon_update(State(state): State<UpdateState>, Json(body): Json<DaemonUpdateBody>) -> impl IntoResponse {
-    let cfg = {
+async fn put_daemon_update(State(state): State<UpdateState>, Json(body): Json<DaemonUpdateBody>) -> axum::response::Response {
+    {
         let mut mgr = state.manager.write().await;
         let mut cfg = mgr.get_config();
         if body.auto {
@@ -1076,11 +1076,9 @@ async fn put_daemon_update(State(state): State<UpdateState>, Json(body): Json<Da
             cfg.auto_download = true;
         }
         cfg.auto_apply = body.auto;
-        mgr.update_config(cfg.clone());
-        cfg
-    };
-    if let Err(e) = save_updater_config(&cfg) {
-        tracing::warn!("[Updates] Failed to persist update config: {}", e);
+        if let Err(resp) = adopt_config(&mut mgr, &ConfigFile::default_location(), cfg) {
+            return resp;
+        }
     }
     if body.auto {
         let state = state.clone();
@@ -1090,7 +1088,7 @@ async fn put_daemon_update(State(state): State<UpdateState>, Json(body): Json<Da
             }
         });
     }
-    Json(json!({ "success": true, "auto": body.auto }))
+    Json(json!({ "success": true, "auto": body.auto })).into_response()
 }
 
 /// 데몬 기동 후 업데이트를 주기적으로 확인한다. 24시간마다.
@@ -1266,11 +1264,8 @@ async fn silent_apply_locales(manager: &Arc<RwLock<UpdateManager>>) {
     // 2. 적용
     let mut mgr = manager.write().await;
     match mgr.apply_single_component(&Component::Locales).await {
-        Ok(result) if result.success => {
+        Ok(()) => {
             tracing::info!("[Updates] Locales silently applied");
-        }
-        Ok(result) => {
-            tracing::warn!("[Updates] Silent locales apply returned failure: {}", result.message);
         }
         Err(e) => {
             tracing::warn!("[Updates] Silent locales apply failed: {}", e);
@@ -1381,8 +1376,8 @@ async fn download_components_with(state: UpdateState, body: DownloadRequest) -> 
 
 /// POST /api/updates/apply — 다운로드된 업데이트 적용
 ///
-/// - 모듈: 데몬이 직접 적용 (파일 교체)
-/// - 데몬/GUI/CLI·업데이터: 적용하지 않고 `requires_updater: true`로 돌려준다. 실제 적용은 `POST /api/updates/launch-updater`
+/// - 모듈·익스텐션·번역·CLI: 데몬이 직접 적용 (파일 교체. 실행 중인 CLI는 비켜 두고 바꾼다)
+/// - 데몬/GUI/업데이터(`Component::needs_daemon_down`): 적용하지 않고 `requires_updater: true`로 돌려준다. 실제 적용은 `POST /api/updates/launch-updater`
 ///
 /// Body: `{ "components": ["module-minecraft", "saba-core"] }` (선택 적용, 비어있으면 전체)
 #[derive(Deserialize, Default)]
@@ -1429,9 +1424,7 @@ async fn apply_updates_with(state: UpdateState, body: ApplyRequest) -> impl Into
     // 데몬이 일부만 적용하다 중간에 죽는 문제를 방지하기 위해
     // **모든** 컴포넌트를 업데이터 exe에 위임한다.
     // 업데이터가 프로세스 종료 후 올바른 순서로 일괄 적용.
-    let any_needs_restart = targets.iter().any(|c| matches!(c,
-        Component::Gui | Component::Updater | Component::CoreDaemon
-    ));
+    let any_needs_restart = targets.iter().any(Component::needs_daemon_down);
 
     if any_needs_restart {
         // 전부 업데이터에 위임 — 데몬은 아무것도 직접 적용하지 않음
@@ -1459,7 +1452,7 @@ async fn apply_updates_with(state: UpdateState, body: ApplyRequest) -> impl Into
             }
             let applying = if body.untouched_only { mgr.apply_untouched_addon(comp).await } else { mgr.apply_single_component(comp).await };
             match applying {
-                Ok(result) if result.success => {
+                Ok(()) => {
                     // 고른 판으로 바꾸기를 기다리던 것이면 기다림을 지운다 (바뀐 판이 무엇이든 그 기다림은 끝났다)
                     if is_addon(comp) {
                         if let Err(e) = addon_pins::update(&comp.manifest_key(), |c| c.pending_version = None) {
@@ -1468,9 +1461,6 @@ async fn apply_updates_with(state: UpdateState, body: ApplyRequest) -> impl Into
                     }
                     applied.push(comp.display_name());
                     applied_keys.push(comp.manifest_key());
-                }
-                Ok(result) => {
-                    errors.push(format!("{}: {}", comp.display_name(), result.message));
                 }
                 Err(e) => {
                     errors.push(format!("{}: {}", comp.display_name(), e));
@@ -1767,7 +1757,7 @@ async fn roll_back_with(
     let targets = previous
         .exes
         .iter()
-        .map(|(_, exe)| if is_gui_exe(&exe.to_string_lossy()) { "gui".to_string() } else { exe.to_string_lossy().into_owned() })
+        .map(|(_, exe)| if is_gui_exe(&exe) { "gui".to_string() } else { exe.to_string_lossy().into_owned() })
         .collect();
     hand_off_to_updater(state, body, targets, true).await
 }
@@ -1891,8 +1881,7 @@ fn running_guis(clients: &[(String, crate::ipc::RegisteredClient)]) -> Vec<(u32,
         .filter_map(|pid| {
             let proc = sys.process(sysinfo::Pid::from_u32(pid))?;
             let exe = proc.exe()?.to_path_buf();
-            let name = exe.file_name()?.to_string_lossy().into_owned();
-            saba_chan_updater_lib::GUI_EXE_NAMES.iter().any(|g| g.eq_ignore_ascii_case(&name)).then_some((pid, exe))
+            is_gui_exe(&exe).then_some((pid, exe))
         })
         .collect()
 }
@@ -1925,11 +1914,6 @@ fn restart_plan(
 /// GUI를 끄고 다시 띄워야 하는가: GUI가 적용 대상이거나, 부른 GUI가 남을 줄 모른다(옛 GUI는 성공 응답에 끝나므로 다시 띄워 준다)
 fn gui_must_restart(targets: &[String], requested: &[String], gui_stays: bool) -> bool {
     targets.iter().any(|k| k == "gui") || (!gui_stays && requested.first().is_some_and(|exe| is_gui_exe(exe)))
-}
-
-fn is_gui_exe(exe: &str) -> bool {
-    let name = std::path::Path::new(exe).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    saba_chan_updater_lib::GUI_EXE_NAMES.iter().any(|g| g.eq_ignore_ascii_case(&name))
 }
 
 /// 업데이터가 다시 띄울 것: 떠 있던 GUI가 있으면 그 GUI(요청이 이미 GUI면 그대로), 없으면 요청대로.
@@ -2331,9 +2315,8 @@ async fn set_config(
     }
 
     let channel_changed = mgr.get_config().channel != cfg.channel;
-    mgr.update_config(cfg.clone());
-    if let Err(e) = save_updater_config(&cfg) {
-        tracing::warn!("[Updates] Failed to persist update config: {}", e);
+    if let Err(resp) = adopt_config(&mut mgr, &ConfigFile::default_location(), cfg.clone()) {
+        return resp;
     }
     drop(mgr);
     // 채널을 바꾸면 곧바로 확인해 자동 적용 길을 탄다 (내림은 하지 않는다: 확인이 낮은 판을 거절한다)
@@ -2384,6 +2367,17 @@ fn load_updater_config_from(file: &ConfigFile) -> UpdateConfig {
             cfg
         }
     }
+}
+
+/// 사용자가 바꾼 설정: 디스크에 먼저 저장하고, 저장했을 때만 관리자 설정을 바꾼다.
+/// 저장하지 못하면 아무것도 바꾸지 않고 500 `save_failed`로 답한다 (다시 켜면 되돌아가는 설정을 성공으로 보이지 않게)
+fn adopt_config(mgr: &mut UpdateManager, file: &ConfigFile, cfg: UpdateConfig) -> Result<(), axum::response::Response> {
+    save_updater_config_to(file, &cfg).map_err(|e| {
+        tracing::warn!("[Updates] Failed to persist update config: {}", e);
+        crate::ipc::handlers::error(axum::http::StatusCode::INTERNAL_SERVER_ERROR, "save_failed", format!("Failed to save update settings: {e}"))
+    })?;
+    mgr.update_config(cfg);
+    Ok(())
 }
 
 fn save_updater_config(cfg: &UpdateConfig) -> std::io::Result<()> {
@@ -3328,6 +3322,22 @@ mod tests {
         assert_eq!(loaded.install_root, None);
         save_updater_config_to(&file, &loaded).unwrap();
         assert!(file.section("updates").get("install_root").is_none());
+    }
+
+    /// 설정을 디스크에 저장하지 못하면 관리자 설정도 바꾸지 않고 500 `save_failed`로 답한다
+    #[tokio::test]
+    async fn an_update_setting_that_cannot_be_saved_is_not_adopted() {
+        let dir = tempfile::tempdir().unwrap();
+        let not_a_dir = dir.path().join("file");
+        std::fs::write(&not_a_dir, b"x").unwrap();
+        let state = UpdateState::new();
+        let mut mgr = state.manager.write().await;
+        let before = mgr.get_config().auto_apply;
+        let mut cfg = mgr.get_config();
+        cfg.auto_apply = !before;
+        let resp = adopt_config(&mut mgr, &ConfigFile::at(&not_a_dir), cfg).unwrap_err();
+        assert_eq!(resp.status(), axum::http::StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(mgr.get_config().auto_apply, before);
     }
 
     /// 모르는 채널은 저장하지 않는다

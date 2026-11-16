@@ -177,7 +177,7 @@ fn sources_json(list: &[Session]) -> Vec<Value> {
 
 /// GET /api/instance/:id/logs?source=&lines=&before=
 pub async fn logs_handler(Path(id): Path<String>, State(state): State<IPCServer>, Query(params): Query<HashMap<String, String>>) -> axum::response::Response {
-    let Some((dir, _)) = instance_of(&state, &id).await else { return not_found("Instance") };
+    let Some((dir, _)) = instance_of(&state, &id).await else { return crate::service::Failure::instance_not_found(&id).into_response() };
     let list = sessions(&dir);
     let source = params.get("source").map(String::as_str);
     let Some(session) = pick(&list, source) else {
@@ -248,7 +248,7 @@ fn export_lines(path: &FsPath, since: Option<u64>, until: Option<u64>) -> std::i
 
 /// GET /api/instance/:id/logs/export?source=&since=&until=
 pub async fn export_handler(Path(id): Path<String>, State(state): State<IPCServer>, Query(params): Query<HashMap<String, String>>) -> axum::response::Response {
-    let Some((dir, name)) = instance_of(&state, &id).await else { return not_found("Instance") };
+    let Some((dir, name)) = instance_of(&state, &id).await else { return crate::service::Failure::instance_not_found(&id).into_response() };
     let list = sessions(&dir);
     let Some(session) = pick(&list, params.get("source").map(String::as_str)) else { return not_found("Log source") };
     let (since, until) = match (number(&params, "since"), number(&params, "until")) {

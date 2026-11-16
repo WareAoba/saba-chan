@@ -29,7 +29,7 @@
 
 - 모듈 루트의 **1단계 엔트리만** 순회하고 재귀하지 않는다.
 - **폴더 모듈**: `<dir>/module.toml`이 있는 디렉터리만 로드한다. 폴더 이름은 아무 것이나 되며, 식별자는 `[module].name`이다.
-- **ZIP 모듈**: 확장자가 `.zip`인 파일이 대상이다. 이름이 정확히 `module.toml`인 가장 얕은 항목을 고르고, 그 항목이 든 폴더(`probe/module.toml`이면 `probe/`)를 모듈 폴더로 `.extracted/<name>`에 옮긴다. `LoadedModule.source`는 그 ZIP 경로다(폴더 모듈은 폴더 경로). 다운로드는 128 MiB, 항목은 20,000개, 누적 해제 크기는 1 GiB로 제한한다. 압축 해제 중에도 실제 출력 크기를 센다. 모듈 ZIP과 익스텐션 패키지는 같은 해제기(`src/archive.rs`)로 푼다: 폴더 밖을 가리키는 경로와 링크 항목은 거부하고, 권한 비트(SUID 등)는 옮기지 않는다.
+- **ZIP 모듈**: 확장자가 `.zip`인 파일이 대상이다. 이름이 정확히 `module.toml`인 가장 얕은 항목을 고르고, 그 항목이 든 폴더(`probe/module.toml`이면 `probe/`)를 모듈 폴더로 `.extracted/<name>`에 옮긴다. `LoadedModule.source`는 그 ZIP 경로다(폴더 모듈은 폴더 경로). 다운로드는 128 MiB, 항목은 20,000개, 누적 해제 크기는 1 GiB로 제한한다. 압축 해제 중에도 실제 출력 크기를 센다. 모듈 ZIP과 익스텐션 패키지는 같은 해제기(`src/archive.rs`)로 푼다. 상한 검사·경로 규칙·복사는 업데이트 zip과 같은 updater-lib `check_zip`·`zip_entry_path`·`copy_zip_entry`다: 폴더 밖을 가리키는 경로, Windows의 `이름:스트림`, 링크 항목은 거부하고, 권한 비트(SUID 등)는 옮기지 않는다.
   - 이름이 정확히 `module.toml`인 엔트리 중 **가장 얕은 것**을 파싱한다. `[module].name`이 폴더 이름 하나가 아니면 거부한다.
   - 아카이브 전체를 tempdir에 풀었다가 `<modules>/.extracted/<name>/`로 복사한다. 이 과정에서 기존 디렉터리는 `remove_dir_all`로 지운다.
   - 캐시가 무효화될 때마다(`refresh_modules`) 다시 풀린다. 그동안 실행 중인 Python 프로세스가 그 디렉터리를 쓰고 있어도 삭제된다.
@@ -651,7 +651,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 - managed 서버가 끝나면 `judge_exit`가 `user_stop` / `crash` / `start_failed` / `in_game_stop` / `unknown_exit`로 가르고 기록한다 (`D:src/supervisor/crash.rs`). 이력은 `GET /api/instance/:id/events`로 본다. 이력은 인스턴스 폴더의 `exit-events.json`에도 저장해서 데몬을 다시 켜도 남는다.
 - `ProcessTracker`(`D:src/supervisor/process.rs`)는 PID와 시작 시각만 기록한다(`track`, `track_since`, `replace_pid`, `untrack`). 강제 종료는 `ManagedProcess::force_kill`(서버와 runner 모두 `force_kill_tree`)이다. 서버·runner·플러그인 Python을 강제로 끝내는 길(`force_kill`, 비관리 서버, 실행 중인 인스턴스 삭제, 포트가 겹친 자동 감지 서버, 시간 초과한 플러그인 실행)은 모두 `process::force_kill_tree` 하나를 쓴다. 끝내는 단위: Windows는 `taskkill /F /T`의 프로세스 트리다(runner 없이 띄운 런처형 서버(PalServer.exe)도 실제 서버가 남지 않는다. 트리에서 떨어진 손자는 Job Object를 쥔 쪽이 끝낸다: runner의 서버 Job, 플러그인 실행기의 Python Job). Unix는 그 PID가 이끄는 프로세스 그룹 전체와 그 PID다: runner(pipe 모드)와 의사 콘솔의 서버(pty 모드), 플러그인 Python은 그룹 리더로 뜨므로 런처 스크립트(PalServer.sh)가 띄운 실제 서버도 남지 않는다. 그룹 리더가 아닌 프로세스(runner 없이 띄운 서버)는 그 PID 하나만 끝나고, 데몬 자신의 그룹은 건드리지 않는다. `force_kill_pid`는 그 PID 하나만 끝낸다(업데이트 때 GUI를 닫는 `close_guis`는 GUI가 띄운 데몬·업데이터를 남겨야 한다).
 
-### 3.3 콘솔 캡처와 로그 파싱 (`managed_process.rs`)
+### 3.3 콘솔 캡처와 로그 파싱 (`managed_process/mod.rs`)
 
 - **링 버퍼**: `LogBuffer`. 기본 10,000줄. 단조 증가하는 `id`를 붙여 `get_since(id)`와 `get_recent(n)`으로 폴링한다. IPC는 폴링(`GET /console?since=`) 방식이다.
 - **stdout/stderr 리더**: 각각 tokio task로 줄 단위로 읽는다. stderr 줄은 레벨이 Info로 파싱되더라도 **Warn으로 올린다**.
@@ -666,16 +666,16 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
   - saba-runner가 쥔 서버면 `attach_runner`가 콘솔 기록, stdin, 종료 코드를 그대로 다시 잡는다 (`managed_process/runner.rs`).
   - `runner.json`의 `format`(러너 형식 번호, 없으면 0)은 `ManagedProcess::runner_format`에 남는다. 코어 교체 판정이 쓴다(01 §4.3 7).
   - 기록한 PID가 아직 그 프로세스인지는 살아 있는지에 더해 시작 시각으로 본다(`process::is_same_process`): 기록한 때(runner는 `runner.json`의 `started_at`, `managed.pid`는 파일 수정 시각)보다 10초 넘게 늦게 시작한 프로세스는 재부팅 뒤 같은 PID를 받은 다른 프로세스로 보고 붙지 않는다(정지할 때 그 프로세스를 끄지 않게). 시작 시각을 읽지 못하면 살아 있는지만 본다.
-  - runner가 없고 `managed.pid`의 PID만 살아 있으면 `create_reattached_stub`을 만든다. 이 스텁은 디스크 로그를 로드하고, 5초마다 PID 생존을 폴링하며, **stdin을 쓸 수 없고 새 출력도 받지 못한다** (`managed_process.rs`).
+  - runner가 없고 `managed.pid`의 PID만 살아 있으면 `create_reattached_stub`을 만든다. 이 스텁은 디스크 로그를 로드하고, 5초마다 PID 생존을 폴링하며, **stdin을 쓸 수 없고 새 출력도 받지 못한다** (`managed_process/mod.rs`).
 - **disk fallback**: managed 프로세스가 없으면 `get_console_output`이 가장 최근 디스크 로그(세션 로그 또는 `console.log`)를 읽는다. 이때 `since_id`는 무시된다 (`mod.rs`). 러너의 세션 로그에는 러너가 쓰는 서버 출력·러너 안내 말고도 데몬이 콘솔에 넣는 줄(보낸 명령 `[INPUT/INFO]`, 크래시 안내 같은 `[SYSTEM/…]`)을 데몬이 한 줄씩 덧붙인다(`LogBuffer::append_own`. 따라 읽기는 자기가 덧붙인 줄을 되읽으면 버린다, `take_own`). 그래서 서버가 꺼진 뒤와 데몬이 다시 붙은 뒤에도 같은 줄이 보인다(보낸 사람 `by`는 남지 않는다). 다시 붙었다는 안내는 덧붙이지 않는다.
 - **log follower**: 익스텐션이 `server.pre_start`에서 `log_follower{program,args,working_dir,interactive,strip_prefix,env_vars}`를 돌려주면 `spawn_log_follower`(읽기 전용) 또는 `spawn`(양방향)으로 그 프로세스를 managed_store에 등록한다. 종료 판정 대상은 아니다 (`mod.rs`).
 
 ### 3.4 콘솔 입력, 정지, 강제 종료
 
-- **stdin**: `POST /api/instance/:id/stdin` `{command}`가 `/rcon`과 같은 `via_stdin`을 부르고, 보낸 뒤 찍힌 콘솔 줄을 `data.response`로 돌려준다 (`managed.rs`, `command.rs-`). 쓰기는 mpsc(256)를 거쳐 writer task가 개행을 붙여 쓴다 (`managed_process.rs`). 보낸 뒤 2초 안에 stdout에 보낸 명령과 같은 줄이 오면 서버가 입력을 되풀이한 것으로 보고 그 한 줄은 버퍼에 넣지 않는다(`LogBuffer::take_echo`, 리눅스 테라리아 등. 클라이언트는 보낸 명령을 이미 보인다).
+- **stdin**: `POST /api/instance/:id/stdin` `{command}`가 `/rcon`과 같은 `via_stdin`을 부르고, 보낸 뒤 찍힌 콘솔 줄을 `data.response`로 돌려준다 (`managed.rs`, `command.rs-`). 쓰기는 mpsc(256)를 거쳐 writer task가 개행을 붙여 쓴다 (`managed_process/mod.rs`). 보낸 뒤 2초 안에 stdout에 보낸 명령과 같은 줄이 오면 서버가 입력을 되풀이한 것으로 보고 그 한 줄은 버퍼에 넣지 않는다(`LogBuffer::take_echo`, 리눅스 테라리아 등. 클라이언트는 보낸 명령을 이미 보인다).
 - **managed stop** (`mod.rs`):
   1. `force`이면 `force_kill`을 한다.
-  2. 모듈이 `[config] stop_signal = "interrupt"`이면 `ManagedProcess::interrupt`로 Ctrl+C를 보낸다(`managed_process.rs`). saba-runner가 띄운 서버는 러너의 stdin 포트에 첫 줄 `<토큰> interrupt`(`saba_runner::interrupt_request`)로 연결해 부탁하고, 러너가 `ok` 또는 `error: 까닭` 한 줄로 답한다(5초 안). 러너는 파이프 서버면 Windows에서 서버의 창 없는 콘솔에 잠깐 붙어(`AttachConsole`) `CTRL_C_EVENT`를 보내고(러너 자신은 무시, 원래 콘솔로 돌아가지 않는다), unix에서 서버 PID에 SIGINT를 보낸다. 의사 콘솔(`console = "pty"`) 서버면 입력에 0x03을 넣는다. 러너는 `CREATE_NEW_PROCESS_GROUP`으로 떠 Ctrl+C가 꺼진 상태를 물려주므로, 파이프 서버를 띄우는 동안만 켠다(`SetConsoleCtrlHandler(NULL, FALSE)`). 런처가 남긴 진짜 서버를 따라가면 그 PID로 보낸다. 러너 없이 띄운 서버는 unix에서만 데몬이 SIGINT를 보낸다. 보내지 못하면(옛 러너는 답 없이 닫는다) 경고를 남기고 다음 길(3·4번)로 넘어간다. 보냈으면 5번처럼 기다린다. 켜지는 중이면 3번처럼 준비 문구까지 들고 있다가 보낸다(Ctrl+C 저장 처리기도 준비 뒤에야 붙는다). 테스트 `normal_stop_sends_ctrl_c_when_the_module_asks_for_it`, `a_ctrl_c_stop_while_starting_waits_for_the_ready_line`, `an_interrupt_asks_the_runner_and_reports_its_answer`, 러너 `an_interrupt_connection_sends_ctrl_c_once_and_answers`.
+  2. 모듈이 `[config] stop_signal = "interrupt"`이면 `ManagedProcess::interrupt`로 Ctrl+C를 보낸다(`managed_process/mod.rs`). saba-runner가 띄운 서버는 러너의 stdin 포트에 첫 줄 `<토큰> interrupt`(`saba_runner::interrupt_request`)로 연결해 부탁하고, 러너가 `ok` 또는 `error: 까닭` 한 줄로 답한다(5초 안). 러너는 파이프 서버면 Windows에서 서버의 창 없는 콘솔에 잠깐 붙어(`AttachConsole`) `CTRL_C_EVENT`를 보내고(러너 자신은 무시, 원래 콘솔로 돌아가지 않는다), unix에서 서버 PID에 SIGINT를 보낸다. 의사 콘솔(`console = "pty"`) 서버면 입력에 0x03을 넣는다. 러너는 `CREATE_NEW_PROCESS_GROUP`으로 떠 Ctrl+C가 꺼진 상태를 물려주므로, 파이프 서버를 띄우는 동안만 켠다(`SetConsoleCtrlHandler(NULL, FALSE)`). 런처가 남긴 진짜 서버를 따라가면 그 PID로 보낸다. 러너 없이 띄운 서버는 unix에서만 데몬이 SIGINT를 보낸다. 보내지 못하면(옛 러너는 답 없이 닫는다) 경고를 남기고 다음 길(3·4번)로 넘어간다. 보냈으면 5번처럼 기다린다. 켜지는 중이면 3번처럼 준비 문구까지 들고 있다가 보낸다(Ctrl+C 저장 처리기도 준비 뒤에야 붙는다). 테스트 `normal_stop_sends_ctrl_c_when_the_module_asks_for_it`, `a_ctrl_c_stop_while_starting_waits_for_the_ready_line`, `an_interrupt_asks_the_runner_and_reports_its_answer`, 러너 `an_interrupt_connection_sends_ctrl_c_once_and_answers`.
   3. 모듈이 `stdin`을 지원하고 stdin이 열려 있으면 `stop_command`를 stdin으로 보낸다. 그 시작이 아직 `ready_patterns`를 기다리는 중이면(켜지는 중) 준비 문구가 찍히거나 프로세스가 끝날 때까지, 길어야 5번의 대기 시간만큼 들고 있다가 보낸다. 준비 전에 받은 명령을 실패하는 서버가 있어서다(minecraft 26.3은 `An unexpected error occurred while trying to execute that command`만 찍고 계속 돈다). 테스트 `a_stop_while_starting_waits_for_the_ready_line`.
   4. 그 밖(REST 전용 게임, stdin 없는 스텁)이면 모듈 `stop()`에 `pid`, `managed: true`, `force: false`를 넘긴다. 모듈이 `{success:false, error_code:"graceful_stop_unavailable"}`로 답하면 기다리거나 강제 종료하지 않고 그 응답을 돌려준다(아래).
   5. 0.5초 간격으로 `is_running`을 확인한다. 기다리는 시간은 graceful이면 인스턴스 설정 `stop_timeout`, 모듈 `stop_timeout`, 기본 30초 순이고, force면 5초다.
@@ -777,7 +777,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 ### 4.6 i18n과 locales
 
 - 모듈 측: `I18n(MODULE_DIR)`이 `locales/<SABA_LANG>.json`을 읽고, 없으면 `en`으로 대체한다. 키 구조는 `module`, `aliases`(언어별 별명, §2 `[aliases]`), `settings`, `settings_note`(`version_hidden`: 버전 때문에 숨긴 설정의 까닭 한 문장, §1.2 `versions`), `commands`, `presets`, `queries`, `agreements`, `errors`, `messages`, `rcon`, `reset` 등이다(minecraft ko.json 기준). `queries.<name>.label`·`description`과 `[errors]` 코드의 `errors.<code>`는 데몬도 읽는다: 액션 목록(`GET /api/actions?instance=`)과 heartbeat `actions`의 조회 제목·설명(`actions::module_locale`, `<모듈 폴더>/locales/<lang>.json`). `reset.label`·`reset.description`은 서버 초기화(`reset_server`)가 무엇을 지우고 남기는지 GUI 초기화 화면에 보여 주는 문구다(모듈마다 다르다: minecraft는 JAR·eula.txt만 남김, palworld는 설정만 기본값으로, zomboid는 월드 세이브만 지움).
-- 인터페이스 측: `GET /api/module/:name/locales`가 `<modules_dir>/<name>/locales/*.json`을 하나의 맵으로 묶어 돌려준다 (`D:src/ipc/handlers/config.rs`). GUI는 이를 `mod_<name>` 네임스페이스로 쓴다. 이 경로 계산은 `module.path`가 아니라 **모듈 이름으로 만든 경로**라서, ZIP 모듈(`.extracted/<name>`)이나 폴더명이 name과 다른 모듈에서는 locales가 비어 나온다.
+- 인터페이스 측: `GET /api/module/:name/locales`가 그 모듈 폴더(`module.path`, ZIP 모듈은 `.extracted/<name>`)의 `locales/*.json`을 하나의 맵으로 묶어 돌려준다 (`D:src/ipc/handlers/config.rs`). GUI는 이를 `mod_<name>` 네임스페이스로 쓴다.
 
 ---
 

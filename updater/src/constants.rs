@@ -239,8 +239,15 @@ fn test_isolated_root() -> Option<PathBuf> {
     None
 }
 
-/// 스테이징 디렉터리 (업데이트 다운로드 임시 파일)
+/// 스테이징 디렉터리 (업데이트 다운로드 임시 파일). `SABA_DATA_DIR`이 있으면 어느 OS든 `<data_dir>/updates`
 pub fn resolve_staging_dir() -> PathBuf {
+    staging_dir_with(std::env::var_os("SABA_DATA_DIR").filter(|d| !d.is_empty()))
+}
+
+fn staging_dir_with(data_dir: Option<std::ffi::OsString>) -> PathBuf {
+    if let Some(dir) = data_dir {
+        return PathBuf::from(dir).join("updates");
+    }
     if let Some(dir) = test_isolated_root() {
         return dir.join("updates");
     }
@@ -333,6 +340,13 @@ mod tests {
         let text = std::fs::read_to_string(path).unwrap();
         let gui: Vec<&str> = text.split("value: '").skip(1).map(|s| &s[..s.find('\'').unwrap()]).collect();
         assert_eq!(gui, SUPPORTED_LANGUAGES);
+    }
+
+    /// 데이터 폴더를 따로 정한 설치(프리뷰·개발)는 어느 OS든 staging을 그 안에 둔다: 기본 설치와 대기 목록·실행 표를 나눠 쓰지 않게
+    #[test]
+    fn a_separate_data_dir_keeps_its_own_staging() {
+        let data = std::path::Path::new("/srv/preview-data");
+        assert_eq!(staging_dir_with(Some(data.as_os_str().to_owned())), data.join("updates"));
     }
 
     #[test]

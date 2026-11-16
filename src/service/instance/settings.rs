@@ -178,7 +178,7 @@ pub(crate) async fn update(state: &IPCServer, id: &str, mut settings: Value) -> 
     let mut supervisor = state.supervisor.write().await;
 
     let Some(instance) = supervisor.instance_store.get(id) else {
-        return Err(Failure::coded(StatusCode::NOT_FOUND, "not_found", "Instance not found"));
+        return Err(Failure::instance_not_found(id));
     };
     let now = instance.settings_revision();
     if revision.is_some_and(|seen| seen != now) {

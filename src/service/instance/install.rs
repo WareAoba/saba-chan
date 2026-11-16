@@ -110,7 +110,7 @@ fn request(payload: &Value) -> Result<Request, Failure> {
 
 /// 인스턴스를 잡는다: 켜져 있거나 백업·복원·삭제 중이면 409. 설정은 잡은 뒤에 읽는다
 async fn hold_target(state: &IPCServer, module_name: &str, id: &str) -> Result<Target, Failure> {
-    let not_found = || Failure::coded(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id));
+    let not_found = || Failure::instance_not_found(&id);
     match state.supervisor.read().await.instance_store.get(id) {
         Some(inst) if inst.module_name == module_name => {}
         Some(_) => return Err(super::invalid_field("instance_id", format!("Instance '{}' is not a '{}' server", id, module_name))),
@@ -195,7 +195,7 @@ async fn run(state: IPCServer, module_name: String, version: String, request: Re
     // 받은 파일로 켜도록 버전·실행 파일·작업 폴더를 함께 맞춘다 (클라이언트가 따로 저장하지 않는다).
     // 실행 파일 백업을 지우기 전에 저장해, 저장하지 못하면 실행 파일도 되돌린다
     let commit = |sup: &mut Supervisor, installed: &Value| match own {
-        Some((id, _)) => save_installed(sup, id, &version, installed, &install_dir),
+        Some((id, _)) => save_installed(sup, id, Some(&version), installed, &install_dir),
         None => Ok(()),
     };
     let result = Supervisor::install_server(
@@ -224,22 +224,29 @@ async fn run(state: IPCServer, module_name: String, version: String, request: Re
     let mut result = result;
     // 실패: 설치 전 백업으로 되돌린다
     if let Some(name) = before {
-        let restored = crate::service::backup::restore_held(&state, id, &name, guard, false).await;
         let body = match &mut result {
             Ok(body) | Err(body) => body,
         };
-        if body.is_object() {
-            match restored {
-                Ok(_) => body["restored_backup"] = json!(name),
-                Err(r) => {
-                    let reason = r.reason().unwrap_or("restore failed").to_string();
-                    tracing::error!("Could not put back the pre-install backup '{}' for '{}': {}", name, id, reason);
-                    body["kept_backup"] = json!(name);
-                }
-            }
-        }
+        put_back(&state, id, &name, guard, body).await;
     }
     result
+}
+
+/// 실패한 설치·업데이트: 그 전에 만든 백업으로 되돌리고(안전 백업 없이) 실패 본문에 적는다.
+/// 되돌렸으면 `restored_backup`, 되돌리지 못했으면 `kept_backup`(손으로 복원할 수 있게 남는다)
+pub(crate) async fn put_back(state: &IPCServer, id: &str, name: &str, guard: &InstanceLock, body: &mut Value) {
+    let restored = crate::service::backup::restore_held(state, id, name, guard, false).await;
+    if !body.is_object() {
+        return;
+    }
+    match restored {
+        Ok(_) => body["restored_backup"] = json!(name),
+        Err(r) => {
+            let reason = r.reason().unwrap_or("restore failed").to_string();
+            tracing::error!("Could not put back the backup '{}' for '{}': {}", name, id, reason);
+            body["kept_backup"] = json!(name);
+        }
+    }
 }
 
 /// 설치 오류 본문. 되돌리지 못한 파일은 422와 같은 칸으로도 싣는다
@@ -300,21 +307,22 @@ fn installing(message: String) -> crate::ipc::ProvisionProgress {
     crate::ipc::ProvisionProgress { label: "install".to_string(), done: false, percent: None, ..crate::ipc::ProvisionProgress::finished(message, None) }
 }
 
-/// 설치가 끝난 인스턴스에 버전과 받은 실행 파일·작업 폴더를 저장한다. 모듈이 경로를 알려 주지 않으면 버전만
-pub(crate) fn save_installed(sup: &mut Supervisor, id: &str, version: &str, result: &Value, install_dir: &str) -> anyhow::Result<()> {
+/// 설치 결과를 인스턴스에 적는다 (첫 설치·버전 설치가 같이 쓴다): 받은 버전(`version`이 있으면), 실행 파일
+/// (`executable_path`, 예전 모듈은 `jar_path`)과 작업 폴더(`install_path`, 없으면 실행 파일의 폴더, 그것도 없으면 `install_dir`)
+pub(crate) fn save_installed(sup: &mut Supervisor, id: &str, version: Option<&str>, result: &Value, install_dir: &str) -> anyhow::Result<()> {
     let Some(mut inst) = sup.instance_store.get(id).cloned() else {
         anyhow::bail!("instance {} is gone", id);
     };
-    let method = sup.module_loader.get_module(&inst.module_name).ok().and_then(|m| m.metadata.install.map(|i| i.method)).unwrap_or_default();
-    inst.record_installed_version(&method, version);
+    if let Some(version) = version {
+        let method = sup.module_loader.get_module(&inst.module_name).ok().and_then(|m| m.metadata.install.map(|i| i.method)).unwrap_or_default();
+        inst.record_installed_version(&method, version);
+    }
     let exe = ["executable_path", "jar_path"].iter().find_map(|k| result.get(*k).and_then(Value::as_str)).filter(|p| !p.is_empty());
-    if let Some(exe) = exe {
-        let folder = result
-            .get("install_path")
-            .and_then(Value::as_str)
-            .filter(|p| !p.is_empty())
+    let reported = result.get("install_path").and_then(Value::as_str).filter(|p| !p.trim().is_empty());
+    if exe.is_some() || reported.is_some() {
+        let folder = reported
             .map(str::to_string)
-            .or_else(|| std::path::Path::new(exe).parent().map(|p| p.to_string_lossy().into_owned()))
+            .or_else(|| exe.and_then(|e| std::path::Path::new(e).parent()).map(|p| p.to_string_lossy().into_owned()))
             .unwrap_or_else(|| install_dir.to_string());
         // 확인되지 않은 모듈이 알려 준 폴더는 인스턴스 폴더 안만 (작업 폴더는 다음 격리 실행에 쓰기를 받는다)
         let entry = sup.module_loader.get_module(&inst.module_name).ok().map(|m| m.entry_path());
@@ -325,7 +333,9 @@ pub(crate) fn save_installed(sup: &mut Supervisor, id: &str, version: &str, resu
             tracing::warn!("Ignoring a server folder outside the instance folder from an unverified module: {}", folder);
             install_dir.to_string()
         };
-        inst.executable_path = Some(exe.to_string());
+        if let Some(exe) = exe {
+            inst.executable_path = Some(exe.to_string());
+        }
         inst.working_dir = Some(folder);
     }
     sup.instance_store.update(id, inst)

@@ -127,6 +127,7 @@
   "updater": {
     "modeUpdate": "업데이트",
     "appTitle": "사바쨩 업데이터",
+    "applyOnly": "이 업데이터는 사바쨩이 업데이트를 적용할 때만 실행됩니다.",
     "minimize": "최소화",
     "close": "닫기",
     "loadingTitle": "업데이트 중!",

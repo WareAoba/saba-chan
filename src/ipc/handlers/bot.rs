@@ -47,13 +47,6 @@ async fn write_bot_config(state: &IPCServer, mut config: Value, how: crate::conf
             }
             (StatusCode::OK, Json(body)).into_response()
         }
-        Err(crate::config_store::ConfigStoreError::RevisionConflict(revision)) => (
-            StatusCode::CONFLICT,
-            Json(json!({ "success": false, "error": "The bot settings were changed elsewhere; read them again", "error_code": "settings_changed", "revision": revision })),
-        )
-            .into_response(),
-        Err(crate::config_store::ConfigStoreError::InvalidRelayUrl(msg)) => super::error(StatusCode::BAD_REQUEST, "invalid_relay_url", msg),
-        Err(crate::config_store::ConfigStoreError::InvalidData(msg)) => super::error(StatusCode::BAD_REQUEST, "invalid_request", msg),
-        Err(e) => super::error(StatusCode::INTERNAL_SERVER_ERROR, "save_failed", e.to_string()),
+        Err(e) => super::config_error(e),
     }
 }

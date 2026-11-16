@@ -975,7 +975,7 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
             "no_command_path" => Text::seq(["❌ ".into(), self.t("errors.no_command_path", &[("name", &server.name)])]),
             "invalid_argument" => self.invalid_text(module, field, &resp),
             "auth_failed" => self.error_line(module_text.map(Text::from).unwrap_or_else(|| self.t("errors.auth_failed", &[]))),
-            "not_found" => self.error_line(resp.str_field("error").map(Text::from).unwrap_or_else(|| self.t("errors.not_found", &[]))),
+            "not_found" | "instance_not_found" => self.error_line(resp.str_field("error").map(Text::from).unwrap_or_else(|| self.t("errors.not_found", &[]))),
             _ => self.error_line(
                 module_text
                     .or_else(|| module.errors.get("internal_server_error").cloned())

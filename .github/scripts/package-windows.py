@@ -14,7 +14,6 @@
 """
 
 import argparse
-import importlib.util
 import shutil
 import sys
 import zipfile
@@ -26,17 +25,9 @@ PLATFORM = "windows-x64"
 PLACED = {"saba-chan.exe": "bin/saba-chan.exe"}
 
 
-def _shared_modules() -> dict[str, str]:
-    """데몬 zip에 함께 드는 공유 모듈 (저장소 경로 → zip 안 이름)"""
-    spec = importlib.util.spec_from_file_location("package_linux", Path(__file__).resolve().parent / "package-linux.py")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module.LINUX_ASSETS["saba-core"][2]
-
-
 def package(bin_dir: Path, out_dir: Path) -> list[Path]:
     zips = {
-        f"saba-core-{PLATFORM}.zip": (["saba-core.exe", "saba-runner.exe"], _shared_modules()),
+        f"saba-core-{PLATFORM}.zip": (["saba-core.exe", "saba-runner.exe"], {}),
         f"saba-chan-cli-{PLATFORM}.zip": (["saba-chan-cli.exe", "saba-chan.exe"], {}),
         f"saba-chan-gui-{PLATFORM}.zip": (["saba-chan-gui.exe"], {}),
     }

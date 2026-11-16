@@ -19,9 +19,17 @@ pub(crate) async fn is_running(state: &IPCServer, id: &str) -> bool {
     state.supervisor.read().await.is_running(id).await
 }
 
-/// 이름 하나로 게임 명령 실행 (저장·공지). 성공 여부만
-pub(crate) async fn run_command(state: &IPCServer, id: &str, name: &str, args: Value) -> bool {
-    command_reply(state, id, name, args).await.is_some()
+/// 이름 하나로 게임 명령 실행 (예약 저장·명령·공지, 자동 강퇴). 서버가 거절한 답(`rejected`)도 실패다.
+/// 실패면 그 `error_code`(서버의 거절은 `command_failed`)
+pub(crate) async fn run_command(state: &IPCServer, id: &str, name: &str, args: Value) -> Result<(), String> {
+    let resp = command_response(state, id, name, args).await;
+    if !answered(&resp) {
+        return Err(crate::audit::failure_code(&resp.body).unwrap_or_else(|| "command_failed".into()));
+    }
+    if resp.body.get("rejected").is_some() {
+        return Err("command_failed".into());
+    }
+    Ok(())
 }
 
 /// 백업이 안에서 보내는 저장 명령: 작업 기록에는 백업 한 줄만 남긴다.
@@ -34,13 +42,21 @@ async fn save_reply(state: &IPCServer, id: &str, name: &str, rcon_wait: Option<s
     }
 }
 
-/// 이름 하나로 게임 명령 실행. 성공하면 서버의 콘솔 답(없으면 빈 글자)
+/// 이름 하나로 게임 명령 실행. 성공하면 서버의 콘솔 답(없으면 빈 글자). 거절 여부는 부르는 쪽이 답으로 가린다
 async fn command_reply(state: &IPCServer, id: &str, name: &str, args: Value) -> Option<String> {
+    let resp = command_response(state, id, name, args).await;
+    answered(&resp).then(|| resp.body.pointer("/data/response").and_then(Value::as_str).unwrap_or_default().to_string())
+}
+
+async fn command_response(state: &IPCServer, id: &str, name: &str, args: Value) -> crate::ipc::internal::InternalResponse {
     let req = CommandRequest { command: name.to_string(), args };
     // 명령 실행 future는 크다: 백업 안에서 겹겹이 품지 않게 힙에 둔다 (디버그 빌드 스택 넘침)
-    let resp = crate::ipc::internal::InternalResponse::from(Box::pin(super::command::execute(state, id, req)).await);
-    let ok = resp.status.is_success() && resp.body.get("success").and_then(Value::as_bool) != Some(false);
-    ok.then(|| resp.body.pointer("/data/response").and_then(Value::as_str).unwrap_or_default().to_string())
+    crate::ipc::internal::InternalResponse::from(Box::pin(super::command::execute(state, id, req)).await)
+}
+
+/// 명령이 서버에 닿아 답을 받았다 (서버가 거절했는지는 따로 본다)
+fn answered(resp: &crate::ipc::internal::InternalResponse) -> bool {
+    resp.status.is_success() && resp.body.get("success").and_then(Value::as_bool) != Some(false)
 }
 
 /// 켜진 서버에서 저장 완료 줄(`[backup] save_done_pattern`)을 기다리는 가장 긴 시간 (큰 월드의 save-all flush)
@@ -189,7 +205,7 @@ async fn plan(state: &IPCServer, id: &str) -> Result<Option<Plan>, Failure> {
     let (spec, base, dir, keep, hook_call, lookup, boundary, module_name) = {
         let supervisor = state.supervisor.read().await;
         let Some(instance) = supervisor.instance_store.get(id).cloned() else {
-            return Err(Failure::coded(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id)));
+            return Err(Failure::instance_not_found(&id));
         };
         let module = supervisor.module_loader.get_module(&instance.module_name).ok();
         let Some(spec) = module.as_ref().and_then(|m| m.metadata.backup.clone()) else {
@@ -299,7 +315,7 @@ fn add_paths(paths: &mut Vec<PathBuf>, also: &[PathBuf]) {
 async fn bare_plan(state: &IPCServer, id: &str) -> Result<Plan, Failure> {
     let supervisor = state.supervisor.read().await;
     let Some(instance) = supervisor.instance_store.get(id) else {
-        return Err(Failure::coded(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id)));
+        return Err(Failure::instance_not_found(&id));
     };
     Ok(Plan {
         dir: backup::backups_dir(&supervisor.instance_store.instance_dir(id)),
@@ -464,7 +480,7 @@ fn backup_error(e: &anyhow::Error) -> (StatusCode, Value) {
 pub(crate) async fn backups_dir(state: &IPCServer, id: &str) -> Result<PathBuf, Failure> {
     let supervisor = state.supervisor.read().await;
     if supervisor.instance_store.get(id).is_none() {
-        return Err(Failure::coded(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id)));
+        return Err(Failure::instance_not_found(&id));
     }
     Ok(backup::backups_dir(&supervisor.instance_store.instance_dir(id)))
 }
@@ -475,7 +491,7 @@ pub(crate) async fn list(state: &IPCServer, id: &str) -> Outcome {
     // 게임이 만든 자동 백업도 함께 (새것부터 사바쨩 백업 뒤에)
     // 백업 파일마다 열어 읽는다: 느린 저장장치에서 Tokio 작업 스레드를 붙잡지 않게
     // 읽지 못한 것을 "백업 없음"으로 보이지 않는다
-    let (listed, total) = match tokio::task::spawn_blocking(move || backup::list_checked(&dir).map(|l| (l, backup::total_bytes(&dir)))).await {
+    let (listed, total) = match tokio::task::spawn_blocking(move || backup::list_checked(&dir).map(|l| (l, crate::utils::dir_size(&dir)))).await {
         Ok(Ok(found)) => found,
         Ok(Err(e)) => return Err(Failure::coded(StatusCode::INTERNAL_SERVER_ERROR, "backups_unreadable", format!("Could not read the backup folder: {}", e))),
         Err(e) => return Err(Failure::coded(StatusCode::INTERNAL_SERVER_ERROR, "backups_unreadable", e.to_string())),
@@ -534,7 +550,7 @@ async fn game_snapshots(state: &IPCServer, id: &str) -> Result<Vec<GameSnapshot>
     let (call, boundary, module_name) = {
         let supervisor = state.supervisor.read().await;
         let Some(instance) = supervisor.instance_store.get(id).cloned() else {
-            return Err(Failure::coded(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id)));
+            return Err(Failure::instance_not_found(&id));
         };
         let Some(module) = supervisor.module_loader.get_module(&instance.module_name).ok().filter(|m| m.metadata.backup.as_ref().is_some_and(|b| b.snapshots)) else {
             return Ok(Vec::new());
@@ -674,7 +690,7 @@ pub(crate) async fn create_from(state: &IPCServer, id: &str, source: Source) -> 
         let instance = state.supervisor.read().await.instance_store.get(&id).map(|i| i.name.clone()).unwrap_or_default();
         crate::events::emit("backup.done", match &made {
             Ok(b) => json!({ "instanceId": id, "instance": instance, "kind": b.kind, "name": b.name, "ok": true }),
-            Err(_) => json!({ "instanceId": id, "instance": instance, "kind": BackupKind::Snapshot, "ok": false }),
+            Err(e) => json!({ "instanceId": id, "instance": instance, "kind": BackupKind::Snapshot, "ok": false, "error": e.reason() }),
         });
         made
     })
@@ -752,7 +768,7 @@ struct Transfer {
 async fn transfer(state: &IPCServer, id: &str) -> Result<Transfer, Failure> {
     let supervisor = state.supervisor.read().await;
     let Some(instance) = supervisor.instance_store.get(id) else {
-        return Err(Failure::coded(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id)));
+        return Err(Failure::instance_not_found(&id));
     };
     let instance_dir = supervisor.instance_store.instance_dir(id);
     let module = supervisor.module_loader.get_module(&instance.module_name).ok();
@@ -878,7 +894,7 @@ pub(crate) async fn restore_held(state: &IPCServer, id: &str, name: &str, _guard
     let (mut roots, boundary) = {
         let supervisor = state.supervisor.read().await;
         let Some(instance) = supervisor.instance_store.get(id) else {
-            return Err(Failure::coded(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id)));
+            return Err(Failure::instance_not_found(&id));
         };
         let instance_dir = supervisor.instance_store.instance_dir(id);
         let module = supervisor.module_loader.get_module(&instance.module_name).ok();
@@ -944,7 +960,8 @@ async fn remote_cap_reached(dir: &FsPath, kind: BackupKind) -> Result<bool, Fail
     }
 }
 
-pub(crate) async fn announce(state: &IPCServer, id: &str, message: &str) -> bool {
+/// 서버 안에 공지 한 줄. 실패면 그 코드 (`run_command`)
+pub(crate) async fn announce(state: &IPCServer, id: &str, message: &str) -> Result<(), String> {
     let cmd = {
         let supervisor = state.supervisor.read().await;
         supervisor
@@ -953,10 +970,14 @@ pub(crate) async fn announce(state: &IPCServer, id: &str, message: &str) -> bool
             .and_then(|i| supervisor.module_loader.get_module(&i.module_name).ok())
             .and_then(|m| m.metadata.announce_command)
     };
-    match cmd {
+    let result = match cmd {
         Some(cmd) => run_command(state, id, &cmd, json!({ "message": message })).await,
-        None => false,
+        None => Err("command_failed".into()),
+    };
+    if let Err(code) = &result {
+        tracing::warn!("Announcement on '{}' failed: {}", id, code);
     }
+    result
 }
 
 #[cfg(test)]

@@ -399,12 +399,6 @@ pub async fn install(config: InstallOptions, hooks: &dyn InstallHooks) -> Instal
         }
     }
 
-    // Step 3.5: 공유 모듈 유틸리티(i18n.py, daemon_rcon.py)를 APPDATA/modules/로 설치
-    emit("modules-shared", "Installing shared module utilities...", 46);
-    for failure in install_shared_modules(&install_dir) {
-        warn(failure);
-    }
-
     // Step 4: 모듈 다운로드 및 설치 (45-55%)
     install_modules(hooks, &manifest, &config.selected_modules, &config.module_metadata, &mut installed, &warn).await;
 
@@ -1018,36 +1012,6 @@ fn place_component(
 /// (`registry::register_uninstall_entry`) 다른 OS의 창 설치와 CLI 설치는 릴리즈의 것을 받는다
 fn installer_from_release(running_installer: bool) -> bool {
     !running_installer || !cfg!(windows)
-}
-
-/// core zip에 포함된 공유 Python 모듈(i18n.py, daemon_rcon.py)을
-/// %APPDATA%/saba-chan/python-shared/로 복사한다.
-/// 게임 모듈(minecraft, palworld 등)의 lifecycle.py가 이 유틸리티를 import 한다.
-/// 실패한 것마다 안내 문장을 돌려준다 (완료 화면 경고)
-fn install_shared_modules(install_dir: &Path) -> Vec<String> {
-    const SHARED_MODULES: &[&str] = &["i18n.py", "daemon_rcon.py", "common_locales.json"];
-
-    let shared_dir = constants::resolve_data_dir().join("python-shared");
-    let _ = std::fs::create_dir_all(&shared_dir);
-    let mut failures = Vec::new();
-
-    for name in SHARED_MODULES {
-        let src = install_dir.join(name);
-        let dst = shared_dir.join(name);
-        if src.exists() {
-            match std::fs::copy(&src, &dst) {
-                Ok(_) => {
-                    tracing::info!("Shared module installed: {} → {}", src.display(), dst.display());
-                    // install_dir에 남아 있는 복사본 제거 (Program Files에 불필요)
-                    let _ = std::fs::remove_file(&src);
-                }
-                Err(e) => failures.push(format!("Failed to install shared module {}: {}", name, e)),
-            }
-        } else {
-            tracing::debug!("Shared module not found in zip: {}", name);
-        }
-    }
-    failures
 }
 
 fn setup_config(install_dir: &Path) {

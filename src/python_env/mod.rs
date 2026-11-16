@@ -177,7 +177,7 @@ pub async fn ensure_venv() -> Result<PathBuf> {
 
     // ── Fast path: 기존 venv 유효 ──
     if verify_python(&python_exe).await {
-        tracing::debug!("Python venv 확인 완료: {}", python_exe.display());
+        tracing::debug!("Python venv OK: {}", python_exe.display());
         return Ok(python_exe);
     }
 
@@ -188,7 +188,7 @@ pub async fn ensure_venv() -> Result<PathBuf> {
     let portable = (Path::new(&base_python) != runtime::portable_python(&data_dir)).then_some(portable);
     create_venv_or_fall_back(&base_python, &data_dir, portable).await?;
 
-    tracing::info!("Python venv 준비 완료: {}", python_exe.display());
+    tracing::info!("Python venv ready: {}", python_exe.display());
     Ok(python_exe)
 }
 
@@ -197,7 +197,7 @@ pub async fn ensure_venv() -> Result<PathBuf> {
 async fn create_venv_or_fall_back(base: &str, root: &Path, portable: Option<impl std::future::Future<Output = Result<String>>>) -> Result<()> {
     let Err(error) = runtime::create_venv(&Preparing, Path::new(base), root).await else { return Ok(()) };
     let Some(portable) = portable else { return Err(error) };
-    tracing::warn!("{} 로 venv를 만들지 못해 포터블 Python으로 다시 만듭니다: {:#}", base, error);
+    tracing::warn!("Could not create the venv with {}; retrying with portable Python: {:#}", base, error);
     let base = portable.await.with_context(|| format!("{error:#}"))?;
     runtime::create_venv(&Preparing, Path::new(&base), root).await.map(|_| ())
 }
@@ -219,14 +219,14 @@ pub async fn detect_system_python() -> Result<String> {
                             continue;
                         }
                         tracing::info!(
-                            "시스템 Python 발견: {} → {}",
+                            "Found system Python: {} -> {}",
                             executable,
                             ver.trim()
                         );
                         return Ok(executable);
                     }
                     tracing::debug!(
-                        "{} → {}.{} (최소 {}.{} 필요, 건너뜀)",
+                        "{} -> {}.{} (needs {}.{} or newer, skipped)",
                         cmd_name, major, minor,
                         MIN_PYTHON_VERSION.0, MIN_PYTHON_VERSION.1
                     );
@@ -235,7 +235,7 @@ pub async fn detect_system_python() -> Result<String> {
         }
     }
     Err(anyhow::anyhow!(
-        "시스템에 Python >= {}.{} 없음",
+        "No system Python >= {}.{}",
         MIN_PYTHON_VERSION.0,
         MIN_PYTHON_VERSION.1
     ))
@@ -248,19 +248,19 @@ async fn find_base_python(data_dir: &Path) -> Result<String> {
     // 1) 이미 다운로드된 포터블 Python
     let portable_exe = runtime::portable_python(data_dir);
     if verify_python(&portable_exe).await {
-        tracing::info!("포터블 Python 사용: {}", portable_exe.display());
+        tracing::info!("Using portable Python: {}", portable_exe.display());
         return Ok(portable_exe.to_string_lossy().into_owned());
     }
 
     // 2) 시스템 Python
     if let Ok(cmd) = detect_system_python().await {
-        tracing::info!("시스템 Python 사용: {}", cmd);
+        tracing::info!("Using system Python: {}", cmd);
         return Ok(cmd);
     }
 
     // 3) 자동 다운로드
     tracing::info!(
-        "Python을 찾을 수 없습니다. 포터블 Python {}을(를) 다운로드합니다...",
+        "Python not found; downloading portable Python {}...",
         PYTHON_VERSION
     );
     let exe = download_portable_python(data_dir).await?;

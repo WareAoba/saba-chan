@@ -27,8 +27,7 @@ class WindowsAssets(unittest.TestCase):
                 "locales.zip", "saba-chan-cli-windows-x64.zip", "saba-chan-gui-windows-x64.zip",
                 "saba-chan-installer.exe", "saba-core-windows-x64.zip"])
             with zipfile.ZipFile(d / "out" / "saba-core-windows-x64.zip") as zf:
-                self.assertEqual(sorted(zf.namelist()), [
-                    "common_locales.json", "daemon_rcon.py", "i18n.py", "saba-core.exe", "saba-runner.exe"])
+                self.assertEqual(sorted(zf.namelist()), ["saba-core.exe", "saba-runner.exe"])
             # 짧은 명령 실행기는 bin/ 아래: 설치 폴더 바로 아래의 Saba-chan.exe는 0.1.1 GUI 이름이다
             with zipfile.ZipFile(d / "out" / "saba-chan-cli-windows-x64.zip") as zf:
                 self.assertEqual(sorted(zf.namelist()), ["bin/saba-chan.exe", "saba-chan-cli.exe"])

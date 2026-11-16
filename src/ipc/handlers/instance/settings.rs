@@ -46,7 +46,7 @@ mod tests {
             }
         };
         let invalid = |field: &str, message: &str| json!({ "success": false, "error": message, "error_code": "invalid_format", "message": message, "fields": [{ "field": field }] });
-        assert_eq!(save("nope", json!({})).await, (404, json!({ "success": false, "error": "Instance not found", "error_code": "not_found" })));
+        assert_eq!(save("nope", json!({})).await, (404, json!({ "success": false, "error": "Instance not found: nope", "error_code": "instance_not_found" })));
         assert_eq!(save("pin", json!({ "port": 70000 })).await, (400, json!({ "success": false, "error": "port must be a number from 1 to 65535", "error_code": "invalid_format", "fields": [{ "field": "port" }] })));
         assert_eq!(save("pin", json!({ "extra_args": 5 })).await, (400, invalid("extra_args", "extra_args must be a string or an array of strings")));
         assert_eq!(save("pin", json!({ "stop_timeout": 99999 })).await, (400, invalid("stop_timeout", "stop_timeout must be empty or a whole number of seconds from 1 to 3600")));

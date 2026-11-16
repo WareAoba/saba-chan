@@ -83,8 +83,8 @@ pub async fn run(ctx: &Ctx, o: Opts<'_>) -> Result<()> {
 /// 데몬의 내보내기 오류 문구는 영문이다: 아는 코드는 이 언어 문구로 바꾼다
 fn export_error(e: anyhow::Error) -> anyhow::Error {
     match e.downcast_ref::<crate::error::CliError>() {
-        Some(crate::error::CliError::Api { code: Some(code), .. }) if matches!(code.as_str(), "WRITE_FAILED" | "INVALID_PATH") => {
-            crate::error::failed(t!(&format!("audit.export_{}", code.to_lowercase())))
+        Some(crate::error::CliError::Api { code: Some(code), .. }) if matches!(code.as_str(), "write_failed" | "invalid_path") => {
+            crate::error::failed(t!(&format!("audit.export_{code}")))
         }
         _ => e,
     }
@@ -187,10 +187,10 @@ mod tests {
                 body: serde_json::json!({}),
             })
         };
-        for code in ["WRITE_FAILED", "INVALID_PATH"] {
+        for code in ["write_failed", "invalid_path"] {
             let msg = export_error(api(code)).to_string();
             assert!(!msg.contains("Could not write"), "{code}: {msg}");
-            assert_eq!(msg, t!(&format!("audit.export_{}", code.to_lowercase())));
+            assert_eq!(msg, t!(&format!("audit.export_{code}")));
         }
         assert!(export_error(api("other")).to_string().contains("Could not write"));
     }
