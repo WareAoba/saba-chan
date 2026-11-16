@@ -83,6 +83,8 @@ pub struct LiveState {
     pub marker_seen: Option<String>,
     /// 마지막으로 `update.available`로 알린 업데이트 (구성요소 키, 새 판). 데몬을 다시 켜도 같은 것을 또 알리지 않게 남긴다
     pub announced: Vec<(String, Option<String>)>,
+    /// heartbeat `latestAddons` 중 이 데몬 채널의 값 (확인을 마친 것). 바뀌면 모듈·익스텐션 새 판을 바로 받는다
+    pub addons_seen: Option<String>,
 }
 
 impl LiveState {
