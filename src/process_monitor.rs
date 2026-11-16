@@ -131,15 +131,7 @@ pub fn is_running_in(processes: &[RunningProcess], pid: u32) -> bool {
     processes.iter().any(|p| p.pid == pid)
 }
 
-/// 사전 스캔된 프로세스 목록에서 이름으로 검색
-pub fn find_by_name_in<'a>(processes: &'a [RunningProcess], name: &str) -> Vec<&'a RunningProcess> {
-    let name_lower = name.to_lowercase();
-    processes.iter()
-        .filter(|p| p.name.to_lowercase().contains(&name_lower))
-        .collect()
-}
-
-/// 사전 스캔된 프로세스 목록에서 이름 + 커맨드라인 패턴으로 검색
+/// 사전 스캔된 프로세스 목록에서 이름 + 커맨드라인 패턴으로 검색 (패턴이 없으면 이름만 본다)
 pub fn find_by_name_and_cmd_in<'a>(processes: &'a [RunningProcess], name: &str, cmd_patterns: &[String]) -> Vec<&'a RunningProcess> {
     let name_lower = name.to_lowercase();
     processes.iter()

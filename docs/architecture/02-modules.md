@@ -654,6 +654,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 
 - **링 버퍼**: `LogBuffer`. 기본 10,000줄. 단조 증가하는 `id`를 붙여 `get_since(id)`와 `get_recent(n)`으로 폴링한다. IPC는 폴링(`GET /console?since=`) 방식이다.
 - **stdout/stderr 리더**: 각각 tokio task로 줄 단위로 읽는다. stderr 줄은 레벨이 Info로 파싱되더라도 **Warn으로 올린다**.
+- **콘솔 인코딩**: 줄마다 UTF-16LE인지 UTF-8인지만 가린다(`saba_runner::Lines`). 코드 페이지(CP949 등)로는 바꾸지 않으므로 그 밖의 인코딩은 대체 문자로 깨진다. 모듈은 서버가 콘솔에 UTF-8로 찍게 한다(minecraft는 `-Dstdout.encoding=UTF-8`).
 - **레벨 파싱**: `parse_log_level(line, log_pattern)`이 `(?P<level>)` 캡처를 매핑한다.
   - ERROR/FATAL → Error, WARN/WARNING → Warn, DEBUG/TRACE → Debug, 그 외 → Info.
   - 패턴이 없거나 매치되지 않으면 Info다.
