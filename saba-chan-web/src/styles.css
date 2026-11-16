@@ -1755,6 +1755,9 @@ textarea {
 .toast-info {
     border-left: 4px solid var(--info);
 }
+.toast-warn {
+    border-left: 4px solid var(--warn);
+}
 
 /* ── 상태 점: 바뀌는 중이면 깜빡인다 ── */
 .status-dot {
@@ -2725,6 +2728,10 @@ textarea {
 .pill-ok {
     background: var(--ok-soft);
     color: var(--ok);
+}
+.pill-warn {
+    background: var(--warn-soft);
+    color: var(--warn);
 }
 .pill-stop {
     background: var(--stop-soft);
