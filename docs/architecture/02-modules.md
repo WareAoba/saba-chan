@@ -576,13 +576,19 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
   - `list_dir(path)`: 폴더 항목 이름(정렬). 없는 폴더는 빈 목록, 읽지 못하는 폴더는 `OSError`(빈 폴더로 보고 넘어가지 않는다).
   - `fetch_json(url, *, timeout=15, user_agent="saba-chan")`: url의 JSON 응답. HTTP 오류·연결 실패·JSON이 아닌 답은 예외 그대로 올린다.
   - `extension_data_dir(extension_id)`: 익스텐션이 받은 파일을 두는 폴더 `SABA_EXTENSION_DATA_ROOT/<id>`(03 §익스텐션 데이터 폴더). 환경 변수가 없으면 `EnvironmentError`.
+- 0.1.14-beta.4 공용 도우미 (모듈이 따로 갖던 것, `SINCE` `0.1.14-beta.4`):
+  - `setting_default(module_dir, name)`: 설정 칸의 기본값(`[[settings.fields]] default`, 없으면 `None`). 코드에 기본값을 다시 적지 않는다.
+  - `player_capacity(config)`: `player_count()`의 가벼운 답. 설정 `max_players`(`config_value`)가 양의 정수면 `{success:true, max}`, 아니면 `{success:true}`. 1분 갱신(`players_detail` 없음)에 게임에 묻지 않는 모듈이 그대로 돌려주고, 목록 답에도 `max`를 같은 규칙으로 싣는다.
+  - `java_heap(value)`: 메모리 설정 → JVM 힙 크기. 크기 단위가 붙은 값(`4G`·`1024M`·`512K`)은 그대로, GB 숫자는 `G`(소수는 `M`: 0.5 → `512M`), 비었거나 읽을 수 없으면 `auto_heap_mb()`. `COMPACT_OBJECT_HEADERS`는 Java 25 이상에 넣는 `-XX:+UseCompactObjectHeaders`(JEP 519).
+  - `safe_name(name)`: 사용자가 정한 이름(서버·월드·파일)이 한 단계 경로 조각인지. 빈 값, 구분자·드라이브 `:`·Windows가 받지 않는 글자(`<>"|?*`)·제어 문자, Windows가 잘라 내는 끝 공백·점(`.`·`..` 포함)이 있으면 `False`. 여러 단계 이름은 조각마다 본다. 경로를 합칠 때는 그다음 `safe_join`이 루트 밖으로 나가지 않는지 본다.
+  - `load_extension(i18n, extension_id)`: 모듈이 쓰는 익스텐션 패키지 `extensions.<id>`(`-`는 `_`)를 `(패키지, None)`으로 돌려준다. 없거나 꺼져 있으면(import 가드의 `ModuleNotFoundError`) `(None, extension_required 답)`. 익스텐션 안의 다른 import 실패는 그대로 올린다(익스텐션 고장을 '없음'으로 덮지 않는다).
 - 배포: 데몬 실행 파일에 공용 파일이 들어 있다. 첫 lifecycle 실행 때 데몬 전용 `<data_dir>/python-shared/`에 쓴다. 이 경로만 공용 유틸리티의 import 경로로 쓴다. 모듈 폴더는 `PYTHONPATH`에 넣지 않는다. 적합성 키트의 `--shared-libs`에는 `<data_dir>/python-shared/`를 지정한다.
 
 **경로 도우미와 SDK 버전 (0.1.10)**
 
 `daemon_rcon.safe_join(root, *parts)`는 이름 조각을 합친 실제 경로가 `root` 안이면 `Path`로 돌려준다. 절대 경로, 드라이브, `..`, 구분자가 든 이름 조각과 루트 밖으로 나가는 링크는 `PathOutside`다. `run_lifecycle`은 이 예외를 `{success:false, error_code:"module_path_outside", message, path}`로 바꾼다.
 
-`daemon_rcon.py` 머리의 `SINCE`가 공용 SDK 이름의 최소 버전 표다. `i18n`의 이름도 같은 표에 넣는다.
+`daemon_rcon.py` 머리의 `SINCE`가 공용 SDK 이름의 최소 버전 표다. 모듈이 쓰는 상수(`COMPACT_OBJECT_HEADERS`)와 `i18n`의 이름도 같은 표에 넣는다.
 
 | 공개 이름 | 처음 제공한 코어 버전 |
 |---|---|
@@ -598,6 +604,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 | `setting_file_keys`, `format_setting`, `settings_to_file`, `settings_from_file`, `read_key_values`, `update_key_values`, `stop_timeout`, `request_console`, `request_terminate`, `graceful_stop`, `load_diagnose_rules`, `diagnose_lines`, `tail_lines`, `progress`, `download`, `ChecksumMismatch`, `safe_extract` | `0.1.11-0` (0.1.11 미리보기부터 받도록 `-0`) |
 | `setting_defaults_to_file`, `stop_command`, `delete_paths`, `chat_reply` | `0.1.14-0` |
 | `rcon_access`, `remote_access_values`, `enforce_remote_access`, `auto_heap_mb`, `java_release_major`, `diagnose_log`, `extension_required`, `list_dir`, `fetch_json`, `extension_data_dir` | `0.1.14-beta.2` |
+| `setting_default`, `player_capacity`, `java_heap`, `COMPACT_OBJECT_HEADERS`, `safe_name`, `load_extension` | `0.1.14-beta.4` |
 
 이력 근거: 공개 태그 `test23`(`f493b78e`, 코어 `0.1.1`)에 `i18n.I18n`이 있다. 기존 통신·설정·프로세스 함수는 `97db8a0e`(`0.1.2` 릴리스 커밋)에 있다. 루프백 함수는 `1862c5c0`(`0.1.7` 릴리스 커밋)에는 없고 `77333cab`(`0.1.8` 릴리스 커밋)에 있다. 공개 origin에는 `test`~`test23` 태그만 있다. 따라서 `0.1.2`·`0.1.8` 값은 릴리스 커밋에 근거한 보수적 값이며 최초 공개 배포 태그로 확정한 값은 아니다.
 

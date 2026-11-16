@@ -270,6 +270,9 @@ class SdkVersionTests(unittest.TestCase):
             if not name.startswith("_") and getattr(value, "__module__", None) == "daemon_rcon"
             and (inspect.isfunction(value) or inspect.isclass(value))
         }
+        # 모듈이 쓰는 상수도 표에 둔다 (WORKER_*는 데몬과 run_lifecycle 사이의 약속이라 모듈이 쓰지 않는다)
+        public |= {name for name, value in vars(daemon_rcon).items()
+                   if name.isupper() and not name.startswith(("_", "WORKER_")) and isinstance(value, str)}
         self.assertEqual(set(daemon_rcon.SINCE), public | {"i18n.I18n"})
         self.assertEqual(daemon_rcon.SINCE["i18n.I18n"], "0.1.1")
         self.assertEqual(daemon_rcon.SINCE["daemon_rest"], "0.1.10")
