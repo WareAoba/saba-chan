@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 
 
-// 사바쨩 웹: nginx 가 /remote/ 아래에 정적으로 둔다 (server-chan deploy/nginx/nginx.conf)
+// 사바쨩 웹: Caddy 가 /remote/ 아래에 정적으로 둔다 (server-chan deploy/caddy/Caddyfile). 웹소켓도 이 경로 아래 ws (src/main.tsx)
 export default defineConfig({
     plugins: [react()],
     base: '/remote/',

@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
-use super::chatbot::{call, host_guilds, relay_base, result_row};
+use crate::relay_client::{call, host_guilds, relay_base, result_row};
 use super::{Failure, Outcome};
 use crate::relay_client::{encode_path_segment, load_node_token};
 use crate::ipc::IPCServer;
@@ -683,7 +683,7 @@ pub(crate) async fn patch(state: &IPCServer, guild: &str, body: &Value) -> Outco
     let outcome = push(state, &base, guild, &before.relay_body(), &next).await;
     // 릴레이가 값을 거절했으면 저장하지 않는다 (연결 실패는 저장하고 다음 연결 때 맞춘다)
     if matches!(&outcome, Ok((c, _)) if *c == StatusCode::BAD_REQUEST) {
-        return Err(Failure::new(StatusCode::BAD_REQUEST, super::chatbot::refused_row(guild, &outcome, "invalid_input")));
+        return Err(Failure::new(StatusCode::BAD_REQUEST, crate::relay_client::refused_row(guild, &outcome, "invalid_input")));
     }
     if let Err(e) = save(state, guild, &next).await {
         return Err(Failure::coded(StatusCode::INTERNAL_SERVER_ERROR, "save_failed", e.to_string()));

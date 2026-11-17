@@ -29,6 +29,7 @@ const newer = (component: string, latest: string, kind = 'module') => ({
     update_available: true,
     current_version: '0.1.13',
     latest_version: latest,
+    update_version: latest,
 });
 
 function fakeApi(modules: Record<string, unknown>[], components: Record<string, unknown>[], overrides: Record<string, unknown> = {}) {
@@ -95,9 +96,9 @@ describe('모듈 업데이트 단추', () => {
         ).toBeTruthy();
     });
 
-    it('버전을 고정한 카드에는 업데이트 단추가 없다', async () => {
+    it('버전을 고정해 데몬이 업데이트할 판을 주지 않은 카드에는 업데이트 단추가 없다', async () => {
         const pinned = { ...MINECRAFT, pinned: { version: '0.1.13', until_newer_than: '0.1.14' } };
-        fakeApi([pinned], [newer('module-minecraft', '0.1.14')]);
+        fakeApi([pinned], [{ ...newer('module-minecraft', '0.1.14'), update_version: null }]);
         await openTab(1);
         await waitFor(() => expect(window.api.updaterStatus).toHaveBeenCalled());
         await waitFor(() => expect(card('마인크래프트')).toBeTruthy());
@@ -145,5 +146,15 @@ describe('익스텐션 업데이트 단추', () => {
         expect(card('SteamCMD').querySelector('.ss-update-badge')).toHaveTextContent('v0.1.10');
         await act(async () => fireEvent.click(updateButton('SteamCMD')!));
         expect(window.api.addonUnpin).toHaveBeenCalledWith('ext-steamcmd');
+    });
+});
+
+describe('익스텐션 재스캔', () => {
+    it('브리지가 실패를 돌려주면(던지지 않음) 데몬 오류를 알린다', async () => {
+        ext.extensions = [{ id: 'steamcmd', name: 'SteamCMD', version: '0.1.9', enabled: true }];
+        fakeApi([], [], { extensionRescan: vi.fn().mockResolvedValue({ success: false, error: 'rescan exploded' }) });
+        await openTab(2);
+        await act(async () => fireEvent.click(screen.getByRole('button', { name: i18n.t('gui:extensions.rescan') })));
+        await waitFor(() => expect(window.showToast).toHaveBeenCalledWith('rescan exploded', 'error', 5000, undefined));
     });
 });

@@ -5,6 +5,7 @@ import type { ServerAction } from '../../extensions/host';
 import type { ServerInfo } from '../../types/daemon';
 import { failed } from '../../utils/apiResult';
 import { SERVER_CHANGING, subscribeDaemonEvents } from '../../utils/daemonEvents';
+import { startPoll } from '../../utils/poll';
 import { isTransitional, playersText, primaryAction, STATUS_TONE, viewStatus } from '../../utils/serverView';
 import { Icon } from '../Icon';
 import { StatusChip } from '../ui/StatusChip';
@@ -27,12 +28,16 @@ export function useQuickServers(refreshMs: number) {
     const [remote, setRemote] = useState<RemoteState | null>(null);
     /** 마지막으로 확인한 고른 데몬: 이 PC면 null, 아직 모르면 undefined (익스텐션 host.run이 본다) */
     const targetRef = useRef<string | null | undefined>(undefined);
+    /** 읽기 차례: 이벤트로 부른 읽기와 주기 읽기가 겹쳐도 늦게 온 옛 목록이 새 목록을 덮지 않게 */
+    const seqRef = useRef(0);
 
     const refresh = useCallback(async () => {
+        const seq = ++seqRef.current;
         const [status, current] = await Promise.all([
             Promise.resolve(window.api.daemonStatus()).catch(() => null),
             Promise.resolve(window.api.daemonTarget()).catch(() => null),
         ]);
+        if (seq !== seqRef.current) return;
         const up = status?.running === true;
         const target = current?.target || null;
         // 물었는데 답을 못 받았으면 모른다
@@ -47,6 +52,7 @@ export function useQuickServers(refreshMs: number) {
             Promise.resolve(window.api.serverList()).catch(() => null),
             target ? Promise.resolve(window.api.remoteDaemons()).catch(() => null) : null,
         ]);
+        if (seq !== seqRef.current) return;
         const reachable = Array.isArray(list?.servers);
         if (target) {
             const saved = Array.isArray(daemons?.daemons)
@@ -61,13 +67,12 @@ export function useQuickServers(refreshMs: number) {
     }, []);
 
     useEffect(() => {
-        refresh();
-        const timer = setInterval(refresh, refreshMs);
+        const stop = startPoll(refresh, refreshMs);
         const off = subscribeDaemonEvents((ev) => {
             if (SERVER_CHANGING.includes(ev.type)) refresh();
         });
         return () => {
-            clearInterval(timer);
+            stop();
             off();
         };
     }, [refresh, refreshMs]);

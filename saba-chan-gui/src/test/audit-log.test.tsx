@@ -232,7 +232,7 @@ describe('AuditLog', () => {
         window.api.auditExport = vi.fn().mockResolvedValue({
             success: false,
             error: 'Could not write the audit export: denied',
-            error_code: 'WRITE_FAILED',
+            error_code: 'write_failed',
         }) as never;
         render(<AuditLog />);
         await screen.findByText(/Minecraft/);

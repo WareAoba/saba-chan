@@ -13,8 +13,6 @@ interface ConnectionTabProps {
     /** 앱을 켤 때의 IPC 포트 (바꾼 포트는 다시 켜야 적용된다) */
     runningIpcPort: number;
     onIpcPortSave: (port: number) => void;
-    discordCloudRelayUrl?: string;
-    onDiscordCloudRelayUrlChange?: (value: string) => void;
 }
 
 /** 받을 수 있는 IPC 포트면 숫자, 아니면 null */
@@ -28,8 +26,6 @@ export function ConnectionTab({
     ipcPort,
     runningIpcPort,
     onIpcPortSave,
-    discordCloudRelayUrl,
-    onDiscordCloudRelayUrlChange,
 }: ConnectionTabProps) {
     const { t } = useTranslation(['gui', 'common']);
     const discordHostId = useDiscordStore((s) => s.discordCloudHostId);
@@ -46,11 +42,11 @@ export function ConnectionTab({
     });
     const ipcPortChanged = ipcPort !== runningIpcPort && portDraft === String(ipcPort);
 
-    const savedRelay = discordCloudRelayUrl || '';
+    const savedRelay = useDiscordStore((s) => s.discordCloudRelayUrl) || '';
     const [relayDraft, setRelayDraft] = useHostDraft('relay-url', savedRelay);
     usePendingChange('relay-url', {
         dirty: relayDraft.trim() !== savedRelay,
-        save: () => onDiscordCloudRelayUrlChange?.(relayDraft.trim()),
+        save: () => useDiscordStore.getState().update({ discordCloudRelayUrl: relayDraft.trim() }),
         revert: () => setRelayDraft(savedRelay),
     });
     return (

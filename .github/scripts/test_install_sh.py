@@ -12,13 +12,18 @@ from pathlib import Path
 
 INSTALL_SH = Path(__file__).resolve().parents[2] / "install.sh"
 
+# 릴레이 /latest는 manifestUrl을 경로만 준다(공유 캐시 응답이라). 스크립트가 릴레이 주소를 붙여야 manifest가 받아진다
 FAKE_CURL = """#!/bin/sh
 case "$*" in
-    */v1/updates/check*) cat "$FAKE_CHECK" ;;
+    */v1/updates/latest*) cat "$FAKE_CHECK" ;;
+    *" https://saba-chan.online/v1/updates/manifest/"*) cat "$FAKE_MANIFEST" ;;
     */cli.zip*) cp "$FAKE_CLI_ZIP" "$4" ;;
-    *) cat "$FAKE_MANIFEST" ;;
+    *) exit 22 ;;
 esac
 """
+
+LATEST = '{"releases": [{"version": "0.1.14", "channel": "stable", "rolloutPercent": 100, "manifestUrl": "/v1/updates/manifest/0.1.14?release=1"}]}'
+
 
 # 부른 인자를 적고, `install`이면 데스크톱 구성처럼 설치 폴더에 CLI와 GUI를 놓는 가짜 CLI
 FAKE_CLI = """#!/bin/sh
@@ -62,7 +67,7 @@ class InstallShTest(unittest.TestCase):
 
     def test_a_release_without_this_platforms_cli_says_so(self):
         done = self.run_install(
-            '{"latest": {"manifestUrl": "https://example.invalid/manifest.json"}}',
+            LATEST,
             '{"manifest": {"platform": "windows-x64", "components": {}}}',
         )
         self.assertEqual(done.returncode, 1)
@@ -85,7 +90,7 @@ class InstallShTest(unittest.TestCase):
                 z.write(tmp / "saba-chan-cli", "saba-chan-cli")
             platform = "linux-arm64" if os.uname().machine in ("aarch64", "arm64") else "linux-x64"
             cli = {"url": "https://example.invalid/cli.zip", "sha256": hashlib.sha256((tmp / "cli.zip").read_bytes()).hexdigest()}
-            (tmp / "check.json").write_text('{"latest": {"manifestUrl": "https://example.invalid/manifest.json"}}')
+            (tmp / "check.json").write_text(LATEST)
             (tmp / "manifest.json").write_text(json.dumps({"manifest": {"platform": platform, "components": {"cli": cli, "gui": {"url": "https://example.invalid/gui.zip"}}}}))
             env = {
                 "PATH": f"{tmp / 'bin'}{os.pathsep}{os.environ['PATH']}",

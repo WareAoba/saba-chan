@@ -45,6 +45,7 @@
   },
   "server": {
     "list_failed": "Ошибка получения списка серверов (HTTP {{status}}): {{error}}",
+    "auth_failed": "Ошибка аутентификации. Возможно, токен демона изменился.",
     "start_failed": "Ошибка запуска: {{error}}",
     "stop_failed": "Ошибка остановки: {{error}}",
     "status_check_failed": "Ошибка проверки статуса (HTTP {{status}}): {{error}}",

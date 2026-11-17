@@ -310,7 +310,8 @@ pub struct ServerInfo {
     /// 모듈 설정 칸마다 저장된 값 (0.1.14-beta.2~): 공통 칸(`constants::INSTANCE_FIELDS`)은 인스턴스 칸, 나머지는 `module_settings`.
     /// 값이 없는 칸은 빠진다. 화면은 어느 쪽이 진짜인지 고르지 않고 이것을 읽는다 (`instance::stored_settings`)
     #[serde(default)]
-    pub stored: serde_json::Map<String, serde_json::Value>,
+    pub stored: serde_json::Map<String, serde_json::Value>,    /// 자동 재시작·자동 정지·응답 없음 감시에 데몬이 실제로 쓰는 값 (`supervisor::Effective`). 화면은 기본값을 따로 두지 않고 이것을 칸 값으로 쓴다
+    pub effective: crate::supervisor::Effective,
 }
 
 /// 포트 충돌 요약 (서버 목록 API에서 반환)
@@ -377,7 +378,6 @@ pub struct ModuleInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub unsupported_reason: Option<String>,
     pub path: String,
-    pub executable_path: Option<String>,
     /// `[config] server_executable`: 모듈이 찾는 서버 실행 파일 이름. 클라이언트는 실행 파일 고르기의 파일 종류로 쓴다
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub server_executable: Option<String>,
@@ -417,6 +417,9 @@ pub struct ModuleInfo {
     /// 사용자가 고른 판: `pinned {version, until_newer_than}`, 바꾸기가 켜진 서버를 기다리면 `pending_version` (없으면 둘 다 빠진다)
     #[serde(flatten)]
     pub addon: saba_chan_updater_lib::addon_pins::AddonChoice,
+    /// 바꿔 끼울 새 판 (`AddonChoice::update_version`, 업데이트 상태의 같은 칸과 같은 판정). 없거나 고정·바꾸기 대기면 빠진다
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub update_version: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -757,7 +760,7 @@ impl IPCServer {
         // 시험은 실제 설정 파일을 건드리지 않는다: 데몬마다 빈 데이터 폴더
         #[cfg(test)]
         let data_dir = tempfile::tempdir().expect("test data dir").keep();
-        let config_store = Arc::new(crate::config_store::ConfigStore::new(&data_dir));
+        let config_store = crate::config_store::ConfigStore::new(&data_dir);
 
         let stop_requested = tokio_util::sync::CancellationToken::new();
         let client_registry = ClientRegistry::new();
@@ -766,10 +769,10 @@ impl IPCServer {
         // 모듈의 HOST 통로도 여기서 붙인다: 건너뛰면 감독자가 부르는 모듈(정지·접속자)이 `no_instance`로 실패한다.
         // 시작 때 다른 작업(data_roots 보충)이 잠금을 쥐고 있으면 새로 만들어 쓰고, 잠금이 풀린 뒤 감독자에 붙인다
         let runtime = crate::plugin::host::Runtime::new(&supervisor, credentials.clone());
-        let (extension_manager, provision_tracker) = match supervisor.try_read() {
+        let (extension_manager, provision_tracker, skip_port_check) = match supervisor.try_read() {
             Ok(sup) => {
                 let _ = sup.host_runtime.set(runtime);
-                (sup.extension_manager.clone(), sup.provision_tracker.clone())
+                (sup.extension_manager.clone(), sup.provision_tracker.clone(), sup.skip_port_check.clone())
             }
             Err(_) => {
                 let extension_manager = crate::supervisor::Supervisor::new_extension_manager();
@@ -779,21 +782,26 @@ impl IPCServer {
                     }
                 }
                 let provision_tracker = ProvisionTracker::new();
+                let skip_port_check = Arc::new(std::sync::atomic::AtomicBool::new(false));
                 match tokio::runtime::Handle::try_current() {
                     Ok(handle) => {
-                        let (supervisor, extension_manager, provision_tracker) = (supervisor.clone(), extension_manager.clone(), provision_tracker.clone());
+                        let (supervisor, extension_manager, provision_tracker, skip_port_check) =
+                            (supervisor.clone(), extension_manager.clone(), provision_tracker.clone(), skip_port_check.clone());
                         handle.spawn(async move {
                             let mut sup = supervisor.write().await;
                             let _ = sup.host_runtime.set(runtime);
                             sup.extension_manager = extension_manager;
                             sup.provision_tracker = provision_tracker;
+                            sup.skip_port_check = skip_port_check;
                         });
                     }
                     Err(_) => tracing::warn!("[Host] no async runtime to attach the module host channel"),
                 }
-                (extension_manager, provision_tracker)
+                (extension_manager, provision_tracker, skip_port_check)
             }
         };
+        // 포트 검사 여부는 전역 설정 하나(gui.portConflictCheck): 저장소가 저장할 때마다 감독자의 스위치를 맞춘다
+        let config_store = Arc::new(config_store.sharing_port_check(skip_port_check));
         let relay_agent = crate::relay_agent::RelayAgent::new();
         Self {
             supervisor: supervisor.clone(),
@@ -883,6 +891,7 @@ impl IPCServer {
             .route("/api/instance/{id}/rename", post(handlers::instance::rename_instance))
             .route("/api/instance/{id}", get(handlers::instance::get_instance).delete(handlers::instance::delete_instance).patch(handlers::instance::update_instance_settings))
             .route("/api/instance/{id}/launch-preview", post(handlers::instance::launch_preview))
+            .route("/api/instance/{id}/port-conflicts", post(handlers::instance::draft_port_conflicts))
             // ── Provision progress ──
             .route("/api/provision-progress/{name}", get(handlers::instance::get_provision_progress).delete(handlers::instance::dismiss_provision_progress))
             // ── Server update ──
@@ -968,6 +977,10 @@ impl IPCServer {
                 get(handlers::permissions::get_command_board),
             )
             .route(
+                "/api/permissions/{guild_id}/import",
+                get(handlers::permissions::import_candidates).post(handlers::permissions::import_members),
+            )
+            .route(
                 "/api/permissions/{guild_id}/members/{discord_id}",
                 axum::routing::put(handlers::permissions::set_member).delete(handlers::permissions::remove_member),
             )
@@ -1025,7 +1038,6 @@ impl IPCServer {
             .route("/api/relay/host/{host_id}/status", get(handlers::relay::check_host_status))
             .route("/api/relay/host/{host_id}/nodes", get(handlers::relay::list_host_nodes))
             .route("/api/relay/node/{guild_id}/members", get(handlers::relay::list_node_members))
-            .route("/api/relay/node/{guild_id}/legacy-members", get(handlers::relay::list_node_legacy_members))
             .route(
                 "/api/relay/node/{guild_id}/channels",
                 get(handlers::relay::get_node_channels).put(handlers::relay::put_node_channels),
@@ -1101,14 +1113,6 @@ impl IPCServer {
 
     pub async fn start(self) -> Result<()> {
         tracing::info!("IPC HTTP server starting on {}", self.listen_addr);
-
-        // 포트 충돌 검사 여부는 전역 설정 하나(gui.portConflictCheck). 저장 시에도 갱신된다.
-        let check_ports = self.config_store.get_gui_settings().await.port_conflict_check;
-        self.supervisor
-            .read()
-            .await
-            .skip_port_check
-            .store(!check_ports, std::sync::atomic::Ordering::Relaxed);
 
         handlers::diagnostics::mark_started();
         let router = self.router();
@@ -1360,7 +1364,6 @@ mod tests {
             warnings: Vec::new(),
             unmet_dependencies: Vec::new(),
             path: "/modules/palworld".to_string(),
-            executable_path: None,
             server_executable: None,
             icon: None,
             interaction_mode: None,
@@ -1377,6 +1380,7 @@ mod tests {
             lists: Vec::new(),
             functions: None,
             addon: Default::default(),
+            update_version: None,
             commands,
         }
     }

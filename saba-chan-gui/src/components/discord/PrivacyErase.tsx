@@ -2,6 +2,7 @@ import clsx from 'clsx';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { safeShowToast } from '../../utils/helpers';
+import { startPoll } from '../../utils/poll';
 import { Icon } from '../Icon';
 
 /** 데몬이 삭제표를 받았는지 묻는 간격 */
@@ -28,7 +29,7 @@ export function PrivacyErase({ onErased, className }: PrivacyEraseProps) {
 
     useEffect(() => {
         if (phase !== 'waiting') return undefined;
-        const timer = setInterval(async () => {
+        const check = async () => {
             let status: string | undefined;
             try {
                 status = (await window.api.relayPrivacyEraseStatus())?.status;
@@ -47,8 +48,8 @@ export function PrivacyErase({ onErased, className }: PrivacyEraseProps) {
                 // expired, 또는 데몬이 다시 켜져 삭제표를 잊었다(none)
                 safeShowToast(t('discord.erase_expired'), 'warning', 5000);
             }
-        }, POLL_MS);
-        return () => clearInterval(timer);
+        };
+        return startPoll(check, POLL_MS, { immediate: false });
     }, [phase, t]);
 
     const start = async () => {

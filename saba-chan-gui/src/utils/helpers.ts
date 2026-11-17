@@ -160,59 +160,21 @@ export function createTranslateError(t: TFunction | TranslateFn) {
         if (msg === 'start_cancelled' || msg.includes('was stopped while it was starting')) {
             return t('errors.start_cancelled');
         }
-        if (msg.includes('Module failed to start')) {
-            return t('errors.module_failed_to_start');
-        }
         if (msg.includes('Failed to stop')) {
             return t('errors.failed_to_stop');
-        }
-        if (msg.includes('Already running')) {
-            return t('errors.already_running');
-        }
-        if (msg.includes('Not running')) {
-            return t('errors.not_running');
-        }
-
-        // Process errors
-        if (msg.includes('Process not found')) {
-            return t('errors.process_not_found');
-        }
-        if (msg.includes('Process crashed')) {
-            return t('errors.process_crashed');
-        }
-
-        // Config errors
-        if (msg.includes('Invalid configuration') || msg.includes('invalid config')) {
-            return t('errors.invalid_configuration');
-        }
-        if (msg.includes('Missing required field')) {
-            return t('errors.missing_required_field');
         }
 
         // Module errors
         if (msg.includes('Module not found')) {
             return t('errors.module_not_found');
         }
-        if (msg.includes('Failed to load module')) {
-            return t('errors.failed_to_load_module');
-        }
 
-        // Discord errors
-        if (msg.includes('Invalid token') || msg.includes('invalid token')) {
-            return t('errors.invalid_token');
-        }
-        if (msg.includes('Bot connection failed')) {
-            return t('errors.network_error');
-        }
+        // Discord errors (브리지 discordBotStart가 node_token_missing을 이 글자로 바꾼다)
         if (msg.includes('cloud_token_not_found')) {
             return t('errors.cloud_token_not_found');
         }
         if (msg === 'invalid_relay_url') {
             return t('discord.invalid_relay_url');
-        }
-        // Bot process exit — translate to user-friendly crash message
-        if (msg.includes('Bot process exited with code') || msg.includes('exited with code')) {
-            return t('errors.process_crashed');
         }
 
         // 모르는 오류는 데몬이 보낸 문구를 그대로 보여 준다 (데몬·모듈 문구는 이미 현지화돼 있다)

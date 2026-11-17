@@ -257,6 +257,8 @@ pub enum Action {
     Cancel,
     /// 쪽이나 고른 것이 바뀌었다: 그 화면에 필요한 것을 곧바로 읽는다
     Refresh,
+    /// 지금 상세 탭을 다시 읽는다 (자동으로 다시 읽지 않는 탭의 새로 고침)
+    Reload,
     /// 데스크톱 앱으로 바꾼다 (고른 서버를 넘긴다)
     SwitchToGui,
     Quit,
@@ -777,7 +779,7 @@ impl App {
 
     // ── 버튼 ──
 
-    /// 고른 모듈·익스텐션의 새 판 (업데이트 확인 결과에서, 지금 판과 다를 때만)
+    /// 고른 모듈·익스텐션의 바꿔 끼울 새 판 (데몬이 업데이트 상태에 판정해 준 `update_version`. 고정·바꾸기 대기면 없다)
     pub fn newer_version(&self) -> Option<String> {
         if self.page != Page::Addons {
             return None;
@@ -785,8 +787,7 @@ impl App {
         let id = self.selected()?;
         let component = if self.tab_index() == 0 { format!("module-{id}") } else { format!("ext-{id}") };
         let c = self.snap.updates.as_ref()?.get("components")?.as_array()?.iter().find(|c| s(c, "component") == component)?;
-        let (now, latest) = (s(c, "current_version"), s(c, "latest_version"));
-        (c.get("update_available").and_then(Value::as_bool) == Some(true) && !latest.is_empty() && latest != now).then(|| latest.to_string())
+        c.get("update_version").and_then(Value::as_str).map(str::to_string)
     }
 
     fn when(&self, w: When) -> bool {
@@ -1188,6 +1189,7 @@ impl App {
                 self.output.open = !self.output.open;
                 return None;
             }
+            KeyCode::F(5) => return Some(Action::Reload),
             KeyCode::F(9) if self.can_switch_to_gui() => return Some(Action::SwitchToGui),
             KeyCode::PageUp if !self.is_form_focus() => {
                 self.scroll(true, 10);
@@ -2111,6 +2113,19 @@ mod tests {
         assert!(parses("backup restore 'my server' 'b 2'") && parses("backup delete x y") && parses("backup create x"));
     }
 
+    /// 접속자 표는 F5를 눌러야 다시 읽는다 (게임에 사람 수를 주기적으로 묻지 않는다). r은 그대로 재시작이다
+    #[test]
+    fn the_players_table_reloads_on_f5() {
+        let mut a = app();
+        a.tab[Page::Servers.slot()] = 2;
+        let (k, _) = a.pane_want().unwrap();
+        a.apply_pane(k, super::super::data::PaneData::Rows(vec![json!({ "name": "steve" })]));
+        a.focus = Focus::Content;
+        assert_eq!(a.on_key(key(KeyCode::F(5))), Some(Action::Reload));
+        assert_eq!(a.on_key(key(KeyCode::Enter)), None);
+        assert_eq!(a.command.text, "server run 'my server' kick steve");
+    }
+
     /// 무엇이든 찾기: Ctrl+K, 초성으로 찾고 Enter로 그 화면, Tab은 같은 명령을 명령 줄에
     #[test]
     fn the_palette_finds_screens_by_initials_and_goes_there() {
@@ -2142,10 +2157,11 @@ mod tests {
         a.snap.modules = vec![json!({ "name": "minecraft" }), json!({ "name": "palworld" })];
         a.go(Page::Addons);
         a.list_state.select(Some(1));
-        let comp = |now: &str, latest: &str| json!({ "components": [{ "component": "module-palworld", "current_version": now, "latest_version": latest, "update_available": true }] });
-        a.snap.updates = Some(comp("0.1.12", "0.1.12"));
-        assert!(!lines(&a).iter().any(|l| l.starts_with("update")), "the same version is not an update");
-        a.snap.updates = Some(comp("0.1.12", "0.1.13"));
+        // "업데이트 있음"은 데몬이 판정한 `update_version`만 본다 (고정했거나 바꾸기를 기다리면 데몬이 주지 않는다)
+        let comp = |update: Value| json!({ "components": [{ "component": "module-palworld", "current_version": "0.1.12", "latest_version": "0.1.13", "update_available": true, "update_version": update }] });
+        a.snap.updates = Some(comp(Value::Null));
+        assert!(!lines(&a).iter().any(|l| l.starts_with("update")), "a pinned module is not an update");
+        a.snap.updates = Some(comp(json!("0.1.13")));
         a.focus = Focus::Actions;
         a.button = 0;
         assert_eq!(a.on_key(key(KeyCode::Enter)), Some(Action::RunAll(vec!["update download module-palworld".into(), "update apply module-palworld".into()])));

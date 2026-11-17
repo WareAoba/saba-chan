@@ -999,21 +999,27 @@ fn print_channels(r: &Value) {
 
 // ── 서버 관리: 앱의 서버 관리 탭과 같은 데몬 API ──
 
-/// "30m"·"6h"·"7d"·"90"(분) → 분. `forever`(잠금·음소거만)·`off`는 그 글자 그대로
+/// "30m"·"6h"·"7d"·"2w"·"90"(분) → 분. 단위는 m/h/d/w와 그 언어의 낱말(`bot.duration_units`, 웹 `parseDuration`과 같은 규칙).
+/// `forever`(잠금·음소거만)·`off`와 그 언어의 낱말(`bot.duration_forever`·`bot.duration_off`)은 그 글자 그대로
 fn mod_duration(text: &str, forever_ok: bool) -> Result<Value> {
     let t = text.trim().to_lowercase();
-    match t.as_str() {
-        "off" | "해제" | "끄기" => return Ok(json!("off")),
-        "forever" | "무기한" if forever_ok => return Ok(json!("forever")),
-        _ => {}
+    let words = |key: &str| t!(key).split(',').map(|w| w.trim().to_lowercase()).filter(|w| !w.is_empty()).collect::<Vec<_>>();
+    if t == "off" || words("bot.duration_off").contains(&t) {
+        return Ok(json!("off"));
+    }
+    if forever_ok && (t == "forever" || words("bot.duration_forever").contains(&t)) {
+        return Ok(json!("forever"));
     }
     let (num, unit) = t.split_at(t.find(|c: char| !c.is_ascii_digit()).unwrap_or(t.len()));
     let n: u64 = num.parse().map_err(|_| usage(t!("bot.bad_duration", value = text)))?;
-    let per = match unit.trim() {
-        "" | "m" | "분" => 1,
-        "h" | "시간" => 60,
-        "d" | "일" => 1440,
-        _ => return Err(usage(t!("bot.bad_duration", value = text))),
+    const UNIT_MINUTES: [u64; 4] = [1, 60, 1440, 10080];
+    let unit = unit.trim();
+    let i = match unit {
+        "" | "min" => Some(0),
+        _ => ["m", "h", "d", "w"].iter().position(|u| *u == unit).or_else(|| words("bot.duration_units").iter().position(|w| w == unit)),
+    };
+    let Some(per) = i.and_then(|i| UNIT_MINUTES.get(i).copied()) else {
+        return Err(usage(t!("bot.bad_duration", value = text)));
     };
     let minutes = n.saturating_mul(per);
     if minutes == 0 || minutes > 28 * 1440 {
@@ -1507,6 +1513,14 @@ mod tests {
         assert!(mod_duration("29d", true).is_err(), "Discord timeouts end at 28 days");
         assert!(mod_duration("soon", true).is_err());
         assert!(mod_duration("99999999999999999d", true).is_err(), "a huge count must not wrap past the cap");
+        // 웹(`parseDuration`)과 같은 규칙: 주(w)와 그 언어의 분·시간·일·주 낱말(locales)
+        assert_eq!(mod_duration("2w", true).unwrap(), json!(20160));
+        // 시험마다 언어가 다를 수 있어(처음 고른 언어로 고정) 지금 언어의 낱말로 본다
+        let word = |key: &str, i: usize| t!(key).split(',').nth(i).unwrap().trim().to_string();
+        assert_eq!(mod_duration(&format!("3{}", word("bot.duration_units", 1)), true).unwrap(), json!(180));
+        assert_eq!(mod_duration(&format!("1 {}", word("bot.duration_units", 3)), true).unwrap(), json!(10080));
+        assert_eq!(mod_duration(&word("bot.duration_forever", 0), true).unwrap(), json!("forever"));
+        assert_eq!(mod_duration(&word("bot.duration_off", 0), false).unwrap(), json!("off"));
     }
 
     #[test]

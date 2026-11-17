@@ -194,7 +194,7 @@ export function SettingsPanel({ api, server, moduleData, running }: ServerPanelP
         setTouched(new Set());
         // 저장은 됐지만 모듈이 게임 설정 파일에 쓰지 못했다 (GUI useServerSettingsStore와 같은 문구)
         if (res?.synced === false) toast(tg('settings.sync_failed', { error: res.sync_error || '' }), 'error');
-        else toast(running ? t('settings.saved_restart') : t('settings.saved'), 'ok');
+        else toast(running && res?.restart_required?.length ? t('settings.saved_restart') : t('settings.saved'), 'ok');
         // 데몬이 받았지만 쓰지 않는 키
         if (res?.ignored?.length) toast(tg('settings.ignored', { keys: res.ignored.join(', ') }), 'info');
     };

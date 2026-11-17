@@ -36,8 +36,6 @@ export interface ProgressBarConfig {
 // biome-ignore lint/suspicious/noExplicitAny: 기록 모양은 CommandModal이 정한다
 export type CommandHistoryEntry = Record<string, any>;
 
-type Panel = 'showModuleManager' | 'showDiscordSection' | 'showBackgroundSection' | 'showNoticeSection';
-
 interface UIState {
     activeTab: ActiveTab;
     activeServerId: string | null;
@@ -52,10 +50,6 @@ interface UIState {
     progressBar: ProgressBarConfig | null;
     showModuleManager: boolean;
     settingsInitialView: string | null;
-    showCommandModal: boolean;
-    // biome-ignore lint/suspicious/noExplicitAny: 명령 창이 다루는 서버 (서버 목록 항목에 화면 칸을 더한 것)
-    commandServer: any;
-    showDiscordSection: boolean;
     showBackgroundSection: boolean;
     showNoticeSection: boolean;
     unreadNoticeCount: number;
@@ -68,10 +62,8 @@ interface UIState {
     openModal: (config: ModalConfig) => void;
     closeModal: () => void;
     setProgressBar: (config: ProgressBarConfig | null) => void;
-    clearProgressBar: () => void;
     setShowModuleManager: (val: boolean) => void;
     openSettings: (initialView?: string | null) => void;
-    closeSettings: () => void;
     showServerTab: (serverId: string, tab: string) => void;
     clearRequestedServerTab: () => void;
     showDiscordView: (view: Omit<DiscordViewRequest, 'seq'>) => void;
@@ -79,25 +71,20 @@ interface UIState {
     revealServer: (serverId: string) => void;
     setOpenDiscordNodeId: (id: string | null) => void;
     requestFindSettingField: (name: string) => void;
-    setShowCommandModal: (val: boolean) => void;
-    setCommandServer: (server: UIState['commandServer']) => void;
-    getCommandHistory: (serverId: string) => CommandHistoryEntry[];
     pushCommandHistory: (serverId: string, entry: CommandHistoryEntry) => void;
     setActiveTab: (tab: ActiveTab) => void;
     setActiveServerId: (id: string | null) => void;
-    setShowDiscordSection: (val: boolean) => void;
     setShowBackgroundSection: (val: boolean) => void;
     setShowNoticeSection: (val: boolean) => void;
     setUnreadNoticeCount: (count: number) => void;
     setBackgroundDaemonStatus: (status: string) => void;
     setRevertResult: (result: RevertResult | null) => void;
-    togglePanel: (panelName: Panel) => void;
     _resetForTest: () => void;
 }
 
 let discordViewSeq = 0;
 
-export const useUIStore = create<UIState>()((set, _get) => ({
+export const useUIStore = create<UIState>()((set) => ({
     // ── Navigation ──
     // activeTab = 상단 페이지 (servers | discord | settings), activeServerId = 서버 페이지에서 고른 서버
     activeTab: 'servers',
@@ -118,9 +105,6 @@ export const useUIStore = create<UIState>()((set, _get) => ({
     // ── Panel visibility ──
     showModuleManager: false,
     settingsInitialView: null,
-    showCommandModal: false,
-    commandServer: null,
-    showDiscordSection: false,
     showBackgroundSection: false,
     showNoticeSection: false,
 
@@ -139,7 +123,6 @@ export const useUIStore = create<UIState>()((set, _get) => ({
     closeModal: () => set({ modal: null }),
 
     setProgressBar: (config) => set({ progressBar: config }),
-    clearProgressBar: () => set({ progressBar: null }),
 
 
     setShowModuleManager: (val) => set({ showModuleManager: val }),
@@ -149,11 +132,6 @@ export const useUIStore = create<UIState>()((set, _get) => ({
         set({
             activeTab: 'settings',
             settingsInitialView: initialView,
-        }),
-    closeSettings: () =>
-        set({
-            activeTab: 'servers',
-            settingsInitialView: null,
         }),
 
     showServerTab: (serverId, tab) =>
@@ -175,10 +153,6 @@ export const useUIStore = create<UIState>()((set, _get) => ({
     requestFindSettingField: (name) =>
         set((state) => ({ findSettingField: { name, seq: (state.findSettingField?.seq ?? 0) + 1 } })),
 
-    setShowCommandModal: (val) => set({ showCommandModal: val }),
-    setCommandServer: (server) => set({ commandServer: server }),
-
-    getCommandHistory: (serverId) => _get().commandHistoryMap[serverId] || [],
     pushCommandHistory: (serverId, entry) =>
         set((state) => ({
             commandHistoryMap: {
@@ -191,7 +165,6 @@ export const useUIStore = create<UIState>()((set, _get) => ({
     setActiveTab: (tab) => set(tab === 'settings' ? { activeTab: tab } : { activeTab: tab, settingsInitialView: null }),
     setActiveServerId: (id) => set({ activeServerId: id }),
 
-    setShowDiscordSection: (val) => set({ showDiscordSection: val }),
     setShowBackgroundSection: (val) => set({ showBackgroundSection: val }),
     setShowNoticeSection: (val) => set({ showNoticeSection: val }),
 
@@ -199,11 +172,6 @@ export const useUIStore = create<UIState>()((set, _get) => ({
 
     setBackgroundDaemonStatus: (status) => set({ backgroundDaemonStatus: status }),
     setRevertResult: (result) => set({ revertResult: result }),
-
-    togglePanel: (panelName) =>
-        set((state) => ({
-            [panelName]: !state[panelName],
-        })),
 
     // Test-only: reset to initial state
     _resetForTest: () =>
@@ -219,9 +187,6 @@ export const useUIStore = create<UIState>()((set, _get) => ({
             progressBar: null,
             showModuleManager: false,
             settingsInitialView: null,
-            showCommandModal: false,
-            commandServer: null,
-            showDiscordSection: false,
             showBackgroundSection: false,
             showNoticeSection: false,
             unreadNoticeCount: 0,
@@ -242,7 +207,6 @@ if (import.meta.hot) {
         data.prevState = {
             progressBar: s.progressBar,
             showModuleManager: s.showModuleManager,
-            showDiscordSection: s.showDiscordSection,
             showBackgroundSection: s.showBackgroundSection,
             showNoticeSection: s.showNoticeSection,
             unreadNoticeCount: s.unreadNoticeCount,

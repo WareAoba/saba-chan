@@ -288,24 +288,6 @@ fn measure_dirs_once(jobs: Vec<(String, Vec<PathBuf>)>, mut size_of: impl FnMut(
         .collect()
 }
 
-/// 폴더 크기 (심볼릭 링크는 따라가지 않는다)
-pub(crate) fn dir_size(path: &Path) -> u64 {
-    let mut total = 0;
-    let mut stack = vec![path.to_path_buf()];
-    while let Some(dir) = stack.pop() {
-        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
-        for entry in entries.flatten() {
-            let Ok(meta) = entry.metadata() else { continue };
-            if meta.is_dir() {
-                stack.push(entry.path());
-            } else if meta.is_file() {
-                total += meta.len();
-            }
-        }
-    }
-    total
-}
-
 /// PC 전체 물리 메모리(바이트). 실행 중에 바뀌지 않으므로 한 번만 잰다. 읽지 못하면 None
 pub fn host_memory_bytes() -> Option<u64> {
     static TOTAL: std::sync::OnceLock<Option<u64>> = std::sync::OnceLock::new();
@@ -529,7 +511,7 @@ impl SystemMonitor {
             roots.iter().map(|r| (r.id.clone(), outermost(&r.dirs))).collect();
         let shared = self.dir_sizes.clone();
         std::thread::spawn(move || {
-            let sizes = measure_dirs_once(jobs, dir_size);
+            let sizes = measure_dirs_once(jobs, crate::utils::dir_size);
             let mut state = shared.lock().unwrap_or_else(|e| e.into_inner());
             state.sizes = sizes;
             state.measured_at = Some((Instant::now(), now_ms()));
@@ -887,16 +869,6 @@ mod tests {
             assert!(sizes[id].contains(&(shared.clone(), 11)), "{id}: {:?}", sizes[id]);
         }
         assert_eq!(sizes["a"].len(), 2);
-    }
-
-    #[test]
-    fn dir_size_sums_files_recursively() {
-        let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("a.bin"), vec![0u8; 100]).unwrap();
-        std::fs::create_dir(tmp.path().join("sub")).unwrap();
-        std::fs::write(tmp.path().join("sub/b.bin"), vec![0u8; 23]).unwrap();
-        assert_eq!(dir_size(tmp.path()), 123);
-        assert_eq!(dir_size(&tmp.path().join("missing")), 0);
     }
 
     #[test]

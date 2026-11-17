@@ -191,9 +191,7 @@ impl<S: Subscriber> Layer<S> for DaemonLogLayer {
 /// 데몬만 켠 모드(GUI·CLI 없음)에서 서버 콘솔 줄을 stderr에 찍는다.
 /// 데몬 자체 tracing 로그는 이미 stderr로 출력되므로 여기서는
 /// 관리형 프로세스 콘솔 로그만 표시합니다.
-/// 데몬 로그 버퍼는 커서 동기화용으로만 보관합니다 (API용).
 pub async fn daemon_terminal_loop(
-    _daemon_buf: DaemonLogBuffer,
     supervisor: Arc<tokio::sync::RwLock<crate::supervisor::Supervisor>>,
     shutdown: tokio_util::sync::CancellationToken,
 ) {

@@ -10,19 +10,25 @@ describe('사바쨩 설정', () => {
         game_chat: 'keyword',
         game_chat_keyword: '!',
         module_settings: { stop_timeout: 30, auto_restart: 'false' },
+        effective: { auto_restart: false, restart_on_unknown_exit: true },
     };
 
-    it('저장된 값을 칸 값으로 읽는다 (재시작 기본값은 켜짐·꺼짐)', () => {
+    it('저장된 값을 칸 값으로 읽고, 재시작 칸은 데몬이 실제로 쓰는 값(effective)을 따른다', () => {
         expect(sabaValues(server)).toEqual({
             memory_limit_mb: '4096',
             stop_timeout: '30',
             game_chat: 'keyword',
             game_chat_keyword: '!',
             auto_restart: false,
-            restart_on_unknown_exit: false,
+            restart_on_unknown_exit: true,
             controllers_only: false,
         });
-        expect(sabaValues({}).auto_restart).toBe(true);
+    });
+
+    it('effective 를 싣지 않는 예전 데몬이면 재시작 칸을 저장된 값으로 읽는다', () => {
+        const old = { module_settings: { auto_restart: 'false', restart_on_unknown_exit: true } };
+        expect(sabaValues(old)).toMatchObject({ auto_restart: false, restart_on_unknown_exit: true });
+        expect(sabaValues({})).toMatchObject({ auto_restart: true, restart_on_unknown_exit: false });
     });
 
     it('바꾼 칸만 보내고, 비운 숫자 칸은 null 로 보낸다', () => {

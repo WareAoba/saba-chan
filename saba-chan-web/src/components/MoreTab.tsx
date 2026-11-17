@@ -6,6 +6,7 @@ import {
     buildRings,
     colorSlots,
     defaultItems,
+    formatBytes,
     type MetricsSnapshot,
     nextPeaks,
     type Peaks,
@@ -17,7 +18,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { setLanguage } from '../i18n';
 import { applyScreenFonts, applyTheme, readConsoleFonts, readMonitorItems, readPref, THEMES, writeMonitorItems, writePref } from '../prefs';
-import { sizeText } from './BackupsPanel';
 import { Dropdown } from './Dropdown';
 import { connectStream, STREAM_RETRY_MS, startPoll } from '@gui/utils/poll';
 import { Icon } from './icons';
@@ -129,7 +129,7 @@ function Metrics({ api }: { api: WebApi }) {
                                 <div className="row-main">
                                     <div className="row-title">{i.name}</div>
                                     <div className="row-sub">
-                                        CPU {Math.round(i.cpu_percent)}% · {sizeText(i.memory_bytes)}
+                                        CPU {Math.round(i.cpu_percent)}% · {formatBytes(i.memory_bytes)}
                                     </div>
                                 </div>
                             </li>

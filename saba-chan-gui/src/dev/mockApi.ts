@@ -934,6 +934,20 @@ const impl: Record<string, MockFn> = {
         p.members[id] = level;
         return ok(p);
     },
+    // 가져오기 후보 (데몬이 릴레이에 남은 부여값에서 데몬과 다른 것만 고른다)
+    permissionsImportCandidates: (guildId) =>
+        ok({
+            success: true,
+            candidates:
+                guildId === 'guild-1' && mockPermissions(guildId).members['u-4'] !== 1
+                    ? [{ id: 'u-4', username: 'sabafan', displayName: '사바팬', level: 1 }]
+                    : [],
+        }),
+    permissionsImport: (guildId, ids: string[]) => {
+        const p = mockPermissions(guildId);
+        for (const id of ids) if (id === 'u-4') p.members[id] = 1;
+        return ok({ ...p, imported: ids.map((id) => ({ id, level: 1 })) });
+    },
     permissionsRemoveMember: (guildId, id) => {
         delete mockPermissions(guildId).members[id];
         return ok({ success: true });
@@ -951,16 +965,6 @@ const impl: Record<string, MockFn> = {
                     : [{ id: 'u-1', username: 'wareaoba', displayName: '아오바' }],
             partial: false,
         }),
-    relayListLegacyMembers: (guildId) =>
-        ok(
-            guildId === 'guild-1'
-                ? [
-                      { id: 'u-1', username: 'wareaoba', displayName: '아오바', level: 2 },
-                      { id: 'u-2', username: 'mint', displayName: '민트', level: 2 },
-                      { id: 'u-4', username: 'sabafan', displayName: '사바팬', level: 1 },
-                  ]
-                : [],
-        ),
     relayBotInvite: () => ok({ url: 'https://discord.com/oauth2/authorize?client_id=0&scope=bot' }),
     relayInitiatePairing: () =>
         ok({ code: 'K7Q2-M9', expiresAt: new Date(Date.now() + 297000).toISOString(), pollSecret: 'x' }),

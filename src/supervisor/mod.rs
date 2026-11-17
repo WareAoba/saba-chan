@@ -116,8 +116,37 @@ tokio::task_local! {
     pub static STOPPED_AT: std::cell::Cell<Option<u64>>;
 }
 
+/// 자동 재시작·자동 정지·응답 없음 감시에 데몬이 실제로 쓰는 값 (서버 정보의 `effective`).
+/// 저장한 값이 없거나 읽을 수 없으면 기본값, 범위 밖이면 범위 안으로. 클라이언트는 기본값을 따로 두지 않고 이것을 칸 값으로 쓴다
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct Effective {
+    pub auto_restart: bool,
+    pub restart_on_unknown_exit: bool,
+    pub idle_stop: bool,
+    pub idle_stop_minutes: u64,
+    pub idle_stop_grace_minutes: u64,
+    pub unresponsive_action: watchdog::Action,
+    pub unresponsive_minutes: u64,
+}
+
+impl Effective {
+    pub fn of(instance: &crate::instance::ServerInstance) -> Self {
+        let idle = idle::configured(instance);
+        let watch = watchdog::rule_of(instance);
+        Self {
+            auto_restart: setting_flag(instance, "auto_restart", true),
+            restart_on_unknown_exit: setting_flag(instance, "restart_on_unknown_exit", false),
+            idle_stop: idle::enabled(instance),
+            idle_stop_minutes: idle.minutes,
+            idle_stop_grace_minutes: idle.grace_minutes,
+            unresponsive_action: watch.action,
+            unresponsive_minutes: watch.after.as_secs() / 60,
+        }
+    }
+}
+
 /// 인스턴스 설정의 참/거짓 값 (`true`/`false` 문자열도 받는다)
-fn setting_flag(instance: &crate::instance::ServerInstance, key: &str, default: bool) -> bool {
+pub(crate) fn setting_flag(instance: &crate::instance::ServerInstance, key: &str, default: bool) -> bool {
     match instance.module_settings.get(key) {
         Some(Value::Bool(b)) => *b,
         Some(Value::String(s)) if s == "true" => true,

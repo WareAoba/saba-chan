@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Icon } from '../Icon';
+import { SabaSlider } from '../ui/SabaUI';
 import './QuickPanel.css';
 import { QuickPanelHead, ServerQuickList, usePanelFit, useQuickServers } from './ServerQuickList';
 
@@ -42,7 +43,6 @@ export function OverlayMenu() {
         setScale(value);
         window.api.overlaySetScale(value);
     };
-    const fill = ((scale - SCALE_MIN) / (SCALE_MAX - SCALE_MIN)) * 100;
 
     return (
         <div className="quick-panel overlay-menu" ref={rootRef}>
@@ -53,15 +53,13 @@ export function OverlayMenu() {
             <div className="quick-panel-sep" />
             <label className="quick-panel-size">
                 <span className="quick-panel-size-label">{t('desktop_overlay.menu_size')}</span>
-                <input
+                <SabaSlider
                     className="quick-panel-slider"
-                    type="range"
                     min={SCALE_MIN}
                     max={SCALE_MAX}
                     step={SCALE_STEP}
                     value={scale}
-                    style={{ '--fill': `${fill}%` } as React.CSSProperties}
-                    onChange={(e) => resize(Number(e.target.value))}
+                    onChange={resize}
                 />
                 <span className="quick-panel-size-value">{scale}%</span>
             </label>

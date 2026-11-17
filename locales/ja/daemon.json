@@ -32,7 +32,18 @@
   "errors": {
     "agreement_required": "サーバーを起動するには{{names}}への同意が必要です。PC の サバちゃん で同意してください。",
     "memory_limit_at_start": "起動中にメモリ上限 ({{limit}} MiB) に達したためサーバーが停止しました。上限を RAM 設定より高くするか、空にしてください。",
-    "runner_missing": "saba-runner がないため管理型起動は使用不可。このサーバーの管理型起動をオフにするか、サバちゃん を再インストールしてください。"
+    "runner_missing": "saba-runner がないため管理型起動は使用不可。このサーバーの管理型起動をオフにするか、サバちゃん を再インストールしてください。",
+    "backup_save_rejected": "サーバーが保存コマンドを拒否",
+    "backup_save_unconfirmed": "サーバーの保存完了応答なし",
+    "backup_server_stopped": "バックアップ中にサーバーが終了",
+    "backup_file_locked": "サーバーが使用中のファイルあり",
+    "backup_disk_full": "ディスク容量不足",
+    "autosave_not_resumed": "バックアップ後に自動保存を再開できず",
+    "command_failed": "サーバーがコマンドを拒否",
+    "not_running": "サーバーが停止していた",
+    "check_failed": "更新確認失敗",
+    "instance_busy": "別の作業(バックアップ・復元)が進行中",
+    "backup_busy": "別の作業(バックアップ・復元)が進行中"
   },
   "chatbot": {
     "memo_template": "<!-- このような案内の行と、書き込んでいない見出しはおしゃべりサバちゃんに送られません。必要な項目だけ書いてください。 -->\n\n## 部屋の雰囲気\n<!-- このサーバーの会話の雰囲気や、どこまでの冗談が許されるかを書いてください。空のままなら基本の性格で話します。 -->\n\n## 呼び方\n<!-- サバちゃんが特定の人を呼ぶ呼び方があれば書いてください。例: (オーナー)と表示された人は「ご主人様」と呼ぶ。 -->\n\n## このサーバーの言葉\n<!-- このサーバーだけで通じるあだ名・ミーム・略語とその意味を書いてください。 -->\n\n## ゲームサーバーの案内\n<!-- サーバーのルールや運営時間など、サバちゃんが聞かれたら教えてよい内容を書いてください。 -->\n"
@@ -368,6 +379,29 @@
     "source_agent": "このPCのAIエージェント",
     "source_restart": "自動再起動",
     "source_idle": "接続者なしの自動停止",
-    "source_watchdog": "応答なしの監視"
+    "source_watchdog": "応答なしの監視",
+    "not_restarted": "{{exit}} · 再起動できず",
+    "scheduled_backup_failed": "{{name}} · 予約バックアップ失敗",
+    "scheduled_task_failed": "{{name}} · 予約タスク失敗",
+    "task_restart": "再起動",
+    "task_announce": "告知",
+    "task_update": "更新",
+    "task_start": "起動",
+    "task_stop": "停止",
+    "task_save": "保存",
+    "task_command": "ゲームコマンド"
+  },
+  "boot": {
+    "target": "起動先: {{mode}}",
+    "change_hint": "[DEL]で起動先を変更",
+    "starting": "{{secs}}秒後に{{mode}}を起動...",
+    "menu_title": "起動設定",
+    "menu_keys": "↑/↓ 移動  1-3 すぐ選択  Enter 決定",
+    "mode_daemon_only": "デーモンのみ",
+    "desc_gui": "グラフィカル画面を起動",
+    "desc_cli": "ターミナル画面を起動",
+    "desc_daemon_only": "画面なしで実行 (ログをコンソールに表示)",
+    "daemon_only": "デーモンのみ実行中 (ポート {{port}})",
+    "shutdown_hint": "Ctrl+Cで終了します。"
   }
 }

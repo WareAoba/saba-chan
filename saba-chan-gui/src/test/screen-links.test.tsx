@@ -121,21 +121,17 @@ describe('디스코드 페이지가 요청한 화면을 연다', () => {
         const { DiscordPage } = await import('../components/discord/DiscordPage');
         window.showToast = vi.fn() as never;
         useUIStore.setState({ requestedDiscordView: { kind: 'node', id: 'nope', tab: 'members', seq: 1 } });
+        const { useDiscordStore } = await import('../stores/useDiscordStore');
+        useDiscordStore.setState({
+            discordBotStatus: 'running',
+            discordCloudHostId: 'h',
+            relayConnected: false,
+            cloudNodes: [{ guildId: 'g1', guildName: '사바 마을' }],
+        });
         const Page = DiscordPage as unknown as React.ComponentType<Record<string, unknown>>;
         await act(async () => {
             render(
-                <Page
-                    discordBotStatus="running"
-                    discordCloudHostId="h"
-                    setDiscordCloudHostId={() => {}}
-                    relayConnected={false}
-                    relayConnecting={false}
-                    handleStartDiscordBot={() => {}}
-                    saveCurrentSettings={() => {}}
-                    cloudNodes={[{ guildId: 'g1', guildName: '사바 마을' }]}
-                    setCloudNodes={() => {}}
-                    setCloudMembers={() => {}}
-                />,
+                <Page saveCurrentSettings={() => {}} />,
             );
         });
         expect(window.showToast).toHaveBeenCalledWith(

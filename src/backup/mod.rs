@@ -1034,23 +1034,6 @@ pub fn expired_restore_safeties(list: &[BackupInfo], started_at: u64, now: u64) 
         .collect()
 }
 
-/// 백업 폴더가 디스크에 차지하는 크기 (백업 파일과 내용 저장소). 줄마다의 `size`와 달리 같은 내용을 한 번만 센다
-pub fn total_bytes(dir: &Path) -> u64 {
-    fn walk(path: &Path) -> u64 {
-        fs::read_dir(path)
-            .into_iter()
-            .flatten()
-            .flatten()
-            .map(|e| match e.metadata() {
-                Ok(m) if m.is_dir() => walk(&e.path()),
-                Ok(m) => m.len(),
-                Err(_) => 0,
-            })
-            .sum()
-    }
-    walk(dir)
-}
-
 /// 새것부터
 pub fn list(dir: &Path) -> Vec<BackupInfo> {
     list_checked(dir).unwrap_or_default()
@@ -1134,7 +1117,13 @@ pub fn prune(dir: &Path, keep: usize, protect: &[&str]) -> Vec<String> {
             *n > keep
         })
         .filter(|b| !protect.contains(&b.name.as_str()))
-        .filter(|b| fs::remove_file(dir.join(&b.name)).is_ok())
+        .filter(|b| match fs::remove_file(dir.join(&b.name)) {
+            Ok(()) => true,
+            Err(e) => {
+                tracing::warn!("Could not remove old backup {}: {}", b.name, e);
+                false
+            }
+        })
         .map(|b| b.name)
         .collect();
     if !removed.is_empty() {
@@ -2252,21 +2241,21 @@ mod tests {
 
     /// 백업 전체 용량은 디스크에 실제로 있는 크기다: 같은 내용을 가진 두 백업이 내용 저장소를 나눠 쓰므로 줄 크기의 합보다 작다
     #[test]
-    fn total_bytes_counts_shared_content_once() {
+    fn the_backup_folder_counts_shared_content_once() {
         let tmp = tempfile::tempdir().unwrap();
         let w = world(tmp.path());
         let dir = tmp.path().join("backups");
-        assert_eq!(total_bytes(&dir), 0);
+        assert_eq!(crate::utils::dir_size(&dir), 0);
         let first = create(&dir, BackupKind::Manual, &[w.clone()]).unwrap();
-        let one = total_bytes(&dir);
+        let one = crate::utils::dir_size(&dir);
         assert!(one > 0);
         let second = create(&dir, BackupKind::Manual, &[w.clone()]).unwrap();
         assert_eq!(second.stored, 0);
-        let two = total_bytes(&dir);
+        let two = crate::utils::dir_size(&dir);
         assert!(two > one && two < one * 2, "{one} -> {two}: only the small manifest is added");
         delete(&dir, &first.name).unwrap();
         delete(&dir, &second.name).unwrap();
-        assert_eq!(total_bytes(&dir), 0, "unused content is cleared with the last backup");
+        assert_eq!(crate::utils::dir_size(&dir), 0, "unused content is cleared with the last backup");
     }
 
     /// 폴더를 읽지 못한 것은 빈 목록이 아니다: 없는 폴더만 빈 목록이다

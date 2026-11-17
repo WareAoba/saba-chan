@@ -85,8 +85,9 @@ describe('PC 없는 사람의 웹', () => {
         ).toBe('page');
         fireEvent.click(within(tabs).getByRole('button', { name: /Servers/ }));
         const locked = screen.getByRole('heading', { name: 'PC required' }).closest('section') as HTMLElement;
-        expect(within(locked).getByRole('link', { name: 'saba-chan.online' }).getAttribute('href')).toBe(
-            'https://saba-chan.online',
+        // 내려받는 곳은 이 화면을 연 사이트다 (웹은 사이트와 같은 호스트의 /remote/ 아래에 놓인다)
+        expect(within(locked).getByRole('link', { name: window.location.host }).getAttribute('href')).toBe(
+            window.location.origin,
         );
     });
 

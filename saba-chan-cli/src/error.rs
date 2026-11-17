@@ -277,6 +277,7 @@ pub fn api_hint(code: &str, body: &Value) -> Option<String> {
         "import_not_backup" | "import_damaged" | "import_other_module" | "export_old_backup" => crate::i18n::try_t(&format!("err.hint.{code}")),
         // 켜진 서버가 쥐고 있는 파일 (`file`: 그 이름)
         "backup_file_locked" => Some(t!("err.hint.backup_file_locked", file = body.get("file").and_then(Value::as_str).unwrap_or("?"))),
+        "backup_disk_full" => Some(t!("err.hint.backup_disk_full")),
         "autosave_not_resumed" => Some(t!("err.hint.autosave_not_resumed")),
         "backup_failed_autosave_off" => Some(t!("err.hint.backup_failed_autosave_off")),
         "backup_save_rejected" => Some(t!("err.hint.backup_save_rejected")),

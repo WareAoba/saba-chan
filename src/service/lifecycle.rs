@@ -30,7 +30,7 @@ async fn start_unrecorded(state: &IPCServer, id: &str) -> Outcome {
             })
     };
     let Some((instance, managed)) = picked else {
-        return Err(instance_not_found(id));
+        return Err(Failure::instance_not_found(id));
     };
 
     // 점검 중에 들어온 정지도 시작을 취소하도록 세대를 점검 전에 잡는다.
@@ -123,10 +123,6 @@ async fn instance_key_of(state: &IPCServer, key: &str) -> Option<(String, String
         .map(|i| (i.id.clone(), i.name.clone()))
 }
 
-pub(crate) fn instance_not_found(id: &str) -> Failure {
-    Failure::coded(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id))
-}
-
 /// 정지 뒤 시작. 꺼져 있으면 시작만 한다. 작업 기록에는 `restart` 한 줄로 남는다.
 /// 답은 시작 답에 `stopped`(정지했는가)를 더한 것. 정지가 실패하면 그 답을 그대로 준다
 pub(crate) async fn restart(state: &IPCServer, id: &str, force: bool) -> Outcome {
@@ -172,7 +168,7 @@ async fn restart_unrecorded(state: &IPCServer, id: &str, mode: StopMode) -> Outc
         })
     };
     let Some((inst_id, stop_timeout, old_pid)) = picked else {
-        return Err(instance_not_found(id));
+        return Err(Failure::instance_not_found(id));
     };
     // 이 재시작의 정지가 올린 세대보다 더 올랐으면 그사이 다른 정지·시작이 들어온 것이다.
     // 기준은 정지가 알려 준 값이다: 정지 전에 따로 읽으면 그 틈에 끼어든 자동 재시작 시작까지 세어 스스로 취소한다
@@ -255,6 +251,13 @@ where
 {
     let deadline = std::time::Instant::now() + START_WAIT_LIMIT;
     loop {
+        // 잠금이 풀릴 때까지는 잠금만 본다: 시작 전체(모듈 점검·진행 표시·작업 기록)를 0.5초마다 되풀이하지 않는다
+        while crate::instance::lock::InstanceLock::held(id) && std::time::Instant::now() < deadline {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            if !still_wanted().await {
+                return None;
+            }
+        }
         let result = crate::supervisor::START_SINCE.scope(generation, Box::pin(start(state, id))).await;
         if !result.as_ref().is_err_and(Failure::is_busy) || std::time::Instant::now() >= deadline {
             return Some(result);
@@ -445,14 +448,15 @@ pub(crate) async fn watch_unresponsive_at(state: &IPCServer, now: std::time::Ins
 }
 
 /// 접속자 0명이 정한 시간 이어진 켜진 서버를 저장하고 정지한다 (인스턴스 설정 `idle_stop`, `supervisor::idle`).
-/// 접속자 수를 갱신한 바로 뒤에 1분마다 부른다. 강제 종료하지 않는다: 정지하지 못하면 다음 차례에 다시 본다
+/// 접속자 수를 갱신한 바로 뒤에 1분마다 부른다. 강제 종료하지 않는다: 정지하지 못하면 다음 차례에 다시 본다.
+/// 저장 후 종료를 요청할 길이 없다는 답(`graceful_stop_unavailable`)이면 그 실행(켠 시각)이 바뀔 때까지 다시 해 보지 않는다
 pub async fn stop_idle_servers(state: &IPCServer) {
     stop_idle_servers_at(state, saba_runner::now()).await
 }
 
 pub(crate) async fn stop_idle_servers_at(state: &IPCServer, now: u64) {
     use crate::supervisor::{idle, players};
-    let (runtime, due): (_, Vec<(String, u64)>) = {
+    let (runtime, due): (_, Vec<(String, u64, u64)>) = {
         let supervisor = state.supervisor.read().await;
         let mut due = Vec::new();
         for instance in supervisor.instance_store.list() {
@@ -465,12 +469,12 @@ pub(crate) async fn stop_idle_servers_at(state: &IPCServer, now: u64) {
             let started = started.unwrap_or_default();
             let count = players::get(&supervisor.runtime, &instance.id).map(|c| c.online);
             if let Some(minutes) = idle::observe(&instance.id, idle::rule_of(instance), started, count, now) {
-                due.push((instance.id.clone(), minutes));
+                due.push((instance.id.clone(), minutes, started));
             }
         }
         (supervisor.runtime.clone(), due)
     };
-    for (id, minutes) in due {
+    for (id, minutes, started) in due {
         // 그사이 누가 들어왔으면 끄지 않는다
         if players::get(&runtime, &id).map(|c| c.online) != Some(0) {
             continue;
@@ -483,6 +487,10 @@ pub(crate) async fn stop_idle_servers_at(state: &IPCServer, now: u64) {
             Err(failure) => {
                 idle::clear_stopped(&id);
                 tracing::warn!("Could not stop the idle server '{}': {}", id, failure.body);
+                // 저장 후 종료를 요청할 길이 없는 서버는 다시 해도 같다: 이 실행에서는 더 해 보지 않는다
+                if failure.body.get("error_code").and_then(Value::as_str) == Some("graceful_stop_unavailable") {
+                    idle::give_up(&id, started);
+                }
             }
         }
     }
@@ -500,6 +508,12 @@ pub(crate) async fn user_stop(state: &IPCServer, key: &str, force: bool) -> Outc
 }
 
 async fn stop_recorded(state: &IPCServer, key: &str, mode: StopMode) -> Outcome {
+    // 모듈 설정 `graceful_stop`을 끈 서버는 어디서 끄든(사람·예약·유휴·업데이트·재시작) 저장 후 종료 없이 바로 끈다
+    let graceful_off = {
+        let supervisor = state.supervisor.read().await;
+        supervisor.instance_store.find(key).is_some_and(|i| !crate::supervisor::setting_flag(i, "graceful_stop", true))
+    };
+    let mode = if graceful_off { StopMode::Force } else { mode };
     let result = match stop_unrecorded(state, key, mode == StopMode::Force).await {
         Err(failure) if mode == StopMode::SaveIfPossible && failure.body.get("error_code").and_then(Value::as_str) == Some("graceful_stop_unavailable") => {
             tracing::info!("'{}' has no way to save and exit; stopping it without saving", key);
@@ -512,7 +526,7 @@ async fn stop_recorded(state: &IPCServer, key: &str, mode: StopMode) -> Outcome 
 
 async fn stop_unrecorded(state: &IPCServer, key: &str, force: bool) -> Outcome {
     let Some((id, name)) = instance_key_of(state, key).await else {
-        return Err(instance_not_found(key));
+        return Err(Failure::instance_not_found(key));
     };
     let id = id.as_str();
     let _transition = crate::instance::transition::Transition::begin(id, crate::instance::transition::Kind::Stopping);
@@ -557,11 +571,10 @@ async fn stop_unrecorded(state: &IPCServer, key: &str, force: bool) -> Outcome {
             Err(e) => Err(lifecycle_failure(&e, "stop", "stop_failed")),
         }
     } else {
-        Err(Failure::coded(StatusCode::NOT_FOUND, "instance_not_found", format!("Server '{}' not found", name)))
+        Err(Failure::instance_not_found(&name))
     }
 }
 
-// NOTE: sync_gui_config は config::save_gui_config に統合されました (portConflictCheck 同期含む)
 /// 실행 전 비밀번호: 빈 REST 비밀번호는 GUI "비밀번호 자동 생성"(`autoGeneratePasswords`, 기본 켬)이 켜져 있을 때만 채운다.
 /// 꺼져 있으면 비워 두고, 모듈이 게임 설정의 값을 쓰거나 스스로 만든다(`rest_credentials`로 데몬에 돌아온다).
 /// 채우는 곳은 모듈이 선언한 설정(`[protocols.rest] password_setting`)이다: 선언이 없으면 만들지 않는다. `key`: 인스턴스 id 또는 이름
@@ -720,6 +733,145 @@ mod tests {
         let s = state.supervisor.read().await;
         assert!(s.tracker.get_pid("stop-during-restart").is_none(), "nothing is tracked");
         assert!(s.managed_store.get("stop-during-restart").await.is_none(), "the restart did not bring the server back");
+    }
+
+    /// 저장 후 종료를 요청할 길이 없는 서버의 자동 정지는 그 실행에서 한 번만 해 본다: 1분마다 모듈 `stop()`을 부르고
+    /// 실패를 기록하기를 되풀이하지 않는다
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn an_idle_stop_that_cannot_save_is_not_retried_every_minute() {
+        use crate::supervisor::players;
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n").unwrap();
+        let calls = tmp.path().join("stops.log");
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            format!(
+                "import json, sys\n\
+                 if sys.argv[1] == 'stop':\n    open({calls:?}, 'a').write('stop\\n')\n    \
+                 print(json.dumps({{'success': False, 'error_code': 'graceful_stop_unavailable', 'message': 'no console'}}))\n\
+                 else:\n    print(json.dumps({{'success': True}}))\n"
+            ),
+        )
+        .unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("srv", "game");
+        inst.id = "idle-cannot-save".into();
+        for (key, value) in [("idle_stop", json!(true)), ("idle_stop_minutes", json!(10)), ("idle_stop_grace_minutes", json!(0))] {
+            inst.module_settings.insert(key.into(), value);
+        }
+        sup.instance_store.add(inst).unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let mut child = std::process::Command::new("sleep").arg("30").spawn().unwrap();
+        state.supervisor.read().await.tracker.track("idle-cannot-save", child.id());
+        let rt = state.supervisor.read().await.runtime.clone();
+        let generation = players::roster_start(&rt, "idle-cannot-save");
+        let now = saba_runner::now();
+        for minutes in [0, 10, 11, 12] {
+            stop_idle_servers_at(&state, now + minutes * 60).await;
+        }
+        players::roster_end(&rt, "idle-cannot-save", generation);
+        let _ = child.kill();
+        let _ = child.wait();
+        assert_eq!(std::fs::read_to_string(&calls).unwrap().lines().count(), 1, "tried once, then left alone");
+    }
+
+    /// 작업 잠금(백업 등)을 기다리는 재시작은 풀릴 때까지 시작 전체(모듈 점검·진행 표시·작업 기록)를 되풀이하지 않는다
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_start_waiting_for_a_busy_instance_does_not_rerun_the_start_meanwhile() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n").unwrap();
+        let checks = tmp.path().join("validate.log");
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            format!(
+                "import json, sys\n\
+                 if sys.argv[1] == 'validate':\n    open({checks:?}, 'a').write('validate\\n')\n    print(json.dumps({{'success': True, 'issues': []}}))\n\
+                 elif sys.argv[1] == 'get_launch_command':\n    \
+                 print(json.dumps({{'success': True, 'program': '/bin/sh', 'args': ['-c', 'sleep 30'], 'working_dir': '.'}}))\n\
+                 else:\n    print(json.dumps({{'success': True}}))\n"
+            ),
+        )
+        .unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("srv", "game");
+        inst.id = "busy-restart".into();
+        sup.instance_store.add(inst).unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let backup = crate::instance::lock::InstanceLock::take("busy-restart").unwrap();
+        let waiting = {
+            let state = state.clone();
+            tokio::spawn(async move { start_when_free(&state, "busy-restart", 0, || async { true }).await })
+        };
+        tokio::time::sleep(std::time::Duration::from_millis(2500)).await;
+        drop(backup);
+        let started = waiting.await.unwrap().expect("still wanted");
+        let body = crate::ipc::internal::InternalResponse::from(started).body;
+        assert_ne!(body["success"], false, "{body}");
+        let _ = crate::supervisor::Supervisor::stop_server(&state.supervisor, "busy-restart", "game", true).await;
+        assert_eq!(std::fs::read_to_string(&checks).unwrap().lines().count(), 1, "the start ran once, after the lock was released");
+    }
+
+    /// 모듈 설정 `graceful_stop`을 끈 서버는 어디서 끄든(앱·웹·CLI·디스코드·예약·유휴) 저장 후 종료 없이 바로 끈다.
+    /// 예전에는 GUI 메인 창만 이 설정을 읽어 다른 경로의 정지는 저장 후 종료를 기다렸다
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn graceful_stop_off_stops_at_once_from_every_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n").unwrap();
+        // 모듈 stop()이 받은 force를 적어 둔다
+        let seen = tmp.path().join("force.log");
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            format!(
+                "import json, os, sys\n\
+                 if sys.argv[1] == 'stop':\n    cfg = json.load(sys.stdin)\n    open({seen:?}, 'a').write(json.dumps(cfg.get('force')) + '\\n')\n    os.kill(cfg['pid'], 9)\n\
+                 print(json.dumps({{'success': True}}))\n"
+            ),
+        )
+        .unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        for (id, graceful) in [("quick", json!(false)), ("saves", json!(true))] {
+            let mut inst = crate::instance::ServerInstance::new(id, "game");
+            inst.id = id.into();
+            inst.module_settings.insert("graceful_stop".into(), graceful);
+            sup.instance_store.add(inst).unwrap();
+        }
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let mut children = Vec::new();
+        for id in ["quick", "saves", "quick", "quick"] {
+            let child = std::process::Command::new("sleep").arg("30").spawn().unwrap();
+            state.supervisor.read().await.tracker.track(id, child.id());
+            children.push(child);
+            // 예약·유휴·업데이트 정지, 사람이 부른 정지, 예약 재시작 (재시작의 시작은 이 모듈이 실행 명령을 주지 않아 실패해도 된다)
+            match children.len() {
+                1 | 2 => drop(stop(&state, id, false).await),
+                3 => drop(user_stop(&state, id, false).await),
+                _ => drop(crate::audit::quietly(restart_unrecorded(&state, id, StopMode::Graceful)).await),
+            }
+        }
+        for mut child in children {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        let forces = std::fs::read_to_string(&seen).unwrap();
+        assert_eq!(forces.lines().collect::<Vec<_>>(), vec!["true", "false", "true", "true"]);
     }
 
     /// 정지를 받고도 기다리는 시간 안에 끝나지 않은 서버(월드 저장이 긴 서버)를 두고 재시작이 성공했다고 답했다:

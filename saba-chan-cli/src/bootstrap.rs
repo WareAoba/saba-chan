@@ -17,19 +17,14 @@ fn gui_section() -> serde_json::Value {
 
 /// 데몬 포트: `SABA_IPC_PORT` > `config.json` gui.ipcPort > 기본값 (데몬 main.rs와 같은 순서)
 pub fn ipc_port() -> u16 {
-    std::env::var("SABA_IPC_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or_else(settings_port)
-}
-
-/// 환경 변수 없이 뜬 데몬(자동 실행 서비스)이 여는 포트
-fn settings_port() -> u16 {
-    gui_section().get("ipcPort").and_then(|v| v.as_u64()).map(|p| p as u16).unwrap_or(constants::DEFAULT_IPC_PORT)
+    saba_chan_updater_lib::config_file::ipc_port()
 }
 
 /// 붙을 데몬 포트: 설정 포트에 데몬이 없는데 실행 중인 데몬이 남긴 기록(`daemon.lock.owner`)의 포트에서
 /// 그 데몬(같은 pid)이 답하면 그쪽이다. 설정에서 포트를 바꾸고 데몬을 아직 다시 켜지 않았을 때 그 데몬을 끄고
 /// 다시 켤 수 있게 한다
 pub fn live_port(configured: u16) -> u16 {
-    let record = saba_chan_updater_lib::constants::resolve_data_dir().join("daemon.lock.owner");
+    let record = constants::resolve_data_dir().join("daemon.lock.owner");
     let record = std::fs::read_to_string(record).ok().and_then(|t| recorded(&t));
     choose_port(configured, record, daemon_pid_at)
 }
@@ -132,7 +127,7 @@ pub fn daemon_binary() -> Option<PathBuf> {
 /// 직접 띄우면 서비스 밖에서 돌아 죽어도 다시 뜨지 않는다. 서비스는 설정 파일의 포트로 뜨므로 다른 포트를 골랐으면 직접 띄운다
 pub fn spawn_daemon(port: u16) -> Result<Option<std::process::Child>> {
     let binary = daemon_binary().ok_or_else(|| failed(t!("daemon.binary_not_found")))?;
-    if port == settings_port() {
+    if port == ConfigFile::default_location().ipc_port() {
         if let Some(start) = saba_chan_updater_lib::autostart::service_start(&binary) {
             let run = Command::new(&start[0]).args(&start[1..]).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status();
             // 서비스 관리자에 닿지 못하면(사용자 세션 버스 없음 등) 직접 띄운다

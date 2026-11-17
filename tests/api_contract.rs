@@ -1,7 +1,7 @@
 //! API 계약 테스트
 //!
 //! 1. GUI(`saba-chan-gui/src/api/createApi.ts`)와 CLI(`saba-chan-cli/src`)가 부르는 데몬 API가
-//!    라우트 표(`src/ipc/mod.rs`, `src/ipc/updates.rs`)에 있고 메서드도 맞는지
+//!    라우트 표(`src/ipc/mod.rs`, `src/ipc/updates/mod.rs`)에 있고 메서드도 맞는지
 //!    소스에서 대조한다. 없는 라우트·틀린 메서드(404/405) 호출을 CI에서 잡는다.
 //! 2. 실제로 IPC 서버를 띄워 모든 라우트가 토큰 없이는 401인지(`/health`만 200) 확인한다.
 //! 3. 표의 모든 경로가 실제 라우터에 등록됐는지 확인한다(등록 안 된 메서드 → 405).
@@ -33,7 +33,7 @@ fn route_table() -> Vec<Route> {
     // 핸들러가 클로저라 괄호가 겹치면 위 식이 못 잡는다: 첫 메서드만이라도 모은다
     let first = Regex::new(r#"\.route\(\s*"([^"]+)"\s*,\s*(get|post|put|patch|delete)\("#).unwrap();
     let mut routes: Vec<Route> = Vec::new();
-    for file in ["src/ipc/mod.rs", "src/ipc/updates.rs"] {
+    for file in ["src/ipc/mod.rs", "src/ipc/updates/mod.rs"] {
         let text = read(file);
         for cap in re.captures_iter(&text) {
             let methods: Vec<String> = method.captures_iter(&cap[2]).map(|m| m[1].to_string()).collect();

@@ -32,7 +32,18 @@
   "errors": {
     "agreement_required": "Acceptez {{names}} pour pouvoir démarrer le serveur. Acceptation dans Saba-chan sur le PC.",
     "memory_limit_at_start": "Serveur arrêté : limite de mémoire ({{limit}} Mio) atteinte au démarrage. Placez la limite au-dessus du paramètre de RAM, ou videz-la.",
-    "runner_missing": "saba-runner introuvable : démarrage géré impossible. Désactivez le démarrage géré de ce serveur ou réinstallez Saba-chan."
+    "runner_missing": "saba-runner introuvable : démarrage géré impossible. Désactivez le démarrage géré de ce serveur ou réinstallez Saba-chan.",
+    "backup_save_rejected": "Le serveur a refusé la commande d'enregistrement",
+    "backup_save_unconfirmed": "Le serveur n'a pas confirmé l'enregistrement",
+    "backup_server_stopped": "Le serveur s'est arrêté pendant la sauvegarde",
+    "backup_file_locked": "Le serveur utilise un fichier",
+    "backup_disk_full": "Espace disque insuffisant",
+    "autosave_not_resumed": "Impossible de réactiver l'enregistrement automatique après la sauvegarde",
+    "command_failed": "Le serveur a refusé la commande",
+    "not_running": "Le serveur était arrêté",
+    "check_failed": "Échec de la vérification des mises à jour",
+    "instance_busy": "Une autre tâche (sauvegarde ou restauration) est en cours",
+    "backup_busy": "Une autre tâche (sauvegarde ou restauration) est en cours"
   },
   "chatbot": {
     "memo_template": "<!-- Les lignes d’aide comme celle-ci et les titres laissés vides ne sont pas envoyés à Saba-chan qui parle. Remplis seulement ce qu’il faut. -->\n\n## Ambiance\n<!-- Décris comment on parle ici et jusqu’où les blagues peuvent aller. Vide = personnalité par défaut. -->\n\n## Comment appeler les gens\n<!-- Les surnoms que Saba-chan doit utiliser. Exemple : appeler la personne marquée (propriétaire) « maître ». -->\n\n## Mots de ce serveur\n<!-- Surnoms, mèmes et abréviations propres à ce serveur, avec leur sens. -->\n\n## Infos du serveur de jeu\n<!-- Règles, horaires et autres infos que Saba-chan peut donner à qui demande. -->\n"
@@ -368,6 +379,29 @@
     "source_agent": "Agent IA de ce PC",
     "source_restart": "Redémarrage auto",
     "source_idle": "Arrêt automatique, personne en ligne",
-    "source_watchdog": "Surveillance sans réponse"
+    "source_watchdog": "Surveillance sans réponse",
+    "not_restarted": "{{exit}} · Redémarrage impossible",
+    "scheduled_backup_failed": "{{name}} · Échec de la sauvegarde planifiée",
+    "scheduled_task_failed": "{{name}} · Échec de la tâche planifiée",
+    "task_restart": "Redémarrage",
+    "task_announce": "Annonce",
+    "task_update": "Mise à jour",
+    "task_start": "Démarrage",
+    "task_stop": "Arrêt",
+    "task_save": "Enregistrement",
+    "task_command": "Commande de jeu"
+  },
+  "boot": {
+    "target": "Cible de démarrage : {{mode}}",
+    "change_hint": "Appuyez sur [DEL] pour changer la cible de démarrage",
+    "starting": "Démarrage de {{mode}} dans {{secs}} s...",
+    "menu_title": "Configuration du démarrage",
+    "menu_keys": "↑/↓ Déplacer  1-3 Choix rapide  Entrée Valider",
+    "mode_daemon_only": "Daemon seul",
+    "desc_gui": "Lancer l'interface graphique",
+    "desc_cli": "Lancer l'interface terminal",
+    "desc_daemon_only": "Exécuter sans interface (journal dans la console)",
+    "daemon_only": "daemon seul sur le port {{port}}",
+    "shutdown_hint": "Appuyez sur Ctrl+C pour arrêter."
   }
 }

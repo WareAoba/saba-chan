@@ -45,6 +45,7 @@
   },
   "server": {
     "list_failed": "Falha ao obter lista de servidores (HTTP {{status}}): {{error}}",
+    "auth_failed": "Falha na autenticação. O token do daemon pode ter mudado.",
     "start_failed": "Falha ao iniciar: {{error}}",
     "stop_failed": "Falha ao parar: {{error}}",
     "status_check_failed": "Falha ao verificar status (HTTP {{status}}): {{error}}",

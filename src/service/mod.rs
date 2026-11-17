@@ -46,6 +46,11 @@ impl Failure {
         Self::new(status, serde_json::json!({ "success": false, "error": message.into(), "error_code": code }))
     }
 
+    /// 그런 인스턴스가 없다 (404 `instance_not_found`). 인스턴스를 찾지 못한 모든 길이 이 하나로 답한다
+    pub(crate) fn instance_not_found(id: &str) -> Self {
+        Self::coded(axum::http::StatusCode::NOT_FOUND, "instance_not_found", format!("Instance not found: {}", id))
+    }
+
     /// 다른 긴 작업이 작업 잠금을 쥐고 있다 (409 `instance_busy`)
     pub(crate) fn busy() -> Self {
         let failure = Self::coded(axum::http::StatusCode::CONFLICT, "instance_busy", "A backup, restore or update is running for this instance");

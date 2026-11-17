@@ -1126,7 +1126,7 @@ fn shape(v: &Value, path: &str, out: &mut std::collections::BTreeMap<String, std
         "metadata.modules[].display_names", "metadata.modules[].module_aliases_by_language",
         "metadata.modules[].commands.fields[].titles", "metadata.modules[].commands.fields[].descriptions",
         "metadata.modules[].commands.fields[].aliases_by_language", "metadata.modules[].commands.fields[].inputs[].titles",
-        "latestReleases",
+        "latestReleases", "latestAddons",
     ];
     let kind = match v {
         Value::Null => "null",
@@ -1181,9 +1181,9 @@ async fn the_heartbeat_matches_the_contract_sample_shared_with_the_relay() {
         s.0.push(body);
         axum::Json(s.1.pop_front().unwrap_or(Value::Null))
     }
-    // 업데이트 알림(latestReleases·updateHint)은 이 시험이 보지 않는다: 실으면 실제 업데이트 확인이 시작된다
+    // 업데이트 알림(latestReleases·latestAddons·updateHint)은 이 시험이 보지 않는다: 실으면 실제 업데이트 확인이 시작된다
     let mut response = sample["response"].clone();
-    for key in ["latestReleases", "updateHint"] {
+    for key in ["latestReleases", "latestAddons", "updateHint"] {
         response.as_object_mut().unwrap().remove(key);
     }
     let shared: Shared = Arc::new(Mutex::new((Vec::new(), VecDeque::from([response.clone(), response, sample["needMetadataResponse"].clone()]))));
@@ -1653,8 +1653,3 @@ fn backoff_doubles_up_to_cap() {
     assert_eq!(backoff(100), RETRY_MAX);
 }
 
-#[test]
-fn encodes_like_encode_uri_component() {
-    assert_eq!(encode_segment("abc-123"), "abc-123");
-    assert_eq!(encode_segment("a b/c"), "a%20b%2Fc");
-}

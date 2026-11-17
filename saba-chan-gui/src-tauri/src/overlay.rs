@@ -54,8 +54,10 @@ static PLACED: Mutex<Option<(f64, f64)>> = Mutex::new(None);
 /// 셸이 창을 옮기고 크기를 바꾸는 중: 그 사이의 이동 알림은 사용자가 끈 것이 아니다
 static PLACING: AtomicBool = AtomicBool::new(false);
 static SAVE_GEN: AtomicU64 = AtomicU64::new(0);
-/// 렌더러가 마지막으로 알린 내용 크기 (논리 px). 모니터가 바뀌면 이 크기로 다시 놓는다
-static LAST_FIT: Mutex<Option<(f64, f64)>> = Mutex::new(None);
+/// 렌더러가 마지막으로 알린 내용 크기 (논리 px)와 웹뷰 배율. 모니터가 바뀌면 이 크기로 다시 놓는다
+static LAST_FIT: Mutex<Option<(f64, f64, f64)>> = Mutex::new(None);
+/// 마지막으로 기록한 (웹뷰 배율, 모니터 배율) 어긋남. 지켜보기가 3초마다 다시 재므로 바뀔 때만 기록한다
+static SCALE_MISMATCH: Mutex<Option<(f64, f64)>> = Mutex::new(None);
 /// 이 시각(유닉스 ms)까지의 이동은 사용자가 끈 것이다
 static DRAG_UNTIL: AtomicU64 = AtomicU64::new(0);
 /// 창을 열 때마다 늘린다. 옛 창의 지켜보기는 멈춘다
@@ -130,6 +132,16 @@ fn window_size(width: f64, height: f64, scale: u32, dpi: f64) -> (f64, f64) {
         (width.clamp(MIN_SIDE, MAX_WIDTH * grow) * dpi).round(),
         (height.clamp(MIN_SIDE, MAX_HEIGHT * grow) * dpi).round(),
     )
+}
+
+/// 창 크기에 곱할 배율: 웹뷰가 실제로 그리는 배율(렌더러의 devicePixelRatio). 배율이 다른 모니터로 옮긴 뒤
+/// 웹뷰가 한동안 옛 배율로 그리는 동안 모니터 배율로 창을 맞추면 내용이 잘린다. 값이 이상하면 모니터 배율
+fn drawing_scale(reported: f64, monitor: f64) -> f64 {
+    if reported.is_finite() && (0.5..=8.0).contains(&reported) {
+        reported
+    } else {
+        monitor
+    }
 }
 
 /// 데몬 요청을 읽기와 서버 켜고 끄기로 묶는 창 (`allows_request`): 오버레이와 그 우클릭 판
@@ -315,9 +327,9 @@ fn has_content(width: f64, height: f64) -> bool {
     width >= 1.0 && height >= 1.0
 }
 
-/// 렌더러가 잰 내용 크기(논리 px)에 맞춰 크기와 자리를 정하고 보인다. 그릴 것이 없으면 숨긴다:
+/// 렌더러가 잰 내용 크기(논리 px)와 웹뷰 배율(`dpr`)에 맞춰 크기와 자리를 정하고 보인다. 그릴 것이 없으면 숨긴다:
 /// 보이지 않는 항상-위 창이 바탕화면 클릭을 가로채지 않게
-pub fn fit(app: &AppHandle, width: f64, height: f64) {
+pub fn fit(app: &AppHandle, width: f64, height: f64, dpr: f64) {
     let Some(win) = app.get_webview_window(OVERLAY) else {
         return;
     };
@@ -326,8 +338,8 @@ pub fn fit(app: &AppHandle, width: f64, height: f64) {
         let _ = win.hide();
         return;
     }
-    *LAST_FIT.lock().unwrap() = Some((width, height));
-    let Some((pos, size)) = plan(app, width, height) else {
+    *LAST_FIT.lock().unwrap() = Some((width, height, dpr));
+    let Some((pos, size)) = plan(app, width, height, dpr) else {
         crate::window::show_off_taskbar(&win);
         return;
     };
@@ -341,7 +353,7 @@ pub fn fit(app: &AppHandle, width: f64, height: f64) {
 }
 
 /// 이 내용 크기(논리 px)를 놓을 자리와 크기 (물리 px). 고른 점이 있는 모니터에, 그 모니터가 없으면 주 모니터의 처음 자리에
-fn plan(app: &AppHandle, width: f64, height: f64) -> Option<((f64, f64), (f64, f64))> {
+fn plan(app: &AppHandle, width: f64, height: f64, dpr: f64) -> Option<((f64, f64), (f64, f64))> {
     let anchor = *ANCHOR.lock().unwrap();
     let anchor = anchor.or_else(|| saved(&app.state::<AppState>().settings()).at);
     let monitors = app.available_monitors().unwrap_or_default();
@@ -351,8 +363,16 @@ fn plan(app: &AppHandle, width: f64, height: f64) -> Option<((f64, f64), (f64, f
         None => (app.primary_monitor().ok().flatten().or_else(|| monitors.first().cloned())?, None),
     };
     let dpi = monitor.scale_factor();
+    let drawn = drawing_scale(dpr, dpi);
+    let mismatch = ((drawn - dpi).abs() > 0.01).then_some((drawn, dpi));
+    let mut logged = SCALE_MISMATCH.lock().unwrap();
+    if mismatch.is_some() && *logged != mismatch {
+        tracing::info!("[Overlay] Webview draws at {}x on a {}x monitor; sizing the window to the webview", drawn, dpi);
+    }
+    *logged = mismatch;
+    drop(logged);
     // 물리 px는 정수로: 창이 옮겨진 뒤 잰 자리와 기억한 점이 어긋나 사용자가 옮긴 것으로 보지 않게
-    let size = window_size(width, height, SCALE.load(Ordering::SeqCst), dpi);
+    let size = window_size(width, height, SCALE.load(Ordering::SeqCst), drawn);
     let area = monitor.work_area();
     let (pos, _) = settle(anchor, size, rect(area.position, area.size), MARGIN * dpi);
     Some((pos, size))
@@ -428,20 +448,20 @@ fn watch(app: &AppHandle) {
             let Some(win) = app.get_webview_window(OVERLAY) else {
                 return;
             };
-            let Some((width, height)) = *LAST_FIT.lock().unwrap() else {
+            let Some((width, height, dpr)) = *LAST_FIT.lock().unwrap() else {
                 continue;
             };
             if dragging(now_ms(), DRAG_UNTIL.load(Ordering::SeqCst)) {
                 continue;
             }
-            let (Some((pos, size)), Ok(at)) = (plan(&app, width, height), win.outer_position()) else {
+            let (Some((pos, size)), Ok(at)) = (plan(&app, width, height, dpr), win.outer_position()) else {
                 continue;
             };
             if (pos.0 - at.x as f64).abs() > 1.0 || (pos.1 - at.y as f64).abs() > 1.0 {
-                fit(&app, width, height);
+                fit(&app, width, height, dpr);
             } else if let Ok(now) = win.outer_size() {
                 if (size.0 - now.width as f64).abs() > 1.0 || (size.1 - now.height as f64).abs() > 1.0 {
-                    fit(&app, width, height);
+                    fit(&app, width, height, dpr);
                 }
             }
         }
@@ -799,6 +819,17 @@ mod tests {
         assert_eq!(window_size(1000.0, 1000.0, 100, 1.0), (MAX_WIDTH, MAX_HEIGHT));
         assert_eq!(window_size(1000.0, 1000.0, 200, 1.5), (MAX_WIDTH * 3.0, MAX_HEIGHT * 3.0));
         assert_eq!(window_size(10.0, 10.0, 50, 1.0), (MIN_SIDE, MIN_SIDE));
+    }
+
+    /// 창 크기는 웹뷰가 실제로 그리는 배율을 따른다: 배율이 다른 모니터로 옮긴 뒤 웹뷰가 옛 배율로 그려도 자르지 않는다.
+    /// 렌더러가 알린 값이 이상하면 모니터 배율을 쓴다
+    #[test]
+    fn the_window_follows_the_webview_scale() {
+        assert_eq!(drawing_scale(1.25, 1.0), 1.25);
+        assert_eq!(drawing_scale(1.0, 1.25), 1.0);
+        for bad in [0.0, -1.0, f64::NAN, f64::INFINITY, 40.0] {
+            assert_eq!(drawing_scale(bad, 1.5), 1.5, "{bad}");
+        }
     }
 
     /// 펫과 그 우클릭 판만 데몬 요청이 묶인다

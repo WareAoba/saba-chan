@@ -26,12 +26,14 @@ impl Supervisor {
             let (ext_mgr, ctx) = hook;
             let host_context = sup.read().await.host_context(&instance.id);
             let results = crate::plugin::with_instance(host_context, crate::extension::run_hook(&ext_mgr, "server.status", ctx)).await;
-            for (_ext_id, result) in &results {
-                if let Ok(val) = result {
-                    if val.get("handled").and_then(|h| h.as_bool()) == Some(true) {
-                        return Ok(val.clone());
-                    }
+            match crate::extension::hook_answer(&results) {
+                Some(crate::extension::HookAnswer::Handled(_, val)) => return Ok(val.clone()),
+                // 상태를 맡을 수 있는 익스텐션이 실패했으면 데몬이 본 "꺼짐"으로 덮지 않는다
+                Some(crate::extension::HookAnswer::Failed(mut error)) => {
+                    error["server"] = json!(instance.name);
+                    return Ok(error);
                 }
+                None => {}
             }
         }
 
@@ -115,9 +117,6 @@ impl Supervisor {
         }
     }
 
-    /// 콘솔 명령을 stdin으로 보내야 하는가.
-    /// 모듈이 `stdin`을 지원하고 stdin이 열린 managed 프로세스가 돌고 있으면 stdin을 쓴다
-    /// (RCON은 보안상 늘 꺼져 있다).
     /// 데몬이 아는 실행 상태 `(실행 중, PID, 시작 시각)`: 서버 목록과 개별 상태 조회가 같이 쓴다.
     /// managed 프로세스가 있으면 그것이 살아 있는지로 정한다(끝났지만 모니터가 아직 치우지 않은 PID를 실행 중으로 보지 않는다).
     /// 없으면 추적 중인 PID가 있는지다

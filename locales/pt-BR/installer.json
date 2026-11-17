@@ -127,6 +127,7 @@
   "updater": {
     "modeUpdate": "Atualização",
     "appTitle": "Atualizador do Saba-chan",
+    "applyOnly": "Este atualizador só é executado quando o Saba-chan aplica uma atualização.",
     "minimize": "Minimizar",
     "close": "Fechar",
     "loadingTitle": "Atualizando...",

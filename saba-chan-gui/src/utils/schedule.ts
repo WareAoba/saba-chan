@@ -50,18 +50,6 @@ export const WEEKDAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 export const MAX_EVERY_DAYS = 365;
 export const MODES = ['every', 'daily', 'days', 'weekdays', 'date'];
 
-export function formatBytes(n: number) {
-    if (!Number.isFinite(n) || n < 0) return '—';
-    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-    let i = 0;
-    let v = n;
-    while (v >= 1024 && i < units.length - 1) {
-        v /= 1024;
-        i += 1;
-    }
-    return `${i === 0 ? v : v.toFixed(v < 10 ? 1 : 0)} ${units[i]}`;
-}
-
 // ── 예약 작업 초안 ↔ 데몬 형식 ──
 let draftSeq = 0;
 const modeOf = (task: ScheduledTask) => {

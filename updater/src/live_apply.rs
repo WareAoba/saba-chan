@@ -206,17 +206,7 @@ pub struct HttpProbe {
 
 impl HttpProbe {
     pub fn local() -> Self {
-        let port = std::env::var("SABA_IPC_PORT")
-            .ok()
-            .and_then(|p| p.parse::<u16>().ok())
-            .or_else(|| {
-                ConfigFile::default_location()
-                    .peek_section("gui")
-                    .get("ipcPort")
-                    .and_then(|v| v.as_u64())
-                    .and_then(|p| u16::try_from(p).ok())
-            })
-            .unwrap_or(crate::constants::DEFAULT_IPC_PORT);
+        let port = crate::config_file::ipc_port();
         Self::at(&format!("http://127.0.0.1:{}", port))
     }
 
@@ -1519,7 +1509,7 @@ mod tests {
             release_version: Some("0.1.15".into()),
         };
         assert_eq!(live.report_version(), "0.1.15", "the relay counts rollbacks per release");
-        begin_watch(&manager.staging_dir);
+        begin_watch(&manager.staging_dir).unwrap();
         // 적용과 새 데몬
         std::fs::rename(manager.install_root.join(core), manager.install_root.join(core_old)).unwrap();
         std::fs::write(manager.install_root.join(core), b"0.1.14").unwrap();

@@ -50,13 +50,26 @@ fn share_translations() {
         .collect();
     langs.sort();
     let mut out = String::from("// locales/<lang>/installer.json을 빌드 때 묶은 파일 (build.rs). 고치려면 원본을 고친다\nwindow.SABA_TRANSLATIONS = {\n");
+    // Rust가 쓰는 업데이트 창 문구 (`updater` 묶음의 RUST_KEYS): `$OUT_DIR/updater_texts.rs`의 `UPDATER_TEXTS` (언어, 키, 문구)
+    const RUST_KEYS: &[&str] = &["appTitle", "applyOnly"];
+    let mut rust = String::from("const UPDATER_TEXTS: &[(&str, &str, &str)] = &[\n");
     for file in langs {
         println!("cargo:rerun-if-changed={}", file.display());
         let lang = file.parent().and_then(Path::file_name).and_then(|n| n.to_str()).expect("language folder");
         let text = std::fs::read_to_string(&file).unwrap_or_else(|e| panic!("read {}: {e}", file.display()));
         out.push_str(&format!("{lang:?}: {},\n", text.trim()));
+        let parsed: serde_json::Value = serde_json::from_str(text.trim_start_matches('\u{feff}'))
+            .unwrap_or_else(|e| panic!("parse {}: {e}", file.display()));
+        for key in RUST_KEYS {
+            if let Some(value) = parsed["updater"][key].as_str() {
+                rust.push_str(&format!("    ({lang:?}, {key:?}, {value:?}),\n"));
+            }
+        }
     }
     out.push_str("};\n");
+    rust.push_str("];\n");
+    let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR");
+    std::fs::write(Path::new(&out_dir).join("updater_texts.rs"), rust).expect("write updater_texts.rs");
     if std::fs::read_to_string(&dst).ok().as_deref() != Some(out.as_str()) {
         std::fs::write(&dst, out).unwrap_or_else(|e| panic!("write {}: {e}", dst.display()));
     }

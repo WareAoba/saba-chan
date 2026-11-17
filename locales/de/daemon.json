@@ -32,7 +32,18 @@
   "errors": {
     "agreement_required": "Zustimmung zu {{names}} nötig, um den Server zu starten. In Saba-chan auf dem PC zustimmen.",
     "memory_limit_at_start": "Server beim Start am Speicherlimit ({{limit}} MiB) beendet. Limit über die RAM-Einstellung erhöhen oder leeren.",
-    "runner_missing": "saba-runner fehlt, verwalteter Start nicht möglich. Verwalteten Start für diesen Server ausschalten oder Saba-chan neu installieren."
+    "runner_missing": "saba-runner fehlt, verwalteter Start nicht möglich. Verwalteten Start für diesen Server ausschalten oder Saba-chan neu installieren.",
+    "backup_save_rejected": "Der Server hat den Speicherbefehl abgelehnt",
+    "backup_save_unconfirmed": "Der Server hat das Speichern nicht bestätigt",
+    "backup_server_stopped": "Der Server wurde während des Backups beendet",
+    "backup_file_locked": "Der Server verwendet eine Datei",
+    "backup_disk_full": "Nicht genug Speicherplatz",
+    "autosave_not_resumed": "Automatisches Speichern konnte nach dem Backup nicht wieder eingeschaltet werden",
+    "command_failed": "Der Server hat den Befehl abgelehnt",
+    "not_running": "Der Server war gestoppt",
+    "check_failed": "Update-Prüfung fehlgeschlagen",
+    "instance_busy": "Eine andere Aufgabe (Backup oder Wiederherstellung) läuft",
+    "backup_busy": "Eine andere Aufgabe (Backup oder Wiederherstellung) läuft"
   },
   "chatbot": {
     "memo_template": "<!-- Hinweiszeilen wie diese und leere Überschriften werden nicht an Sprechende Saba-chan geschickt. Fülle nur aus, was du brauchst. -->\n\n## Stimmung\n<!-- Beschreibe, wie hier geredet wird und wie derb Witze sein dürfen. Leer = Standardpersönlichkeit. -->\n\n## Anreden\n<!-- Besondere Anreden, die Saba-chan für jemanden benutzen soll. Beispiel: Die als (Besitzer) markierte Person „Meister“ nennen. -->\n\n## Begriffe dieses Servers\n<!-- Spitznamen, Memes und Abkürzungen, die nur hier verstanden werden, mit Bedeutung. -->\n\n## Infos zum Spielserver\n<!-- Regeln, Öffnungszeiten und anderes, das Saba-chan Fragenden sagen darf. -->\n"
@@ -368,6 +379,29 @@
     "source_agent": "KI-Agent auf diesem PC",
     "source_restart": "Automatischer Neustart",
     "source_idle": "Automatischer Stopp, niemand online",
-    "source_watchdog": "Überwachung bei fehlender Antwort"
+    "source_watchdog": "Überwachung bei fehlender Antwort",
+    "not_restarted": "{{exit}} · Neustart fehlgeschlagen",
+    "scheduled_backup_failed": "{{name}} · Geplantes Backup fehlgeschlagen",
+    "scheduled_task_failed": "{{name}} · Geplante Aufgabe fehlgeschlagen",
+    "task_restart": "Neustart",
+    "task_announce": "Ankündigung",
+    "task_update": "Update",
+    "task_start": "Start",
+    "task_stop": "Stopp",
+    "task_save": "Speichern",
+    "task_command": "Spielbefehl"
+  },
+  "boot": {
+    "target": "Startziel: {{mode}}",
+    "change_hint": "[DEL] drücken, um das Startziel zu ändern",
+    "starting": "{{mode}} startet in {{secs}} s...",
+    "menu_title": "Starteinstellungen",
+    "menu_keys": "↑/↓ Bewegen  1-3 Schnellauswahl  Enter Bestätigen",
+    "mode_daemon_only": "Nur Daemon",
+    "desc_gui": "Grafische Oberfläche starten",
+    "desc_cli": "Terminal-Oberfläche starten",
+    "desc_daemon_only": "Ohne Oberfläche ausführen (Log in der Konsole)",
+    "daemon_only": "nur Daemon auf Port {{port}}",
+    "shutdown_hint": "Strg+C zum Beenden drücken."
   }
 }

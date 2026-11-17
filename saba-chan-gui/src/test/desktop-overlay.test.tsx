@@ -29,8 +29,8 @@ describe('오버레이 브리지', () => {
         const invoke = vi.fn().mockResolvedValue({ ok: true });
         const on = vi.fn();
         const { api } = createApi({ invoke, hub: { dispatch: vi.fn(), on } as never });
-        await api.overlayFit(180, 220);
-        expect(invoke).toHaveBeenLastCalledWith('overlay_fit', { width: 180, height: 220 });
+        await api.overlayFit(180, 220, 1.25);
+        expect(invoke).toHaveBeenLastCalledWith('overlay_fit', { width: 180, height: 220, dpr: 1.25 });
         await api.overlayMenu();
         expect(invoke).toHaveBeenLastCalledWith('overlay_menu');
         await api.overlayMenuFit(212);
@@ -125,6 +125,41 @@ describe('오버레이 화면', () => {
     it('slot을 그리고 크기를 셸에 알린다', async () => {
         await mount();
         expect(window.api.overlayFit).toHaveBeenCalled();
+    });
+
+    it('웹뷰 배율과 함께 크기를 알리고, 배율이 바뀌면 다시 알린다 (배율이 다른 모니터 사이)', async () => {
+        const queries: { query: string; listener?: () => void }[] = [];
+        const matchMedia = vi.fn((query: string) => {
+            const entry: { query: string; listener?: () => void } = { query };
+            queries.push(entry);
+            return {
+                matches: true,
+                media: query,
+                addEventListener: (_: string, cb: () => void) => {
+                    entry.listener = cb;
+                },
+                removeEventListener: () => {
+                    entry.listener = undefined;
+                },
+            } as unknown as MediaQueryList;
+        });
+        const realMatchMedia = window.matchMedia;
+        const realDpr = window.devicePixelRatio;
+        window.matchMedia = matchMedia;
+        Object.defineProperty(window, 'devicePixelRatio', { configurable: true, value: 1.25 });
+        try {
+            await mount();
+            expect(window.api.overlayFit).toHaveBeenLastCalledWith(expect.any(Number), expect.any(Number), 1.25);
+            const watching = queries.filter((q) => q.listener);
+            expect(watching.at(-1)?.query).toBe('(resolution: 1.25dppx)');
+            Object.defineProperty(window, 'devicePixelRatio', { configurable: true, value: 1 });
+            act(() => watching.at(-1)?.listener?.());
+            expect(window.api.overlayFit).toHaveBeenLastCalledWith(expect.any(Number), expect.any(Number), 1);
+            expect(queries.filter((q) => q.listener).at(-1)?.query).toBe('(resolution: 1dppx)');
+        } finally {
+            window.matchMedia = realMatchMedia;
+            Object.defineProperty(window, 'devicePixelRatio', { configurable: true, value: realDpr });
+        }
     });
 
     it('원격 데몬을 골라도 번들을 주는 이 PC 데몬의 익스텐션 목록을 읽는다', async () => {

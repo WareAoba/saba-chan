@@ -1,6 +1,7 @@
 import { useEffect, useId, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
+import { errorText as maintenanceText } from '@gui/components/servers/maintenanceText';
 import { wordmarkFor } from '@gui/utils/wordmark';
 import { wordmarks } from '../art';
 import { useApp } from '../store';
@@ -22,6 +23,10 @@ export function errorText(t: TFn, res: ApiBody | null | undefined) {
     }
     return res?.error || res?.message || t('errors.generic');
 }
+
+/** 백업·예약 오류: 앱 서버 관리 탭과 같은 코드별 문구 (`tg`: gui 이름공간), 표에 없는 코드는 `errorText` */
+export const maintenanceError = (t: TFn, tg: TFn, res: ApiBody | null | undefined) =>
+    maintenanceText(res, errorText(t, res), tg);
 
 /** 켜기·다시 켜기 거절: 코드에 번역 문구가 있으면 그것을(GUI와 같은 `errors.*`), 없으면 `errorText` */
 export function refusalText(t: TFn, res: ApiBody | null | undefined) {

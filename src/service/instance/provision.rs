@@ -87,7 +87,10 @@ pub(crate) async fn install_new_server(job: InstallJob) {
         Ok(val) => {
             let success = val.get("success").and_then(|s| s.as_bool()).unwrap_or(false);
             if success {
-                let saved = save_installed(&supervisor_arc, &id_done, &module_path, &install_method, installed_version.as_deref(), &val).await;
+                let saved = {
+                    let mut sup = supervisor_arc.write().await;
+                    super::install::save_installed(&mut sup, &id_done, installed_version.as_deref(), &val, &install_dir_str)
+                };
 
                 // 받은 파일을 치우는 동안은 작업 잠금을 쥔다 (그 사이 시작·복원이 같은 폴더를 쓰지 않게)
                 if let (Err(_), Some(left)) = (&saved, &leftovers) { left.clear() }
@@ -155,39 +158,6 @@ async fn checked_install(
         }
         None => Err(anyhow::anyhow!("Instance disappeared during install")),
     }
-}
-
-/// 설치에 성공한 서버의 판·실행 파일·서버 폴더를 인스턴스에 적는다 (그 사이 지워졌으면 아무것도 하지 않는다)
-async fn save_installed(
-    supervisor: &tokio::sync::RwLock<crate::supervisor::Supervisor>,
-    id: &str,
-    module_path: &str,
-    install_method: &str,
-    installed_version: Option<&str>,
-    val: &Value,
-) -> anyhow::Result<()> {
-    let exe_path = val.get("executable_path").and_then(|v| v.as_str());
-    let install_path = val.get("install_path").and_then(|v| v.as_str());
-    let mut sup = supervisor.write().await;
-    let Some(mut updated) = sup.instance_store.get(id).cloned() else {
-        return Ok(());
-    };
-    if let Some(version) = installed_version {
-        updated.record_installed_version(install_method, version);
-    }
-    if let Some(exe) = exe_path.filter(|exe| !exe.is_empty()) {
-        updated.executable_path = Some(exe.to_string());
-    }
-    if let Some(ip) = install_path.filter(|ip| !ip.trim().is_empty()) {
-        // 확인되지 않은 모듈은 인스턴스 폴더 안만 (서버 폴더는 다음 격리 실행에 쓰기를 받는다)
-        let root = sup.instance_store.instance_dir(id);
-        if crate::sandbox::accepts_module_dir(std::path::Path::new(module_path), ip, &root) {
-            updated.working_dir = Some(ip.to_string());
-        } else {
-            tracing::warn!("Ignoring install_path outside the instance folder from unverified module: {}", ip);
-        }
-    }
-    sup.instance_store.update(id, updated)
 }
 
 /// `install_new_server`가 받는 값 (만들기 요청이 정한 것)

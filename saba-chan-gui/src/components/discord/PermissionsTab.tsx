@@ -249,34 +249,38 @@ export function PeopleView({
         : null;
     const over = peopleDrag.over === null ? null : Number(peopleDrag.over);
 
-    // 가져오기 후보는 릴레이에 남은 부여값(legacy-members)에서 고른다. 디스코드 멤버 목록에는 레벨이 없다
-    // 새로고침 때도 다시 읽는다 (옛 레벨을 가져오지 않게). 늦게 온 옛 응답은 버린다
-    const [legacy, setLegacy] = useState<DiscordMember[]>([]);
-    const legacyGen = useRef(0);
-    const loadLegacy = useCallback(async () => {
-        const gen = ++legacyGen.current;
+    // 가져오기 후보는 데몬이 릴레이에 남은 부여값에서 고른다 (데몬 값과 다른 것). 디스코드 멤버 목록에는 레벨이 없다
+    // 새로고침 때와 권한이 바뀔 때 다시 읽는다 (옛 레벨을 가져오지 않게). 늦게 온 옛 응답은 버린다
+    const [candidates, setCandidates] = useState<DiscordMember[]>([]);
+    const candidatesGen = useRef(0);
+    const loadCandidates = useCallback(async () => {
+        const gen = ++candidatesGen.current;
         // 새 목록이 올 때까지 옛 후보와 고른 것을 비워 옛 레벨을 가져오지 못하게 한다
-        setLegacy([]);
+        setCandidates([]);
         setPicked([]);
-        let res: unknown;
+        let res: ApiBody | null;
         try {
-            res = await window.api.relayListLegacyMembers(guildId);
+            res = await window.api.permissionsImportCandidates(guildId);
         } catch {
             res = null;
         }
-        if (gen === legacyGen.current) setLegacy(Array.isArray(res) ? (res as DiscordMember[]) : []);
+        if (gen === candidatesGen.current)
+            setCandidates(Array.isArray(res?.candidates) ? (res.candidates as DiscordMember[]) : []);
     }, [guildId]);
+    // 권한을 읽은 뒤에 묻는다 (후보는 데몬 권한과 비교한 것이라 권한이 바뀌면 달라진다)
+    const permKey = perm ? JSON.stringify([perm.members, perm.ladder, perm.ownerDiscordId]) : null;
+    // biome-ignore lint/correctness/useExhaustiveDependencies: permKey는 권한이 바뀌면 후보를 다시 읽게 한다
     useEffect(() => {
-        loadLegacy();
+        if (permKey === null) return undefined;
+        loadCandidates();
         return () => {
-            legacyGen.current += 1;
+            candidatesGen.current += 1;
         };
-    }, [loadLegacy]);
+    }, [loadCandidates, permKey]);
     const byId = useMemo(
-        () => new Map([...legacy, ...(members || [])].map((m) => [String(m.id), m])),
-        [legacy, members],
+        () => new Map([...candidates, ...(members || [])].map((m) => [String(m.id), m])),
+        [candidates, members],
     );
-    const candidates = useMemo(() => L.importCandidates(perm, legacy), [perm, legacy]);
     const others = useMemo(() => L.defaultMembers(perm, members), [perm, members]);
 
     // 확인 상태는 잠깐만 둔다 (나중에 무심코 한 번 눌러 바뀌지 않게)
@@ -416,7 +420,7 @@ export function PeopleView({
                         data-tooltip={t('discord.reload')}
                         onClick={() => {
                             load();
-                            loadLegacy();
+                            loadCandidates();
                             onRefreshMembers?.();
                         }}
                         disabled={busy || membersLoading}
@@ -607,13 +611,7 @@ export function PeopleView({
                             className="btn btn-primary"
                             disabled={busy || picked.length === 0}
                             onClick={async () => {
-                                const chosen = candidates.filter((m) => picked.includes(String(m.id)));
-                                await write(
-                                    ...chosen.map(
-                                        (m) => () =>
-                                            window.api.permissionsSetMember(guildId, String(m.id), m.level as number),
-                                    ),
-                                );
+                                await write(() => window.api.permissionsImport(guildId, picked));
                                 setPicked([]);
                             }}
                         >

@@ -96,6 +96,10 @@ function GameModules({ api }: { api: WebApi }) {
     const [busy, setBusy] = useState<string | null>(null);
 
     useEffect(() => {
+        // 업데이트할 버전(`update_version`)은 데몬이 목록에 싣는다: 탭을 열 때 다시 읽어 그사이 생긴 업데이트를 보인다
+        api.moduleList().then((list) => {
+            if (Array.isArray(list?.modules)) setModules(list.modules);
+        });
         api.moduleManifest().then((res) => {
             const mods = res?.manifest?.modules;
             // 목록을 못 받았으면 "모두 설치했어요"가 아니라 받지 못한 이유를 보인다
@@ -103,7 +107,7 @@ function GameModules({ api }: { api: WebApi }) {
                 return setCatalog({ error: t('modules.catalog_failed') });
             setCatalog(Object.entries(mods).map(([id, info]) => ({ id, ...(info as object) }) as CatalogModule));
         });
-    }, [api, t]);
+    }, [api, t, setModules]);
 
     // 설치와 업데이트는 같은 요청이다: 데몬이 공식 목록의 판으로 바꿔 끼운다
     const fetchOne = async (id: string) => {
@@ -130,7 +134,7 @@ function GameModules({ api }: { api: WebApi }) {
 
     const installed = new Set(modules.map(moduleIdOf));
     const available = Array.isArray(catalog) ? catalog.filter((m) => !installed.has(m.id)) : [];
-    const updates = moduleUpdates(modules, catalog);
+    const updates = moduleUpdates(modules);
     const latestOf = new Map<string, string | undefined>(updates.map((u) => [u.id, u.latest]));
     const byName = new Map(modules.map((m) => [m.name, m]));
     return (
