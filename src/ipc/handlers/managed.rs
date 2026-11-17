@@ -108,7 +108,7 @@ pub async fn query_instance_handler(
     let query = {
         let sup = state.supervisor.read().await;
         let Some(instance) = sup.instance_store.get(&id) else {
-            return fail(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id), None);
+            return crate::service::Failure::instance_not_found(&id).into_response();
         };
         sup.module_loader.get_module(&instance.module_name).ok().and_then(|m| m.metadata.queries.into_iter().find(|q| q.name == name))
     };
@@ -161,7 +161,7 @@ pub async fn lists_handler(Path(id): Path<String>, State(state): State<IPCServer
     let mut lists: Vec<Value> = {
         let sup = state.supervisor.read().await;
         let Some(instance) = sup.instance_store.get(&id) else {
-            return fail(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id));
+            return crate::service::Failure::instance_not_found(&id).into_response();
         };
         let Some(module) = sup.module_loader.get_module(&instance.module_name).ok().filter(|m| !m.metadata.lists.is_empty()) else {
             return fail(StatusCode::NOT_IMPLEMENTED, "not_supported", "This server's module has no player lists".into());
@@ -231,7 +231,7 @@ pub async fn chat_handler(Path(id): Path<String>, State(state): State<IPCServer>
     let call = {
         let sup = state.supervisor.read().await;
         let Some(instance) = sup.instance_store.get(&id) else {
-            return fail(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id));
+            return crate::service::Failure::instance_not_found(&id).into_response();
         };
         let Some(function) = sup.module_loader.get_module(&instance.module_name).ok().and_then(|m| m.metadata.chat_send_function) else {
             return fail(StatusCode::NOT_IMPLEMENTED, "not_supported", "This server's module cannot send chat".into());
@@ -281,7 +281,7 @@ pub async fn chat_link_handler(Path((id, guild)): Path<(String, String)>, State(
     let (reads_chat, sends_chat, running, runtime) = {
         let sup = state.supervisor.read().await;
         let Some(instance) = sup.instance_store.get(&id) else {
-            return fail(StatusCode::NOT_FOUND, "not_found", "Instance not found");
+            return crate::service::Failure::instance_not_found(&id).into_response();
         };
         let module = sup.module_loader.get_module(&instance.module_name).ok();
         let reads = module.as_ref().is_some_and(|m| !m.metadata.chat_patterns.is_empty());
@@ -427,7 +427,7 @@ pub async fn reset_preview_handler(Path(id): Path<String>, State(state): State<I
     let (base, boundary) = {
         let supervisor = state.supervisor.read().await;
         let Some(instance) = supervisor.instance_store.get(&id) else {
-            return super::error(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id));
+            return crate::service::Failure::instance_not_found(&id).into_response();
         };
         let instance_dir = supervisor.instance_store.instance_dir(&id);
         let module = supervisor.module_loader.get_module(&instance.module_name).ok();
@@ -460,7 +460,7 @@ fn reset_scope(scope: &Value, base: &std::path::Path, boundary: &crate::module_p
             for path in item["paths"].as_array().into_iter().flatten().filter_map(Value::as_str) {
                 let Some(path) = boundary.resolve(std::path::Path::new(path)) else { continue };
                 let Ok(meta) = std::fs::symlink_metadata(&path) else { continue };
-                size += if meta.is_dir() { crate::system_monitor::dir_size(&path) } else { meta.len() };
+                size += if meta.is_dir() { crate::utils::dir_size(&path) } else { meta.len() };
                 backup |= backed_up.iter().any(|b| saba_chan_updater_lib::paths_overlap(b, &path));
                 let name = path.strip_prefix(base).unwrap_or(&path).to_string_lossy().replace('\\', "/");
                 shown.push(if meta.is_dir() { format!("{name}/") } else { name });
@@ -544,7 +544,7 @@ pub async fn accept_agreements_handler(
             crate::service::instance::invalid_field("accept", format!("This server's module has no agreement '{}'", unknown)).into_response()
         }
         Err(e) => match e.downcast_ref::<crate::supervisor::InstanceNotFound>() {
-            Some(missing) => crate::service::lifecycle::instance_not_found(&missing.0).into_response(),
+            Some(missing) => crate::service::Failure::instance_not_found(&missing.0).into_response(),
             None => (StatusCode::INTERNAL_SERVER_ERROR, Json(crate::plugin::error_response(&e))).into_response(),
         },
     }
@@ -634,7 +634,7 @@ pub async fn get_installed_version_handler(
         let instance = match found {
             Some(i) => i,
             None => {
-                return super::error(StatusCode::NOT_FOUND, "not_found", format!("Instance '{}' not found", id));
+                return crate::service::Failure::instance_not_found(&id).into_response();
             }
         };
 
@@ -1105,7 +1105,7 @@ mod tests {
             json!([
                 [400, { "success": false, "error": "Missing 'install_dir' field", "error_code": "invalid_request" }],
                 [400, invalid("version", "'version' must be a string")],
-                [404, not_found("Instance not found: nope")],
+                [404, { "success": false, "error": "Instance not found: nope", "error_code": "instance_not_found" }],
                 [400, invalid("accept_agreements", "Module 'game' has no agreement 'tos'")],
                 [404, not_found("Module 'nope' not found: Module 'nope' not found")],
                 [422, { "success": false, "message": "no such build", "function": "install_server", "module": "game", "version": "1" }],
@@ -1139,13 +1139,13 @@ mod tests {
         let saved_dir = |sup: &Supervisor| sup.instance_store.get(&id).unwrap().working_dir.clone().unwrap();
 
         let exe = outside.join("server.exe").to_string_lossy().into_owned();
-        crate::service::instance::install::save_installed(&mut sup, &id, "1.0", &json!({ "executable_path": exe }), &install_dir).unwrap();
+        crate::service::instance::install::save_installed(&mut sup, &id, Some("1.0"), &json!({ "executable_path": exe }), &install_dir).unwrap();
         assert_eq!(saved_dir(&sup), install_dir, "the executable's folder outside the instance is not taken");
-        crate::service::instance::install::save_installed(&mut sup, &id, "1.0", &json!({ "executable_path": exe, "install_path": outside }), &install_dir).unwrap();
+        crate::service::instance::install::save_installed(&mut sup, &id, Some("1.0"), &json!({ "executable_path": exe, "install_path": outside }), &install_dir).unwrap();
         assert_eq!(saved_dir(&sup), install_dir, "install_path outside the instance is not taken");
         let nested = inside.join("bin");
         std::fs::create_dir_all(&nested).unwrap();
-        crate::service::instance::install::save_installed(&mut sup, &id, "1.0", &json!({ "executable_path": exe, "install_path": nested }), &install_dir).unwrap();
+        crate::service::instance::install::save_installed(&mut sup, &id, Some("1.0"), &json!({ "executable_path": exe, "install_path": nested }), &install_dir).unwrap();
         assert_eq!(saved_dir(&sup), nested.to_string_lossy(), "a folder inside the instance is kept");
     }
 

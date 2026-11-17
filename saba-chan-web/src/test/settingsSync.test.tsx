@@ -45,6 +45,23 @@ describe('웹 서버 설정 저장의 게임 파일 반영', () => {
         expect(toasts.some(([, tone]) => tone === 'ok')).toBe(false);
     });
 
+    // 켜진 서버여도 데몬이 다시 시작해야 한다고 한 칸(restart_required)이 있을 때만 재시작 안내를 붙인다 (GUI·CLI와 같다)
+    it('재시작 안내는 데몬의 restart_required가 있을 때만 보인다', async () => {
+        const save = async (restart_required: string[]) => {
+            const api = { instanceUpdateSettings: vi.fn().mockResolvedValue({ success: true, revision: 'r2', restart_required }) };
+            render(<SettingsPanel api={mockApi(api)} moduleData={moduleData as unknown as Module} running={true} server={asServer(server)} />);
+            fireEvent.change(screen.getByRole('textbox', { name: /motd/ }), { target: { value: 'new' } });
+            fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+            await act(async () => {});
+            const last = useApp.getState().toasts.at(-1)?.message;
+            cleanup();
+            useApp.setState({ toasts: [] });
+            return last;
+        };
+        expect(await save([])).toBe(i18n.t('settings.saved'));
+        expect(await save(['motd'])).toBe(i18n.t('settings.saved_restart'));
+    });
+
     // 저장 단추는 긴 설정 목록 맨 아래가 아니라 화면 아래에 붙는 막대에, 되돌리기와 함께
     it('고치면 화면 아래 저장 막대에서 저장하거나 되돌린다', () => {
         render(

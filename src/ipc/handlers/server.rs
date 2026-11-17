@@ -7,7 +7,7 @@ use axum::{
 };
 use serde_json::{json, Value};
 
-use crate::service::lifecycle::{instance_not_found, start, user_restart, user_stop};
+use crate::service::lifecycle::{start, user_restart, user_stop};
 
 use super::super::{ModuleInfo, ModuleListResponse, IPCServer, ProtocolsInfo, ServerStopRequest};
 
@@ -98,7 +98,12 @@ pub async fn version_handler(State(state): State<IPCServer>) -> impl IntoRespons
 }
 
 /// 모듈 목록 한 줄. 별명은 module.toml(언어 없는 낱말)에 `lang`(앱 언어)의 모듈 locales 별명을 더한다 (`chat::api::locale_aliases`)
-fn module_info(m: crate::module_loader::LoadedModule, versions: &std::collections::BTreeMap<String, String>, lang: &str) -> ModuleInfo {
+fn module_info(
+    m: crate::module_loader::LoadedModule,
+    versions: &std::collections::BTreeMap<String, String>,
+    lang: &str,
+    updates: &crate::ipc::updates::UpdateState,
+) -> ModuleInfo {
     let installed: std::collections::HashMap<String, String> = versions.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
     let unmet_dependencies = m
         .metadata
@@ -114,7 +119,9 @@ fn module_info(m: crate::module_loader::LoadedModule, versions: &std::collection
         })
     });
     let trust = crate::module_audit::module_trust(&m.path);
-    let addon = addon_choice(&format!("{}{}", saba_chan_updater_lib::relay::MODULE_PREFIX, m.metadata.name), &m.metadata.version);
+    let key = format!("{}{}", saba_chan_updater_lib::relay::MODULE_PREFIX, m.metadata.name);
+    let addon = addon_choice(&key, &m.metadata.version);
+    let update_version = addon.update_version(updates.announced_latest(&key).as_deref(), &m.metadata.version);
     let localized = crate::chat::api::locale_aliases(std::path::Path::new(&m.path), lang).unwrap_or_default();
     let unsupported_reason = m.metadata.unsupported_on(std::env::consts::OS, std::env::consts::ARCH).map(str::to_string);
     let mut meta = m.metadata;
@@ -138,7 +145,6 @@ fn module_info(m: crate::module_loader::LoadedModule, versions: &std::collection
         warnings: meta.warnings,
         unmet_dependencies,
         path: m.path,
-        executable_path: meta.executable_path,
         server_executable: meta.server_executable,
         icon: icon_base64,
         interaction_mode: meta.interaction_mode,
@@ -159,6 +165,7 @@ fn module_info(m: crate::module_loader::LoadedModule, versions: &std::collection
         lists: meta.lists,
         functions: None,
         addon,
+        update_version,
     }
 }
 
@@ -172,12 +179,13 @@ async fn module_list_response(
     failed: Vec<crate::module_loader::ModuleLoadError>,
     versions: &std::collections::BTreeMap<String, String>,
     lang: &str,
+    updates: &crate::ipc::updates::UpdateState,
 ) -> axum::response::Response {
     match modules {
         Ok(modules) => {
             // 구현한 함수 목록: 캐시에 없으면 짧게만 기다린다(느린 모듈은 null, 묻기는 뒤에서 마저). 데몬 락 밖에서, 모듈끼리 동시에
             let asks: Vec<_> = modules.iter().map(|m| tokio::spawn(crate::plugin::module_functions_for_list(m.entry_path()))).collect();
-            let mut modules: Vec<ModuleInfo> = modules.into_iter().map(|m| module_info(m, versions, lang)).collect();
+            let mut modules: Vec<ModuleInfo> = modules.into_iter().map(|m| module_info(m, versions, lang, updates)).collect();
             for (info, ask) in modules.iter_mut().zip(asks) {
                 info.functions = ask.await.ok().flatten();
             }
@@ -195,7 +203,7 @@ pub async fn list_modules(State(state): State<IPCServer>) -> impl IntoResponse {
         let supervisor = state.supervisor.read().await;
         (supervisor.list_modules(), supervisor.module_loader.load_errors())
     };
-    module_list_response(modules, failed, &versions, &state.config_store.ui_language().await).await
+    module_list_response(modules, failed, &versions, &state.config_store.ui_language().await, &state.update_state).await
 }
 
 /// POST /api/modules/refresh - 모듈 캐시를 새로고침하고 다시 발견
@@ -213,7 +221,7 @@ pub async fn refresh_modules(State(state): State<IPCServer>) -> impl IntoRespons
     }
     let versions = component_versions(&state).await;
     let failed = state.supervisor.read().await.module_loader.load_errors();
-    module_list_response(modules, failed, &versions, &state.config_store.ui_language().await).await
+    module_list_response(modules, failed, &versions, &state.config_store.ui_language().await, &state.update_state).await
 }
 
 /// GET /api/modules/schema - module.toml 스키마 v1 (JSON Schema)
@@ -554,7 +562,7 @@ pub async fn get_instance_status(
             }
         }
     } else {
-        super::error(StatusCode::NOT_FOUND, "instance_not_found", format!("Server '{}' not found", id))
+        crate::service::Failure::instance_not_found(&id).into_response()
     }
 }
 
@@ -590,7 +598,7 @@ pub async fn restart_instance_handler(
 pub async fn instance_events_handler(Path(id): Path<String>, State(state): State<IPCServer>) -> impl IntoResponse {
     let supervisor = state.supervisor.read().await;
     if supervisor.instance_store.get(&id).is_none() {
-        return instance_not_found(&id).into_response();
+        return crate::service::Failure::instance_not_found(&id).into_response();
     }
     Json(json!({ "events": supervisor.exit_events(&id) })).into_response()
 }
@@ -823,6 +831,35 @@ mod tests {
         };
         assert_eq!(managed("default"), json!(true), "managed is the default (C8b)");
         assert_eq!(managed("direct"), json!(false));
+    }
+
+    /// 서버 정보의 `effective`는 데몬이 자동 재시작·자동 정지·응답 없음 감시에 실제로 쓰는 값이다:
+    /// 저장한 값('false' 같은 글자 포함), 없는 칸은 데몬 기본값, 범위 밖 값은 범위 안으로. 목록과 `GET /api/instance/:id`가 같다
+    #[tokio::test]
+    async fn server_list_and_instance_carry_the_effective_behavior_settings() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("a", "plain");
+        inst.module_settings.insert("auto_restart".into(), json!("false"));
+        inst.module_settings.insert("idle_stop_minutes".into(), json!("45"));
+        inst.module_settings.insert("unresponsive_minutes".into(), json!(1));
+        let id = inst.id.clone();
+        sup.instance_store.add(inst).unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+
+        let expected = json!({
+            "auto_restart": false, "restart_on_unknown_exit": false,
+            "idle_stop": false, "idle_stop_minutes": 45, "idle_stop_grace_minutes": 15,
+            "unresponsive_action": "notify", "unresponsive_minutes": 5,
+        });
+        let list = crate::ipc::internal::into_internal(list_servers(State(state.clone()), Query(ListServersQuery::default())).await).await.body;
+        assert_eq!(list["servers"][0]["effective"], expected);
+        let one = crate::ipc::internal::into_internal(crate::ipc::handlers::instance::get_instance(axum::extract::Path(id), State(state)).await.into_response()).await.body;
+        assert_eq!(one["effective"], expected);
     }
 
     /// 설정 칸마다 저장된 값(`stored`)은 데몬이 고른다: 공통 칸(port)은 인스턴스 칸, 나머지는 module_settings

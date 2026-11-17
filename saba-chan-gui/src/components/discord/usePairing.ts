@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ApiBody } from '../../types/daemon';
+import { startPoll } from '../../utils/poll';
 
 const POLL_MS = 3000;
 const SUCCESS_HOLD_MS = 2000;
@@ -29,7 +30,7 @@ export function usePairing({ relayUrl, onClaimed, beforeStart }: UsePairingOptio
     const [remaining, setRemaining] = useState(0);
     // 실패 이유(데몬 error_code). 카드가 알맞은 문구를 고른다
     const [errorCode, setErrorCode] = useState<string | null>(null);
-    const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const pollRef = useRef<(() => void) | null>(null);
     const holdRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     // start·reset·화면 이탈마다 올린다: 지난 흐름의 늦은 응답이 상태를 바꾸지 않게
     const sessionRef = useRef(0);
@@ -39,7 +40,7 @@ export function usePairing({ relayUrl, onClaimed, beforeStart }: UsePairingOptio
     claimedRef.current = onClaimed;
 
     const stopPolling = useCallback(() => {
-        if (pollRef.current) clearInterval(pollRef.current);
+        pollRef.current?.();
         pollRef.current = null;
     }, []);
 
@@ -135,7 +136,7 @@ export function usePairing({ relayUrl, onClaimed, beforeStart }: UsePairingOptio
             setCode(data.code);
             setExpiresAt(data.expiresAt);
             setStatus('waiting');
-            pollRef.current = setInterval(() => check(false), POLL_MS);
+            pollRef.current = startPoll(() => check(false), POLL_MS, { immediate: false });
         } catch (e) {
             if (!live()) return;
             console.error('[Pairing] initiate failed:', e);

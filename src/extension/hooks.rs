@@ -229,6 +229,13 @@ impl HookPlan {
             let result = crate::plugin::run_plugin_with_timeout(&module_path, &function, call.context, timeout_secs).await;
             match result {
                 Ok(val) => {
+                    // Python 예외·격리 거부도 정식 답(`success:false`)으로 온다. 호출부는 결과를 버리기도 하니 여기서 남긴다
+                    if val.get("success").and_then(Value::as_bool) == Some(false) {
+                        let code = val.get("error_code").and_then(Value::as_str).unwrap_or("-");
+                        let message = val.get("message").or_else(|| val.get("error")).and_then(Value::as_str).unwrap_or("");
+                        let stderr = val.get("stderr_tail").map(Value::to_string).unwrap_or_default();
+                        tracing::warn!("Hook '{}' ext '{}' failed: {} {} {}", self.hook, call.ext_id, code, message, stderr);
+                    }
                     let handled = val.get("handled").and_then(|h| h.as_bool()) == Some(true);
                     results.push((call.ext_id.clone(), Ok(val)));
                     if handled {
@@ -244,6 +251,31 @@ impl HookPlan {
         }
         results
     }
+}
+
+/// 시작·정지·상태 hook(`server.pre_start`·`server.stop`·`server.status`)의 결과에서 부른 쪽이 답으로 쓸 것
+#[derive(Debug, PartialEq)]
+pub enum HookAnswer<'a> {
+    /// 그 일을 맡은 익스텐션(`handled:true`)과 그 답
+    Handled(&'a str, &'a Value),
+    /// 맡을 수 있는 익스텐션이 실패했다(호출 실패·예외·`success:false`). 데몬이 대신 하면 익스텐션이 맡은 서버를
+    /// 두 번 띄우거나 꺼진 것으로 잘못 보이므로 이 실패를 답으로 쓴다
+    Failed(Value),
+}
+
+/// 세 hook이 같은 규칙으로 결과를 읽는다: 맡은 답이 먼저, 없으면 첫 실패, 둘 다 없으면 None (데몬이 직접 한다)
+pub fn hook_answer(results: &[(String, Result<Value>)]) -> Option<HookAnswer<'_>> {
+    let handled = results.iter().find_map(|(ext_id, result)| match result {
+        Ok(val) if val.get("handled").and_then(Value::as_bool) == Some(true) => Some(HookAnswer::Handled(ext_id.as_str(), val)),
+        _ => None,
+    });
+    handled.or_else(|| {
+        results.iter().find_map(|(_, result)| match result {
+            Err(e) => Some(HookAnswer::Failed(crate::plugin::error_response(e))),
+            Ok(val) if val.get("success").and_then(Value::as_bool) == Some(false) => Some(HookAnswer::Failed(val.clone())),
+            Ok(_) => None,
+        })
+    })
 }
 
 /// 서버 hook(`server.*`, 익스텐션 명령)이 모두 받는 문맥: `instance_id`, `instance_name`, `instance_dir`, `module`,

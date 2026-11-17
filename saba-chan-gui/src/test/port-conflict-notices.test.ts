@@ -26,8 +26,8 @@ describe('포트 충돌 강제 정지 알림', () => {
         );
         const { api } = createApi({ invoke, hub: { dispatch: vi.fn() } as never });
 
-        await api.serverList();
-        await api.serverList();
+        await api.serverList({ notices: true });
+        await api.serverList({ notices: true });
 
         const paths = invoke.mock.calls.filter(([cmd]) => cmd === 'daemon_request').map(([, a]) => a!.path);
         expect(paths).toEqual(['/api/servers?notices_after=0', '/api/servers?notices_after=1760000000000002']);
@@ -41,8 +41,8 @@ describe('포트 충돌 강제 정지 알림', () => {
             cmd === 'daemon_request' ? new Promise((resolve) => pending.push(resolve)) : Promise.resolve(),
         );
         const { api } = createApi({ invoke, hub: { dispatch: vi.fn() } as never });
-        const first = api.serverList();
-        const second = api.serverList();
+        const first = api.serverList({ notices: true });
+        const second = api.serverList({ notices: true });
         await vi.waitFor(() => expect(pending).toHaveLength(2));
         pending[0]({ status: 200, data: { servers: [], port_conflict_stops: [evt] } });
         pending[1]({ status: 200, data: { servers: [], port_conflict_stops: [evt] } });
@@ -50,5 +50,34 @@ describe('포트 충돌 강제 정지 알림', () => {
         expect(a.port_conflict_stops).toHaveLength(1);
         expect(b.port_conflict_stops).toHaveLength(0);
         expect(invoke.mock.calls.filter(([cmd]) => cmd === 'notify')).toHaveLength(1);
+    });
+
+    it('목록만 다시 읽는 조회는 알림을 받아 가지 않는다 (메인 창의 목록 조회가 알린다)', async () => {
+        const evt = stop(1760000000000004, 25565);
+        const invoke = vi.fn(async (cmd: string, _args?: Record<string, unknown>) =>
+            cmd === 'daemon_request' ? { status: 200, data: { servers: [], port_conflict_stops: [evt] } } : undefined,
+        );
+        const { api } = createApi({ invoke, hub: { dispatch: vi.fn() } as never });
+
+        const plain = await api.serverList();
+        expect(plain.port_conflict_stops ?? []).toHaveLength(0);
+        expect(invoke.mock.calls.filter(([cmd]) => cmd === 'notify')).toHaveLength(0);
+
+        const owned = await api.serverList({ notices: true });
+        expect(owned.port_conflict_stops).toHaveLength(1);
+        expect(invoke.mock.calls.filter(([cmd]) => cmd === 'notify')).toHaveLength(1);
+    });
+
+    it('메인 창이 아닌 창(콘솔 팝아웃)은 알림을 받아 가지도 띄우지도 않는다', async () => {
+        const invoke = vi.fn(async (cmd: string, _args?: Record<string, unknown>) =>
+            cmd === 'daemon_request'
+                ? { status: 200, data: { servers: [], port_conflict_stops: [stop(1760000000000005, 25565)] } }
+                : undefined,
+        );
+        const { api } = createApi({ invoke, hub: { dispatch: vi.fn() } as never, mainWindow: false });
+
+        const data = await api.serverList({ notices: true });
+        expect(data.port_conflict_stops ?? []).toHaveLength(0);
+        expect(invoke.mock.calls.filter(([cmd]) => cmd === 'notify')).toHaveLength(0);
     });
 });

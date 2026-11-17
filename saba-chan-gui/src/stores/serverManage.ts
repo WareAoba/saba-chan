@@ -2,7 +2,7 @@ import type { ApiBody } from '../types/daemon';
 import { safeShowToast } from '../utils/helpers';
 import { blockedText, showTrustWarnings } from '../utils/trustNotice';
 import type { AddServerPayload } from './serverActions';
-import { ui } from './serverActionsState';
+import { askExtensionRequired, ui } from './serverActionsState';
 import { t, translateError } from './serverI18n';
 import type { Server, ServerState } from './useServerStore';
 import { setModal } from './useUIStore';
@@ -115,33 +115,11 @@ export function serverManageActions(get: () => ServerState, fetchServers: () => 
 
             // ── extension_required 처리 ──
             if (result.error_code === 'extension_required') {
-                setModal({
-                    type: 'question',
-                    title: t('servers.extension_required_title', { defaultValue: 'Extension Required' }),
-                    message: result.missing_extensions
-                        ? t('servers.extension_required_message_detail', {
-                              name: serverName,
-                              extensions: result.missing_extensions.join(', '),
-                              defaultValue: `Server '${serverName}' requires the following extension(s): ${result.missing_extensions.join(', ')}. Enable them in Settings → Extensions first.`,
-                          })
-                        : t('servers.extension_required_message', {
-                              name: serverName,
-                              defaultValue: `Server '${serverName}' requires an extension that is not enabled.`,
-                          }),
-                    buttons: [
-                        {
-                            label: t('servers.extension_open_settings', { defaultValue: 'Open Extension Settings' }),
-                            action: () => {
-                                setModal(null);
-                                ui().openSettings('extensions');
-                            },
-                        },
-                        {
-                            label: t('modals.cancel'),
-                            action: () => setModal(null),
-                        },
-                    ],
-                });
+                askExtensionRequired(
+                    result.missing_extensions
+                        ? t('servers.extension_required_message_detail', { name: serverName, extensions: result.missing_extensions.join(', ') })
+                        : t('servers.extension_required_message', { name: serverName }),
+                );
                 return false;
             }
 

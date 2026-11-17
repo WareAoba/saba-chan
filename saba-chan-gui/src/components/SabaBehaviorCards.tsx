@@ -27,7 +27,7 @@ export function SabaBehaviorCards({
     const rowId = useId();
     const crashOff = String(settingsValues.auto_restart) === 'false';
     const idleStopOn = String(settingsValues.idle_stop) === 'true';
-    const watchAction = String(settingsValues.unresponsive_action ?? 'notify');
+    const watchAction = String(settingsValues.unresponsive_action ?? '');
     const memoryLimit = memoryLimitState(settingsServer);
 
     return (

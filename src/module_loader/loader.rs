@@ -55,7 +55,7 @@ impl ModuleLoader {
 
     /// 마지막 탐색에서 로드하지 못한 모듈과 이유
     pub fn load_errors(&self) -> Vec<ModuleLoadError> {
-        self.load_errors.read().unwrap().clone()
+        self.load_errors.read().unwrap_or_else(|e| e.into_inner()).clone()
     }
 
     /// 모듈 디렉토리 경로 반환
@@ -71,7 +71,7 @@ impl ModuleLoader {
 
     /// 캐시를 무효화합니다 (새로운 모듈이 추가되었을 때 호출)
     pub fn invalidate_cache(&self) {
-        *self.cached_modules.write().unwrap() = None;
+        *self.cached_modules.write().unwrap_or_else(|e| e.into_inner()) = None;
         tracing::info!("Module cache invalidated");
     }
 
@@ -83,7 +83,7 @@ impl ModuleLoader {
     /// 캐시한 모듈 목록을 복제 없이 돌려준다. 캐시가 비었으면 모듈 폴더를 다시 읽는다
     pub fn modules(&self) -> Result<Arc<Vec<LoadedModule>>> {
         // 캐시 확인
-        if let Some(modules) = self.cached_modules.read().unwrap().as_ref() {
+        if let Some(modules) = self.cached_modules.read().unwrap_or_else(|e| e.into_inner()).as_ref() {
             return Ok(modules.clone());
         }
 
@@ -93,7 +93,7 @@ impl ModuleLoader {
         if !Path::new(&self.modules_dir).exists() {
             tracing::warn!("Modules directory does not exist: {}", self.modules_dir);
             let modules = Arc::new(modules);
-            *self.cached_modules.write().unwrap() = Some(modules.clone());
+            *self.cached_modules.write().unwrap_or_else(|e| e.into_inner()) = Some(modules.clone());
             return Ok(modules);
         }
 
@@ -151,8 +151,8 @@ impl ModuleLoader {
         }
 
         let modules = Arc::new(modules);
-        *self.cached_modules.write().unwrap() = Some(modules.clone());
-        *self.load_errors.write().unwrap() = errors;
+        *self.cached_modules.write().unwrap_or_else(|e| e.into_inner()) = Some(modules.clone());
+        *self.load_errors.write().unwrap_or_else(|e| e.into_inner()) = errors;
         Ok(modules)
     }
 
@@ -250,7 +250,7 @@ impl ModuleLoader {
         let folder = |e: &ModuleLoadError| Path::new(&e.path).file_name().is_some_and(|f| f == name);
         self.load_errors
             .read()
-            .unwrap()
+            .unwrap_or_else(|e| e.into_inner())
             .iter()
             .find(|e| e.module.as_deref().map_or_else(|| folder(e), |m| m == name))
             .cloned()

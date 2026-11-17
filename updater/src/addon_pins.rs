@@ -41,6 +41,13 @@ impl AddonChoice {
         self.pinned = self.pinned.filter(|p| p.version == installed || pending == Some(p.version.as_str()));
         self
     }
+
+    /// 자동 업데이트가 바꿔 끼울 판: 업데이트 확인이 찾은 판(`latest`, 확인이 업데이트로 본 것만. 내린 판 되돌리기 포함)이
+    /// 깔린 판과 다르고, 고정도 바꾸기 대기도 없을 때. 앱·웹·CLI의 "업데이트 있음"은 이 판정 하나다
+    /// (데몬이 업데이트 상태와 모듈 목록의 `update_version`에 싣는다). `as_installed`를 거친 고른 판에 부른다
+    pub fn update_version(&self, latest: Option<&str>, installed: &str) -> Option<String> {
+        latest.filter(|l| self.is_empty() && *l != installed).map(str::to_string)
+    }
 }
 
 pub fn path() -> PathBuf {
@@ -308,6 +315,20 @@ mod tests {
         assert_eq!(choice(Some("0.1.12")).as_installed("0.1.13"), choice(Some("0.1.12")), "the chosen version waits for a server");
         assert_eq!(choice(Some("0.1.12")).as_installed("0.1.12"), choice(None));
         assert_eq!(choice(None).as_installed("0.1.13"), AddonChoice::default(), "reinstalled after the pin");
+    }
+
+    /// "업데이트 있음"은 확인이 찾은 판이 깔린 판과 다르고, 고정도 바꾸기 대기도 없을 때뿐이다
+    #[test]
+    fn an_update_is_offered_only_when_another_version_was_found_and_nothing_was_chosen() {
+        let free = AddonChoice::default();
+        assert_eq!(free.update_version(Some("0.1.13"), "0.1.12").as_deref(), Some("0.1.13"));
+        assert_eq!(free.update_version(Some("0.1.12"), "0.1.12"), None, "already in place (a status from before the install)");
+        assert_eq!(free.update_version(Some("0.1.11"), "0.1.12").as_deref(), Some("0.1.11"), "the check rolls back a yanked version");
+        assert_eq!(free.update_version(None, "0.1.12"), None);
+        let pinned = AddonChoice { pinned: Some(pin("0.1.12", "0.1.13")), pending_version: None };
+        assert_eq!(pinned.update_version(Some("0.1.13"), "0.1.12"), None, "a pinned version stays");
+        let waiting = AddonChoice { pinned: None, pending_version: Some("0.1.13".into()) };
+        assert_eq!(waiting.update_version(Some("0.1.14"), "0.1.12"), None, "a switch is already waiting");
     }
 
     /// 고정과 미뤄 둔 판은 파일에 남아 다시 켜도 그대로고, 둘 다 없어진 키는 지운다

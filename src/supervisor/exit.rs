@@ -4,11 +4,6 @@ use super::*;
 use super::stop::announce_stopped;
 
 impl Supervisor {
-    /// 백그라운드 프로세스 모니터링 (주기적 실행)
-    ///
-    /// `process_snapshot`은 write lock 획득 전에 미리 스캔한 프로세스 목록입니다.
-    /// 이를 통해 비용이 큰 시스템 콜(sysinfo)이 write lock 밖에서 실행되어
-    /// GUI read 요청에 대한 블로킹을 최소화합니다.
     /// 끝난 managed 프로세스가 왜 끝났는지 가르고, 크래시면 재시작을 예약한다. `may_restart`가 false면 예약하지 않는다
     pub(super) async fn judge_exit(&mut self, instance_id: &str, proc: &ManagedProcess, may_restart: bool) {
         use managed_process::LogLevel;
@@ -53,8 +48,7 @@ impl Supervisor {
             ready: (!ready_patterns.is_empty()).then(|| became_ready || ready::any_match(&ready_patterns, &tail)),
         });
 
-        let auto_restart = setting_flag(&instance, "auto_restart", true);
-        let on_unknown = setting_flag(&instance, "restart_on_unknown_exit", false);
+        let Effective { auto_restart, restart_on_unknown_exit: on_unknown, .. } = Effective::of(&instance);
         let mut attempt = None;
         let (restart_in, note, note_code) = if may_restart && crash::wants_restart(verdict.kind, auto_restart, on_unknown) {
             let planned = self.runtime.with(instance_id, |r| crash::next_restart_delay(&mut r.restart_history, Instant::now()).map(|delay| (delay, r.run_generation)));
@@ -98,6 +92,38 @@ impl Supervisor {
             (crash::ExitKind::UserStop, Some(origin)) => announce_stopped(instance_id, &instance.name, kind, &origin),
             (crash::ExitKind::InGameStop, _) => announce_stopped(instance_id, &instance.name, kind, &crate::audit::Origin::new("game")),
             _ => {}
+        }
+    }
+
+    /// 정지 요청 없이 사라진 non-managed 서버를 판정한다. 데몬이 띄운 프로세스라 종료 상태(`exit`)를 알면 managed와 같은
+    /// `crash::classify`로 가른다(코드 0이면 서버 창·게임 안에서 끈 정상 정지). 콘솔이 없어 콘솔 문구는 보지 않는다.
+    /// 모르면(데몬을 다시 켠 뒤 붙었거나 자동 감지한 프로세스, 런처가 넘겨 준 PID) 원인 모를 종료다. 다시 띄우지 않는다
+    pub(super) fn judge_unrequested_exit(&mut self, instance: &crate::instance::ServerInstance, exit: Option<managed_process::ProcessExit>, ran_secs: u64) {
+        let verdict = match exit {
+            Some(exit) => {
+                let artifacts = self.module_loader.get_module(&instance.module_name).map(|m| m.metadata.crash_artifacts.clone()).unwrap_or_default();
+                let crash_files = match instance.working_dir.as_deref().filter(|d| !d.is_empty()) {
+                    Some(dir) => crash::new_crash_files(std::path::Path::new(dir), &artifacts, saba_runner::now().saturating_sub(ran_secs)),
+                    None => Vec::new(),
+                };
+                crash::classify(&crash::ExitFacts {
+                    stop_requested: false,
+                    exit: Some(exit),
+                    console_tail: &[],
+                    graceful_patterns: &[],
+                    new_crash_files: &crash_files,
+                    ran_secs,
+                    ready: None,
+                })
+            }
+            None => crash::ExitVerdict { kind: crash::ExitKind::UnknownExit, exit_code: None, signal: None, evidence: "exit status unknown".into() },
+        };
+        tracing::info!("'{}' exited: {:?} ({})", instance.name, verdict.kind, verdict.evidence);
+        let kind = verdict.kind;
+        let event = crash::ExitEvent { at: saba_runner::now(), verdict, restart_in_secs: None, note: None, note_code: None, note_args: None };
+        self.record_exit(&instance.id, &instance.name, event, None, None);
+        if kind == crash::ExitKind::InGameStop {
+            announce_stopped(&instance.id, &instance.name, kind, &crate::audit::Origin::new("game"));
         }
     }
 
@@ -203,13 +229,17 @@ impl Supervisor {
             last.note = Some(format!("restart failed: {}", reason));
             last.note_code = Some("restart_failed".into());
             last.note_args = Some(serde_json::json!({ "reason": reason }));
-            Some((last.note_code.clone(), last.note_args.clone()))
+            Some((last.verdict.kind, crash::evidence_code(&last.verdict.evidence), last.note_code.clone(), last.note_args.clone()))
         });
-        if let Some((note_code, note_args)) = noted.flatten() {
-            // `instance.exit`는 이미 나갔으므로 실패는 따로 알린다 (오류 원문이 있어 릴레이로는 올리지 않는다)
+        if let Some((kind, (evidence_code, evidence_args), note_code, note_args)) = noted.flatten() {
+            // `instance.exit`는 이미 나갔으므로 실패는 따로 알린다 (오류 원문이 있어 릴레이로는 올리지 않는다).
+            // 종료 종류·근거는 그 `instance.exit`와 같다: 알림함이 그 크래시 카드를 실패 카드로 바꾼다
             crate::events::emit("instance.restart_failed", serde_json::json!({
                 "instanceId": instance_id,
                 "instance": self.instance_store.get(instance_id).map(|i| i.name.clone()).unwrap_or_default(),
+                "kind": kind,
+                "evidenceCode": evidence_code,
+                "evidenceArgs": evidence_args,
                 "noteCode": note_code,
                 "noteArgs": note_args,
                 "restartAttempt": attempt,
@@ -239,14 +269,13 @@ impl Supervisor {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use serde_json::json;
     use crate::supervisor::start::announce_started;
 
     /// 켜진 뒤 곧 끝난 시작 실패는 그 시작을 시킨 쪽을 싣는다: 앱 버튼(`gui`)으로 켠 실패에는 앱이 효과음을 내지 않는다
-    #[cfg(unix)]
     #[tokio::test]
     async fn start_failure_names_who_started_it() {
         let tmp = tempfile::tempdir().unwrap();
@@ -286,7 +315,6 @@ mod tests {
     }
 
     /// 끝난 managed 서버를 크래시·정상 종료·사용자 정지·강제 종료로 가르고 크래시만 재시작한다
-    #[cfg(unix)]
     #[tokio::test]
     async fn exits_are_judged_and_only_crashes_restart() {
         let tmp = tempfile::tempdir().unwrap();
@@ -367,7 +395,13 @@ mod tests {
         // 이미 나간 instance.exit 뒤에 실패를 따로 알린다
         let mut told = false;
         while let Ok(e) = sub.rx.try_recv() {
-            told |= e.kind == "instance.restart_failed" && e.data["noteArgs"]["reason"] == "no java" && e.data["restartAttempt"] == 0;
+            // 알림함이 그 크래시 카드를 고칠 수 있게 종료 종류와 근거도 싣는다
+            told |= e.kind == "instance.restart_failed"
+                && e.data["noteArgs"]["reason"] == "no java"
+                && e.data["restartAttempt"] == 0
+                && e.data["kind"] == "crash"
+                && e.data["evidenceCode"] == crash_exit.data["evidenceCode"]
+                && e.data["evidenceArgs"] == crash_exit.data["evidenceArgs"];
         }
         assert!(told, "restart failure was not announced on the event stream");
         // 복구 시도의 끝도 알린다: 다시 켜졌거나, 대기 중에 정지·시작해서 그만뒀거나.

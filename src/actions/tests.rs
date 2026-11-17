@@ -2049,7 +2049,7 @@ async fn failures_share_one_shape() {
     let cases: Vec<(&str, &str, Option<Value>, u16, &str)> = vec![
         ("GET", "/api/instance/nope", None, 404, "instance_not_found"),
         ("POST", "/api/instances", Some(json!({})), 400, "invalid_request"),
-        ("POST", "/api/instance/nope/command", Some(json!({ "command": "say", "args": {} })), 404, "not_found"),
+        ("POST", "/api/instance/nope/command", Some(json!({ "command": "say", "args": {} })), 404, "instance_not_found"),
         ("POST", "/api/modules/manifest/..%2Fx/install", None, 400, "invalid_request"),
         ("DELETE", "/api/modules/nope", None, 404, "not_found"),
         ("PUT", "/api/system/autostart", Some(json!({ "mode": "sometimes" })), 400, "autostart_unknown_mode"),

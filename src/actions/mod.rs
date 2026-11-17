@@ -1092,7 +1092,7 @@ async fn resolve_in(server: &IPCServer, id: &str, instance: Option<&str>, input:
     if let Some(name) = id.strip_prefix(QUERY_PREFIX) {
         let Some(instance) = instance else { return Err(bad_input("instance", "required")) };
         if server.supervisor.read().await.instance_store.get(instance).is_none() {
-            return Err(ActionError::new(404, "not_found", format!("Instance not found: {}", instance)));
+            return Err(ActionError::new(404, "instance_not_found", format!("Instance not found: {}", instance)));
         }
         let query = instance_module(server, instance).await.and_then(|m| m.metadata.queries.into_iter().find(|q| q.name == name));
         let Some(query) = query else { return Err(ActionError::new(404, "unknown_action", format!("Unknown action: {}", id))) };
@@ -1120,7 +1120,7 @@ async fn resolve_in(server: &IPCServer, id: &str, instance: Option<&str>, input:
         let Some(instance) = instance else { return Err(bad_input("instance", "required")) };
         let resp = call(server, "GET", &format!("/api/instance/{}/commands", seg(instance)), None).await;
         if !resp.is_success() {
-            return Err(ActionError::new(404, "not_found", resp.str_field("error").unwrap_or("Instance not found").to_string()));
+            return Err(ActionError::new(404, "instance_not_found", resp.str_field("error").unwrap_or("Instance not found").to_string()));
         }
         let Some(view) = resp.body.get("commands").and_then(Value::as_array).into_iter().flatten().find(|c| c.get("name").and_then(Value::as_str) == Some(name)).and_then(|c| command_view(c, &Value::Null)) else {
             return Err(ActionError::new(404, "unknown_action", format!("Unknown action: {}", id)));

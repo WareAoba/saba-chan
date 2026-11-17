@@ -3,9 +3,6 @@ import type { Notice } from '../types/global';
 import { safeShowToast } from './helpers';
 import { removeNotice } from './noticeInbox';
 
-/** 누르면 그 게임 서버를 업데이트하는 알림 (켤 때 안내·자동 업데이트 대기). data: {instanceId, name} */
-export const SERVER_UPDATE_ACTION = 'applyServerUpdate';
-
 /**
  * 업데이트 알림을 눌렀다: 데몬에 업데이트를 시킨다. 켜진 서버는 데몬이 게임 안에 예고한 뒤 끄고 업데이트하고 다시 켠다.
  * 알림은 지우고 결과는 토스트로 알린다 (끝나면 instance.updated·instance.update_failed가 따로 온다)

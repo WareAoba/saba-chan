@@ -32,8 +32,7 @@ pub async fn exec_line(ctx: &Ctx, sv: &Server, cat: &Catalog, text: &str) -> Res
     let name = words.first().map(String::as_str).unwrap_or_default();
     if cat.find(name).is_none() && cat.accepts_raw() {
         let r = ctx.api.command(&sv.id, text, Value::Null).await?;
-        print_result(ctx, &r);
-        return Ok(());
+        return finish(ctx, &r);
     }
     let (name, rest) = words.split_first().map(|(n, r)| (n.clone(), r.to_vec())).unwrap_or_default();
     exec(ctx, sv, cat, &name, &rest).await
@@ -62,8 +61,7 @@ pub async fn exec(ctx: &Ctx, sv: &Server, cat: &Catalog, name: &str, words: &[St
             .collect::<Vec<_>>()
             .join(" ");
         let r = ctx.api.command(&sv.id, &line, Value::Null).await?;
-        print_result(ctx, &r);
-        return Ok(());
+        return finish(ctx, &r);
     };
     let (mut args, missing) = def.bind(words).map_err(usage)?;
     for input in missing {
@@ -75,8 +73,21 @@ pub async fn exec(ctx: &Ctx, sv: &Server, cat: &Catalog, name: &str, words: &[St
             .ensure(&t!("run.confirm_danger", label = def.label, name = sv.name))?;
     }
     let r = ctx.api.command(&sv.id, &def.name, Value::Object(args)).await?;
-    print_result(ctx, &r);
-    Ok(())
+    finish(ctx, &r)
+}
+
+/// 명령 답을 보이고, 서버가 거절한 명령(모듈 `failure_patterns`에 맞은 답, 데몬이 싣는 `rejected {reason}`)이면 실패로 끝낸다.
+/// 사람용 출력에는 서버 답을 먼저 보인다. `--json`은 실패 문서 하나만 낸다
+fn finish(ctx: &Ctx, r: &Value) -> Result<()> {
+    let Some(rejected) = r.get("rejected") else {
+        print_result(ctx, r);
+        return Ok(());
+    };
+    if !ctx.out.json {
+        print_result(ctx, r);
+    }
+    let reason = rejected.get("reason").and_then(Value::as_str).filter(|s| !s.trim().is_empty());
+    Err(CliError::Failed(reason.map_or_else(|| t!("run.rejected"), str::to_string)).into())
 }
 
 /// 시작·재시작 답의 `port_moved: [{field, from, to}]` → 알릴 줄

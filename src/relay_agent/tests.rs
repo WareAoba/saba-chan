@@ -1653,8 +1653,3 @@ fn backoff_doubles_up_to_cap() {
     assert_eq!(backoff(100), RETRY_MAX);
 }
 
-#[test]
-fn encodes_like_encode_uri_component() {
-    assert_eq!(encode_segment("abc-123"), "abc-123");
-    assert_eq!(encode_segment("a b/c"), "a%20b%2Fc");
-}

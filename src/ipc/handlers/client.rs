@@ -8,6 +8,11 @@ use serde_json::json;
 
 use super::super::{ClientKind, ClientRegistry, IPCServer};
 
+/// 클라이언트가 heartbeat를 보내는 간격 (등록 응답으로 알린다)
+const HEARTBEAT_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
+/// 이만큼 heartbeat가 없으면 클라이언트를 정리한다 (등록 응답의 `timeout_ms`와 같은 값)
+const CLIENT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(90);
+
 /// POST /api/daemon/shutdown — 데몬 강제 종료 (CLI 등 외부에서 호출)
 pub async fn daemon_shutdown(
     State(state): State<IPCServer>,
@@ -48,8 +53,8 @@ pub async fn client_register(
         Json(json!({
             "client_id": client_id,
             "kind": kind_str,
-            "heartbeat_interval_ms": 30000,
-            "timeout_ms": 90000
+            "heartbeat_interval_ms": HEARTBEAT_INTERVAL.as_millis() as u64,
+            "timeout_ms": CLIENT_TIMEOUT.as_millis() as u64
         })),
     )
         .into_response()
@@ -76,7 +81,7 @@ fn resident_flag(body: &serde_json::Value) -> bool {
 pub async fn client_heartbeat(
     Path(client_id): Path<String>,
     State(state): State<IPCServer>,
-    body: Option<Json<serde_json::Value>>,
+    super::LooseJson(body): super::LooseJson<serde_json::Value>,
 ) -> impl IntoResponse {
     let body = body.map(|Json(v)| v).unwrap_or_default();
     if state.client_registry.heartbeat(&client_id).await {
@@ -118,8 +123,7 @@ pub async fn client_unregister(
 
 /// 백그라운드 태스크에서 호출 — 만료 클라이언트 정리
 pub async fn reap_expired_clients(registry: &ClientRegistry) {
-    let timeout = std::time::Duration::from_secs(90);
-    let expired = registry.reap_expired(timeout).await;
+    let expired = registry.reap_expired(CLIENT_TIMEOUT).await;
 
     for (id, client) in &expired {
         tracing::warn!(
@@ -282,7 +286,7 @@ pub async fn client_launch(State(state): State<IPCServer>, Json(body): Json<serd
     }
     if let Some(id) = instance.as_ref().filter(|_| remote.is_none()) {
         if state.supervisor.read().await.instance_store.get(id).is_none() {
-            return super::error(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id));
+            return crate::service::Failure::instance_not_found(id).into_response();
         }
     }
     // 띄울 화면이 없으면(CLI는 화면이나 터미널 프로그램 없음, GUI는 데스크톱 화면 없음) 띄운 척하지 않는다: 부른 쪽이 닫히지 않게

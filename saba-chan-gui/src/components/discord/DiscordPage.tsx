@@ -19,7 +19,6 @@ import { ChatbotView } from './ChatbotView';
 import { ConnectionView } from './ConnectionView';
 import { Avatar, NodeView } from './NodeView';
 import * as P from './nodePermissions';
-import type { DiscordNode, MembersByGuild } from './types';
 import { pairingTokenSaved, usePairing } from './usePairing';
 
 export const DEFAULT_RELAY_URL = 'https://saba-chan.online';
@@ -63,23 +62,10 @@ interface DiscordView {
 }
 
 interface DiscordPageProps {
-    discordBotStatus: string;
-    discordCloudRelayUrl?: string;
-    discordCloudHostId: string;
-    setDiscordCloudHostId: (hostId: string) => void;
-    relayConnected: boolean;
-    relayConnecting: boolean;
-    handleStartDiscordBot: () => unknown;
     saveCurrentSettings: () => unknown;
     servers?: Server[];
     modules?: ModuleInfo[];
     moduleAliasesPerModule?: Record<string, ModuleAliases>;
-    discordModuleAliases?: Record<string, string>;
-    nodeSettings?: P.NodeSettings | null;
-    cloudNodes?: DiscordNode[];
-    setCloudNodes: (nodes: DiscordNode[]) => void;
-    cloudMembers?: MembersByGuild;
-    setCloudMembers: (valOrFn: MembersByGuild | ((prev: MembersByGuild) => MembersByGuild)) => void;
     initialView?: DiscordView;
 }
 
@@ -90,26 +76,24 @@ interface DiscordPageProps {
  * 노드 권한은 바꾸는 즉시 저장(잠깐 모아서)한다.
  */
 export function DiscordPage({
-    discordBotStatus,
-    discordCloudRelayUrl,
-    discordCloudHostId,
-    setDiscordCloudHostId,
-    relayConnected,
-    relayConnecting,
-    handleStartDiscordBot,
     saveCurrentSettings,
     servers = [],
     modules = [],
     moduleAliasesPerModule,
-    discordModuleAliases,
-    nodeSettings,
-    cloudNodes = [],
-    setCloudNodes,
-    cloudMembers = {},
-    setCloudMembers,
     initialView,
 }: DiscordPageProps) {
     const { t } = useTranslation('gui');
+    const discordBotStatus = useDiscordStore((s) => s.discordBotStatus);
+    const discordCloudRelayUrl = useDiscordStore((s) => s.discordCloudRelayUrl);
+    const discordCloudHostId = useDiscordStore((s) => s.discordCloudHostId);
+    const relayConnected = useDiscordStore((s) => s.relayConnected);
+    const relayConnecting = useDiscordStore((s) => s.relayConnecting);
+    const handleStartDiscordBot = useDiscordStore((s) => s.startBot);
+    const discordModuleAliases = useDiscordStore((s) => s.discordModuleAliases);
+    // 스토어는 데몬 JSON 그대로 두고, 화면 타입으로는 여기서 읽는다
+    const settings = useDiscordStore((s) => s.nodeSettings) as P.NodeSettings;
+    const cloudNodes = useDiscordStore((s) => s.cloudNodes);
+    const cloudMembers = useDiscordStore((s) => s.cloudMembers);
     const relayUrl = discordCloudRelayUrl || DEFAULT_RELAY_URL;
     const singleColumn = !useWindowAtLeast(SINGLE_COLUMN_MAX_WIDTH);
     const [view, setView] = useState<DiscordView>(initialView || { kind: 'connection' });
@@ -197,10 +181,6 @@ export function DiscordPage({
         go({ kind: 'node', id, tab: requested.tab, sub: requested.sub, seq: requested.seq });
     }, [requested, waitNodes]);
 
-    // App이 넘기는 setter는 렌더마다 새 함수라 effect 의존성에 넣으면 무한 반복된다 → ref로 든다
-    const setters = useRef({ setCloudNodes, setCloudMembers });
-    setters.current = { setCloudNodes, setCloudMembers };
-
     // 늦게 온 응답이 바뀐 연결(호스트·릴레이·연결 끊김)의 화면을 옛 목록으로 되돌리지 않게 한다
     const relayKey = `${discordCloudHostId}|${relayUrl}|${relayConnected}`;
     const relayKeyRef = useRef(relayKey);
@@ -218,7 +198,7 @@ export function DiscordPage({
             const data = await window.api.relayListHostNodes(discordCloudHostId, relayUrl);
             if (key !== relayKeyRef.current) return;
             if (data?.error) throw new Error(data.error);
-            setters.current.setCloudNodes(Array.isArray(data) ? data : data?.nodes || []);
+            useDiscordStore.getState().update({ cloudNodes: Array.isArray(data) ? data : data?.nodes || [] });
         } catch (e) {
             if (key !== relayKeyRef.current) return;
             setCloudError((e as Error).message || t('errors.network_error'));
@@ -239,7 +219,8 @@ export function DiscordPage({
                 if (key !== hostKeyRef.current) return;
                 if (data?.error) throw new Error(data.error);
                 const members = Array.isArray(data) ? data : data?.members || [];
-                setters.current.setCloudMembers((prev: MembersByGuild) => ({ ...prev, [guildId]: members }));
+                const prev = useDiscordStore.getState().cloudMembers;
+                useDiscordStore.getState().update({ cloudMembers: { ...prev, [guildId]: members } });
                 setMembersFailed((prev) => ({ ...prev, [guildId]: false }));
                 setMembersPartial((prev) => ({ ...prev, [guildId]: data?.partial ? data.reason || 'partial' : null }));
             } catch (e) {
@@ -323,7 +304,7 @@ export function DiscordPage({
         onClaimed: async (s: ApiBody) => {
             // 토큰을 저장하지 못했으면 호스트도 바꾸지 않는다 (토큰 없는 호스트가 저장되지 않게)
             if (!pairingTokenSaved(s)) return false;
-            if (s.hostId) setDiscordCloudHostId(s.hostId);
+            if (s.hostId) useDiscordStore.getState().update({ discordCloudHostId: s.hostId });
             await saveCurrentSettings();
             loadNodes();
         },
@@ -353,10 +334,8 @@ export function DiscordPage({
     // 연결이 끊긴 뒤 화면을 비운다 (연결 해제, 또는 개인정보 지우기를 마친 데몬이 끊었을 때)
     const clearConnection = () => {
         pairing.reset();
-        setDiscordCloudHostId('');
         setCloudError('');
-        setCloudNodes([]);
-        setCloudMembers({});
+        useDiscordStore.getState().update({ discordCloudHostId: '', cloudNodes: [], cloudMembers: {} });
         setView({ kind: 'connection' });
         saveCurrentSettings();
     };
@@ -375,7 +354,6 @@ export function DiscordPage({
         }
     };
 
-    const settings = nodeSettings || {};
     const currentNode = cloudNodes.find((n) => n.guildId === nodeId);
     const sampleModule = modules[0]?.name;
     const sampleModuleWord =

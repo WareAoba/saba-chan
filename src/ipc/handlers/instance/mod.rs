@@ -79,6 +79,7 @@ pub async fn get_instance(
             body["version_hidden"] = json!(version_hidden);
             body["stored"] = Value::Object(crate::instance::stored_settings(instance, &fields));
             body["revision"] = json!(instance.settings_revision());
+            body["effective"] = json!(crate::supervisor::Effective::of(instance));
             // 이 데몬이 메모리 상한을 거는가 (다른 PC의 데몬을 보는 클라이언트가 자기 OS로 짐작하지 않게)
             body["memory_limit_supported"] = json!(crate::instance::MEMORY_LIMIT_ENFORCED);
             // 이 OS에서는 걸리지 않는 상한이 저장돼 있다 (상한을 거절하기 전 릴리스가 저장한 값, `update_instance_settings`)
@@ -88,7 +89,7 @@ pub async fn get_instance(
             (StatusCode::OK, Json(body)).into_response()
         }
         None => {
-            super::error(StatusCode::NOT_FOUND, "instance_not_found", format!("Instance not found: {}", id))
+            crate::service::Failure::instance_not_found(&id).into_response()
         }
     }
 }
@@ -115,7 +116,7 @@ pub async fn rename_instance(
     };
     let mut supervisor = state.supervisor.write().await;
     let Some(mut instance) = supervisor.instance_store.get(&id).cloned() else {
-        return fail(StatusCode::NOT_FOUND, format!("Instance not found: {}", id), "not_found");
+        return crate::service::Failure::instance_not_found(&id).into_response();
     };
     if instance.name == new_name {
         return Json(json!({ "success": true, "id": id, "name": new_name, "previous": new_name })).into_response();
@@ -133,6 +134,22 @@ pub async fn rename_instance(
         return fail(StatusCode::INTERNAL_SERVER_ERROR, e.to_string(), "internal");
     }
     Json(json!({ "success": true, "id": id, "name": new_name, "previous": previous })).into_response()
+}
+
+/// POST /api/instance/:id/port-conflicts — 저장하지 않은 설정 초안 `{settings?}`(launch-preview와 같다)의 포트가
+/// 다른 서버와 겹치는지. 응답 `{success, port_conflicts}` (`service::servers::draft_port_conflicts`)
+pub async fn draft_port_conflicts(
+    State(state): State<IPCServer>,
+    Path(id): Path<String>,
+    LooseJson(body): LooseJson<Value>,
+) -> impl IntoResponse {
+    let body = body.map(|Json(b)| b).unwrap_or(Value::Null);
+    let draft = match body.get("settings") {
+        None | Some(Value::Null) => serde_json::Map::new(),
+        Some(Value::Object(m)) => m.clone(),
+        Some(_) => return super::error(StatusCode::BAD_REQUEST, "invalid_body", "settings must be an object"),
+    };
+    super::answer(crate::service::servers::draft_port_conflicts(&state, &id, &draft).await)
 }
 
 /// POST /api/instance/:id/launch-preview — 실행 인자 미리보기 `{settings?, extra_args?}`.
@@ -158,7 +175,7 @@ pub async fn launch_preview(
     };
     match crate::supervisor::Supervisor::launch_preview(&state.supervisor, &id, &draft, extra.as_deref()).await {
         Ok(v) => (StatusCode::OK, Json(v)).into_response(),
-        Err(e) if e.downcast_ref::<crate::supervisor::InstanceNotFound>().is_some() => (StatusCode::NOT_FOUND, Json(crate::plugin::error_response(&e))).into_response(),
+        Err(e) if e.downcast_ref::<crate::supervisor::InstanceNotFound>().is_some() => crate::service::Failure::instance_not_found(&id).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(crate::plugin::error_response(&e))).into_response(),
     }
 }
@@ -180,7 +197,7 @@ mod tests {
             async move { crate::ipc::internal::into_internal(super::launch_preview(State(state), Path(id), super::LooseJson(None)).await.into_response()).await }
         };
         let missing = preview("nope").await;
-        assert_eq!((missing.status.as_u16(), missing.body["error"].as_str()), (404, Some("Instance 'nope' not found")), "{}", missing.body);
+        assert_eq!((missing.status.as_u16(), missing.body["error_code"].as_str()), (404, Some("instance_not_found")), "{}", missing.body);
         let orphan = preview("orphan").await;
         assert_eq!(orphan.status.as_u16(), 500, "{}", orphan.body);
     }

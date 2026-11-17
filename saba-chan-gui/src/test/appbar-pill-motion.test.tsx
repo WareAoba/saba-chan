@@ -100,7 +100,7 @@ describe('알약 공용 움직임', () => {
 });
 
 describe('공용 움직임을 쓰는 알약', () => {
-    afterEach(() => act(() => useUIStore.getState().clearProgressBar()));
+    afterEach(() => act(() => useUIStore.getState().setProgressBar(null)));
 
     it('작업 표시는 공용 알약이다', () => {
         const { container } = render(<TaskIndicator />);

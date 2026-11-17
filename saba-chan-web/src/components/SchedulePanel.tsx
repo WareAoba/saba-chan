@@ -26,7 +26,7 @@ import { CommandInput } from './CommandsPanel';
 import { useCommands } from './commands';
 import { Dropdown } from './Dropdown';
 import { Icon } from './icons';
-import { Button, Empty, errorText, failed, Loading, Section } from './ui';
+import { Button, Empty, failed, Loading, maintenanceError, Section } from './ui';
 import type { Module, Server, WebApi } from '../types';
 
 /** GET /api/instance/:id/schedule 를 화면이 쓰는 모양으로 */
@@ -76,7 +76,7 @@ export function SchedulePanel({
     const load = useCallback(async () => {
         const res = await api.instanceScheduleGet(server.id);
         if (failed(res)) {
-            setInfo({ error: errorText(t, res) });
+            setInfo({ error: maintenanceError(t, tg, res) });
             return;
         }
         const next: ScheduleInfo = {
@@ -97,7 +97,7 @@ export function SchedulePanel({
         setStale(false);
         setArmed(false);
         base.current = strip(d, String(next.backupKeep));
-    }, [api, server.id, t]);
+    }, [api, server.id, t, tg]);
 
     useEffect(() => {
         load();
@@ -168,7 +168,7 @@ export function SchedulePanel({
         setSaving(false);
         if (failed(res)) {
             setStale(res?.error_code === 'schedule_changed');
-            setErrors(Array.isArray(res?.details) && res.details.length ? res.details : [errorText(t, res)]);
+            setErrors(Array.isArray(res?.details) && res.details.length ? res.details : [maintenanceError(t, tg, res)]);
             return;
         }
         toast(tg('maintenance.schedule_saved'), 'ok');

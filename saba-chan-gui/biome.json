@@ -17,6 +17,12 @@
 		"enabled": true,
 		"rules": {
 			"recommended": true,
+			"a11y": {
+				"noLabelWithoutControl": {
+					"level": "error",
+					"options": { "inputComponents": ["SabaSlider", "SabaNumberInput"] }
+				}
+			},
 			"complexity": {
 				"noForEach": "off"
 			},

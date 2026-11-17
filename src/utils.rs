@@ -210,6 +210,16 @@ mod tests {
     use super::*;
 
     #[test]
+    fn dir_size_sums_files_recursively() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("a.bin"), vec![0u8; 100]).unwrap();
+        std::fs::create_dir(tmp.path().join("sub")).unwrap();
+        std::fs::write(tmp.path().join("sub/b.bin"), vec![0u8; 23]).unwrap();
+        assert_eq!(dir_size(tmp.path()), 123);
+        assert_eq!(dir_size(&tmp.path().join("missing")), 0);
+    }
+
+    #[test]
     fn a_new_console_runs_only_an_exe_found_like_the_shell_would() {
         let tmp = tempfile::tempdir().unwrap();
         let bin = tmp.path().join("bin");
@@ -323,6 +333,24 @@ mod tests {
         left.sort();
         assert_eq!(left, [".hidden", "box", "box.zip"]);
     }
+}
+
+/// 폴더 크기 (심볼릭 링크는 따라가지 않는다)
+pub fn dir_size(path: &std::path::Path) -> u64 {
+    let mut total = 0;
+    let mut stack = vec![path.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+        for entry in entries.flatten() {
+            let Ok(meta) = entry.metadata() else { continue };
+            if meta.is_dir() {
+                stack.push(entry.path());
+            } else if meta.is_file() {
+                total += meta.len();
+            }
+        }
+    }
+    total
 }
 
 /// 실패할 때마다 두 배로 늘리는 대기 (`failures`가 1이면 `base`), `max`까지

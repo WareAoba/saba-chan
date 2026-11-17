@@ -17,7 +17,7 @@ use std::collections::BTreeSet;
 
 use super::{Failure, Outcome};
 use crate::ipc::IPCServer;
-use crate::relay_client::{apply_signed_headers, encode_path_segment, relay_client, resolve_relay_url, send};
+use crate::relay_client::{call, encode_path_segment, host_guilds, refused_row, relay_base, result_row};
 use crate::config_store::ChatbotConfig;
 use crate::chat::i18n::Catalog;
 
@@ -343,65 +343,6 @@ async fn guild_ids(state: &IPCServer, base: &str, cfg: &ChatbotConfig) -> (BTree
             (ids, true)
         }
         None => (ids, false),
-    }
-}
-
-/// 릴레이에 등록된 이 호스트의 길드. 못 받으면 None (호스트가 없으면 빈 목록)
-pub(crate) async fn host_guilds(state: &IPCServer, base: &str) -> Option<Vec<String>> {
-    let host = state.config_store.get_bot_config().await.cloud.host_id;
-    if host.trim().is_empty() {
-        return Some(Vec::new());
-    }
-    let http = relay_client().ok()?;
-    let path = format!("/api/hosts/{}/nodes", encode_path_segment(host.trim()));
-    match send(apply_signed_headers(http.get(format!("{}{}", base, path)), "GET", &path, None)).await {
-        Ok((code, Some(Value::Array(nodes)))) if code.is_success() => {
-            Some(nodes.iter().filter_map(|n| n.get("guildId").and_then(Value::as_str).map(str::to_string)).collect())
-        }
-        _ => None,
-    }
-}
-
-pub(crate) async fn relay_base(state: &IPCServer) -> String {
-    let url = state.config_store.get_bot_config().await.cloud.relay_url;
-    resolve_relay_url(Some(url.trim()))
-}
-
-/// 길드 하나에 서명한 요청. (상태, 본문)
-pub(crate) async fn call(base: &str, method: reqwest::Method, path: &str, body: Option<String>) -> Result<(StatusCode, Value), String> {
-    let http = relay_client().map_err(|_| "http client".to_string())?;
-    let mut req = apply_signed_headers(http.request(method.clone(), format!("{}{}", base, path)), method.as_str(), path, body.as_deref());
-    if let Some(b) = body {
-        req = req.header("Content-Type", "application/json").body(b);
-    }
-    match send(req).await {
-        Ok((code, data)) => Ok((code, data.unwrap_or(Value::Null))),
-        Err(_) => Err("relay connection failed".into()),
-    }
-}
-
-/// 릴레이가 값을 거절한 길드의 줄을 실패 응답 본문으로 (`{success: false, error, error_code, guildId, status, details}`)
-pub(crate) fn refused_row(guild: &str, outcome: &Result<(StatusCode, Value), String>, code: &str) -> Value {
-    let mut row = result_row(guild, outcome);
-    if let Some(body) = row.as_object_mut() {
-        body.remove("ok");
-        body.insert("success".into(), json!(false));
-        body.insert("error_code".into(), json!(code));
-    }
-    row
-}
-
-pub(crate) fn result_row(guild: &str, outcome: &Result<(StatusCode, Value), String>) -> Value {
-    match outcome {
-        Ok((code, _)) if code.is_success() => json!({ "guildId": guild, "ok": true }),
-        Ok((code, body)) => json!({
-            "guildId": guild,
-            "ok": false,
-            "status": code.as_u16(),
-            "error": body.get("error").or_else(|| body.get("code")).cloned().unwrap_or(Value::Null),
-            "details": body.get("details").cloned().unwrap_or(Value::Null),
-        }),
-        Err(e) => json!({ "guildId": guild, "ok": false, "error": e }),
     }
 }
 

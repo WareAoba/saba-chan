@@ -150,7 +150,7 @@ async fn size_of(state: &IPCServer, kind: &str, id: Option<&str>, dir: &Path) ->
         return item.bytes;
     }
     let dir = dir.to_path_buf();
-    tokio::task::spawn_blocking(move || crate::system_monitor::dir_size(&dir))
+    tokio::task::spawn_blocking(move || crate::utils::dir_size(&dir))
         .await
         .unwrap_or(0)
 }
@@ -201,11 +201,7 @@ async fn start_server_move(state: IPCServer, req: MoveRequest) -> Response {
     let (instance, instance_dir, server_dir, subdir, others, running) = {
         let sup = state.supervisor.read().await;
         let Some(instance) = sup.instance_store.get(&id).cloned() else {
-            return super::error(
-                StatusCode::NOT_FOUND,
-                "not_found",
-                format!("Instance not found: {}", id),
-            );
+            return crate::service::Failure::instance_not_found(&id).into_response();
         };
         let instance_dir = sup.instance_store.instance_dir(&id);
         let metadata = sup

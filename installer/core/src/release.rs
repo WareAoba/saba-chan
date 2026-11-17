@@ -122,19 +122,10 @@ pub fn required_installer_version(manifest: &ReleaseManifest, running_installer:
     manifest.components.get("installer").filter(|_| running_installer).map(|c| c.version.as_str())
 }
 
-/// 하나라도 빠지면 앱이 돌지 않는 컴포넌트: versions.toml의 `required = true` (패키징 스크립트도 이 값을 읽는다).
+/// 하나라도 빠지면 앱이 돌지 않는 컴포넌트: versions.toml의 `required = true` (`versions::bundled().required`).
 /// 이 구성에 들지 않는 것(`profiles`)은 뺀다
 fn required_components(profile: Profile) -> Vec<String> {
-    let versions: toml::Table = include_str!("../../../versions.toml").parse().unwrap_or_default();
-    let Some(components) = versions.get("components").and_then(|c| c.as_table()) else {
-        return Vec::new();
-    };
-    components
-        .iter()
-        .filter(|(_, c)| c.get("required").and_then(|r| r.as_bool()) == Some(true))
-        .filter(|(k, _)| profile.includes(k))
-        .map(|(k, _)| k.clone())
-        .collect()
+    saba_chan_updater_lib::versions::bundled().required.iter().filter(|k| profile.includes(k)).cloned().collect()
 }
 
 /// 설치 폴더에 풀 컴포넌트 (키 순서로 정렬). 모듈·익스텐션은 고른 것만 데이터 폴더에 따로 설치한다.

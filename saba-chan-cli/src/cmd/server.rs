@@ -615,7 +615,7 @@ async fn history(ctx: &Ctx, query: Option<&str>) -> Result<()> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::{add::*, checkup::*, command::*, settings::*};
     /// 설치 방식 익스텐션으로 받은 서버는 데몬이 적어 둔 빌드 번호를 버전으로 보인다
     #[test]
@@ -891,7 +891,7 @@ mod tests {
 
     /// 요청 줄(`POST /api/instances/check`)과 본문으로 답하는 가짜 데몬. 받은 요청 줄을 모은다.
     /// 토큰 파일이 있으면 CLI가 신원을 확인하므로 `/health`는 그 토큰으로 증명한다
-    async fn fake_daemon(answer: fn(&str, &Value) -> (u16, Value)) -> (u16, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+    pub(crate) async fn fake_daemon(answer: fn(&str, &Value) -> (u16, Value)) -> (u16, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
@@ -938,7 +938,7 @@ mod tests {
         (port, seen)
     }
 
-    fn quiet_ctx(port: u16) -> Ctx {
+    pub(crate) fn quiet_ctx(port: u16) -> Ctx {
         Ctx {
             api: crate::client::Api::new(port, None),
             spawn_port: port,
@@ -948,6 +948,25 @@ mod tests {
             in_shell: false,
             attached: false,
         }
+    }
+
+    /// 서버가 거절한 명령(모듈 `failure_patterns`에 맞은 답, `rejected`)은 실패로 끝난다 (종료 코드 1)
+    #[tokio::test]
+    async fn a_command_the_server_rejected_fails() {
+        crate::i18n::init("en");
+        fn daemon(line: &str, _: &Value) -> (u16, Value) {
+            match line {
+                "POST /api/instance/1/command" => (200, json!({ "success": true, "data": { "response": "Unknown command" }, "rejected": { "reason": "Unknown command" } })),
+                _ => (200, json!({})),
+            }
+        }
+        let (port, _) = fake_daemon(daemon).await;
+        let ctx = quiet_ctx(port);
+        let sv = crate::resolve::Server { id: "1".into(), name: "mc".into(), module: "minecraft".into(), raw: Value::Null };
+        let cat = crate::catalog::Catalog { commands: Vec::new(), interaction_mode: Some("console".into()) };
+        let err = exec_line(&ctx, &sv, &cat, "save-all").await.unwrap_err();
+        let err = err.downcast::<CliError>().unwrap();
+        assert_eq!((err.exit_code(), err.to_string()), (1, "Unknown command".to_string()));
     }
 
     /// 마인크래프트 모듈 하나와 서버 둘(mc, 폴더 /srv/lobby를 쓰는 lobby)이 있는 데몬. 만들기 전 확인은 데몬이 판단한다

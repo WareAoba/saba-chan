@@ -6,7 +6,7 @@ import { byName, createTranslateError, safeShowToast } from '../../utils/helpers
 import { localizedDescription, localizedName } from '../../utils/localizedText';
 import { type CatalogModule, unsupportedText } from '../../utils/moduleSupport';
 import { cachedModuleCatalog, loadModuleCatalog } from '../../utils/storeCache';
-import { formatBytes } from '../../utils/schedule';
+import { formatBytes } from '../monitor/systemMetrics';
 import { Icon } from '../Icon';
 import { ModuleMakerCard } from '../ModuleMakerCard';
 import { clearModuleAuditCache } from '../servers/ModuleAuditNotice';

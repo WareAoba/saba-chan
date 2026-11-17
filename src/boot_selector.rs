@@ -7,6 +7,7 @@
 //!
 //! GUI/CLI가 데몬을 스폰할 때는 `--spawned` 플래그를 전달하여 이 화면을 건너뜁니다.
 
+use crate::chat::i18n::Catalog;
 use saba_chan_updater_lib::config_file::ConfigFile;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
@@ -268,63 +269,88 @@ fn restore_terminal() {
     let _ = std::io::stdout().flush();
 }
 
-fn render_boot_screen(default_mode: BootMode) {
+/// 부팅 화면 문구 (daemon.json `boot`). 언어는 앱 언어(config.json `gui.language`), 고르지 않았으면 OS 언어
+fn catalog(gui: &serde_json::Value) -> Catalog {
+    let chosen = gui.get("language").and_then(serde_json::Value::as_str).map(str::trim).filter(|l| !l.is_empty());
+    Catalog::for_language(&chosen.map(str::to_string).unwrap_or_else(crate::chat::i18n::os_language))
+}
+
+fn texts() -> Catalog {
+    catalog(&ConfigFile::default_location().section("gui"))
+}
+
+fn mode_name(cat: &Catalog, mode: BootMode) -> String {
+    match mode {
+        BootMode::DaemonOnly => cat.t("boot.mode_daemon_only", &[]),
+        other => other.to_string(),
+    }
+}
+
+/// `color`: 고른 방식 이름 앞뒤에 붙일 터미널 색 (시작·끝)
+fn target_line(cat: &Catalog, mode: BootMode, color: (&str, &str)) -> String {
+    cat.t("boot.target", &[("mode", &format!("{}{}{}", color.0, mode_name(cat, mode), color.1))])
+}
+
+fn countdown_line(cat: &Catalog, mode: BootMode, seconds: u64) -> String {
+    cat.t("boot.starting", &[("mode", &mode_name(cat, mode)), ("secs", &seconds.to_string())])
+}
+
+fn render_boot_screen(cat: &Catalog, default_mode: BootMode) {
     clear_screen();
     let ver = env!("CARGO_PKG_VERSION");
     println!();
     println!("  {}saba-chan{} v{}", BOLD, RESET, ver);
     println!("  {}Core Daemon{}", DIM, RESET);
     println!();
-    println!("  Boot target: {}{}{}", GREEN, default_mode, RESET);
+    println!("  {}", target_line(cat, default_mode, (GREEN, RESET)));
     println!();
     // Line 7: countdown + spinner placeholder (row 7 from top, 1-indexed)
     println!();
-    println!();
-    println!("  {}Press [DEL] to change boot target{}", DIM, RESET);
+    // 키 입력은 Windows에서만 읽는다 (`poll_key_fallback`): 다른 OS에서는 안내하지 않는다
+    if cfg!(windows) {
+        println!();
+        println!("  {}{}{}", DIM, cat.t("boot.change_hint", &[]), RESET);
+    }
     let _ = std::io::stdout().flush();
 }
 
-fn render_countdown(default_mode: BootMode, seconds: u64, frame: usize) {
+fn render_countdown(cat: &Catalog, default_mode: BootMode, seconds: u64, frame: usize) {
     let spinner = SPINNER[frame % SPINNER.len()];
     // 커서를 7번째 줄(1-indexed)로 이동
-    let msg = format!(
-        "  {} Starting {} in {}s...",
-        spinner, default_mode, seconds
-    );
+    let msg = format!("  {} {}", spinner, countdown_line(cat, default_mode, seconds));
     print!("\x1b[7;1H\x1b[2K{}", msg);
     let _ = std::io::stdout().flush();
 }
 
-fn render_menu(selected: usize) {
+/// 메뉴 이름 칸을 화면 너비 14칸으로 채운다 (한글은 두 칸)
+fn pad_name(name: &str) -> String {
+    let width = unicode_width::UnicodeWidthStr::width(name);
+    format!("{name}{}", " ".repeat(14usize.saturating_sub(width)))
+}
+
+fn render_menu(cat: &Catalog, selected: usize) {
     clear_screen();
-    let modes = ["GUI", "CLI", "Daemon Only"];
-    let descs = [
-        "Launch graphical interface",
-        "Launch terminal interface",
-        "Run headless (log to console)",
-    ];
+    let modes = [BootMode::Gui, BootMode::Cli, BootMode::DaemonOnly].map(|m| mode_name(cat, m));
+    let descs = ["boot.desc_gui", "boot.desc_cli", "boot.desc_daemon_only"].map(|k| cat.t(k, &[]));
 
     println!();
-    println!("  {}Boot Configuration{}", BOLD, RESET);
+    println!("  {}{}{}", BOLD, cat.t("boot.menu_title", &[]), RESET);
     println!();
 
     for (i, (mode, desc)) in modes.iter().zip(descs.iter()).enumerate() {
         if i == selected {
-            println!("  {} > {}{:<14}{}{}", GREEN, BOLD, mode, RESET, desc);
+            println!("  {} > {}{}{}{}", GREEN, BOLD, pad_name(mode), RESET, desc);
         } else {
-            println!("    {:<14}{}{}{}", mode, DIM, desc, RESET);
+            println!("    {}{}{}{}", pad_name(mode), DIM, desc, RESET);
         }
     }
 
     println!();
-    println!(
-        "  {}↑/↓ Navigate  1-3 Quick select  Enter Confirm{}",
-        DIM, RESET
-    );
+    println!("  {}{}{}", DIM, cat.t("boot.menu_keys", &[]), RESET);
     let _ = std::io::stdout().flush();
 }
 
-fn show_selection_menu(current: BootMode) -> BootMode {
+fn show_selection_menu(cat: &Catalog, current: BootMode) -> BootMode {
     let modes = [BootMode::Gui, BootMode::Cli, BootMode::DaemonOnly];
 
     let mut selected = modes
@@ -333,20 +359,20 @@ fn show_selection_menu(current: BootMode) -> BootMode {
         .unwrap_or(0);
 
     // 초기 1회 렌더링
-    render_menu(selected);
+    render_menu(cat, selected);
 
     loop {
         match poll_key(Duration::from_millis(100)) {
             Some(Key::Up) => {
                 if selected > 0 {
                     selected -= 1;
-                    render_menu(selected);
+                    render_menu(cat, selected);
                 }
             }
             Some(Key::Down) => {
                 if selected < modes.len() - 1 {
                     selected += 1;
-                    render_menu(selected);
+                    render_menu(cat, selected);
                 }
             }
             Some(Key::Char('1')) => return modes[0],
@@ -364,8 +390,9 @@ pub fn run() -> BootMode {
 
     let config = load_config();
     let default_mode = config.last_mode;
+    let cat = texts();
 
-    render_boot_screen(default_mode);
+    render_boot_screen(&cat, default_mode);
 
     // 5초 카운트다운 — 80ms 간격으로 스피너 프레임 갱신, DEL 키로 인터럽트
     let mut frame: usize = 0;
@@ -373,11 +400,11 @@ pub fn run() -> BootMode {
         // 1초를 ~80ms 간격의 작은 단위로 분할 → 스피너 + 키 폴링
         let ticks = 12; // 12 × ~83ms ≈ 1초
         for _ in 0..ticks {
-            render_countdown(default_mode, remaining, frame);
+            render_countdown(&cat, default_mode, remaining, frame);
             frame += 1;
             if poll_key(Duration::from_millis(83)) == Some(Key::Delete) {
                 restore_terminal();
-                let selected = show_selection_menu(default_mode);
+                let selected = show_selection_menu(&cat, default_mode);
                 save_config(selected);
                 clear_screen();
                 return selected;
@@ -396,11 +423,9 @@ pub fn run() -> BootMode {
 pub fn clear_for_daemon_only(port: u16) {
     clear_screen();
     let ver = env!("CARGO_PKG_VERSION");
-    eprintln!(
-        "  {}saba-chan{} v{} — daemon-only on port {}",
-        BOLD, RESET, ver, port
-    );
-    eprintln!("  {}Press Ctrl+C to shut down.{}", DIM, RESET);
+    let cat = texts();
+    eprintln!("  {}saba-chan{} v{} — {}", BOLD, RESET, ver, cat.t("boot.daemon_only", &[("port", &port.to_string())]));
+    eprintln!("  {}{}{}", DIM, cat.t("boot.shutdown_hint", &[]), RESET);
     eprintln!();
 }
 
@@ -650,6 +675,13 @@ pub async fn wait_for_ipc_port(port: u16, timeout: Duration) -> bool {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn menu_names_pad_to_screen_width() {
+        // 한글은 화면에서 두 칸이라 글자 수로 맞추면 설명 줄이 어긋난다
+        assert_eq!(pad_name("GUI"), format!("GUI{}", " ".repeat(11)));
+        assert_eq!(pad_name("데몬만"), format!("데몬만{}", " ".repeat(8)));
+    }
     use super::*;
 
     /// 리눅스 "CLI로 전환": 고른 터미널(`$TERMINAL`)이 먼저고, 없으면 알려진 터미널을 차례로 찾는다.
@@ -691,6 +723,20 @@ mod tests {
         assert_eq!(find_tagged_process("t-123", "saba-chan-cli"), None);
         let _ = child.kill();
         let _ = child.wait();
+    }
+
+    /// 부팅 화면은 앱 언어(config.json `gui.language`)로 말하고, 고르지 않았으면 OS 언어를 따른다
+    #[test]
+    fn the_boot_screen_speaks_the_app_language() {
+        let ko = catalog(&serde_json::json!({ "language": "ko" }));
+        assert_eq!(target_line(&ko, BootMode::Gui, ("", "")), "부팅 대상: GUI");
+        assert_eq!(target_line(&ko, BootMode::DaemonOnly, ("", "")), "부팅 대상: 데몬만");
+        assert_eq!(countdown_line(&ko, BootMode::Gui, 5), "5초 뒤 GUI 시작...");
+        assert_eq!(countdown_line(&catalog(&serde_json::json!({ "language": "en" })), BootMode::Cli, 3), "Starting CLI in 3s...");
+        let os = crate::chat::i18n::Catalog::for_language(&crate::chat::i18n::os_language());
+        for unset in [serde_json::Value::Null, serde_json::json!({ "language": " " })] {
+            assert_eq!(catalog(&unset).language(), os.language());
+        }
     }
 
     /// 고른 방식은 config.json `boot`에 남고, 읽지 못하면 GUI로 돌아간다 (데이터 폴더는 테스트 프로세스마다 따로다)

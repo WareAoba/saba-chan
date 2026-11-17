@@ -21,15 +21,22 @@ pub struct Rule {
 
 /// `module_settings`의 `idle_stop`·`idle_stop_minutes`·`idle_stop_grace_minutes`. 꺼져 있으면 None
 pub fn rule_of(instance: &crate::instance::ServerInstance) -> Option<Rule> {
-    if !super::setting_flag(instance, "idle_stop", false) {
-        return None;
-    }
+    enabled(instance).then(|| configured(instance))
+}
+
+/// `idle_stop` (기본 꺼짐)
+pub fn enabled(instance: &crate::instance::ServerInstance) -> bool {
+    super::setting_flag(instance, "idle_stop", false)
+}
+
+/// `idle_stop_minutes`·`idle_stop_grace_minutes` (꺼져 있어도 켜면 쓸 값)
+pub fn configured(instance: &crate::instance::ServerInstance) -> Rule {
     let minutes = |key: &str, default: u64, least: u64| {
         let value = instance.module_settings.get(key);
         let n = value.and_then(|v| v.as_u64().or_else(|| v.as_str()?.trim().parse().ok())).unwrap_or(default);
         n.clamp(least, MAX_MINUTES)
     };
-    Some(Rule { minutes: minutes("idle_stop_minutes", DEFAULT_MINUTES, 1), grace_minutes: minutes("idle_stop_grace_minutes", DEFAULT_GRACE_MINUTES, 0) })
+    Rule { minutes: minutes("idle_stop_minutes", DEFAULT_MINUTES, 1), grace_minutes: minutes("idle_stop_grace_minutes", DEFAULT_GRACE_MINUTES, 0) }
 }
 
 /// 인스턴스마다 (그 프로세스를 켠 시각, 0명이 되기 시작한 시각) (Unix 초)
@@ -38,9 +45,28 @@ fn empty_since() -> &'static Mutex<HashMap<String, (u64, u64)>> {
     EMPTY.get_or_init(Default::default)
 }
 
+/// 자동 정지를 그만둔 실행: 인스턴스마다 그 프로세스를 켠 시각 (Unix 초)
+fn given_up() -> &'static Mutex<HashMap<String, u64>> {
+    static GIVEN_UP: OnceLock<Mutex<HashMap<String, u64>>> = OnceLock::new();
+    GIVEN_UP.get_or_init(Default::default)
+}
+
+/// 다시 해도 정지할 수 없는 서버(저장 후 종료를 요청할 길이 없다): `started`에 켠 이 실행에서는 더 정지하지 않는다
+pub fn give_up(instance_id: &str, started: u64) {
+    given_up().lock().unwrap_or_else(|e| e.into_inner()).insert(instance_id.to_string(), started);
+}
+
+/// 설정을 저장했다: 정지 방식을 바꿔 정지할 수 있게 됐을 수 있으니 그만둔 실행도 다시 해 본다
+pub fn retry(instance_id: &str) {
+    given_up().lock().unwrap_or_else(|e| e.into_inner()).remove(instance_id);
+}
+
 /// 켜진 서버를 한 번 본다. 지금 정지해야 하면 비어 있던 것으로 알릴 분(`rule.minutes`).
 /// `started`는 그 프로세스를 켠 시각: 다시 켠 서버는 처음부터 센다
 pub fn observe(instance_id: &str, rule: Option<Rule>, started: u64, players: Option<u32>, now: u64) -> Option<u64> {
+    if given_up().lock().unwrap_or_else(|e| e.into_inner()).get(instance_id).is_some_and(|at| *at == started) {
+        return None;
+    }
     let mut map = empty_since().lock().unwrap_or_else(|e| e.into_inner());
     let (Some(rule), Some(0)) = (rule, players) else {
         map.remove(instance_id);
@@ -58,6 +84,7 @@ pub fn observe(instance_id: &str, rule: Option<Rule>, started: u64, players: Opt
 /// 꺼졌거나 지운 서버는 잊는다
 pub fn forget(instance_id: &str) {
     empty_since().lock().unwrap_or_else(|e| e.into_inner()).remove(instance_id);
+    given_up().lock().unwrap_or_else(|e| e.into_inner()).remove(instance_id);
 }
 
 /// 마지막 정지가 자동 정지였을 때: 정지한 시각(Unix 초)과 비어 있던 분. 서버 목록(`ServerInfo.idle_stopped`)이 꺼진 서버에 싣는다
@@ -126,6 +153,20 @@ mod tests {
         let restarted = started + 50 * MIN;
         assert_eq!(observe(id, rule, restarted, Some(0), started + 52 * MIN), None);
         assert_eq!(observe(id, rule, restarted, Some(0), started + 62 * MIN), Some(10));
+    }
+
+    /// 정지할 길이 없어 그만둔 실행도 설정을 저장하면 다시 해 본다 (정지 방식을 바꿔 정지할 수 있게 됐을 수 있다)
+    #[test]
+    fn a_given_up_run_is_tried_again_once_its_settings_are_saved() {
+        let id = "idle-give-up-test";
+        let rule = Some(Rule { minutes: 10, grace_minutes: 0 });
+        let started = 3_000_000;
+        assert_eq!(observe(id, rule, started, Some(0), started), None);
+        assert_eq!(observe(id, rule, started, Some(0), started + 10 * MIN), Some(10));
+        give_up(id, started);
+        assert_eq!(observe(id, rule, started, Some(0), started + 20 * MIN), None);
+        retry(id);
+        assert_eq!(observe(id, rule, started, Some(0), started + 21 * MIN), Some(10));
     }
 
     #[test]

@@ -34,7 +34,7 @@ describe('DataTransferSection', () => {
         expect(await screen.findByText(/Skip Beta \(a server with the same ID exists\)/)).toBeTruthy();
 
         // 재미리보기가 실패하면 토글을 되돌린다
-        vi.mocked(window.api.dataImport).mockResolvedValueOnce({ success: false, error_code: 'INVALID_ARCHIVE' });
+        vi.mocked(window.api.dataImport).mockResolvedValueOnce({ success: false, error_code: 'invalid_archive' });
         fireEvent.click(screen.getByLabelText('Overwrite existing servers'));
         expect(await screen.findByText(/Not a Saba-chan export file/)).toBeTruthy();
         expect((screen.getByLabelText('Overwrite existing servers') as HTMLInputElement).checked).toBe(false);
@@ -60,7 +60,7 @@ describe('DataTransferSection', () => {
         window.api.dataExport = vi
             .fn()
             .mockResolvedValueOnce({ canceled: true })
-            .mockResolvedValueOnce({ success: false, error: 'boom', error_code: 'WRITE_FAILED' });
+            .mockResolvedValueOnce({ success: false, error: 'boom', error_code: 'write_failed' });
         window.api.dataImport = vi.fn() as never;
         render(<DataTransferSection />);
         const btn = screen.getByRole('button', { name: /^Export$/ });

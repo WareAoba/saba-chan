@@ -4,20 +4,9 @@ import { DiscordPage as DiscordPageImpl } from '../components/discord/DiscordPag
 import { relayFailureKind, useDiscordStore } from '../stores/useDiscordStore';
 import type { ComponentType } from 'react';
 
-/** 시험에 필요한 props만 넘기려고 느슨하게 받는다 */
+/** 디스코드 칸은 스토어에서 읽으므로 props 없이 그린다 */
 const DiscordPage = DiscordPageImpl as unknown as ComponentType<Record<string, unknown>>;
 
-const props = {
-    discordBotStatus: 'connecting',
-    discordCloudHostId: 'host',
-    setDiscordCloudHostId: () => {},
-    relayConnected: false,
-    relayConnecting: false,
-    setDiscordPrefixes: () => {},
-    setNodeSettings: () => {},
-    setCloudNodes: () => {},
-    setCloudMembers: () => {},
-};
 
 beforeEach(() => {
     useDiscordStore.getState()._resetForTest();
@@ -102,6 +91,10 @@ describe('릴레이 실패 종류', () => {
 });
 
 describe('연결 카드', () => {
+    beforeEach(() => {
+        useDiscordStore.setState({ discordBotStatus: 'connecting', relayConnected: false, relayConnecting: false });
+    });
+
     it('거절되면 이유와 함께 이 PC를 다시 연결하는 버튼을 보이고, 누르면 그 자리에서 코드를 받는다', async () => {
         useDiscordStore.setState({
             relayError: 'INVALID_TOKEN',
@@ -112,7 +105,7 @@ describe('연결 카드', () => {
             .fn()
             .mockResolvedValue({ code: 'CODE-123', pollSecret: 's', expiresAt: Date.now() + 300_000 }) as never;
         window.api.relayPollPairingStatus = vi.fn().mockResolvedValue({ status: 'pending' }) as never;
-        await act(async () => render(<DiscordPage {...props} />));
+        await act(async () => render(<DiscordPage />));
         expect(screen.getByText(/rejected this PC's connection key/)).toBeTruthy();
         await act(async () => fireEvent.click(screen.getByRole('button', { name: /Reconnect this PC/ })));
         expect(window.api.relayInitiatePairing).toHaveBeenCalled();
@@ -123,14 +116,14 @@ describe('연결 카드', () => {
 
     it('요청 한도로 끊긴 것은 다시 연결 버튼 없이 곧 다시 붙는다고 알린다', async () => {
         useDiscordStore.setState({ relayError: 'ERROR', relayErrorKind: 'rate' });
-        await act(async () => render(<DiscordPage {...props} />));
+        await act(async () => render(<DiscordPage />));
         expect(screen.getByText(/Server-chan rate limit/)).toBeTruthy();
         expect(screen.queryByRole('button', { name: /Reconnect this PC/ })).toBeNull();
     });
 
     it('연결이 끊겨도 디스코드 서버 목록의 + 버튼은 남는다', async () => {
         useDiscordStore.setState({ relayError: 'INVALID_TOKEN', relayErrorKind: 'rejected' });
-        await act(async () => render(<DiscordPage {...props} />));
+        await act(async () => render(<DiscordPage />));
         expect(screen.getByRole('button', { name: 'Connect this PC' })).toBeTruthy();
     });
 });

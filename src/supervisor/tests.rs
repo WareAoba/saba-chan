@@ -588,6 +588,69 @@ async fn starts_and_stops_say_who_asked() {
     assert_eq!(exits.iter().map(|e| e["kind"].clone()).collect::<Vec<_>>(), vec![json!("crash")]);
 }
 
+/// 관리형 시작을 끈 서버(데몬이 직접 띄운 non-managed)도 종료 코드로 가른다: 서버 창·게임 안에서 정상으로 끄면(코드 0)
+/// 알림함에 넣지 않는다 (사용자 규칙: 평범한 시작·정지는 알림함에 넣지 않는다). 크래시는 크래시다
+#[cfg(unix)]
+#[tokio::test]
+async fn a_non_managed_server_ended_in_game_is_a_plain_stop() {
+    use crate::audit::{with_origin, Origin};
+    let tmp = tempfile::tempdir().unwrap();
+    let modules = tmp.path().join("modules");
+    for (name, sh) in [("quits", "sleep 0.5; exit 0"), ("boom", "sleep 0.5; kill -SEGV $$")] {
+        let dir = modules.join(name);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("module.toml"), format!("[module]\nschema_version = 1\nname = \"{name}\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n")).unwrap();
+        std::fs::write(dir.join("lifecycle.py"), format!(
+            "import json, sys\n\
+                 if sys.argv[1] == 'get_launch_command':\n    \
+                 print(json.dumps({{'success': True, 'program': '/bin/sh', 'args': ['-c', {sh:?}], 'working_dir': '.'}}))\n\
+                 else:\n    print(json.dumps({{'success': True}}))\n"
+        )).unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
+    }
+    let mut sup = Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+    sup.initialize().await.unwrap();
+    for (id, module) in [("nm-quits", "quits"), ("nm-boom", "boom")] {
+        let mut inst = crate::instance::ServerInstance::new(id, module);
+        inst.id = id.into();
+        inst.module_settings.insert("managed_start".into(), json!(false));
+        sup.instance_store.add(inst).unwrap();
+    }
+    let sup = std::sync::Arc::new(tokio::sync::RwLock::new(sup));
+    let mut sub = crate::events::bus().subscribe(None);
+
+    for (id, module) in [("nm-quits", "quits"), ("nm-boom", "boom")] {
+        let started = with_origin(Origin::new("gui"), Supervisor::start_server(&sup, id, module, json!({}))).await.unwrap();
+        assert_eq!(started["success"], true, "{started}");
+        // 시작 실패(STARTUP_GRACE 안의 종료)가 아니라 한동안 돈 서버로 본다
+        let pid = sup.read().await.tracker.get_pid(id).unwrap();
+        sup.read().await.tracker.track_since(id, pid, saba_runner::now() - 120);
+    }
+    for _ in 0..50 {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        sup.write().await.monitor_processes_taken_at(&[], u64::MAX).await.unwrap();
+        let s = sup.read().await;
+        if s.tracker.get_pid("nm-quits").is_none() && s.tracker.get_pid("nm-boom").is_none() {
+            break;
+        }
+    }
+    let events: Vec<(String, Value)> = std::iter::from_fn(|| sub.rx.try_recv().ok())
+        .filter(|e| e.data["instanceId"].as_str().is_some_and(|id| id.starts_with("nm-")))
+        .map(|e| (e.kind.clone(), e.data.clone()))
+        .collect();
+    let of = |kind: &str, id: &str| events.iter().filter(|(k, d)| k == kind && d["instanceId"] == id).map(|(_, d)| d.clone()).collect::<Vec<_>>();
+
+    let exits = of("instance.exit", "nm-quits");
+    assert_eq!(exits.iter().map(|e| e["kind"].clone()).collect::<Vec<_>>(), vec![json!("in_game_stop")], "{events:?}");
+    let stopped = of("instance.stopped", "nm-quits");
+    assert_eq!(stopped.iter().map(|e| e["source"].clone()).collect::<Vec<_>>(), vec![json!("game")]);
+    let inbox: Vec<_> = events.iter().filter(|(_, d)| d["instanceId"] == "nm-quits").filter_map(|(k, d)| crate::notices::from_event(k, d)).collect();
+    assert!(inbox.is_empty(), "a plain start and in-game stop never go into the inbox: {inbox:?}");
+
+    let exits = of("instance.exit", "nm-boom");
+    assert_eq!(exits.iter().map(|e| e["kind"].clone()).collect::<Vec<_>>(), vec![json!("crash")], "{events:?}");
+}
+
 /// managed 모드에서는 모듈이 stdin을 지원할 때만 명령을 stdin으로 보낸다
 #[cfg(unix)]
 #[tokio::test]

@@ -380,6 +380,42 @@ pub enum Change {
     Ladder(Vec<LevelInput>),
 }
 
+/// 릴레이 멤버 항목의 디스코드 id (문자열이나 숫자)
+fn member_id(m: &Value) -> String {
+    match m.get("id") {
+        Some(Value::String(s)) => s.clone(),
+        Some(Value::Number(n)) => n.to_string(),
+        _ => String::new(),
+    }
+}
+
+/// 권한 가져오기 후보: 릴레이에 남은 부여값(`[{id, level, username?, displayName?, …}]`) 중 데몬 값과 다른 것.
+/// 주인과 줄 수 없는 레벨(소유자, 이 서버 사다리에 없는 단계)은 뺀다. 항목은 릴레이 것 그대로다.
+/// 데몬은 저절로 가져오지 않는다: 원본이 둘이 되지 않게 사용자가 골라서 쓴다 (`/api/permissions/:guildId/import`)
+pub fn import_candidates(node: Option<&Value>, relay_members: &[Value]) -> Vec<Value> {
+    let perm = NodePermissions::from_node(node);
+    let owner = node.and_then(|n| n.get("ownerDiscordId")).and_then(Value::as_str).unwrap_or_default();
+    relay_members
+        .iter()
+        .filter(|m| {
+            let id = member_id(m);
+            let level = m.get("level").and_then(Value::as_i64);
+            !id.is_empty() && id != owner && level.is_some_and(|l| perm.grantable(l) && perm.members.get(&id) != Some(&l))
+        })
+        .cloned()
+        .collect()
+}
+
+/// 고른 멤버를 후보의 레벨로 바꾸는 목록. 후보가 아닌 id가 있으면 그 id들
+pub fn import_changes(candidates: &[Value], chosen: &[String]) -> Result<Vec<Change>, Vec<String>> {
+    let level_of = |id: &str| candidates.iter().find(|m| member_id(m) == id).and_then(|m| m.get("level")?.as_i64());
+    let missing: Vec<String> = chosen.iter().filter(|id| level_of(id).is_none()).cloned().collect();
+    if !missing.is_empty() {
+        return Err(missing);
+    }
+    Ok(chosen.iter().map(|id| Change::Member { discord_id: id.clone(), level: level_of(id) }).collect())
+}
+
 /// 새 사다리를 저장하고 지운 단계를 쓰던 값을 옮긴다
 fn apply_ladder(node: &mut Map<String, Value>, input: &[LevelInput]) -> Result<(), &'static str> {
     let old = NodePermissions::from_node(Some(&Value::Object(node.clone())));
@@ -505,6 +541,29 @@ mod tests {
 
     fn who(user: &str) -> Requester {
         Requester { guild_id: Some("g".into()), user_id: Some(user.into()), owner_id: Some("own".into()), via_chatbot: false, ..Default::default() }
+    }
+
+    /// 가져오기 후보: 릴레이에 남은 부여값 중 데몬과 다른 것. 주인과 줄 수 없는 레벨(소유자, 이 서버에 없는 단계)은 뺀다.
+    /// 고른 멤버는 후보일 때만 그 레벨로 바꾸고, 후보가 아닌 멤버가 섞이면 아무것도 바꾸지 않는다
+    #[test]
+    fn import_candidates_are_relay_grants_that_differ() {
+        let node = json!({ "ownerDiscordId": "9", "members": { "1": 2, "2": 1 } });
+        let relay = [
+            json!({ "id": "1", "level": 2 }),
+            json!({ "id": "2", "level": 2, "username": "two" }),
+            json!({ "id": 3, "level": -1 }),
+            json!({ "id": "9", "level": 1 }),
+            json!({ "id": "4", "level": 3 }),
+            json!({ "id": "6", "level": 12 }),
+            json!({ "id": "5" }),
+        ];
+        let candidates = import_candidates(Some(&node), &relay);
+        assert_eq!(candidates, vec![json!({ "id": "2", "level": 2, "username": "two" }), json!({ "id": 3, "level": -1 })]);
+        assert_eq!(
+            import_changes(&candidates, &["3".to_string()]),
+            Ok(vec![Change::Member { discord_id: "3".into(), level: Some(-1) }])
+        );
+        assert_eq!(import_changes(&candidates, &["2".to_string(), "1".to_string()]), Err(vec!["1".to_string()]));
     }
 
     #[test]

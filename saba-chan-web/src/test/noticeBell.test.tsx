@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NoticeBell } from '../components/NoticeBell';
 import { initI18n } from '../i18n';
-import { useData } from '../store';
+import { useApp, useData } from '../store';
 import type { PcEvent } from '../types';
 import { asServers, mockApi } from './mocks';
 
@@ -78,5 +78,20 @@ describe('웹 콘솔 알림 종', () => {
         expect(list).toHaveBeenCalledTimes(1);
         await emit({ type: 'instance.exit', data: { kind: 'crash' } } as PcEvent);
         expect(list).toHaveBeenCalledTimes(2);
+    });
+
+    it('예약 작업 실패를 누르면 그 서버의 예약 화면으로 간다', async () => {
+        const list = vi.fn(async () => ({
+            success: true,
+            notices: [{ id: 9, at: now - 30, level: 'error', message: 'survival · Scheduled task failed', detail: 'Save', source: 'survival', instanceId: 'i1', action: 'openSchedule', read: false }],
+            unread: 1,
+        }));
+        setup(list);
+        await flush();
+        fireEvent.click(screen.getByRole('button', { name: 'Notifications' }));
+        await flush();
+        fireEvent.click(screen.getByRole('button', { name: /survival · Scheduled task failed/ }));
+        expect(useApp.getState()).toMatchObject({ tab: 'servers', serverId: 'i1', serverTab: 'maintenance' });
+        expect(screen.queryByRole('dialog', { name: 'Notifications' })).toBeNull();
     });
 });

@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
@@ -16,10 +16,11 @@ describe('SabaSlider', () => {
         expect(onChange).toHaveBeenCalledWith(150);
     });
 
-    it('설정 화면은 직접 range 칸을 그리지 않는다', () => {
-        for (const f of ['settings/AppearanceTab.tsx', 'settings/ConsoleTab.tsx', 'WindowBackdropSetting.tsx']) {
-            const src = readFileSync(join(__dirname, '../components/Modals', f), 'utf8');
-            expect(src, f).not.toMatch(/type="range"/);
-        }
+    it('화면은 range·number 칸을 직접 그리지 않고 SabaSlider·SabaNumberInput을 쓴다', () => {
+        const root = join(__dirname, '../components');
+        const raw = (readdirSync(root, { recursive: true }) as string[])
+            .filter((f) => f.endsWith('.tsx') && !f.endsWith(join('ui', 'SabaUI.tsx')))
+            .filter((f) => /type="(range|number)"/.test(readFileSync(join(root, f), 'utf8')));
+        expect(raw).toEqual([]);
     });
 });
