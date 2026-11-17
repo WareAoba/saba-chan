@@ -363,10 +363,12 @@ async fn main() -> anyhow::Result<()> {
             tracing::warn!("Failed to initialize supervisor: {}", e);
         }
     }
-    // 예전에 준 런타임 폴더 읽기 권한 중 지금 쓰지 않는 것은 거둔다 (확인되지 않은 구성요소의 격리, Windows)
+    // 예전에 준 런타임 폴더 읽기 권한 중 지금 쓰지 않는 것은 거둔다 (확인되지 않은 구성요소의 격리, Windows).
+    // 공용 익스텐션 데이터 폴더의 실행 파일에 예전 격리 실행이 남긴 낮은 수준 표시도 덮는다
     {
         let users = supervisor.read().await.user_runtimes();
         tokio::task::spawn_blocking(move || sandbox::reconcile_runtimes(&users));
+        tokio::task::spawn_blocking(|| sandbox::restore_extension_data(&saba_chan_updater_lib::constants::resolve_data_dir()));
     }
     // 모듈이 구현한 함수 목록을 미리 물어 둔다 (GET /api/modules가 기다리지 않게)
     if let Ok(modules) = supervisor.read().await.list_modules() {

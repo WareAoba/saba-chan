@@ -13,6 +13,8 @@ import { errorText } from './maintenanceText';
 // 예전 경로로 가져오는 곳(시험)을 위해 다시 내보낸다
 export { draftProblems, fromDraft, toDraft, WEEKDAYS };
 
+/** 받은 예약 정보: 서버마다 하나. 탭을 다시 열면 이것부터 바로 보이고 새 정보는 뒤에서 받아 바꾼다 */
+const infos = new Map<string, ScheduleInfo>();
 
 /**
  * 서버별 백업·예약 작업 탭 (데몬 A2·A3).
@@ -20,7 +22,7 @@ export { draftProblems, fromDraft, toDraft, WEEKDAYS };
  */
 export function MaintenanceTab({ server, moduleCommands = [] }: { server: Server; moduleCommands?: ApiBody[] }) {
     const { t } = useTranslation('gui');
-    const [info, setInfo] = useState<ScheduleInfo | null>(null);
+    const [info, setInfo] = useState<ScheduleInfo | null>(() => infos.get(server.id) ?? null);
     const [loadError, setLoadError] = useState<string | null>(null);
 
     const load = useCallback(async () => {
@@ -28,7 +30,7 @@ export function MaintenanceTab({ server, moduleCommands = [] }: { server: Server
         try {
             const res = await window.api.instanceScheduleGet(server.id);
             if (failed(res)) throw new Error(errorText(res, t('maintenance.load_failed'), t));
-            setInfo({
+            const next: ScheduleInfo = {
                 schedule: Array.isArray(res?.schedule) ? res.schedule : [],
                 backupKeep: res?.backup_keep ?? 10,
                 backupSupported: !!res?.backup_supported,
@@ -41,16 +43,19 @@ export function MaintenanceTab({ server, moduleCommands = [] }: { server: Server
                 utcOffset: typeof res?.utc_offset_minutes === 'number' ? res.utc_offset_minutes : null,
                 // 저장할 때 다시 보낸다: 그사이 다른 곳에서 바뀌었으면 데몬이 덮어쓰지 않고 거절한다
                 revision: res?.revision,
-            });
+            };
+            infos.set(server.id, next);
+            // 보이는 것과 같으면 그대로 둔다: 먼저 보인 탭에서 고치던 내용을 새 객체로 지우지 않게
+            setInfo((shown) => (shown && JSON.stringify(shown) === JSON.stringify(next) ? shown : next));
         } catch (err) {
             setLoadError((err as Error).message || String(err));
         }
     }, [server.id, t]);
 
     useEffect(() => {
-        setInfo(null);
+        setInfo(infos.get(server.id) ?? null);
         load();
-    }, [load]);
+    }, [load, server.id]);
 
     if (loadError) {
         return <SabaFail message={loadError} onRetry={load} retryLabel={t('maintenance.retry')} />;

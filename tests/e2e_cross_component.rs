@@ -932,7 +932,9 @@ if __name__ == "__main__":
 
     saba_core::events::emit("e2e.hook_probe", json!({ "instanceId": "probe-1", "ok": true }));
 
-    let outputs = [d_dir.join("extension-data").join(id).join("seen.json"), ext_dir.join("seen.json")];
+    // 격리 실행은 그 실행의 뿌리 안 전용 폴더에, 격리 없는 실행은 익스텐션 폴더에 쓴다
+    let own_root = saba_core::sandbox::extension_data_root(&d_dir, Some(&saba_core::sandbox::appcontainer::component_tag(&format!("ext-{id}"))));
+    let outputs = [own_root.join(id).join("seen.json"), ext_dir.join("seen.json")];
     let mut seen = None;
     for _ in 0..600 {
         if let Some(text) = outputs.iter().find_map(|p| fs::read_to_string(p).ok()) {
