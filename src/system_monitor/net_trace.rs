@@ -908,8 +908,6 @@ mod platform {
         }
     }
 
-    /// 표시(`ADDED_KEY`)가 남은 계정마다 사바쨩이 준 그룹 소속·공급자 허용을 거둔다. 관리자가 아니면 확인 창으로 다시 띄운다.
-    /// 거두지 못하면 `FAIL  <이유>` 줄과 종료 코드 1
     /// 표시(`ADDED_KEY`)가 남은 계정들
     pub(super) fn marked() -> Vec<String> {
         use winreg::enums::HKEY_LOCAL_MACHINE;
@@ -920,6 +918,8 @@ mod platform {
         marked_sids(names)
     }
 
+    /// 표시(`ADDED_KEY`)가 남은 계정마다 사바쨩이 준 그룹 소속·공급자 허용을 거둔다. 관리자가 아니면 확인 창으로 다시 띄운다.
+    /// 거두지 못하면 `FAIL  <이유>` 줄과 종료 코드 1
     pub(super) fn reset_tool() -> i32 {
         let sids = marked();
         if sids.is_empty() {
@@ -1024,12 +1024,15 @@ mod platform {
 mod tests {
     use super::*;
 
+    // Windows에서는 이 PC의 실제 표시를 읽는다: 권한을 받은 PC에서 돌리면 관리자 확인 창이 뜨므로 뺀다
+    #[cfg(not(windows))]
     #[test]
     fn revoke_without_anything_saba_chan_granted_is_refused_without_elevation() {
         assert!(!revocable());
         assert_eq!(elevate(false), Err(ElevateError::NothingToRevoke));
     }
 
+    #[cfg(not(windows))]
     #[test]
     fn marked_answers_no_when_nothing_was_granted() {
         assert_eq!(group_tool(&["marked".to_string()]), 1);
