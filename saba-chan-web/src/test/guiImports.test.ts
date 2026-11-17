@@ -51,6 +51,8 @@ const ALLOWED = new Set([
     '@gui/components/discord/instanceWords',
     // 조작 가능 명단 넣기·빼기·멤버 고르기 (GUI 조작 가능 탭과 같은 순수 함수)
     '@gui/components/servers/controllers',
+    // 백업·예약 오류 코드 → 문구 (GUI 서버 관리 탭과 같은 표, 화면 없는 순수 함수)
+    '@gui/components/servers/maintenanceText',
     // 디스코드 서버별 보일 서버 규칙 (GUI 노드 인스턴스 탭과 같은 순수 함수)
     '@gui/components/discord/nodePermissions',
     // 레벨 사다리 편집·명령 계단 초안·멤버 찾기 (화면 없는 훅, 앱 레벨 편집·계단·멤버 찾기와 같은 상태)

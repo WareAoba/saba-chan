@@ -2,7 +2,7 @@ import { formatBytes } from '@gui/components/monitor/systemMetrics';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { type ToastTone, useApp } from '../store';
-import { Button, Empty, errorText, failed, Loading, Section, timedOut } from './ui';
+import { Button, Empty, failed, Loading, maintenanceError, Section, timedOut } from './ui';
 import type { ApiBody, Server, WebApi } from '../types';
 
 /** 백업 한 개 (GET /api/instance/:id/backups) */
@@ -25,10 +25,10 @@ export function BackupsPanel({ api, server, running }: { api: WebApi; server: Pi
     const load = useCallback(async () => {
         const res = await api.instanceBackups(server.id);
         if (failed(res)) {
-            toast(errorText(t, res), 'error');
+            toast(maintenanceError(t, tg, res), 'error');
             setList([]);
         } else setList(Array.isArray(res.backups) ? res.backups : []);
-    }, [api, server.id, t, toast]);
+    }, [api, server.id, t, tg, toast]);
 
     useEffect(() => {
         load();
@@ -43,7 +43,7 @@ export function BackupsPanel({ api, server, running }: { api: WebApi; server: Pi
             toast(t('errors.still_working'), 'info');
             return load();
         }
-        if (failed(res)) return toast(errorText(t, res), 'error');
+        if (failed(res)) return toast(maintenanceError(t, tg, res), 'error');
         const [text, tone]: [string, ToastTone] = typeof okText === 'string' ? [okText, 'ok'] : okText(res);
         toast(text, tone);
         load();
