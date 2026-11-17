@@ -675,7 +675,9 @@
     "minutes_ago": "{{count}} мин. назад",
     "yesterday": "Вчера",
     "click_to_open": "нажмите, чтобы открыть",
-    "click_to_update": "нажмите, чтобы обновить"
+    "click_to_update": "нажмите, чтобы обновить",
+    "open_backups": "Открыть резервные копии",
+    "open_schedule": "Открыть расписание"
   },
   "updates": {
     "no_updates": "Все компоненты актуальны",

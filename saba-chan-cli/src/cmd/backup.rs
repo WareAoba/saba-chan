@@ -4,8 +4,8 @@
 //! 되돌리기는 서버가 꺼져 있어야 한다. 켜져 있으면 끄고 되돌린 뒤 다시 켤지 묻는다.
 //! 되돌리기 직전 상태는 데몬이 `pre-restore` 백업으로 남긴다.
 
-use crate::cli::{BackupCmd, StartArgs};
-use crate::cmd::server::{runtime, shell_word, stop_server};
+use crate::cli::BackupCmd;
+use crate::cmd::server::{runtime, shell_word};
 use crate::ctx::Ctx;
 use crate::error::Result;
 use crate::output::{self, s, status_of};
@@ -119,17 +119,15 @@ async fn create(ctx: &Ctx, server: Option<&str>, from_snapshot: bool) -> Result<
 async fn restore(ctx: &Ctx, server: &str, backup: Option<&str>) -> Result<()> {
     let sv = resolve::server_exact(ctx, Some(server)).await?;
     let name = pick(ctx, &sv, backup).await?;
-    // 열 수 없는 백업은 복원이 실패한다: 켜진 서버를 끄기 전에 멈춘다 (GUI는 복원 버튼을 막는다)
+    // 열 수 없는 백업은 복원이 실패한다: 묻기 전에 멈춘다 (GUI는 복원 버튼을 막는다)
     refuse_unreadable(&backups(ctx, &sv).await?, &name)?;
-    let was_running = status_of(&runtime(ctx, &sv).await?) != "stopped";
-    if was_running {
-        ctx.ask
-            .ensure(&t!("backup.confirm_restore_running", backup = name, name = sv.name))?;
-        stop_server(ctx, &sv, false, false).await?;
-    } else {
-        ctx.ask
-            .ensure(&t!("backup.confirm_restore", backup = name, name = sv.name))?;
+    // 켜진 서버는 묻지 않고 거절한다 (데몬도 409 `server_running`으로 거절한다. 앱·웹은 복원 버튼을 끈다).
+    // 정지·다시 켜기는 사람이 `server stop`·`start`로 한다
+    if status_of(&runtime(ctx, &sv).await?) != "stopped" {
+        return Err(crate::error::failed(t!("backup.restore_running", command = format!("saba-chan-cli server stop {}", shell_word(&sv.name)))));
     }
+    ctx.ask
+        .ensure(&t!("backup.confirm_restore", backup = name, name = sv.name))?;
     let spin = crate::progress::spinner(&t!("backup.restoring", backup = name));
     let r = ctx.api.restore_backup(&sv.id, &name).await;
     spin.finish_and_clear();
@@ -141,21 +139,6 @@ async fn restore(ctx: &Ctx, server: &str, backup: Option<&str>) -> Result<()> {
     }
     if let Some(msg) = links_missed(&r) {
         ctx.out.warn(&msg);
-    }
-    if was_running
-        && ctx
-            .ask
-            .confirm(&t!("backup.start_again", name = sv.name), true)
-            .unwrap_or(false)
-    {
-        return crate::cmd::server::start(
-            ctx,
-            StartArgs {
-                server: Some(sv.id.clone()),
-                ..Default::default()
-            },
-        )
-        .await;
     }
     Ok(())
 }
@@ -285,6 +268,29 @@ mod tests {
         assert!(links_missed(&json!({ "links_not_restored": 2 })).is_some_and(|m| m.contains('2')));
         assert_eq!(links_missed(&json!({ "links_not_restored": 0 })), None);
         assert_eq!(links_missed(&json!({})), None);
+    }
+
+    /// 켜진 서버는 묻지 않고 거절한다: CLI가 끄고 복원한 뒤 다시 켜지 않는다 (데몬도 409 `server_running`, 앱·웹은 복원 버튼을 끈다)
+    #[tokio::test]
+    async fn restoring_a_running_server_is_refused_without_asking_or_stopping_it() {
+        crate::i18n::init("ko");
+        fn daemon(line: &str, _: &Value) -> (u16, Value) {
+            let reply = match line {
+                "GET /api/instances" => json!([{ "id": "1", "name": "mc", "module_name": "minecraft" }]),
+                "GET /api/instance/1/backups" => json!({ "backups": [{ "name": "b.zip", "readable": true }] }),
+                l if l.starts_with("GET /api/servers") => json!({ "servers": [{ "id": "1", "status": "running" }] }),
+                _ => json!({ "success": true }),
+            };
+            (200, reply)
+        }
+        let (port, seen) = crate::cmd::server::tests::fake_daemon(daemon).await;
+        let ctx = crate::cmd::server::tests::quiet_ctx(port);
+        let err = restore(&ctx, "mc", Some("b.zip")).await.unwrap_err();
+        let err = err.downcast::<crate::error::CliError>().unwrap();
+        // 물을 수 없는 터미널이면 묻다가 NeedsConfirm(2)로 끝났을 것이다
+        assert_eq!(err.exit_code(), 1, "{err}");
+        assert!(err.to_string().contains("saba-chan-cli server stop mc"), "{err}");
+        assert!(!seen.lock().unwrap().iter().any(|l| l.starts_with("POST")), "{:?}", seen.lock().unwrap());
     }
 
     /// 열리지 않는 백업(`readable:false`, 데몬 #533)은 크기 대신 표시하고, 몇 개인지와 지우는 명령을 알린다

@@ -32,7 +32,17 @@
   "errors": {
     "agreement_required": "{{names}}에 동의해야 서버를 시작할 수 있습니다. PC의 사바쨩에서 동의해 주세요.",
     "memory_limit_at_start": "시작 중 메모리 상한({{limit}} MiB)에 걸려 서버가 종료됐습니다. 상한을 램 설정보다 높이거나 비워 주세요.",
-    "runner_missing": "saba-runner가 없어 관리형 시작을 할 수 없습니다. 이 서버의 관리형 시작을 끄거나 사바쨩을 다시 설치해 주세요."
+    "runner_missing": "saba-runner가 없어 관리형 시작을 할 수 없습니다. 이 서버의 관리형 시작을 끄거나 사바쨩을 다시 설치해 주세요.",
+    "backup_save_rejected": "서버가 저장 명령을 거절함",
+    "backup_save_unconfirmed": "서버의 저장 완료 응답 없음",
+    "backup_server_stopped": "백업 중 서버가 종료됨",
+    "backup_file_locked": "서버가 쓰는 파일이 있음",
+    "autosave_not_resumed": "백업 뒤 자동 저장을 다시 켜지 못함",
+    "command_failed": "서버가 명령을 거절함",
+    "not_running": "서버가 정지되어 있었음",
+    "check_failed": "업데이트 확인 실패",
+    "instance_busy": "다른 작업(백업·복원) 진행 중",
+    "backup_busy": "다른 작업(백업·복원) 진행 중"
   },
   "chatbot": {
     "memo_template": "<!-- 이렇게 생긴 안내 줄과 채우지 않은 제목은 말하는 사바쨩에게 보내지 않아요. 필요한 항목만 채워 주세요. -->\n\n## 방 분위기\n<!-- 이 서버의 대화 분위기와 허용하는 농담 수위를 적어 주세요. 비워 두면 기본 성격대로 대화해요. -->\n\n## 호칭\n<!-- 사바쨩이 특정한 사람을 부르는 호칭이 있으면 적어 주세요. 예: (오너)로 표시된 사람은 \"주인님\"이라고 부른다. -->\n\n## 이 서버에서 쓰는 말\n<!-- 이 서버에서만 통하는 별명, 밈, 줄임말과 그 뜻을 적어 주세요. -->\n\n## 게임 서버 안내\n<!-- 서버 규칙이나 운영 시간처럼 사바쨩이 물어보는 사람에게 알려 줘도 되는 내용을 적어 주세요. -->\n"
@@ -368,6 +378,29 @@
     "source_agent": "이 PC의 AI 에이전트",
     "source_restart": "자동 재시작",
     "source_idle": "접속자 없음 자동 정지",
-    "source_watchdog": "응답 없음 감시"
+    "source_watchdog": "응답 없음 감시",
+    "not_restarted": "{{exit}} · 다시 켜지 못함",
+    "scheduled_backup_failed": "{{name}} · 예약 백업 실패",
+    "scheduled_task_failed": "{{name}} · 예약 작업 실패",
+    "task_restart": "재시작",
+    "task_announce": "공지",
+    "task_update": "업데이트",
+    "task_start": "시작",
+    "task_stop": "정지",
+    "task_save": "저장",
+    "task_command": "게임 명령"
+  },
+  "boot": {
+    "target": "부팅 대상: {{mode}}",
+    "change_hint": "[DEL]을 누르면 부팅 대상을 바꿉니다",
+    "starting": "{{secs}}초 뒤 {{mode}} 시작...",
+    "menu_title": "부팅 설정",
+    "menu_keys": "↑/↓ 이동  1-3 바로 선택  Enter 확인",
+    "mode_daemon_only": "데몬만",
+    "desc_gui": "그래픽 화면 실행",
+    "desc_cli": "터미널 화면 실행",
+    "desc_daemon_only": "화면 없이 실행 (콘솔에 로그 출력)",
+    "daemon_only": "데몬만 실행 중 (포트 {{port}})",
+    "shutdown_hint": "Ctrl+C를 누르면 종료합니다."
   }
 }

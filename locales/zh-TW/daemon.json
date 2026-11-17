@@ -32,7 +32,17 @@
   "errors": {
     "agreement_required": "需同意{{names}}才能啟動伺服器。請在電腦的 Saba-chan 同意。",
     "memory_limit_at_start": "啟動時達到記憶體上限（{{limit}} MiB），伺服器已停止。請把上限設得比 RAM 設定高，或清空上限。",
-    "runner_missing": "找不到 saba-runner，無法託管啟動。請關閉此伺服器的託管啟動，或重新安裝 Saba-chan。"
+    "runner_missing": "找不到 saba-runner，無法託管啟動。請關閉此伺服器的託管啟動，或重新安裝 Saba-chan。",
+    "backup_save_rejected": "伺服器拒絕了儲存指令",
+    "backup_save_unconfirmed": "伺服器未確認儲存完成",
+    "backup_server_stopped": "備份期間伺服器已結束",
+    "backup_file_locked": "伺服器正在使用檔案",
+    "autosave_not_resumed": "備份後無法重新開啟自動儲存",
+    "command_failed": "伺服器拒絕了指令",
+    "not_running": "伺服器已停止",
+    "check_failed": "更新檢查失敗",
+    "instance_busy": "其他工作（備份·還原）進行中",
+    "backup_busy": "其他工作（備份·還原）進行中"
   },
   "chatbot": {
     "memo_template": "<!-- 這樣的說明行和沒有填寫的標題不會傳送給會說話的 Saba-chan。只填寫需要的項目即可。 -->\n\n## 聊天氛圍\n<!-- 寫下這個伺服器的聊天氛圍，以及可以接受的玩笑尺度。留空則依預設個性聊天。 -->\n\n## 稱呼\n<!-- 如果 Saba-chan 要用特別的稱呼叫某人，請寫在這裡。例：標有 (擁有者) 的人稱為「主人」。 -->\n\n## 本伺服器的用語\n<!-- 寫下只在本伺服器通用的暱稱、梗、縮寫及其含義。 -->\n\n## 遊戲伺服器說明\n<!-- 寫下伺服器規則、開放時間等 Saba-chan 可以告訴提問者的內容。 -->\n"
@@ -368,6 +378,29 @@
     "source_agent": "此電腦上的 AI 代理",
     "source_restart": "自動重新啟動",
     "source_idle": "無人上線自動停止",
-    "source_watchdog": "無回應監視"
+    "source_watchdog": "無回應監視",
+    "not_restarted": "{{exit}} · 無法重新啟動",
+    "scheduled_backup_failed": "{{name}} · 排程備份失敗",
+    "scheduled_task_failed": "{{name}} · 排程工作失敗",
+    "task_restart": "重新啟動",
+    "task_announce": "公告",
+    "task_update": "更新",
+    "task_start": "啟動",
+    "task_stop": "停止",
+    "task_save": "儲存",
+    "task_command": "遊戲指令"
+  },
+  "boot": {
+    "target": "啟動目標: {{mode}}",
+    "change_hint": "按 [DEL] 變更啟動目標",
+    "starting": "{{secs}} 秒後啟動 {{mode}}...",
+    "menu_title": "啟動設定",
+    "menu_keys": "↑/↓ 移動  1-3 快速選擇  Enter 確認",
+    "mode_daemon_only": "僅常駐程式",
+    "desc_gui": "啟動圖形介面",
+    "desc_cli": "啟動終端介面",
+    "desc_daemon_only": "無介面執行（記錄輸出到主控台）",
+    "daemon_only": "僅常駐程式執行中（連接埠 {{port}}）",
+    "shutdown_hint": "按 Ctrl+C 結束。"
   }
 }

@@ -623,7 +623,9 @@
     "minutes_ago": "{{count}}分前",
     "yesterday": "昨日",
     "click_to_open": "クリックで開く",
-    "click_to_update": "クリックして更新"
+    "click_to_update": "クリックして更新",
+    "open_backups": "バックアップを開く",
+    "open_schedule": "予約を開く"
   },
   "updates": {
     "no_updates": "すべてのコンポーネントが最新",

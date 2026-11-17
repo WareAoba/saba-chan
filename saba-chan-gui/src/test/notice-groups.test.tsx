@@ -4,6 +4,7 @@ import { createApi } from '../api/createApi';
 import NoticeModal from '../components/Modals/NoticeModal';
 import i18n from '../i18n';
 import { useServerStore } from '../stores/useServerStore';
+import { useUIStore } from '../stores/useUIStore';
 import { refreshNotices } from '../utils/noticeInbox';
 
 // 알림함은 데몬이 보관한다 (GET /api/notices). 문장·묶음 이름도 데몬이 만든다
@@ -66,6 +67,28 @@ describe('알림함 (#14: 서버마다 한 묶음, 한 줄은 짧게 + 이유 �
         await act(async () => fireEvent.click(screen.getByText('Updated to Saba-chan 0.2.0')));
         expect(window.api.updaterLastResult).toHaveBeenCalledWith({ includeSeen: true });
         expect(onOpen).toHaveBeenCalledWith({ version: '0.2.0', notes: '- 새 기능', result });
+    });
+
+    it('예약 백업·예약 작업 실패를 누르면 그 서버의 백업·예약 화면을 연다', async () => {
+        window.api.noticesList = vi.fn().mockResolvedValue({
+            success: true,
+            notices: [
+                { id: 6, at: 1700000500, level: 'error', message: 'Our MC · Scheduled backup failed', source: 'Our MC', instanceId: 'mc', action: 'openBackups', read: false },
+                { id: 5, at: 1700000400, level: 'error', message: 'Our MC · Scheduled task failed', source: 'Our MC', instanceId: 'mc', action: 'openSchedule', read: false },
+            ],
+            unread: 2,
+        }) as never;
+        await refreshNotices();
+        const onClose = vi.fn();
+        await act(async () => {
+            render(<NoticeModal isOpen onClose={onClose} />);
+        });
+        expect(screen.getByText(i18n.t('gui:notice_modal.open_backups'))).toBeInTheDocument();
+        expect(screen.getByText(i18n.t('gui:notice_modal.open_schedule'))).toBeInTheDocument();
+        useUIStore.setState({ activeTab: 'activity', requestedServerTab: null });
+        await act(async () => fireEvent.click(screen.getByText('Our MC · Scheduled backup failed')));
+        expect(onClose).toHaveBeenCalled();
+        expect(useUIStore.getState()).toMatchObject({ activeTab: 'servers', activeServerId: 'mc', requestedServerTab: 'maintenance' });
     });
 
     it('목록은 화면 언어로 달라고 한다', async () => {

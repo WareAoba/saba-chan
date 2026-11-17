@@ -675,7 +675,9 @@
     "minutes_ago": "{{count}} min ago",
     "yesterday": "Yesterday",
     "click_to_open": "click to open",
-    "click_to_update": "click to update"
+    "click_to_update": "click to update",
+    "open_backups": "Open backups",
+    "open_schedule": "Open schedule"
   },
   "updates": {
     "no_updates": "All components up to date",

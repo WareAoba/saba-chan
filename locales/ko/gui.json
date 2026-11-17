@@ -675,7 +675,9 @@
     "minutes_ago": "{{count}}분 전",
     "yesterday": "어제",
     "click_to_open": "눌러서 열기",
-    "click_to_update": "눌러서 업데이트"
+    "click_to_update": "눌러서 업데이트",
+    "open_backups": "백업 열기",
+    "open_schedule": "예약 열기"
   },
   "updates": {
     "no_updates": "모든 컴포넌트가 최신 버전",

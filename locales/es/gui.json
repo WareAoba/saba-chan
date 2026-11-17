@@ -675,7 +675,9 @@
     "minutes_ago": "hace {{count}} min",
     "yesterday": "Ayer",
     "click_to_open": "clic para abrir",
-    "click_to_update": "haz clic para actualizar"
+    "click_to_update": "haz clic para actualizar",
+    "open_backups": "Abrir copias",
+    "open_schedule": "Abrir programación"
   },
   "updates": {
     "no_updates": "Todos los componentes están en la última versión",
