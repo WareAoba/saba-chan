@@ -1,11 +1,13 @@
 import { create } from 'zustand';
 import i18n from '../../i18n';
+import { useDiscordStore } from '../../stores/useDiscordStore';
 import { useServerStore } from '../../stores/useServerStore';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import { useUIStore } from '../../stores/useUIStore';
 import type { ApiBody } from '../../types/daemon';
 import { safeShowToast } from '../../utils/helpers';
 import { openScreen } from '../../utils/openScreen';
+import { parseScreen } from '../../utils/screenAddress';
 
 /**
  * 가이드.
@@ -70,8 +72,8 @@ interface GuideState {
     coachDismissed: boolean;
     /** 데몬 가이드 목록 (못 받았으면 null) */
     guides: GuideItem[] | null;
-    /** 화면 강조 중인 가이드와 단계 */
-    active: { id: string; step: number } | null;
+    /** 화면 강조 중인 가이드와 단계. pick이면 그 단계를 보이기 전에 사용자가 고를 것 */
+    active: { id: string; step: number; pick?: 'guild' } | null;
     setStep: (step: GuideStep | null, after?: AddServerMode | null) => void;
     takeAddServerMode: () => AddServerMode | null;
     refreshOnboarding: () => Promise<void>;
@@ -187,11 +189,29 @@ export function guideAction(name: string | undefined) {
     return name && Object.hasOwn(GUIDE_ACTIONS, name) ? GUIDE_ACTIONS[name] : undefined;
 }
 
+/** 고르기 단계에서 짚는 디스코드 서버 목록 (DiscordPage) */
+export const PICK_GUILD_SPOT = 'discord.nodes';
+
+/** `discord/*` 화면인데 연 디스코드 서버가 없고 연결된 서버가 여럿이면, 어느 서버인지 사용자가 먼저 고른다 */
+function needsGuildPick(go: string): boolean {
+    const screen = parseScreen(go);
+    if (screen?.page !== 'discord' || screen.view !== 'node' || screen.id !== '*') return false;
+    const nodes = useDiscordStore.getState().cloudNodes;
+    const open = useUIStore.getState().openDiscordNodeId;
+    return nodes.length > 1 && !nodes.some((n) => n.guildId === open);
+}
+
 /** 단계로 간다: 화면을 열고 앱이 할 일을 한다 (화면을 넘겨받는 일은 advanceGuide에서) */
 export function goToStep(id: string, step: number) {
     const guide = useGuideStore.getState().guides?.find((g) => g.id === id);
     const s = guide?.steps[step];
     if (!guide || !s) return;
+    if (s.go && needsGuildPick(s.go)) {
+        // 고르면(openDiscordNodeId) Spotlight가 이 단계를 다시 부른다
+        useUIStore.getState().setActiveTab('discord');
+        useGuideStore.setState({ active: { id, step, pick: 'guild' } });
+        return;
+    }
     const address = s.go ? resolveAddress(s.go) : null;
     if (address) openScreen(address);
     const action = guideAction(s.action);

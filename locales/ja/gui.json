@@ -2849,6 +2849,8 @@
     "prev": "戻る",
     "next": "次へ",
     "finish": "完了",
+    "pick_guild": "ガイドを進めるDiscordサーバーを選んでください。",
+    "pick_wait": "選ぶと続きます",
     "go": "開く"
   },
   "public_address": {

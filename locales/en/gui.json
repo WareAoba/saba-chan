@@ -2849,6 +2849,8 @@
     "prev": "Back",
     "next": "Next",
     "finish": "Done",
+    "pick_guild": "Pick the Discord server to follow this guide in.",
+    "pick_wait": "Continues once you pick",
     "go": "Open"
   },
   "public_address": {

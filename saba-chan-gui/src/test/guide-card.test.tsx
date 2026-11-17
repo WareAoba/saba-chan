@@ -1,8 +1,9 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GuideCard } from '../components/guides/GuideCard';
 import { type GuideItem, pendingGuides, startGuide, useGuideStore } from '../components/guides/guides';
 import { Spotlight } from '../components/guides/Spotlight';
+import { useDiscordStore } from '../stores/useDiscordStore';
 import { useUIStore } from '../stores/useUIStore';
 
 const guide = (id: string, over: Partial<GuideItem> = {}): GuideItem => ({
@@ -187,5 +188,85 @@ describe('화면 강조', () => {
         await act(async () => {});
         fireEvent.keyDown(window, { key: 'Escape' });
         expect(useGuideStore.getState().active).toBeNull();
+    });
+});
+
+describe('디스코드 서버가 여럿일 때 화면 강조', () => {
+    const node = (guildId: string) => ({ guildId, guildName: guildId }) as never;
+    let nodes: HTMLElement;
+    let tab: HTMLElement;
+    beforeEach(() => {
+        window.api = {
+            guideUpdate: vi.fn().mockResolvedValue({ ok: true }),
+            guides: vi.fn().mockResolvedValue({ guides: [] }),
+        } as unknown as typeof window.api;
+        useUIStore.getState()._resetForTest();
+        useDiscordStore.setState({ cloudNodes: [node('g1'), node('g2')] });
+        useGuideStore.setState({
+            guides: [
+                guide('perm', {
+                    steps: [
+                        { go: 'discord/*/members', spot: 'discord.tab.members', text: 'members tab' },
+                        { go: 'discord/*/members', text: 'add person' },
+                    ],
+                }),
+            ],
+            active: null,
+        });
+        nodes = document.createElement('div');
+        nodes.dataset.spot = 'discord.nodes';
+        document.body.appendChild(nodes);
+        // 고른 서버 화면의 멤버 탭
+        tab = document.createElement('button');
+        tab.dataset.spot = 'discord.tab.members';
+    });
+    afterEach(() => {
+        nodes.remove();
+        tab.remove();
+        useDiscordStore.setState({ cloudNodes: [] });
+    });
+
+    it('연 서버가 없으면 디스코드 서버 목록을 짚고, 고를 때까지 다음으로 넘어가지 않는다', async () => {
+        render(<Spotlight />);
+        act(() => startGuide('perm'));
+        await act(async () => {});
+        expect(useUIStore.getState().activeTab).toBe('discord');
+        // `*`로 화면을 열지 않는다 (열면 고르라는 토스트만 뜨고 연결 화면으로 빠진다)
+        expect(useUIStore.getState().requestedDiscordView).toBeNull();
+        expect(screen.getByText('Pick the Discord server to follow this guide in.')).toBeInTheDocument();
+        expect(document.querySelector('.spotlight-hole')).not.toBeNull();
+        expect(screen.queryByRole('button', { name: 'Next' })).toBeNull();
+        expect(useGuideStore.getState().active).toMatchObject({ id: 'perm', step: 0 });
+    });
+
+    it('하나를 고르면 그 서버에서 원래 단계를 이어 짚는다', async () => {
+        render(<Spotlight />);
+        act(() => startGuide('perm'));
+        await act(async () => {});
+        act(() => {
+            document.body.appendChild(tab);
+            useUIStore.getState().setOpenDiscordNodeId('g2');
+        });
+        await act(async () => {});
+        expect(useUIStore.getState().requestedDiscordView).toMatchObject({ kind: 'node', id: '*', tab: 'members' });
+        expect(screen.getByText('members tab')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Next' })).toBeInTheDocument();
+    });
+
+    it('이미 연 서버가 있거나 서버가 하나면 고르기 없이 바로 그 단계', async () => {
+        useUIStore.getState().setOpenDiscordNodeId('g1');
+        document.body.appendChild(tab);
+        render(<Spotlight />);
+        act(() => startGuide('perm'));
+        await act(async () => {});
+        expect(screen.getByText('members tab')).toBeInTheDocument();
+        act(() => {
+            useGuideStore.setState({ active: null });
+            useUIStore.getState().setOpenDiscordNodeId(null);
+            useDiscordStore.setState({ cloudNodes: [node('g1')] });
+            startGuide('perm');
+        });
+        await act(async () => {});
+        expect(screen.getByText('members tab')).toBeInTheDocument();
     });
 });

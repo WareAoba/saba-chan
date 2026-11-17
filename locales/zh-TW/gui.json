@@ -2849,6 +2849,8 @@
     "prev": "上一步",
     "next": "下一步",
     "finish": "完成",
+    "pick_guild": "選擇要查看此指南的 Discord 伺服器。",
+    "pick_wait": "選擇後繼續",
     "go": "開啟"
   },
   "public_address": {
