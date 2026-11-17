@@ -7,6 +7,7 @@ import i18n from 'i18next';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MaintenanceTab } from '../components/servers/MaintenanceTab';
 import type { Server } from '../stores/useServerStore';
+import type { ApiBody } from '../types/daemon';
 
 const server = { id: 'srv1', status: 'stopped' } as unknown as Server;
 const API_KEYS = ['instanceScheduleGet', 'instanceBackups'];
@@ -57,5 +58,24 @@ describe('백업 목록 용량', () => {
         render(<MaintenanceTab server={server} />);
         await screen.findByRole('button', { name: i18n.t('gui:maintenance.retry') });
         expect(screen.queryByText(i18n.t('gui:maintenance.backups_empty'))).toBeNull();
+    });
+
+    // 사용자 11-17: 탭을 오가도 백업 목록을 다시 불러오는 동안 비워 두지 않는다
+    it('다시 열면 받아 둔 목록을 바로 보이고 새 목록은 뒤에서 받는다', async () => {
+        const cached = { id: 'srv-cache', status: 'stopped' } as unknown as Server;
+        window.api.instanceScheduleGet = vi.fn().mockResolvedValue({ success: true, schedule: [], backup_keep: 5, backup_supported: true, revision: 'r1' });
+        window.api.instanceBackups = vi.fn().mockResolvedValue({
+            success: true,
+            total_bytes: 1024,
+            backups: [{ name: '20261109-164142-262-manual.zip', kind: 'manual', created: 1762674102, size: 1024, stored: 1024, readable: true }],
+        });
+        const first = render(<MaintenanceTab server={cached} />);
+        await screen.findByText(/manual\.zip/);
+        first.unmount();
+
+        window.api.instanceBackups = vi.fn(() => new Promise<ApiBody>(() => {}));
+        render(<MaintenanceTab server={cached} />);
+        expect(screen.getByText(/manual\.zip/)).toBeTruthy();
+        expect(window.api.instanceBackups).toHaveBeenCalledWith('srv-cache');
     });
 });

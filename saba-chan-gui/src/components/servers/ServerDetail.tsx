@@ -234,7 +234,9 @@ export function ServerDetail({ server, moduleData, modules, servers, onBack, con
 
     return (
         <section
-            className={clsx('server-detail', { 'server-detail--fit': showTabs && activeTab === 'console' })}
+            className={clsx('server-detail', {
+                'server-detail--fit': showTabs && (activeTab === 'console' || activeTab === 'commands'),
+            })}
             aria-label={server.name}
         >
             {/* 서버 카드부터 탭 바까지는 위에 고정하고 그 아래만 스크롤한다 (디스코드 서버 화면과 같다) */}
