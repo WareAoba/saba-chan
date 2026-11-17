@@ -1945,6 +1945,11 @@ button.activity-line:hover {
     width: 28px;
     height: 28px;
 }
+.dc-nav-nodes {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1-5);
+}
 .dc-nav-empty {
     margin: var(--sp-0-5) var(--sp-3) var(--sp-1);
     font-size: var(--fs-sm);
@@ -5731,6 +5736,10 @@ button.appbar-pill:focus-visible {
 }
 .spotlight-dots span.on {
     background: var(--accent);
+}
+.spotlight-wait {
+    color: var(--text-3);
+    font-size: var(--fs-xs);
 }
 @media (prefers-reduced-motion: reduce) {
     .spotlight-hole {

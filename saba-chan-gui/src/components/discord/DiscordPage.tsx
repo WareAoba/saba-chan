@@ -12,6 +12,7 @@ import type { ApiBody, ModuleInfo } from '../../types/daemon';
 import { safeShowToast } from '../../utils/helpers';
 import { screenFallbackNotice } from '../../utils/openScreen';
 import { Icon } from '../Icon';
+import { useGuideStore } from '../guides/guides';
 import { SINGLE_COLUMN_MAX_WIDTH } from '../servers/ServersPage';
 import { SlotView, useSlotPages } from '../ExtensionSlot';
 import { StatusChip } from '../ui/StatusChip';
@@ -378,6 +379,12 @@ export function DiscordPage({
               ];
     const connLabel = t(`discord.state_${cloudState}`);
 
+    // 가이드가 디스코드 서버를 고르게 하면 좁은 창에서도 목록을 보인다 (고르면 go가 다시 오른쪽을 연다)
+    const guildPick = useGuideStore((s) => s.active?.pick === 'guild');
+    useEffect(() => {
+        if (guildPick) setShowMainNarrow(false);
+    }, [guildPick]);
+
     const navHidden = singleColumn && showMainNarrow;
     const mainHidden = singleColumn && !showMainNarrow;
 
@@ -479,20 +486,29 @@ export function DiscordPage({
                                     : t('discord.nodes_need_connect')}
                             </p>
                         )}
-                        {cloudNodes.map((n) => {
-                            const mode = P.instanceMode(settings, n.guildId);
-                            const count = servers.filter((s) => P.isInstanceAllowed(settings, n.guildId, s.id)).length;
-                            return navItem(
-                                n.guildId,
-                                nodeId === n.guildId,
-                                () => go({ kind: 'node', id: n.guildId }),
-                                <Avatar name={n.guildName || n.guildId} url={n.iconUrl} size={40} />,
-                                n.guildName || n.guildId,
-                                <span>
-                                    {mode === 'all' ? t('discord.node_sub_all') : t('discord.node_sub_pick', { count })}
-                                </span>,
-                            );
-                        })}
+                        {/* 가이드가 디스코드 서버를 고르게 할 때 짚는 자리 (guides PICK_GUILD_SPOT) */}
+                        {cloudNodes.length > 0 && (
+                            <div className="dc-nav-nodes" data-spot="discord.nodes">
+                                {cloudNodes.map((n) => {
+                                    const mode = P.instanceMode(settings, n.guildId);
+                                    const count = servers.filter((s) =>
+                                        P.isInstanceAllowed(settings, n.guildId, s.id),
+                                    ).length;
+                                    return navItem(
+                                        n.guildId,
+                                        nodeId === n.guildId,
+                                        () => go({ kind: 'node', id: n.guildId }),
+                                        <Avatar name={n.guildName || n.guildId} url={n.iconUrl} size={40} />,
+                                        n.guildName || n.guildId,
+                                        <span>
+                                            {mode === 'all'
+                                                ? t('discord.node_sub_all')
+                                                : t('discord.node_sub_pick', { count })}
+                                        </span>,
+                                    );
+                                })}
+                            </div>
+                        )}
                     </div>
                 </aside>
             )}

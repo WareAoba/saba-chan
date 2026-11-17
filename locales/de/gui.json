@@ -2849,6 +2849,8 @@
     "prev": "Zurück",
     "next": "Weiter",
     "finish": "Fertig",
+    "pick_guild": "Wähle den Discord-Server für diese Anleitung.",
+    "pick_wait": "Geht nach der Auswahl weiter",
     "go": "Öffnen"
   },
   "public_address": {

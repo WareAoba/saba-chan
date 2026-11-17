@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { cloudStateOf, DiscordPage as DiscordPageImpl } from '../components/discord/DiscordPage';
 import * as P from '../components/discord/nodePermissions';
+import { useGuideStore } from '../components/guides/guides';
 import { useDiscordStore } from '../stores/useDiscordStore';
 import { useUIStore } from '../stores/useUIStore';
 import type { ComponentType } from 'react';
@@ -227,6 +228,16 @@ describe('DiscordPage', () => {
     });
 
     // 안내 문구의 링크로 디스코드 서버의 탭을 바로 연다
+    it('좁은 창에서 가이드가 디스코드 서버를 고르게 하면 왼쪽 목록을 보인다', async () => {
+        Object.defineProperty(window, 'innerWidth', { value: 700, writable: true, configurable: true });
+        useDiscordStore.setState({ _botConfigLoaded: true });
+        await act(async () => render(<Harness save={vi.fn()} initialView={{ kind: 'saba' } as never} />));
+        expect(document.querySelector('[data-spot="discord.nodes"]')).toBeNull();
+        await act(async () => useGuideStore.setState({ active: { id: 'permissions', step: 0, pick: 'guild' } }));
+        await waitFor(() => expect(document.querySelector('[data-spot="discord.nodes"]')).not.toBeNull());
+        useGuideStore.setState({ active: null });
+    });
+
     it('화면 주소 링크(디스코드 서버 › 멤버)로 그 서버의 멤버 탭을 연다', async () => {
         const { openScreen } = await import('../utils/openScreen');
         window.api.permissionsGet = vi.fn().mockResolvedValue({ guildId: 'g1', members: {}, preset: 'default' });

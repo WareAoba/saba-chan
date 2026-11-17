@@ -1,8 +1,9 @@
 import { type CSSProperties, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
+import { useUIStore } from '../../stores/useUIStore';
 import { Icon } from '../Icon';
-import { advanceGuide, closeSpotlight, goToStep, guideAction, useGuideStore } from './guides';
+import { advanceGuide, closeSpotlight, goToStep, guideAction, PICK_GUILD_SPOT, useGuideStore } from './guides';
 
 /** 짚을 자리가 화면에 나타나길 기다리는 시간 (화면을 연 직후 그려지는 동안) */
 const WAIT_MS = 2000;
@@ -70,7 +71,10 @@ export function Spotlight() {
     const active = useGuideStore((s) => s.active);
     const guide = useGuideStore((s) => (s.active ? s.guides?.find((g) => g.id === s.active?.id) : undefined));
     const step = active && guide ? guide.steps[active.step] : undefined;
-    const box = useSpotBox(step?.spot, active ? `${active.id}:${active.step}` : '');
+    // 고르기: 그 단계 대신 디스코드 서버 목록을 짚고, 고를 때까지 다음으로 넘어가지 않는다
+    const pick = active?.pick;
+    const box = useSpotBox(pick ? PICK_GUILD_SPOT : step?.spot, active ? `${active.id}:${active.step}:${pick ?? ''}` : '');
+    const openNode = useUIStore((s) => s.openDiscordNodeId);
     const primary = useRef<HTMLButtonElement>(null);
     const shown = !!active && !!step && box !== 'wait';
 
@@ -79,6 +83,10 @@ export function Spotlight() {
     useEffect(() => {
         if (shown) primary.current?.focus();
     }, [shown, active?.id, active?.step]);
+
+    useEffect(() => {
+        if (active?.pick === 'guild' && openNode) goToStep(active.id, active.step);
+    }, [active, openNode]);
 
     useEffect(() => {
         if (!active) return;
@@ -153,7 +161,7 @@ export function Spotlight() {
                             <Icon name="close" size="xs" />
                         </button>
                     </div>
-                    <p className="spotlight-text">{step.text}</p>
+                    <p className="spotlight-text">{pick ? t('guides.pick_guild') : step.text}</p>
                     <div className="spotlight-foot">
                         <span className="spotlight-dots" aria-hidden="true">
                             {guide.steps.map((s, i) => (
@@ -165,14 +173,18 @@ export function Spotlight() {
                                 {t('guides.prev')}
                             </button>
                         )}
-                        <button
-                            ref={primary}
-                            type="button"
-                            className="btn btn-primary btn-sm"
-                            onClick={() => advanceGuide(guide.id, active.step)}
-                        >
-                            {k < n && !handoff ? t('guides.next') : handoff ? t('guides.go') : t('guides.finish')}
-                        </button>
+                        {pick ? (
+                            <span className="spotlight-wait">{t('guides.pick_wait')}</span>
+                        ) : (
+                            <button
+                                ref={primary}
+                                type="button"
+                                className="btn btn-primary btn-sm"
+                                onClick={() => advanceGuide(guide.id, active.step)}
+                            >
+                                {k < n && !handoff ? t('guides.next') : handoff ? t('guides.go') : t('guides.finish')}
+                            </button>
+                        )}
                     </div>
                 </div>
             )}

@@ -64,6 +64,7 @@ button:not([class*="btn"]),
 .settings-tab-content > .setting-item,
 .saba-storage-tab-content > *,
 .server-list > .server-row,
+.dc-nav-nodes > .server-row,
 .dc-list > li,
 .notice-card,
 .empty-state {
@@ -71,32 +72,32 @@ button:not([class*="btn"]),
 }
 
 /* 앞쪽 몇 개만 조금씩 늦게 (목록이 길어도 늦어지지 않게 8번째부터는 같이) */
-:is(.dc-card, .settings-tab-content > .setting-item, .server-list > .server-row, .dc-list > li, .notice-card):nth-child(
+:is(.dc-card, .settings-tab-content > .setting-item, .server-list > .server-row, .dc-nav-nodes > .server-row, .dc-list > li, .notice-card):nth-child(
         2
     ) {
     animation-delay: 30ms;
 }
-:is(.dc-card, .settings-tab-content > .setting-item, .server-list > .server-row, .dc-list > li, .notice-card):nth-child(
+:is(.dc-card, .settings-tab-content > .setting-item, .server-list > .server-row, .dc-nav-nodes > .server-row, .dc-list > li, .notice-card):nth-child(
         3
     ) {
     animation-delay: 60ms;
 }
-:is(.dc-card, .settings-tab-content > .setting-item, .server-list > .server-row, .dc-list > li, .notice-card):nth-child(
+:is(.dc-card, .settings-tab-content > .setting-item, .server-list > .server-row, .dc-nav-nodes > .server-row, .dc-list > li, .notice-card):nth-child(
         4
     ) {
     animation-delay: 90ms;
 }
-:is(.dc-card, .settings-tab-content > .setting-item, .server-list > .server-row, .dc-list > li, .notice-card):nth-child(
+:is(.dc-card, .settings-tab-content > .setting-item, .server-list > .server-row, .dc-nav-nodes > .server-row, .dc-list > li, .notice-card):nth-child(
         5
     ) {
     animation-delay: 120ms;
 }
-:is(.dc-card, .settings-tab-content > .setting-item, .server-list > .server-row, .dc-list > li, .notice-card):nth-child(
+:is(.dc-card, .settings-tab-content > .setting-item, .server-list > .server-row, .dc-nav-nodes > .server-row, .dc-list > li, .notice-card):nth-child(
         6
     ) {
     animation-delay: 150ms;
 }
-:is(.dc-card, .settings-tab-content > .setting-item, .server-list > .server-row, .dc-list > li, .notice-card):nth-child(
+:is(.dc-card, .settings-tab-content > .setting-item, .server-list > .server-row, .dc-nav-nodes > .server-row, .dc-list > li, .notice-card):nth-child(
         n + 7
     ) {
     animation-delay: 180ms;

@@ -2849,6 +2849,8 @@
     "prev": "Retour",
     "next": "Suivant",
     "finish": "Terminer",
+    "pick_guild": "Choisissez le serveur Discord pour ce guide.",
+    "pick_wait": "Reprend une fois choisi",
     "go": "Ouvrir"
   },
   "public_address": {
