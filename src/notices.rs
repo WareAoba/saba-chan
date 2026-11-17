@@ -190,11 +190,12 @@ pub fn from_event(kind: &str, d: &Value) -> Option<Change> {
             n.action = Some(OPEN_BACKUPS_ACTION.into());
             n
         }
-        // 실패가 따로 카드를 남기는 작업(백업 → 예약 백업 실패, 업데이트 → 게임 서버 업데이트 실패)은 넣지 않는다
+        // 실패가 따로 카드를 남기는 작업(백업 → 예약 백업 실패, 업데이트 → 게임 서버 업데이트 실패)은 넣지 않는다.
+        // 꺼 둔 서버라 못 한 것(`not_running`)도 넣지 않는다: 직접 끈 것이 알림이 되지 않게
         "schedule.failed" => {
             let action = d.get("action").and_then(Value::as_str)?;
             let code = d.get("code").and_then(Value::as_str);
-            if action == "backup" || code == Some("update_failed") {
+            if action == "backup" || matches!(code, Some("update_failed" | "not_running")) {
                 return None;
             }
             let mut n = Draft::new(Level::Error, "scheduled_task_failed", json!({ "name": server_name(d) })).server(d);
@@ -589,6 +590,8 @@ mod tests {
         assert_eq!(added("schedule.failed", json!({ "instanceId": "i1", "action": "backup", "code": "backup_failed" })), None);
         assert_eq!(added("schedule.failed", json!({ "instanceId": "i1", "action": "update", "code": "update_failed" })), None);
         assert!(added("schedule.failed", json!({ "instanceId": "i1", "action": "update", "code": "check_failed" })).is_some());
+        // 꺼 둔 서버의 예약 재시작은 실패로 이력에 남지만 알림함에는 넣지 않는다: 직접 끈 것이 알림이 되지 않게
+        assert_eq!(added("schedule.failed", json!({ "instanceId": "i1", "action": "restart", "code": "not_running" })), None);
     }
 
     /// 크래시 뒤 다시 켜지 못하면 그 크래시 카드를 고친다: 새 카드를 더하지 않고, 다시 읽지 않은 것으로 돌린다
