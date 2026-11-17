@@ -135,6 +135,10 @@ export function ServersPage({
         if (servers.length === 0 || guidePick) return;
         if (!servers.some((s) => s.id === selectedId)) setSelectedId(servers[0].id);
     }, [servers, selectedId, setSelectedId, guidePick]);
+    // 고르는 동안은 검색어를 비운다 (검색창은 짚은 자리 밖이라 고칠 수 없다)
+    useEffect(() => {
+        if (guidePick) setQuery('');
+    }, [guidePick]);
 
     const moduleOf = useMemo(() => {
         const map = Object.fromEntries(modules.map((m) => [m.name, m]));
