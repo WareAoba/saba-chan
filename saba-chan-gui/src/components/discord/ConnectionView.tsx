@@ -263,7 +263,6 @@ interface ConnectionViewProps {
 const HEARTBEAT_COUNTS: Record<string, string> = {
     'metadata.servers': 'servers',
     'metadata.serverWords': 'servers',
-    'metadata.moduleDetails': 'modules',
     'metadata.allowedInstances': 'guilds',
     'metadata.startNotice': 'guilds',
     'metadata.fullNotice': 'guilds',

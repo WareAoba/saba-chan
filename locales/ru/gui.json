@@ -1068,7 +1068,6 @@
     "heartbeat_rejected_too_big": "{{what}}: превышено количество. Сейчас {{actual}}, максимум {{max}}",
     "heartbeat_rejected_invalid": "Недопустимое значение в отправленных данных: {{what}}",
     "heartbeat_what_servers": "Количество серверов",
-    "heartbeat_what_modules": "Количество модулей",
     "heartbeat_what_guilds": "Количество серверов Discord",
     "repair_this_pc": "Переподключить этот ПК",
     "relay_rate_limited_title": "Ограничение запросов Server-chan",

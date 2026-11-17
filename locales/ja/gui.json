@@ -1068,7 +1068,6 @@
     "heartbeat_rejected_too_big": "{{what}}の数が上限超過。現在 {{actual}}、最大 {{max}}",
     "heartbeat_rejected_invalid": "送信した値のうち {{what}} が不正",
     "heartbeat_what_servers": "サーバーの数",
-    "heartbeat_what_modules": "モジュールの数",
     "heartbeat_what_guilds": "Discordサーバーの数",
     "repair_this_pc": "このPCを再接続",
     "relay_rate_limited_title": "サーバーちゃん のリクエスト制限",

@@ -1068,7 +1068,6 @@
     "heartbeat_rejected_too_big": "{{what}} 개수 초과. 현재 {{actual}}개, 최대 {{max}}개",
     "heartbeat_rejected_invalid": "보낸 값 중 {{what}}이(가) 올바르지 않음",
     "heartbeat_what_servers": "서버 개수",
-    "heartbeat_what_modules": "모듈 개수",
     "heartbeat_what_guilds": "디스코드 서버 개수",
     "repair_this_pc": "이 PC 다시 연결하기",
     "relay_rate_limited_title": "서버쨩 요청 제한",

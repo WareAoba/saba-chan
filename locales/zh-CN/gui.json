@@ -1068,7 +1068,6 @@
     "heartbeat_rejected_too_big": "{{what}} 数量超限。当前 {{actual}} 个，最多 {{max}} 个",
     "heartbeat_rejected_invalid": "发送的值中 {{what}} 无效",
     "heartbeat_what_servers": "服务器数量",
-    "heartbeat_what_modules": "模块数量",
     "heartbeat_what_guilds": "Discord 服务器数量",
     "repair_this_pc": "重新连接这台电脑",
     "relay_rate_limited_title": "Server-chan 请求受限",

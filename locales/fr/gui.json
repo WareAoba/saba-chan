@@ -1068,7 +1068,6 @@
     "heartbeat_rejected_too_big": "{{what}} : trop élevé, {{actual}} actuellement, {{max}} maximum",
     "heartbeat_rejected_invalid": "Valeur invalide parmi celles envoyées : {{what}}",
     "heartbeat_what_servers": "Le nombre de serveurs",
-    "heartbeat_what_modules": "Le nombre de modules",
     "heartbeat_what_guilds": "Le nombre de serveurs Discord",
     "repair_this_pc": "Reconnecter ce PC",
     "relay_rate_limited_title": "Limite de requêtes de Server-chan atteinte",

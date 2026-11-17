@@ -1068,7 +1068,6 @@
     "heartbeat_rejected_too_big": "{{what}}數量超出上限。目前 {{actual}} 個，最多 {{max}} 個",
     "heartbeat_rejected_invalid": "傳送的值中 {{what}} 不正確",
     "heartbeat_what_servers": "伺服器數量",
-    "heartbeat_what_modules": "模組數量",
     "heartbeat_what_guilds": "Discord 伺服器數量",
     "repair_this_pc": "重新連線這台電腦",
     "relay_rate_limited_title": "Server-chan 要求限制",
