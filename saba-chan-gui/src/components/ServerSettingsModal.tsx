@@ -251,7 +251,7 @@ function GeneralTab({
             )}
 
             {basicFields.length > 0 && (
-                <Card icon="gamepad" title={t('server_settings.basic_group', { defaultValue: 'Server Settings' })} className="ss-basic">
+                <Card icon="gamepad" title={t('server_settings.basic_group', { defaultValue: 'Server Settings' })} className="ss-basic" spot="server.basic">
                     {fieldRows(basicFields)}
                 </Card>
             )}

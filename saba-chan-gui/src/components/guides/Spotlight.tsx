@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { useUIStore } from '../../stores/useUIStore';
 import { Icon } from '../Icon';
-import { advanceGuide, closeSpotlight, goToStep, guideAction, PICK_GUILD_SPOT, useGuideStore } from './guides';
+import { advanceGuide, closeSpotlight, goToStep, guideAction, PICK_SPOTS, useGuideStore } from './guides';
 
 /** 짚을 자리가 화면에 나타나길 기다리는 시간 (화면을 연 직후 그려지는 동안) */
 const WAIT_MS = 2000;
@@ -21,33 +21,46 @@ interface Box {
 const same = (a: Box | null, b: Box) =>
     !!a && a.left === b.left && a.top === b.top && a.width === b.width && a.height === b.height;
 
-/** `[data-spot]` 요소를 찾아 그 자리를 따라간다. 없으면 null (기다리는 동안은 'wait') */
-function useSpotBox(spot: string | undefined, key: string): Box | null | 'wait' {
+/** 보이는 `[data-spot]` 요소. 숨겨 둔 탭(App KeptPage `hidden`) 안의 같은 자리는 건너뛴다 */
+function findSpot(spot: string): Element | null {
+    return (
+        Array.from(document.querySelectorAll(`[data-spot="${CSS.escape(spot)}"]`)).find((e) => !e.closest('[hidden]')) ??
+        null
+    );
+}
+
+/**
+ * `[data-spot]` 요소를 찾아 그 자리를 따라간다. 없으면 null (기다리는 동안은 'wait').
+ * `a|b`면 앞의 것을 먼저 찾고, 뒤의 것을 짚는 동안(`alt`)에도 앞의 것이 생기면 그리로 옮긴다
+ */
+function useSpotBox(spot: string | undefined, key: string): { box: Box | null | 'wait'; alt: boolean } {
     const [box, setBox] = useState<Box | null | 'wait'>(spot ? 'wait' : null);
+    const [alt, setAlt] = useState(false);
     // biome-ignore lint/correctness/useExhaustiveDependencies: 단계(key)가 바뀌면 다시 찾는다
     useEffect(() => {
         if (!spot) {
             setBox(null);
+            setAlt(false);
             return;
         }
         setBox('wait');
+        const choices = spot.split('|');
         const started = performance.now();
         let el: Element | null = null;
-        let scrolled = false;
+        let at = -1;
         let frame = 0;
         const tick = () => {
-            // 숨겨 둔 탭(App KeptPage `hidden`) 안의 같은 자리는 건너뛴다
-            if (!el?.isConnected || el.closest('[hidden]')) {
-                el =
-                    Array.from(document.querySelectorAll(`[data-spot="${CSS.escape(spot)}"]`)).find(
-                        (e) => !e.closest('[hidden]'),
-                    ) ?? null;
+            if (!el?.isConnected || el.closest('[hidden]') || at > 0) {
+                const found = choices.map(findSpot);
+                const i = found.findIndex(Boolean);
+                if (found[i] !== el) {
+                    el = found[i] ?? null;
+                    at = i;
+                    el?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+                    setAlt(i > 0);
+                }
             }
             if (el) {
-                if (!scrolled) {
-                    el.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
-                    scrolled = true;
-                }
                 const r = el.getBoundingClientRect();
                 const next = { left: r.left - PAD, top: r.top - PAD, width: r.width + PAD * 2, height: r.height + PAD * 2 };
                 setBox((prev) => (prev !== 'wait' && same(prev, next) ? prev : next));
@@ -59,22 +72,50 @@ function useSpotBox(spot: string | undefined, key: string): Box | null | 'wait' 
         tick();
         return () => cancelAnimationFrame(frame);
     }, [spot, key]);
-    return box;
+    return { box, alt };
+}
+
+/** 자리가 화면에 있는가 (없으면 false, spot이 없으면 undefined) */
+function useSpotSeen(spot: string | undefined, key: string): boolean | undefined {
+    const [seen, setSeen] = useState<boolean | undefined>(undefined);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: 단계(key)가 바뀌면 다시 본다
+    useEffect(() => {
+        setSeen(undefined);
+        if (!spot) return;
+        let frame = 0;
+        const tick = () => {
+            setSeen(!!findSpot(spot));
+            frame = requestAnimationFrame(tick);
+        };
+        tick();
+        return () => cancelAnimationFrame(frame);
+    }, [spot, key]);
+    return seen;
 }
 
 /**
  * 화면 강조: 가이드 단계의 `spot` 자리만 밝게 두고 나머지를 어둡게 덮어 말풍선으로 설명한다.
  * 자리가 없는 단계는 가운데 말풍선. 말풍선 밖(어두운 곳)을 누르거나 Esc·✕면 바로 닫힌다. 밝은 자리는 그대로 누를 수 있다.
+ * 사용자가 해야 넘어가는 단계는 "다음" 대신 안내를 보이고 기다린다:
+ *   고르기(active.pick)         디스코드 서버·게임 서버 목록을 짚고, 고르면 그 단계를 다시 연다
+ *   다음 자리가 아직 없음       다음 단계가 같은 화면(go·action 없음)인데 그 자리가 없으면, 생기는 대로 넘어간다
+ *   `a|b`의 b를 짚는 중         a가 생기면 그리로 옮긴다
  */
 export function Spotlight() {
     const { t } = useTranslation('gui');
     const active = useGuideStore((s) => s.active);
     const guide = useGuideStore((s) => (s.active ? s.guides?.find((g) => g.id === s.active?.id) : undefined));
     const step = active && guide ? guide.steps[active.step] : undefined;
-    // 고르기: 그 단계 대신 디스코드 서버 목록을 짚고, 고를 때까지 다음으로 넘어가지 않는다
     const pick = active?.pick;
-    const box = useSpotBox(pick ? PICK_GUILD_SPOT : step?.spot, active ? `${active.id}:${active.step}:${pick ?? ''}` : '');
+    const key = active ? `${active.id}:${active.step}:${pick ?? ''}` : '';
+    const { box, alt } = useSpotBox(pick ? PICK_SPOTS[pick] : step?.spot, key);
+    const after = active && !pick ? guide?.steps[active.step + 1] : undefined;
+    const nextSeen = useSpotSeen(after && !after.go && !after.action ? after.spot : undefined, key);
+    const hasHole = !!box && box !== 'wait';
+    const waitNext = hasHole && nextSeen === false;
+    const waiting = !!pick || waitNext || (hasHole && alt);
     const openNode = useUIStore((s) => s.openDiscordNodeId);
+    const openServer = useUIStore((s) => s.activeServerId);
     const primary = useRef<HTMLButtonElement>(null);
     const shown = !!active && !!step && box !== 'wait';
 
@@ -86,7 +127,25 @@ export function Spotlight() {
 
     useEffect(() => {
         if (active?.pick === 'guild' && openNode) goToStep(active.id, active.step);
-    }, [active, openNode]);
+        if (active?.pick === 'server' && openServer) {
+            useGuideStore.setState({ pickedServer: openServer });
+            goToStep(active.id, active.step);
+        }
+    }, [active, openNode, openServer]);
+
+    // 다음 자리를 기다리던 단계: 생기면 넘어간다
+    const waitedNext = useRef(false);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: 단계가 바뀌면 처음부터
+    useEffect(() => {
+        waitedNext.current = false;
+    }, [key]);
+    useEffect(() => {
+        if (waitNext) waitedNext.current = true;
+        else if (waitedNext.current && nextSeen && active) {
+            waitedNext.current = false;
+            advanceGuide(active.id, active.step);
+        }
+    }, [waitNext, nextSeen, active]);
 
     useEffect(() => {
         if (!active) return;
@@ -161,7 +220,7 @@ export function Spotlight() {
                             <Icon name="close" size="xs" />
                         </button>
                     </div>
-                    <p className="spotlight-text">{pick ? t('guides.pick_guild') : step.text}</p>
+                    <p className="spotlight-text">{pick ? t(`guides.pick_${pick}`) : step.text}</p>
                     <div className="spotlight-foot">
                         <span className="spotlight-dots" aria-hidden="true">
                             {guide.steps.map((s, i) => (
@@ -173,8 +232,8 @@ export function Spotlight() {
                                 {t('guides.prev')}
                             </button>
                         )}
-                        {pick ? (
-                            <span className="spotlight-wait">{t('guides.pick_wait')}</span>
+                        {waiting ? (
+                            <span className="spotlight-wait">{t(pick ? 'guides.pick_wait' : 'guides.wait_action')}</span>
                         ) : (
                             <button
                                 ref={primary}

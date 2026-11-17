@@ -2850,6 +2850,8 @@
     "finish": "完成",
     "pick_guild": "选择要查看此指南的 Discord 服务器。",
     "pick_wait": "选择后继续",
+    "pick_server": "选择要查看此指南的游戏服务器。",
+    "wait_action": "完成后继续",
     "go": "打开"
   },
   "public_address": {

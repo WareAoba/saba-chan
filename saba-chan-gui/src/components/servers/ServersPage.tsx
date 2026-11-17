@@ -129,11 +129,12 @@ export function ServersPage({
     const settingsReady = useSettingsStore((s) => s.settingsReady);
     const discordDone = useGuideStore((s) => s.onboarding?.steps.find((x) => x.id === 'discord')?.done);
 
-    // 선택이 비었거나 사라졌으면 첫 서버를 고른다
+    // 선택이 비었거나 사라졌으면 첫 서버를 고른다 (가이드가 서버를 고르게 하는 동안은 비워 둔다)
+    const guidePick = useGuideStore((s) => s.active?.pick === 'server');
     useEffect(() => {
-        if (servers.length === 0) return;
+        if (servers.length === 0 || guidePick) return;
         if (!servers.some((s) => s.id === selectedId)) setSelectedId(servers[0].id);
-    }, [servers, selectedId, setSelectedId]);
+    }, [servers, selectedId, setSelectedId, guidePick]);
 
     const moduleOf = useMemo(() => {
         const map = Object.fromEntries(modules.map((m) => [m.name, m]));
@@ -232,6 +233,7 @@ export function ServersPage({
                         </div>
                     )}
                     <div
+                        data-spot="servers.list"
                         className={clsx('server-list', { 'has-branches': servers.some((s) => branchParentOf(s, servers)) })}
                         role="listbox"
                         aria-label={t('shell.nav_servers')}

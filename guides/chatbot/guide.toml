@@ -14,4 +14,4 @@ spot = "chatbot.guild"
 
 [[steps]]
 go = "discord/*/moderation/channels"
-spot = "mod.assign"
+spot = "mod.split"

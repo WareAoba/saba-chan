@@ -2850,6 +2850,8 @@
     "finish": "Concluir",
     "pick_guild": "Escolha o servidor do Discord para este guia.",
     "pick_wait": "Continua ao escolher",
+    "pick_server": "Escolha o servidor de jogo para este guia.",
+    "wait_action": "Continua quando você fizer",
     "go": "Abrir"
   },
   "public_address": {

@@ -576,8 +576,8 @@ done = "backup.any"     # 선택. 데몬이 판단하는 완료 조건
 requires = ">=0.1.15"   # 선택. 이보다 낮은 앱에서는 보이지 않는다
 
 [[steps]]
-go = "server/:first/maintenance"   # 열 화면 주소(04 화면 주소). :first = 고른 서버, 없으면 첫 서버
-spot = "server.tab.maintenance"    # 짚을 화면 요소의 data-spot
+go = "server/:first/maintenance"   # 열 화면 주소(04 화면 주소). :first = 이 가이드에서 고른 게임 서버(여럿이면 앱이 먼저 고르게 한다)
+spot = "server.tab.maintenance"    # 짚을 화면 요소의 data-spot. "a|b"면 a가 생길 때까지 b를 짚고 기다린다
 # action = "sonar"                 # 앱이 하는 일(GUI GUIDE_ACTIONS). 화면을 넘겨받는 일이면 말풍선을 먼저 보이고, "열기"를 누를 때 그 화면을 열며 가이드가 끝난다
 # id = "start"                     # 처음 시작하기: 체크리스트 단계 id
 ```

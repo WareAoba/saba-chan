@@ -9,6 +9,6 @@ spot = "music.settings"
 
 [[steps]]
 go = "discord/*/moderation/channels"
-spot = "mod.assign"
+spot = "mod.split"
 
 [[steps]]

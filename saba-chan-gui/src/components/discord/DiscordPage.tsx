@@ -486,7 +486,7 @@ export function DiscordPage({
                                     : t('discord.nodes_need_connect')}
                             </p>
                         )}
-                        {/* 가이드가 디스코드 서버를 고르게 할 때 짚는 자리 (guides PICK_GUILD_SPOT) */}
+                        {/* 가이드가 디스코드 서버를 고르게 할 때 짚는 자리 (guides PICK_SPOTS) */}
                         {cloudNodes.length > 0 && (
                             <div className="dc-nav-nodes" data-spot="discord.nodes">
                                 {cloudNodes.map((n) => {

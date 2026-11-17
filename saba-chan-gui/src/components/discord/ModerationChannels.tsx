@@ -148,7 +148,7 @@ export function ChannelsView({ guildId, mod, setMod, assignRes, saveAssign, assi
                     );
                 })}
             </div>
-            <div className="dc-mod-split">
+            <div data-spot="mod.split" className="dc-mod-split">
                 <div
                     data-spot="mod.channels"
                     className="dc-mod-list"

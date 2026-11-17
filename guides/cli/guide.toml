@@ -5,7 +5,7 @@ order = 30
 
 [[steps]]
 go = "server/:first/settings"
-spot = "cli.line"
+spot = "cli.line|server.basic"
 
 [[steps]]
 spot = "cli.switch"

@@ -2850,6 +2850,8 @@
     "finish": "完了",
     "pick_guild": "ガイドを進めるDiscordサーバーを選んでください。",
     "pick_wait": "選ぶと続きます",
+    "pick_server": "ガイドを進めるゲームサーバーを選んでください。",
+    "wait_action": "操作すると続きます",
     "go": "開く"
   },
   "public_address": {

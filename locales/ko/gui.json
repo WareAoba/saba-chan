@@ -2850,6 +2850,8 @@
     "finish": "완료",
     "pick_guild": "가이드를 볼 디스코드 서버를 고릅니다.",
     "pick_wait": "고르면 이어집니다",
+    "pick_server": "가이드를 볼 게임 서버를 고릅니다.",
+    "wait_action": "하고 나면 이어집니다",
     "go": "열기"
   },
   "public_address": {
