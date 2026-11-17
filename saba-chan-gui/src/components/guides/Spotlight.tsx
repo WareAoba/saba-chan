@@ -98,7 +98,7 @@ function useSpotSeen(spot: string | undefined, key: string): boolean | undefined
  * 자리가 없는 단계는 가운데 말풍선. 말풍선 밖(어두운 곳)을 누르거나 Esc·✕면 바로 닫힌다. 밝은 자리는 그대로 누를 수 있다.
  * 사용자가 해야 넘어가는 단계는 "다음" 대신 안내를 보이고 기다린다:
  *   고르기(active.pick)         디스코드 서버·게임 서버 목록을 짚고, 고르면 그 단계를 다시 연다
- *   다음 자리가 아직 없음       다음 단계가 같은 화면(go·action 없음)인데 그 자리가 없으면, 생기는 대로 넘어간다
+ *   `wait` 단계                 다음 단계(같은 화면) 자리가 아직 없으면, 생기는 대로 넘어간다
  *   `a|b`의 b를 짚는 중         a가 생기면 그리로 옮긴다
  */
 export function Spotlight() {
@@ -110,7 +110,7 @@ export function Spotlight() {
     const key = active ? `${active.id}:${active.step}:${pick ?? ''}` : '';
     const { box, alt } = useSpotBox(pick ? PICK_SPOTS[pick] : step?.spot, key);
     const after = active && !pick ? guide?.steps[active.step + 1] : undefined;
-    const nextSeen = useSpotSeen(after && !after.go && !after.action ? after.spot : undefined, key);
+    const nextSeen = useSpotSeen(step?.wait && after && !after.go && !after.action ? after.spot : undefined, key);
     const hasHole = !!box && box !== 'wait';
     const waitNext = hasHole && nextSeen === false;
     const waiting = !!pick || waitNext || (hasHole && alt);

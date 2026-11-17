@@ -358,7 +358,7 @@ describe('해야 다음 자리가 생기는 단계', () => {
             guides: [
                 guide('sc', {
                     steps: [
-                        { spot: 'add', text: 'press add' },
+                        { spot: 'add', wait: true, text: 'press add' },
                         { spot: 'task', text: 'the task' },
                     ],
                 }),
@@ -371,7 +371,7 @@ describe('해야 다음 자리가 생기는 단계', () => {
         for (const el of els.splice(0)) el.remove();
     });
 
-    it('다음 단계 자리가 아직 없으면 "다음" 대신 안내를 보이고, 생기면 저절로 넘어간다', async () => {
+    it('wait 단계는 다음 단계 자리가 아직 없으면 "다음" 대신 안내를 보이고, 생기면 저절로 넘어간다', async () => {
         add('add');
         render(<Spotlight />);
         act(() => startGuide('sc'));
@@ -384,6 +384,17 @@ describe('해야 다음 자리가 생기는 단계', () => {
         });
         await waitFor(() => expect(screen.getByText('the task')).toBeInTheDocument());
         expect(useGuideStore.getState().active).toMatchObject({ id: 'sc', step: 1 });
+    });
+
+    it('wait가 없는 단계는 다음 자리가 없어도 "다음" (없을 수도 있는 자리에서 막히지 않게)', async () => {
+        add('add');
+        useGuideStore.setState((s) => ({
+            guides: s.guides?.map((g) => (g.id === 'sc' ? { ...g, steps: g.steps.map(({ wait, ...st }) => st) } : g)) ?? null,
+        }));
+        render(<Spotlight />);
+        act(() => startGuide('sc'));
+        await act(async () => {});
+        expect(screen.getByRole('button', { name: 'Next' })).toBeInTheDocument();
     });
 
     it('다음 단계 자리가 이미 있으면 지금처럼 "다음"', async () => {

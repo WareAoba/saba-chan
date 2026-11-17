@@ -54,6 +54,9 @@ pub struct Step {
     pub action: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub spot: Option<String>,
+    /// 사용자가 해야 다음 단계 자리가 생기는 단계: 생길 때까지 "다음" 대신 안내를 보이고, 생기면 넘어간다
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub wait: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -463,6 +466,17 @@ spot = "backup.create"
         assert!(parse("backup", TOML, &[], "0.1.15").is_err(), "no English");
         assert!(parse("Bad Name", TOML, &[en(2)], "0.1.15").is_err());
         assert!(parse("x", &TOML.replace("care", "games"), &[en(2)], "0.1.15").is_err(), "unknown group");
+    }
+
+    #[test]
+    fn a_step_can_wait_for_the_next_spot_and_says_so_only_when_it_does() {
+        let waits = TOML.replace(
+            "spot = \"server.tab.maintenance\"",
+            "spot = \"server.tab.maintenance\"\nwait = true",
+        );
+        let g = parse("backup", &waits, &[en(2)], "0.1.15").unwrap().unwrap();
+        assert_eq!(serde_json::to_value(&g.steps[0]).unwrap()["wait"], json!(true));
+        assert!(serde_json::to_value(&g.steps[1]).unwrap().get("wait").is_none());
     }
 
     #[test]

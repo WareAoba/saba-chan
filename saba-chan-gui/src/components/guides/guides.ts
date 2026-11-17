@@ -33,6 +33,8 @@ export interface GuideStepView {
     action?: string;
     /** 짚을 자리: 화면 요소의 `data-spot` */
     spot?: string;
+    /** 사용자가 해야 다음 단계 자리가 생기는 단계: 생길 때까지 기다렸다가 넘어간다 */
+    wait?: boolean;
     text: string;
 }
 export interface GuideItem {
