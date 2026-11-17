@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { usePageActive } from '../../hooks/usePageActive';
 import { useSwapAnimation } from '../../hooks/useSwapAnimation';
-import { useWindowSize } from '../../hooks/useWindowSize';
+import { useWindowAtLeast } from '../../hooks/useWindowAtLeast';
 import { useDiscordStore } from '../../stores/useDiscordStore';
 import { useUIStore } from '../../stores/useUIStore';
 import type { ModuleAliases, Server } from '../../stores/useServerStore';
@@ -111,8 +111,7 @@ export function DiscordPage({
 }: DiscordPageProps) {
     const { t } = useTranslation('gui');
     const relayUrl = discordCloudRelayUrl || DEFAULT_RELAY_URL;
-    const { width } = useWindowSize();
-    const singleColumn = width < SINGLE_COLUMN_MAX_WIDTH;
+    const singleColumn = !useWindowAtLeast(SINGLE_COLUMN_MAX_WIDTH);
     const [view, setView] = useState<DiscordView>(initialView || { kind: 'connection' });
     // 왼쪽에서 다른 화면을 고르면 오른쪽이 살짝 떠오르며 바뀐다
     const mainRef = useSwapAnimation(`${view.kind}:${view.id ?? ''}`);

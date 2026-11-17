@@ -199,7 +199,7 @@ function App() {
     const { draggedId, cardRefs, skipNextClick, handleCardPointerDown } = useDragReorder(servers, setServers);
 
     // 익스텐션 초기화 상태 (daemon.startup hook 진행 중이면 스피너 표시)
-    const { initializing: extInitializing, inProgress: extInitInProgress } = useExtensionInitStatus();
+    const { initializing: extInitializing, inProgress: extInitInProgress } = useExtensionInitStatus(daemonRunning);
 
     // Discord store action aliases
     const handleStartDiscordBot = useDiscordStore((s) => s.startBot);

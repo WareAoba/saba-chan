@@ -12,6 +12,7 @@ import {
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
+import { usePageActive } from '../../hooks/usePageActive';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import type { Server } from '../../stores/useServerStore';
 import type { SystemMonitorMode } from '../../types/daemon';
@@ -49,10 +50,10 @@ const RING_SIZE = { top: 92, side: 100, float: 84 } as const;
 
 /** 서버 페이지에서 모니터를 둘 자리 (끔 · 고정 · 떠 있는 창) */
 export type MonitorPlacement = 'none' | 'top' | 'side' | 'float';
-export function monitorPlacement(mode: SystemMonitorMode, expanded: boolean, width: number): MonitorPlacement {
+export function monitorPlacement(mode: SystemMonitorMode, expanded: boolean, wide: boolean): MonitorPlacement {
     if (mode === 'off') return 'none';
     if (mode === 'floating') return 'float';
-    return expanded && width >= MONITOR_SIDE_MIN_WIDTH ? 'side' : 'top';
+    return expanded && wide ? 'side' : 'top';
 }
 
 /** 앱을 켠 뒤 본 디스크 IO·네트워크 최고값 (화면을 오가도 이어진다). 데몬마다 따로 둔다: 다른 PC의 최고값이 눈금이 되지 않게 */
@@ -70,15 +71,17 @@ async function currentTarget(): Promise<string> {
     }
 }
 
-/** 데몬 표본을 주기적으로 받는다. 창이 가려져 있으면 쉰다. 요약만 볼 때는 폴더 크기를 재지 않게 한다. GPU는 고른 때만 묻는다 */
+/** 데몬 표본을 주기적으로 받는다. 창이 가려져 있거나 탭을 떠나 있으면 쉰다. 요약만 볼 때는 폴더 크기를 재지 않게 한다. GPU는 고른 때만 묻는다 */
 export function useSystemMetrics(intervalMs: number, sizes = true, gpu = false) {
     const [state, setState] = useState<{ snapshot: MetricsSnapshot | null; peaks: Peaks }>({
         snapshot: null,
         peaks: sessionPeaks.get(lastTarget) ?? noPeaks,
     });
     const [error, setError] = useState(false);
+    const active = usePageActive();
 
     useEffect(() => {
+        if (!active) return undefined;
         let alive = true;
         let timer: ReturnType<typeof setTimeout> | null = null;
         const tick = async () => {
@@ -107,7 +110,7 @@ export function useSystemMetrics(intervalMs: number, sizes = true, gpu = false) 
             alive = false;
             clearTimeout(timer as ReturnType<typeof setTimeout>);
         };
-    }, [intervalMs, sizes, gpu]);
+    }, [intervalMs, sizes, gpu, active]);
 
     return { ...state, error };
 }
