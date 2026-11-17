@@ -461,9 +461,13 @@ pub fn elevate(grant: bool) -> Result<(), ElevateError> {
 
 /// `saba-core net-trace grant|revoke <SID>`: 관리자 권한으로 다시 띄워졌을 때 그룹을 바꾼다.
 /// `saba-core net-trace reset`: 제거기가 부른다. 사바쨩이 준 표시가 남은 계정마다 revoke한다 (관리자가 아니면 확인 창)
+/// `saba-core net-trace marked`: 제거기가 부른다. 거둘 표시가 있으면 0(reset이 관리자 확인 창을 띄운다), 없으면 1
 pub fn group_tool(args: &[String]) -> i32 {
     if args == ["reset"] {
         return platform::reset_tool();
+    }
+    if args == ["marked"] {
+        return if platform::marked().is_empty() { 1 } else { 0 };
     }
     platform::group_tool(args)
 }
@@ -516,6 +520,10 @@ mod platform {
     /// 거둘 것이 없다 (Windows만 권한을 준다)
     pub(super) fn reset_tool() -> i32 {
         0
+    }
+
+    pub(super) fn marked() -> Vec<String> {
+        Vec::new()
     }
 
     pub(super) fn group_tool(_args: &[String]) -> i32 {
@@ -902,13 +910,18 @@ mod platform {
 
     /// 표시(`ADDED_KEY`)가 남은 계정마다 사바쨩이 준 그룹 소속·공급자 허용을 거둔다. 관리자가 아니면 확인 창으로 다시 띄운다.
     /// 거두지 못하면 `FAIL  <이유>` 줄과 종료 코드 1
-    pub(super) fn reset_tool() -> i32 {
+    /// 표시(`ADDED_KEY`)가 남은 계정들
+    pub(super) fn marked() -> Vec<String> {
         use winreg::enums::HKEY_LOCAL_MACHINE;
         let names = winreg::RegKey::predef(HKEY_LOCAL_MACHINE)
             .open_subkey(ADDED_KEY)
             .map(|k| k.enum_values().filter_map(Result::ok).map(|(name, _)| name).collect::<Vec<_>>())
             .unwrap_or_default();
-        let sids = marked_sids(names);
+        marked_sids(names)
+    }
+
+    pub(super) fn reset_tool() -> i32 {
+        let sids = marked();
         if sids.is_empty() {
             println!("ok    no network event permission to revoke");
             return 0;
@@ -1015,6 +1028,11 @@ mod tests {
     fn revoke_without_anything_saba_chan_granted_is_refused_without_elevation() {
         assert!(!revocable());
         assert_eq!(elevate(false), Err(ElevateError::NothingToRevoke));
+    }
+
+    #[test]
+    fn marked_answers_no_when_nothing_was_granted() {
+        assert_eq!(group_tool(&["marked".to_string()]), 1);
     }
 
     #[test]

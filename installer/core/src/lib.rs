@@ -158,6 +158,22 @@ pub trait InstallHooks: Send + Sync {
 
 // 설치
 
+/// 그 폴더에 설치하려면 관리자 확인이 필요한지 (설치 버튼의 방패, 설치 폴더 준비). 폴더를 만들지 않고
+/// 가장 가까운 있는 폴더에 시험 파일을 써 본다 (만들 수 있는 곳이면 그 아래도 쓸 수 있다)
+pub fn needs_admin(dir: &Path) -> bool {
+    let Some(existing) = dir.ancestors().find(|d| d.is_dir()) else {
+        return true;
+    };
+    let probe = existing.join(".saba-write-test");
+    match std::fs::write(&probe, b"test") {
+        Ok(_) => {
+            let _ = std::fs::remove_file(&probe);
+            false
+        }
+        Err(_) => true,
+    }
+}
+
 /// 설치 폴더 준비: 받을 수 있는 곳인지 확인하고, 만들고, 쓸 수 없으면 권한을 올려 만든다.
 /// 창 인스톨러는 설치 화면(애니메이션)으로 넘어가기 전에 이것만 먼저 불러 권한 확인을 끝낸다.
 /// 실패하면 (오류 코드, 메시지), 설치는 이어가되 알릴 일이 있으면 `Ok(Some(경고))`
@@ -187,21 +203,7 @@ pub fn prepare_install_dir(
     let dedicated = !install_dir.is_dir() || install_dir.join(uninstall::INSTALL_MARKER).is_file();
     let _ = std::fs::create_dir_all(install_dir); // 이미 있어도 OK
 
-    // 실제 쓰기 가능 여부 테스트
-    let needs_elevation = {
-        let probe = install_dir.join(".saba-write-test");
-        match std::fs::write(&probe, b"test") {
-            Ok(_) => {
-                let _ = std::fs::remove_file(&probe);
-                false
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => true,
-            Err(_) => {
-                // 디렉토리 자체가 없는 경우 (create_dir_all도 실패)
-                !install_dir.exists()
-            }
-        }
-    };
+    let needs_elevation = needs_admin(install_dir);
 
     if needs_elevation {
         hooks.progress(&InstallProgress {
@@ -1575,6 +1577,32 @@ mod tests {
     impl InstallHooks for Recorder {
         fn progress(&self, progress: &InstallProgress) {
             self.0.lock().unwrap().push(progress.clone());
+        }
+    }
+
+    // 설치 버튼의 관리자 확인 방패: 고른 폴더를 만들지 않고, 가장 가까운 있는 폴더에 쓸 수 있는지로 판단한다
+    #[test]
+    fn a_writable_location_needs_no_admin_and_is_not_created() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("a").join("Saba-chan");
+        assert!(!needs_admin(&dir));
+        assert!(!tmp.path().join("a").exists());
+        assert!(!needs_admin(tmp.path()));
+        assert_eq!(std::fs::read_dir(tmp.path()).unwrap().count(), 0, "probe file is removed");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_read_only_location_needs_admin() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::set_permissions(tmp.path(), std::fs::Permissions::from_mode(0o555)).unwrap();
+        let root = std::fs::write(tmp.path().join("probe"), b"").is_ok();
+        let needs = needs_admin(&tmp.path().join("Saba-chan"));
+        std::fs::set_permissions(tmp.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
+        // root는 권한과 무관하게 쓸 수 있어 이 확인이 뜻이 없다
+        if !root {
+            assert!(needs);
         }
     }
 

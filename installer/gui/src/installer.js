@@ -301,11 +301,27 @@ document.getElementById('btn-next').addEventListener('click', () => moveFirst ? 
 
 // 이벤트: Settings 패널 내부
 
+// 관리자 확인 창이 뜨는 버튼은 아이콘 자리에 Windows 방패를 보인다 (원래 아이콘은 둔다)
+function showAdminShield(button, needed) {
+    const shield = button?.querySelector('.uac-shield');
+    if (!shield) return;
+    shield.hidden = !needed;
+    shield.nextElementSibling.hidden = needed;
+}
+async function refreshInstallShield() {
+    try {
+        showAdminShield(document.getElementById('btn-install'), await invoke('install_needs_admin', { path: $installPath.value }));
+    } catch (_) {}
+}
+
 // 경로 찾기
 document.getElementById('btn-browse')?.addEventListener('click', async () => {
     try {
         const r = await invoke('browse_folder');
-        if (r) { $installPath.value = await invoke('set_install_path', { path: r }); }
+        if (r) {
+            $installPath.value = await invoke('set_install_path', { path: r });
+            refreshInstallShield();
+        }
     } catch (_) {}
 });
 
@@ -346,6 +362,7 @@ $channel?.addEventListener('change', async () => {
 // 비어 있지 않은 폴더를 고르면 설치기가 그 아래 Saba-chan 폴더로 바꿔 돌려준다
 $installPath?.addEventListener('change', async () => {
     $installPath.value = await invoke('set_install_path', { path: $installPath.value });
+    refreshInstallShield();
 });
 
 // 모듈
@@ -603,6 +620,9 @@ async function enterUninstallMode() {
             info.hidden = false;
         }
     } catch (_) {}
+    try {
+        showAdminShield(document.getElementById('btn-uninstall'), await invoke('uninstall_needs_admin'));
+    } catch (_) {}
 }
 
 document.getElementById('btn-cancel')?.addEventListener('click', () => appWindow.close());
@@ -789,7 +809,10 @@ document.getElementById('btn-lang')?.addEventListener('click', (e) => {
     // 설치 경로 로드
     try {
         const st = await invoke('get_installer_state');
-        if ($installPath) $installPath.value = st.install_path || '';
+        if ($installPath) {
+            $installPath.value = st.install_path || '';
+            refreshInstallShield();
+        }
         if ($componentsPath) $componentsPath.value = st.components_dir || '';
         // 업데이트 채널: 지금 쓰는 채널(없으면 이 설치기의 채널)을 골라 두고, 모듈 목록도 그 채널에서 받는다
         if ($channel && !setupMode && st.channel) {

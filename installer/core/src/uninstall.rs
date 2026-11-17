@@ -286,6 +286,19 @@ fn reset_sandbox(install_dir: &Path) -> Vec<PathBuf> {
     sandbox_failures(&text, out.status.success(), &core)
 }
 
+/// 제거하면 관리자 확인 창이 뜨는지 (제거 버튼의 방패): 그 설치의 코어에 거둘 네트워크 권한 표시가 있는지 묻는다
+pub fn needs_admin() -> bool {
+    let Some(dir) = target_dir() else { return false };
+    let core = dir.join(saba_chan_updater_lib::CORE_EXE);
+    if !cfg!(windows) || !core.is_file() {
+        return false;
+    }
+    let mut cmd = std::process::Command::new(&core);
+    cmd.args(["net-trace", "marked"]);
+    saba_chan_updater_lib::process::hide_console(&mut cmd);
+    output_within(&mut cmd, std::time::Duration::from_secs(10)).is_some_and(|out| out.status.success())
+}
+
 /// 그 설치의 `saba-core net-trace reset`을 돌린다 (Windows). 사바쨩이 준 표시가 남은 계정의 네트워크 이벤트 권한을 거둔다.
 /// 관리자 확인 창을 기다리므로(코어가 60초까지) 그보다 넉넉히 기다린다. 거두지 못한 것은 남은 항목 줄로
 fn reset_net_trace(install_dir: &Path) -> Vec<PathBuf> {
