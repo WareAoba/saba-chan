@@ -32,4 +32,18 @@ describe('모듈 검사 결과', () => {
         expect(screen.queryByText(/uses only declared/i)).toBeNull();
         expect(document.querySelectorAll('.hint-warn')).toHaveLength(1);
     });
+
+    it('탭을 열 때 모듈 목록을 다시 읽어 그사이 생긴 업데이트를 보인다', async () => {
+        useData.setState({ modules: [{ name: 'game', version: '1.0.0' }] as never });
+        const api = new Proxy(
+            {
+                moduleManifest: vi.fn().mockResolvedValue({}),
+                moduleList: vi.fn().mockResolvedValue({ modules: [{ name: 'game', version: '1.0.0', update_version: '1.1.0' }] }),
+            },
+            { get: (t, k) => t[k as keyof typeof t] ?? vi.fn().mockResolvedValue({}) },
+        );
+        render(<ModulesTab api={mockApi(api)} />);
+        await flush();
+        expect(useData.getState().modules[0].update_version).toBe('1.1.0');
+    });
 });

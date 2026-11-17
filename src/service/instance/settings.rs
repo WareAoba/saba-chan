@@ -236,6 +236,8 @@ pub(crate) async fn update(state: &IPCServer, id: &str, mut settings: Value) -> 
     }
     // 켜 둔 서버의 게임 채팅도 바로 따른다
     crate::supervisor::game_chat::remember(id, &updated_clone.game_chat());
+    // 정지 방식을 바꿨을 수 있다: 정지할 길이 없어 그만둔 자동 정지를 다시 해 본다
+    crate::supervisor::idle::retry(id);
 
     // 익스텐션 hook에 넘길 값을 챙기고 락을 놓는다. 아래 모듈·익스텐션 호출은 락 밖에서
     let instance_dir = supervisor.instance_store.instance_dir(id);
