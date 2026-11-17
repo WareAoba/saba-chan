@@ -44,6 +44,9 @@ export function MaintenanceTab({ server, moduleCommands = [] }: { server: Server
                 // 저장할 때 다시 보낸다: 그사이 다른 곳에서 바뀌었으면 데몬이 덮어쓰지 않고 거절한다
                 revision: res?.revision,
             };
+            // 받아 둔 것과 같으면 그대로 둔다: 먼저 보인 탭에서 고치던 내용을 새 객체로 지우지 않게
+            const shown = infos.get(server.id);
+            if (shown && JSON.stringify(shown) === JSON.stringify(next)) return;
             infos.set(server.id, next);
             setInfo(next);
         } catch (err) {

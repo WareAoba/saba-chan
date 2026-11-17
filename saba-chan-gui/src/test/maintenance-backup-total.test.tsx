@@ -78,4 +78,22 @@ describe('백업 목록 용량', () => {
         expect(screen.getByText(/manual\.zip/)).toBeTruthy();
         expect(window.api.instanceBackups).toHaveBeenCalledWith('srv-cache');
     });
+
+    // 받아 둔 예약 정보로 먼저 보인 뒤 새 정보가 와도, 일정이 그대로면 그사이 고친 내용은 지우지 않는다
+    it('다시 연 뒤 새 정보가 오기 전에 고친 보관 개수는 같은 일정이 오면 남는다', async () => {
+        const cached = { id: 'srv-draft', status: 'stopped' } as unknown as Server;
+        const info = { success: true, schedule: [], backup_keep: 5, backup_supported: true, revision: 'r1' };
+        window.api.instanceBackups = vi.fn().mockResolvedValue({ success: true, total_bytes: 0, backups: [] });
+        window.api.instanceScheduleGet = vi.fn().mockResolvedValue(info);
+        const first = render(<MaintenanceTab server={cached} />);
+        await screen.findByDisplayValue('5');
+        first.unmount();
+
+        let answer: (v: ApiBody) => void = () => {};
+        window.api.instanceScheduleGet = vi.fn(() => new Promise<ApiBody>((r) => { answer = r; }));
+        render(<MaintenanceTab server={cached} />);
+        fireEvent.change(screen.getByDisplayValue('5'), { target: { value: '7' } });
+        await act(async () => answer({ ...info, next_runs: [] }));
+        expect(screen.getByDisplayValue('7')).toBeTruthy();
+    });
 });
