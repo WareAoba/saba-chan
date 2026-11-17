@@ -1,12 +1,11 @@
 /**
- * 설정값 타입 검증 및 포트/별명 충돌 검사 유틸리티
+ * 설정값 타입 검증 유틸리티
  *
  * - validateSettingValue: module.toml SettingField 스키마 기반 개별 필드 검증
  * - validateAllSettings: 전체 설정 필드 일괄 검증
- * - checkPortConflicts: 모든 인스턴스 간 포트 충돌 검사
  */
 
-import type { ServerInfo, SettingField } from '../types/daemon';
+import type { SettingField } from '../types/daemon';
 
 /** 설정 한 칸의 검증 결과 */
 export interface ValidationResult {
@@ -19,17 +18,6 @@ export interface ValidationResult {
     value?: unknown;
     options?: string[];
 }
-
-/** 포트 충돌 한 건 */
-export interface PortConflict {
-    port: number;
-    portType: string;
-    conflictName: string;
-    conflictId: string;
-    conflictPortType: string;
-}
-
-type PortValue = number | string | null | undefined;
 
 /**
  * 개별 설정 필드의 값을 타입·범위·필수여부 기준으로 검증합니다.
@@ -241,74 +229,4 @@ export function validateAllSettings(fields: SettingField[], values: Record<strin
     }
 
     return { valid, errors };
-}
-
-/**
- * 모든 인스턴스 간의 포트 충돌을 검사합니다.
- * 특정 인스턴스의 포트가 다른 인스턴스와 겹치는지 확인합니다.
- *
- * 모듈별 프로토콜 정보(moduleProtocols)가 제공되면,
- * 해당 모듈이 실제 사용하는 프로토콜의 포트만 비교합니다.
- * 예: REST를 지원하지 않는 모듈의 rest_port는 충돌 검사에서 제외됩니다.
- *
- * @param {string} targetId - 검사 대상 인스턴스 ID
- * @param {Object} targetPorts - 대상 포트 { port, rest_port }
- * @param {Array} allServers - 전체 서버(인스턴스) 목록
- * @param {Object} [moduleProtocols] - 모듈별 지원 프로토콜 맵 { moduleName: ["rest","stdin",...] }
- * @param {string} [targetModule] - 대상 인스턴스의 모듈 이름
- * @returns {Array} 충돌 목록 [{ port, portType, conflictName, conflictId, conflictPortType }]
- */
-export function checkPortConflicts(
-    targetId: string,
-    targetPorts: { port?: PortValue; rest_port?: PortValue },
-    allServers: Pick<ServerInfo, 'id' | 'name' | 'module' | 'port' | 'rest_port'>[],
-    moduleProtocols?: Record<string, string[]> | null,
-    targetModule?: string,
-): PortConflict[] {
-    const conflicts: PortConflict[] = [];
-
-    const targetSupported = moduleProtocols && targetModule ? moduleProtocols[targetModule] : null;
-    const portEntries = buildActivePortEntries(targetPorts, targetSupported);
-
-    if (portEntries.length === 0) return conflicts;
-
-    for (const server of allServers) {
-        if (server.id === targetId) continue;
-
-        const otherSupported = moduleProtocols && server.module ? moduleProtocols[server.module] : null;
-        const otherPorts = buildActivePortEntries({ port: server.port, rest_port: server.rest_port }, otherSupported);
-
-        for (const tp of portEntries) {
-            for (const op of otherPorts) {
-                if (Number(tp.value) === Number(op.value)) {
-                    conflicts.push({
-                        port: Number(tp.value),
-                        portType: tp.type,
-                        conflictName: server.name,
-                        conflictId: server.id,
-                        conflictPortType: op.type,
-                    });
-                }
-            }
-        }
-    }
-
-    return conflicts;
-}
-
-/**
- * 모듈의 지원 프로토콜에 따라 실제 사용하는 포트만 반환합니다.
- * @param {Object} ports - { port, rest_port }
- * @param {Array|null} supported - 모듈 지원 프로토콜 배열 (null이면 모두 포함)
- * @returns {Array} [{ value, type }]
- */
-function buildActivePortEntries(ports: { port?: PortValue; rest_port?: PortValue }, supported?: string[] | null) {
-    const entries: { value: PortValue; type: string }[] = [
-        { value: ports.port, type: 'port' }, // game port는 항상 포함
-    ];
-    // rest_port: 프로토콜 정보가 없거나 rest를 지원할 때만 포함
-    if (!supported || supported.includes('rest')) {
-        entries.push({ value: ports.rest_port, type: 'rest_port' });
-    }
-    return entries.filter((e) => e.value != null && e.value !== '' && !Number.isNaN(Number(e.value)));
 }

@@ -32,18 +32,8 @@ async fn write_gui_config(state: &IPCServer, mut settings: Value, how: crate::co
     // PUT은 예전처럼 revision을 보지 않는다 (GET 본문을 그대로 돌려보내는 클라이언트가 있다)
     let revision = crate::config_store::patch::take_revision(&mut settings).filter(|_| how == crate::config_store::Apply::MergePatch);
     match state.config_store.write_gui(settings, how, revision.as_deref()).await {
-        Ok((saved, revision)) => {
-            // 저장에 성공한 뒤에만 런타임 포트 검사 플래그를 맞춘다
-            state.supervisor.read().await.skip_port_check.store(!saved.port_conflict_check, std::sync::atomic::Ordering::Relaxed);
-            (StatusCode::OK, Json(json!({ "success": true, "revision": revision }))).into_response()
-        }
-        Err(crate::config_store::ConfigStoreError::RevisionConflict(revision)) => (
-            StatusCode::CONFLICT,
-            Json(json!({ "success": false, "error": "The settings were changed elsewhere; read them again", "error_code": "settings_changed", "revision": revision })),
-        )
-            .into_response(),
-        Err(crate::config_store::ConfigStoreError::InvalidData(msg)) => super::error(StatusCode::BAD_REQUEST, "invalid_request", msg),
-        Err(e) => super::error(StatusCode::INTERNAL_SERVER_ERROR, "save_failed", e.to_string()),
+        Ok((_, revision)) => (StatusCode::OK, Json(json!({ "success": true, "revision": revision }))).into_response(),
+        Err(e) => super::config_error(e),
     }
 }
 
@@ -57,7 +47,7 @@ pub async fn get_config_defaults(Path(kind): Path<String>) -> impl IntoResponse 
     }
 }
 
-/// POST /api/config/:kind/reset — `{keys?: [..]}`를 기본값으로 (없으면 전부). 응답 `{ok, config}`
+/// POST /api/config/:kind/reset — `{keys?: [..]}`를 기본값으로 (없으면 전부). 응답 `{success, config}`
 pub async fn reset_config(
     State(state): State<IPCServer>,
     Path(kind): Path<String>,
@@ -85,12 +75,6 @@ pub async fn reset_config(
     let old_relay = state.config_store.get_bot_config().await.cloud.relay_url;
     match state.config_store.reset_to_defaults(&kind, keys.as_deref()).await {
         Ok(config) => {
-            // 저장에 성공한 뒤에만 런타임 플래그(포트 검사)를 맞춘다
-            if kind == "gui" {
-                if let Some(check) = config.get("portConflictCheck").and_then(Value::as_bool) {
-                    state.supervisor.read().await.skip_port_check.store(!check, std::sync::atomic::Ordering::Relaxed);
-                }
-            }
             // 봇 설정 저장과 같이, 릴레이 주소가 바뀌면 에이전트를 새 주소로 다시 시작한다
             let new_relay = config.pointer("/cloud/relayUrl").and_then(Value::as_str).unwrap_or("");
             if kind == "bot" && new_relay.trim() != old_relay.trim() && state.relay_agent.status().running {
@@ -98,7 +82,7 @@ pub async fn reset_config(
             }
             (StatusCode::OK, Json(json!({ "success": true, "config": config }))).into_response()
         }
-        Err(e) => super::error(StatusCode::BAD_REQUEST, "invalid_request", e.to_string()),
+        Err(e) => super::config_error(e),
     }
 }
 
@@ -123,8 +107,7 @@ pub async fn save_client_config(
 ) -> impl IntoResponse {
     match state.config_store.merge_client_section(&kind, patch) {
         Ok(v) => (StatusCode::OK, Json(v)).into_response(),
-        Err(crate::config_store::ConfigStoreError::InvalidData(msg)) => super::error(StatusCode::BAD_REQUEST, "invalid_request", msg),
-        Err(e) => super::error(StatusCode::INTERNAL_SERVER_ERROR, "save_failed", e.to_string()),
+        Err(e) => super::config_error(e),
     }
 }
 
@@ -135,10 +118,10 @@ pub async fn save_node_token(
     State(state): State<IPCServer>,
     Json(payload): Json<Value>,
 ) -> impl IntoResponse {
-    let token = payload
-        .get("token")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+    // 토큰을 지우는 것은 연결 해제(DELETE)만 한다: 빈 토큰을 저장하면 토큰 없이 에이전트를 다시 띄운다
+    let Some(token) = payload.get("token").and_then(Value::as_str).map(str::trim).filter(|t| !t.is_empty()) else {
+        return super::error(StatusCode::BAD_REQUEST, "invalid_request", "token is required (use DELETE to disconnect)");
+    };
     // 페어링 완료 때 데몬이 이미 저장하고 재시작했으면 같은 토큰을 다시 받아도 재시작하지 않는다
     match crate::relay_client::write_node_token(Some(token)) {
         Ok(changed) => {
@@ -159,39 +142,32 @@ pub async fn delete_node_token(State(state): State<IPCServer>) -> impl IntoRespo
 
 // ── Module Locales ──
 
-/// GET /api/module/:name/locales — 모듈 로케일 파일 전체 반환
+/// GET /api/module/:name/locales — 모듈 로케일 파일 전체 반환 (`<모듈 폴더>/locales/*.json`, ZIP 모듈은 풀린 폴더)
 pub async fn get_module_locales(
     State(state): State<IPCServer>,
     Path(module_name): Path<String>,
 ) -> impl IntoResponse {
-    let supervisor = state.supervisor.read().await;
-    let modules_dir = supervisor.module_loader.modules_dir().to_string();
-    drop(supervisor);
-
-    let locales_dir = std::path::PathBuf::from(&modules_dir)
-        .join(&module_name)
-        .join("locales");
+    let module = state.supervisor.read().await.module_loader.get_module(&module_name);
+    let Ok(module) = module else {
+        return super::error(StatusCode::NOT_FOUND, "not_found", format!("Module '{}' not found", module_name));
+    };
+    let locales_dir = std::path::Path::new(&module.path).join("locales");
 
     let mut result: HashMap<String, Value> = HashMap::new();
-
-    if locales_dir.exists() {
-        if let Ok(entries) = std::fs::read_dir(&locales_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.extension().and_then(|e| e.to_str()) == Some("json") {
-                    if let Some(lang) = path.file_stem().and_then(|s| s.to_str()) {
-                        if let Ok(content) = std::fs::read_to_string(&path) {
-                            if let Ok(parsed) = serde_json::from_str::<Value>(&content) {
-                                result.insert(lang.to_string(), parsed);
-                            }
-                        }
-                    }
-                }
+    for path in std::fs::read_dir(&locales_dir).into_iter().flatten().flatten().map(|e| e.path()) {
+        if path.extension().and_then(|e| e.to_str()) != Some("json") {
+            continue;
+        }
+        let Some(lang) = path.file_stem().and_then(|s| s.to_str()) else { continue };
+        match std::fs::read_to_string(&path).map_err(|e| e.to_string()).and_then(|text| serde_json::from_str::<Value>(&text).map_err(|e| e.to_string())) {
+            Ok(parsed) => {
+                result.insert(lang.to_string(), parsed);
             }
+            Err(e) => tracing::warn!("[Locales] Skipping {}: {}", path.display(), e),
         }
     }
 
-    (StatusCode::OK, Json(json!(result)))
+    (StatusCode::OK, Json(json!(result))).into_response()
 }
 
 // ── System Components ──
@@ -257,3 +233,53 @@ mod system_components_tests {
 }
 
 // ── Directory Scan (migration) ──
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    async fn server(modules: &std::path::Path) -> IPCServer {
+        let tmp = modules.parent().unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new())
+    }
+
+    async fn body(resp: axum::response::Response) -> (StatusCode, Value) {
+        let status = resp.status();
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        (status, serde_json::from_slice(&bytes).unwrap())
+    }
+
+    /// 문구는 모듈이 실제로 있는 폴더에서 읽는다: 폴더 이름이 모듈 이름과 달라도 비지 않는다. 깨진 파일만 빠진다
+    #[tokio::test]
+    async fn module_locales_come_from_the_module_folder_not_its_name() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("some-folder");
+        std::fs::create_dir_all(dir.join("locales")).unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = \"plain\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n").unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        std::fs::write(dir.join("locales").join("ko.json"), r#"{"module": {"name": "평범"}}"#).unwrap();
+        std::fs::write(dir.join("locales").join("en.json"), "{ broken").unwrap();
+        let state = server(&modules).await;
+
+        let (status, got) = body(get_module_locales(State(state.clone()), Path("plain".into())).await.into_response()).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(got, json!({"ko": {"module": {"name": "평범"}}}));
+
+        let (status, _) = body(get_module_locales(State(state), Path("../some-folder".into())).await.into_response()).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
+    /// 빈 토큰은 저장하지 않는다 (지우기는 연결 해제만)
+    #[tokio::test]
+    async fn an_empty_node_token_is_refused() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = server(&tmp.path().join("modules")).await;
+        for payload in [json!({}), json!({"token": ""}), json!({"token": "  "})] {
+            let (status, got) = body(save_node_token(State(state.clone()), Json(payload.clone())).await.into_response()).await;
+            assert_eq!((status, &got["error_code"]), (StatusCode::BAD_REQUEST, &json!("invalid_request")), "{payload}");
+        }
+    }
+}

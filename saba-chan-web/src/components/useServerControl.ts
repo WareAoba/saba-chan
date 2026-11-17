@@ -3,13 +3,21 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../store';
 import { errorText, failed, refusalText, timedOut } from './ui';
-import type { Server, WebApi } from '../types';
+import type { ApiBody, Server, WebApi } from '../types';
 
 /** 켜기·끄기·다시 켜기·지우기. 확인 창과 약관 동의는 GUI 와 같다 */
 export function useServerControl(api: WebApi) {
     const { t } = useTranslation();
+    const { t: tg } = useTranslation('gui');
     const { toast, ask } = useApp.getState();
     const [busy, setBusy] = useState(false);
+
+    // 데몬이 Windows 예약 범위를 피해 포트를 옮겨 저장했다 (켜기·다시 켜기 답, 성공·실패 모두): 앱과 같은 문구로 알린다
+    const tellMovedPorts = (server: Server, res: ApiBody) => {
+        for (const m of Array.isArray(res?.port_moved) ? res.port_moved : []) {
+            toast(tg('servers.port_moved', { name: server.name, from: m.from, to: m.to }), 'info');
+        }
+    };
 
     const run = async <T>(fn: () => Promise<T>) => {
         setBusy(true);
@@ -44,6 +52,7 @@ export function useServerControl(api: WebApi) {
                 res = await api.instanceStart(server.id);
                 outcome = controlOutcome(res);
             }
+            tellMovedPorts(server, res);
             // 이미 켜져 있었다 / 켜는 동안 정지했다: GUI 와 같이 "켰어요"로 알리지 않는다
             if (outcome.kind === 'alreadyRunning') {
                 return toast(t('servers.already_running', { name: server.name }), 'info');
@@ -80,7 +89,11 @@ export function useServerControl(api: WebApi) {
             if (!ok) return;
             const res = await api.instanceRestart(server.id);
             if (timedOut(res)) return toast(t('errors.still_working'), 'info');
-            if (controlOutcome(res).kind === 'stillStopping') return toast(t('errors.still_stopping'), 'error');
+            tellMovedPorts(server, res);
+            const outcome = controlOutcome(res);
+            // 그사이 다른 곳에서 정지·시작·삭제했다: 실패가 아니라 그만둔 것 (문구는 앱 errors.restart_cancelled)
+            if (outcome.kind === 'cancelled') return toast(refusalText(t, res), 'info');
+            if (outcome.kind === 'stillStopping') return toast(t('errors.still_stopping'), 'error');
             if (failed(res)) return toast(refusalText(t, res), 'error');
             toast(t('servers.restarted', { name: server.name }), 'ok');
         });

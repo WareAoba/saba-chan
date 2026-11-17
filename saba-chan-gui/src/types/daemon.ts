@@ -121,6 +121,19 @@ export interface ServerInfo {
     update_check?: ApiBody | null;
     /** 시작·정지 요청이 데몬에서 진행 중이면 `starting`·`stopping` (0.1.14~, 어디서 시켰든) */
     transition?: 'starting' | 'stopping';
+    /** 자동 재시작·자동 정지·응답 없음 감시에 데몬이 실제로 쓰는 값 (저장 값이 없으면 데몬 기본값). 싣지 않는 예전 데몬이면 없다 */
+    effective?: BehaviorSettings;
+}
+
+/** 서버 정보 `effective` (데몬 `supervisor::Effective`) */
+export interface BehaviorSettings {
+    auto_restart: boolean;
+    restart_on_unknown_exit: boolean;
+    idle_stop: boolean;
+    idle_stop_minutes: number;
+    idle_stop_grace_minutes: number;
+    unresponsive_action: 'off' | 'notify' | 'restart';
+    unresponsive_minutes: number;
 }
 
 /** 포트 충돌로 데몬이 강제로 끈 서버 알림 */
@@ -298,7 +311,6 @@ export interface ModuleInfo {
     /** os · arch */
     unsupported_reason?: string;
     path: string;
-    executable_path: string | null;
     server_executable?: string;
     icon: string | null;
     interaction_mode: string | null;
@@ -320,6 +332,8 @@ export interface ModuleInfo {
     pinned?: AddonPin;
     /** 고른 버전이 켜진 서버가 꺼지기를 기다리는 중 */
     pending_version?: string;
+    /** 데몬이 판정한 업데이트할 새 버전 (고정·바꾸기 대기면 없다. 업데이트 상태 components의 같은 칸과 같다) */
+    update_version?: string;
 }
 
 // ── 모듈·익스텐션 버전 고르기 (/api/updates/addons/{key}, key는 module-<이름>·ext-<id>) ──
@@ -552,7 +566,6 @@ export interface GuiSettings {
     consoleBgColor: string;
     consoleTextColor: string;
     sidebarCompact: boolean;
-    windowOpacity: number;
     /** 창 바탕 반투명 (utils/themeManager WindowBackdropConfig) */
     windowBackdrop?: Partial<import('../utils/themeManager').WindowBackdropConfig>;
     consoleFontScale: number;

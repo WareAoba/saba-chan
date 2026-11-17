@@ -4,7 +4,7 @@ import { TaskIndicator } from '../components/shell/TaskIndicator';
 import { useUIStore } from '../stores/useUIStore';
 
 describe('TaskIndicator', () => {
-    afterEach(() => act(() => useUIStore.getState().clearProgressBar()));
+    afterEach(() => act(() => useUIStore.getState().setProgressBar(null)));
 
     it('0%로 시작한 다운로드는 회전하지 않고 0%를 보인다', () => {
         render(<TaskIndicator />);

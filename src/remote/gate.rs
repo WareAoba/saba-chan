@@ -118,6 +118,8 @@ pub static ROUTES: &[Route] = &[
     allow("POST", "/api/instance/{id}/rename"),
     // 저장하지 않은 설정 초안으로 실행 줄을 만든다: 모듈이 초안의 경로로 프로그램을 부를 수 있다
     deny("POST", "/api/instance/{id}/launch-preview"),
+    // 고치는 중인 설정의 포트가 다른 서버와 겹치는지 (읽기만 한다). 웹은 설정을 고치는 동안 그리지 않는다
+    not_on_web("POST", "/api/instance/{id}/port-conflicts"),
     allow("GET", "/api/provision-progress/{name}"),
     allow("DELETE", "/api/provision-progress/{name}"),
     allow("GET", "/api/instance/{id}/check-update"),
@@ -267,6 +269,9 @@ pub static ROUTES: &[Route] = &[
     allow("GET", "/api/permissions/{guild_id}/commands"),
     allow("PUT", "/api/permissions/{guild_id}/members/{discord_id}"),
     allow("DELETE", "/api/permissions/{guild_id}/members/{discord_id}"),
+    // 릴레이에 남은 옛 부여값 가져오기: 이 PC의 릴레이 연결로 읽으므로 PC에서만 한다
+    deny("GET", "/api/permissions/{guild_id}/import"),
+    deny("POST", "/api/permissions/{guild_id}/import"),
     allow("GET", "/api/instance/{id}/words"),
     allow("PUT", "/api/instance/{id}/words"),
     allow("PUT", "/api/guilds/{guild}/allowed-instances"),
@@ -290,7 +295,6 @@ pub static ROUTES: &[Route] = &[
     // ── 릴레이 연결: 웹이 타고 있는 연결 자체다. 채널 배정은 웹이 릴레이 API(/relay/guilds/:g/channels)로 한다 ──
     // 봇 연결 상태 읽기: 짝 맺은 PC의 GUI가 고른 PC의 디스코드 탭에 쓴다 (사용자 11-12, 읽기만. 켜고 끄기는 그 PC에서)
     not_on_web("GET", "/api/relay/host/{host_id}/status"),
-    deny("GET", "/api/relay/node/{guild_id}/legacy-members"),
     deny("GET", "/api/relay/node/{guild_id}/channels"),
     deny("PUT", "/api/relay/node/{guild_id}/channels"),
     deny("GET", "/api/relay/node/{guild_id}/chatbot/models"),
@@ -601,7 +605,7 @@ mod tests {
         let route = regex::Regex::new(r#"\.route\(\s*"([^"]+)"\s*,"#).unwrap();
         let method = regex::Regex::new(r"(?:^|[\s.:(])(get|post|put|patch|delete)\(").unwrap();
         let mut out = Vec::new();
-        for source in [include_str!("../ipc/mod.rs"), include_str!("../ipc/updates.rs")] {
+        for source in [include_str!("../ipc/mod.rs"), include_str!("../ipc/updates/mod.rs")] {
             let starts: Vec<_> = route
                 .captures_iter(source)
                 .map(|c| (c.get(0).unwrap().end(), c[1].to_string()))

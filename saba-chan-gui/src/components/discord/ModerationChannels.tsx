@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import type { ApiBody } from '../../types/daemon';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { Icon } from '../Icon';
-import { SabaSpinner } from '../ui/SabaUI';
+import { SabaNumberInput, SabaSpinner } from '../ui/SabaUI';
 import { CHATBOT_MAX, type ChannelAssign, channelsErrorText } from './ChannelsTab';
 import { AUTO_CLEAR_MINUTES, durationText, LOCK_MINUTES, SLOW_SECONDS } from './modDuration';
 import {
@@ -549,9 +549,8 @@ function ClearSection({ guildId, channel, can, members }: ClearSectionProps) {
             <div className="dc-mod-fields">
                 <label className="dc-field">
                     <span className="dc-field-label">{t('discord.mod.count')}</span>
-                    <input
+                    <SabaNumberInput
                         className="input"
-                        type="number"
                         min={1}
                         max={1000}
                         value={count}

@@ -14,7 +14,8 @@ const MAX_MINUTES: u64 = 24 * 60;
 /// 다시 시작한 서버가 이만큼 실패 없이 지내면 답한 것으로 본다 (갱신 세 번)
 const ANSWERED_AFTER: Duration = Duration::from_secs(3 * super::players::REFRESH_SECS);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Action {
     Off,
     Notify,

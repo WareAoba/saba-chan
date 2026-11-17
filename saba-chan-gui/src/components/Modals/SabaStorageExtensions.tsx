@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useExtensions } from '../../contexts/ExtensionContext';
-import { byName } from '../../utils/helpers';
+import { failed } from '../../utils/apiResult';
+import { byName, createTranslateError, safeShowToast } from '../../utils/helpers';
 import { localizedDescription } from '../../utils/localizedText';
 import { ExtensionConfigForm } from '../ExtensionConfigForm';
 import { Icon } from '../Icon';
@@ -52,11 +53,15 @@ export function ExtensionsTab() {
     const handleRescan = useCallback(async () => {
         setRescanning(true);
         try {
-            await window.api.extensionRescan();
+            // 브리지는 실패해도 던지지 않고 {success:false, error}를 준다
+            const res = await window.api.extensionRescan();
+            if (failed(res)) safeShowToast(createTranslateError(t)(res?.error), 'error', 5000);
             await refreshExtensions();
-        } catch (_) {}
+        } catch (e) {
+            safeShowToast(createTranslateError(t)((e as Error)?.message), 'error', 5000);
+        }
         setRescanning(false);
-    }, [refreshExtensions]);
+    }, [refreshExtensions, t]);
 
     // 받을 수 있는 목록은 늘 보인다: 데몬이 받아 둔 목록을 탭을 열 때 받는다 (새로고침 단추만 데몬도 새로 받는다)
     // biome-ignore lint/correctness/useExhaustiveDependencies: 탭을 처음 열 때 한 번

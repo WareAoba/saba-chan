@@ -11,7 +11,9 @@ describe('웹 서버 켜기 알림', () => {
     beforeEach(() => useApp.setState({ toasts: [] }));
 
     const start = async (res: object) => {
-        const { result } = renderHook(() => useServerControl(mockApi({ instanceStart: vi.fn().mockResolvedValue(res) })));
+        const { result } = renderHook(() =>
+            useServerControl(mockApi({ instanceStart: vi.fn().mockResolvedValue(res) })),
+        );
         await act(async () => result.current.start(asServer({ id: 'a', name: 'A' })));
         return useApp.getState().toasts.at(-1);
     };
@@ -55,5 +57,43 @@ describe('웹 서버 켜기 알림', () => {
     it('포트 충돌로 켜지 못했으면 데몬의 영어 문장이 아니라 있는 번역 문구를 보인다', async () => {
         const res = { success: false, error_code: 'port_conflict', error: "Cannot start 'A': port conflict detected" };
         expect(await start(res)).toMatchObject({ message: 'Port Conflict', tone: 'error' });
+    });
+
+    const restart = async (res: object) => {
+        const api = mockApi({ instanceRestart: vi.fn().mockResolvedValue(res) });
+        const { result } = renderHook(() => useServerControl(api));
+        let restarting: Promise<unknown> = Promise.resolve();
+        act(() => {
+            restarting = result.current.restart(asServer({ id: 'a', name: 'A' }));
+        });
+        await act(async () => {
+            useApp.getState().confirm?.done(true);
+            await restarting;
+        });
+        return useApp.getState().toasts;
+    };
+
+    // 감사 cli-web P3: 재시작 중 다른 곳에서 정지·삭제하면 원시 코드가 오류로 보였다
+    it('다시 켜는 동안 다른 곳에서 정지했으면 오류가 아니라 앱과 같은 문구의 안내로 보인다', async () => {
+        expect((await restart({ success: false, error_code: 'restart_cancelled', error: 'x' })).at(-1)).toMatchObject({
+            message: expect.stringMatching(/^Restart canceled/),
+            tone: 'info',
+        });
+    });
+
+    // 감사 cli-web P3: 데몬이 Windows 예약 포트를 피해 옮겨도 웹은 알리지 않았다
+    it('데몬이 포트를 옮겼으면 켜기·다시 켜기 모두 앱과 같은 문구로 알린다', async () => {
+        const moved = { port_moved: [{ field: 'rest_port', from: 25575, to: 25580 }] };
+        const said = /^A: Windows reserves the management REST port 25575, so it was changed to 25580/;
+        const { result } = renderHook(() =>
+            useServerControl(mockApi({ instanceStart: vi.fn().mockResolvedValue({ success: true, ...moved }) })),
+        );
+        await act(async () => result.current.start(asServer({ id: 'a', name: 'A' })));
+        expect(useApp.getState().toasts.map((t) => t.message)).toEqual([
+            expect.stringMatching(said),
+            'Server “A” started',
+        ]);
+        useApp.setState({ toasts: [] });
+        expect((await restart({ success: true, ...moved })).map((t) => t.message)[0]).toMatch(said);
     });
 });

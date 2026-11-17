@@ -237,13 +237,13 @@ export function useAddonVersions(reload?: () => unknown) {
         [t, reload],
     );
 
-    /** 데몬이 알린 새 버전 */
+    /** 데몬이 판정한 업데이트할 새 버전 (고정했거나 바꾸기를 기다리면 없다) */
     const newerVersion = (card: AddonCard): string | null => {
         const comp = (status?.components as ApiBody[] | undefined)?.find((c) => c.component === card.key);
-        return comp?.update_available && comp.latest_version ? String(comp.latest_version) : null;
+        return comp?.update_version ? String(comp.update_version) : null;
     };
-    // 고정했거나 바꾸기를 기다리거나 받는 중인 카드는 단추를 내지 않는다
-    const updatable = (card: AddonCard) => !!newerVersion(card) && !card.pinned && !card.pending_version && !(card.key in busy);
+    // 받는 중인 카드도 단추를 내지 않는다
+    const updatable = (card: AddonCard) => !!newerVersion(card) && !(card.key in busy);
 
     const update = (card: AddonCard, batch = false) =>
         change({ card, version: newerVersion(card) || '', from: card.version || '', until: '' }, () => window.api.addonUnpin(card.key), batch);
@@ -309,7 +309,7 @@ export function useAddonVersions(reload?: () => unknown) {
         const latest = newerVersion(card);
         return (
             <>
-                {latest && !card.pinned && <span className="ss-update-badge">v{latest}</span>}
+                {latest && <span className="ss-update-badge">v{latest}</span>}
                 {card.pinned && <StatusChip tone="info" label={t('saba_storage.version_pinned')} />}
             </>
         );

@@ -298,6 +298,16 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
 
+    /// 백그라운드 작업이 끝나 `done`이 참이 될 때까지 기다린다 (느린 CI 러너에서 정해 둔 잠깐으로는 모자라다)
+    async fn until(done: impl Fn() -> bool) {
+        for _ in 0..500 {
+            if done() {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    }
+
     #[tokio::test]
     async fn opening_the_store_again_reuses_the_fetched_list() {
         let f = fake(Duration::from_secs(600));
@@ -343,14 +353,14 @@ mod tests {
     async fn icons_are_saved_and_served_from_disk() {
         let f = fake(Duration::from_secs(600));
         f.cache.catalog("beta", false).await.unwrap();
-        settle().await; // 목록을 받으면 아이콘을 미리 받는다
+        until(|| f.icon_calls.load(Ordering::SeqCst) >= 1).await; // 목록을 받으면 아이콘을 미리 받는다
         assert_eq!(f.icon_calls.load(Ordering::SeqCst), 1);
         assert_eq!(f.cache.icon("module-game", "beta").await.unwrap().unwrap(), PNG);
         assert_eq!(f.icon_calls.load(Ordering::SeqCst), 1);
         // 새 판의 아이콘(다른 주소)이 오면 새로 받고 지난 파일은 지운다
         *f.version.lock().unwrap() = "2.0.0".into();
         f.cache.catalog("beta", true).await.unwrap();
-        settle().await;
+        until(|| f.icon_calls.load(Ordering::SeqCst) >= 2 && std::fs::read_dir(&f.cache.icons_dir).map(|d| d.count() == 1).unwrap_or(false)).await;
         assert_eq!(f.icon_calls.load(Ordering::SeqCst), 2);
         assert_eq!(std::fs::read_dir(&f.cache.icons_dir).unwrap().count(), 1);
     }

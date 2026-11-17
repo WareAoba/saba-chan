@@ -32,7 +32,18 @@
   "errors": {
     "agreement_required": "Accept {{names}} before the server can start. Accept in Saba-chan on the PC.",
     "memory_limit_at_start": "The server hit the memory limit ({{limit}} MiB) while starting and was stopped. Set the limit above the RAM setting or clear it.",
-    "runner_missing": "saba-runner missing, so managed start is unavailable. Turn off managed start for this server or reinstall Saba-chan."
+    "runner_missing": "saba-runner missing, so managed start is unavailable. Turn off managed start for this server or reinstall Saba-chan.",
+    "backup_save_rejected": "The server rejected the save command",
+    "backup_save_unconfirmed": "The server did not confirm the save",
+    "backup_server_stopped": "The server stopped during the backup",
+    "backup_file_locked": "The server is using a file",
+    "backup_disk_full": "Not enough disk space",
+    "autosave_not_resumed": "Could not turn autosave back on after the backup",
+    "command_failed": "The server rejected the command",
+    "not_running": "The server was stopped",
+    "check_failed": "Update check failed",
+    "instance_busy": "Another task (backup or restore) is running",
+    "backup_busy": "Another task (backup or restore) is running"
   },
   "chatbot": {
     "memo_template": "<!-- Guide lines like this one and headings you leave empty are not sent to Talking Saba-chan. Fill in only what you need. -->\n\n## Room vibe\n<!-- Describe how people talk here and how edgy jokes can get. Leave empty to use the default personality. -->\n\n## How to address people\n<!-- Write down special names Saba-chan should call people. Example: Call the person marked (owner) \"Master\". -->\n\n## Words used on this server\n<!-- List nicknames, memes and abbreviations only this server uses, with their meaning. -->\n\n## Game server info\n<!-- Rules, opening hours and other things Saba-chan may tell anyone who asks. -->\n"
@@ -368,6 +379,29 @@
     "source_agent": "AI agent on this PC",
     "source_restart": "Auto restart",
     "source_idle": "Auto stop, nobody online",
-    "source_watchdog": "Unresponsive server watch"
+    "source_watchdog": "Unresponsive server watch",
+    "not_restarted": "{{exit}} · Could not restart",
+    "scheduled_backup_failed": "{{name}} · Scheduled backup failed",
+    "scheduled_task_failed": "{{name}} · Scheduled task failed",
+    "task_restart": "Restart",
+    "task_announce": "Announcement",
+    "task_update": "Update",
+    "task_start": "Start",
+    "task_stop": "Stop",
+    "task_save": "Save",
+    "task_command": "Game command"
+  },
+  "boot": {
+    "target": "Boot target: {{mode}}",
+    "change_hint": "Press [DEL] to change boot target",
+    "starting": "Starting {{mode}} in {{secs}}s...",
+    "menu_title": "Boot Configuration",
+    "menu_keys": "↑/↓ Navigate  1-3 Quick select  Enter Confirm",
+    "mode_daemon_only": "Daemon Only",
+    "desc_gui": "Launch graphical interface",
+    "desc_cli": "Launch terminal interface",
+    "desc_daemon_only": "Run headless (log to console)",
+    "daemon_only": "daemon-only on port {{port}}",
+    "shutdown_hint": "Press Ctrl+C to shut down."
   }
 }

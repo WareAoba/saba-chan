@@ -179,7 +179,7 @@ pub(crate) async fn begin_restart_update(state: &IPCServer, id: &str, warn_minut
         if cancelled {
             let catalog = crate::chat::i18n::Catalog::for_language(&state.config_store.ui_language().await);
             if crate::service::backup::is_running(&state, &id).await {
-                crate::service::backup::announce(&state, &id, &catalog.t("schedule.update_cancelled", &[])).await;
+                let _ = crate::service::backup::announce(&state, &id, &catalog.t("schedule.update_cancelled", &[])).await;
             }
             tracing::info!("Update of '{}' was cancelled during the warning", id);
             return;
@@ -219,7 +219,7 @@ async fn warn(state: &IPCServer, id: &str, minutes: u32) -> bool {
         if !crate::service::backup::is_running(state, id).await {
             break;
         }
-        crate::service::backup::announce(
+        let _ = crate::service::backup::announce(
             state,
             id,
             &catalog.t("schedule.update_warning", &[("minutes", &mark.to_string())]),

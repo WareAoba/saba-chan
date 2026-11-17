@@ -28,12 +28,9 @@ class MacApp(unittest.TestCase):
                 plist = plistlib.load(f)
             icon = (app / "Contents" / "Resources" / plist["CFBundleIconFile"]).read_bytes()[:4]
         self.assertEqual(app.name, "Saba-chan.app")
-        # 데몬 zip과 같은 공유 모듈 파일도 든다 (.dmg로 넣은 앱도 설치기로 깐 앱과 같은 구성)
-        shared = sorted(package_macos.shared_files().values())
-        self.assertIn("i18n.py", shared)
-        self.assertEqual(macos, sorted(package_macos.EXES + shared))
+        # 공유 모듈 파일은 데몬이 자기 안의 판으로 데이터 폴더에 맞춘다 (`plugin::ensure_shared_modules`): 묶음에 넣지 않는다
+        self.assertEqual(macos, sorted(package_macos.EXES))
         self.assertTrue(all(modes[e] == 0o755 for e in package_macos.EXES), modes)
-        self.assertTrue(all(modes[f] == 0o644 for f in shared), modes)
         self.assertEqual(plist["CFBundleExecutable"], "saba-chan-gui")
         self.assertEqual(plist["CFBundleIdentifier"], "com.saba-chan.app")
         # 짧은 버전은 그대로, CFBundleVersion은 숫자만

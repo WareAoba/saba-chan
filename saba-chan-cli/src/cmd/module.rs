@@ -462,8 +462,9 @@ async fn available(ctx: &Ctx) -> Result<()> {
         let mut t = output::table(&[t!("col.name"), t!("col.version"), t!("col.what"), t!("col.state")]);
         for (id, e) in list.iter().filter(|(_, e)| e.is_object()) {
             let have = installed.iter().find(|x| s(x, "name") == id);
+            // 업데이트 여부는 데몬이 고정·바꾸기 대기까지 보고 판정한 `update_version`으로 (앱·웹과 같다)
             let state = match have {
-                Some(h) if s(h, "version") != s(e, "version") => {
+                Some(h) if !s(h, "update_version").is_empty() => {
                     console::style(t!("common.update_available")).yellow().to_string()
                 }
                 Some(_) => output::dim(&t!("common.installed")),

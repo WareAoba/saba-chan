@@ -50,9 +50,6 @@ fn entry(server: &ServerView, default_words: Vec<String>, module: Option<&Module
     json!({ "id": server.id, "name": server.name, "module": server.module, "defaultWords": default_words, "words": mine.words, "commands": command_rows(module, mine) })
 }
 
-fn not_found(id: &str) -> Response {
-    super::error(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id))
-}
 
 /// `GET /api/instance/:id/words`
 pub async fn get(State(state): State<IPCServer>, Path(id): Path<String>) -> Response {
@@ -60,7 +57,7 @@ pub async fn get(State(state): State<IPCServer>, Path(id): Path<String>) -> Resp
         Ok(s) => s,
         Err(e) => return super::error(StatusCode::INTERNAL_SERVER_ERROR, "internal_server_error", e),
     };
-    let Some(server) = servers.iter().find(|s| s.id == id) else { return not_found(&id) };
+    let Some(server) = servers.iter().find(|s| s.id == id) else { return crate::service::Failure::instance_not_found(&id).into_response() };
     // 기본값은 앱 언어로 보인다 (디스코드 길드 언어를 따로 정하지 않았으면 봇도 이 언어다)
     let lang = state.config_store.ui_language().await;
     let modules: Vec<_> = state.modules().await.into_iter().map(|m| m.in_language(Some(&lang))).collect();
@@ -85,7 +82,7 @@ pub async fn put(State(state): State<IPCServer>, Path(id): Path<String>, Json(bo
         Ok(s) => s,
         Err(e) => return super::error(StatusCode::INTERNAL_SERVER_ERROR, "internal_server_error", e),
     };
-    let Some(instance) = servers.iter().find(|s| s.id == id).cloned() else { return not_found(&id) };
+    let Some(instance) = servers.iter().find(|s| s.id == id).cloned() else { return crate::service::Failure::instance_not_found(&id).into_response() };
     // 낱말은 어느 길드 언어에서나 쓰이므로 모든 언어의 별명과 겹치지 않아야 한다
     let modules: Vec<_> = state.modules().await.into_iter().map(|m| m.in_language(None)).collect();
     let module = modules.iter().find(|m| m.name == instance.module);

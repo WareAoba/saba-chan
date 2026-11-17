@@ -16,34 +16,14 @@ const modules = [
     { name: 'palworld', game_name: 'Palworld', commands: { fields: [] } },
 ];
 
-/** App처럼 값을 스토어에서 읽는다 */
+/** 디스코드 칸은 DiscordPage가 스토어에서 바로 읽는다 */
 function StoreHarness() {
-    const s = useDiscordStore();
-    const set = (key: string) => (v: unknown) =>
-        useDiscordStore.getState().update({ [key]: typeof v === 'function' ? v((useDiscordStore.getState() as unknown as Record<string, unknown>)[key]) : v });
     return (
         <DiscordPage
-            discordBotStatus="running"
-            discordPrefixes={[]}
-            setDiscordPrefixes={() => {}}
-            discordCloudHostId={s.discordCloudHostId}
-            setDiscordCloudHostId={set('discordCloudHostId')}
-            relayConnected
-            relayConnecting={false}
             saveCurrentSettings={vi.fn().mockResolvedValue(true)}
             servers={servers}
             modules={modules}
             moduleAliasesPerModule={{}}
-            discordModuleAliases={{}}
-            discordCommandAliases={{}}
-            setDiscordModuleAliases={() => {}}
-            setDiscordCommandAliases={() => {}}
-            nodeSettings={s.nodeSettings}
-            setNodeSettings={set('nodeSettings')}
-            cloudNodes={s.cloudNodes}
-            setCloudNodes={set('cloudNodes')}
-            cloudMembers={s.cloudMembers}
-            setCloudMembers={set('cloudMembers')}
         />
     );
 }
@@ -66,6 +46,7 @@ describe('디스코드 화면과 데몬 설정', () => {
             botConfigSave: vi.fn().mockResolvedValue({ success: true }),
         } as unknown as typeof window.api;
         window.showToast = vi.fn();
+        useDiscordStore.setState({ discordBotStatus: 'running', relayConnected: true, relayConnecting: false });
     });
 
     it('화면을 열 때 데몬 설정을 다시 읽어 CLI로 짝지은 호스트를 보인다', async () => {

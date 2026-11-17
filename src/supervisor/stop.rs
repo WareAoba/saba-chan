@@ -87,28 +87,20 @@ impl Supervisor {
         let server_name = instance.name.as_str();
         let host_context = sup.read().await.host_context(&instance.id);
         let results = crate::plugin::with_instance(host_context, crate::extension::run_hook(&ext_mgr, "server.stop", ctx)).await;
-        for (_ext_id, result) in &results {
-            if let Ok(val) = result {
-                if val.get("handled").and_then(|h| h.as_bool()) == Some(true) {
-                    sup.write().await.runtime.with(&instance.id, |r| r.stop_cooldown = Some(Instant::now()));
-                    if val.get("success").and_then(Value::as_bool) != Some(false) {
-                        announce_stopped(&instance.id, server_name, crash::ExitKind::UserStop, &crate::audit::current());
-                    }
-                    return Some(val.clone());
+        match crate::extension::hook_answer(&results)? {
+            crate::extension::HookAnswer::Handled(_, val) => {
+                sup.write().await.runtime.with(&instance.id, |r| r.stop_cooldown = Some(Instant::now()));
+                if val.get("success").and_then(Value::as_bool) != Some(false) {
+                    announce_stopped(&instance.id, server_name, crash::ExitKind::UserStop, &crate::audit::current());
                 }
+                Some(val.clone())
+            }
+            // 정지를 맡을 수 있는 익스텐션이 실패했으면 "안 돌고 있음"으로 덮지 않고 실패를 돌려준다
+            crate::extension::HookAnswer::Failed(mut error) => {
+                error["server"] = json!(server_name);
+                Some(error)
             }
         }
-        // 정지를 맡을 수 있는 익스텐션이 실패했으면 "안 돌고 있음"으로 덮지 않고 실패를 돌려준다
-        let failed = results.iter().find_map(|(_, result)| match result {
-            Err(e) => Some(crate::plugin::error_response(e)),
-            Ok(val) if val.get("success").and_then(Value::as_bool) == Some(false) => Some(val.clone()),
-            Ok(_) => None,
-        });
-        if let Some(mut error) = failed {
-            error["server"] = json!(server_name);
-            return Some(error);
-        }
-        None
     }
 
     /// 데몬이 띄운(managed) 서버가 돌고 있을 때: Ctrl+C·stdin·모듈 `stop()`으로 멈추고, 시간 안에 안 끝나면 강제 종료한다

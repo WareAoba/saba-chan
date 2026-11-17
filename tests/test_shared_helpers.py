@@ -119,6 +119,13 @@ class SettingKeyTests(ModuleDirTest):
         self.assertEqual(daemon_rcon.settings_from_file(self.dir, {"pvp": "1"}, true="1", false="0"), {"pvp": True})
         self.assertEqual(daemon_rcon.settings_from_file(self.dir, {"motd": "a"}, case_insensitive=True), {"motd": "a"})
 
+    def test_a_setting_default_comes_from_module_toml(self):
+        self.assertEqual(daemon_rcon.setting_default(self.dir, "max_players"), 10.0)
+        self.assertIs(daemon_rcon.setting_default(self.dir, "pvp"), True)
+        # 기본값이 없는 칸, 없는 칸
+        self.assertIsNone(daemon_rcon.setting_default(self.dir, "motd"))
+        self.assertIsNone(daemon_rcon.setting_default(self.dir, "nope"))
+
 
 class KeyValueFileTests(unittest.TestCase):
     def setUp(self):
@@ -366,6 +373,19 @@ class JavaDefaultsTests(unittest.TestCase):
                     os.environ.pop("SABA_HOST_MEMORY", None)
                 self.assertEqual(daemon_rcon.auto_heap_mb(), heap, host)
 
+    def test_java_heap_keeps_sizes_reads_gb_numbers_and_sizes_empty_for_this_pc(self):
+        for value, heap in (("4G", "4G"), ("1024m", "1024m"), (" 512K ", "512K"), (4, "4G"), ("6", "6G"), (12.0, "12G"), (0.5, "512M")):
+            self.assertEqual(daemon_rcon.java_heap(value), heap, value)
+        # 비었거나 읽을 수 없으면 PC에 맞춘 자동값 (module.toml 기본값이 비어 있는 경우)
+        gib = 1024 ** 3
+        for host, heap in ((32 * gib, "8G"), (8 * gib, "4G"), (4 * gib, "2560M")):
+            with patch.dict(os.environ, {"SABA_HOST_MEMORY": str(host)}):
+                for value in (None, "", "  ", "lots", 0, -2, "4X"):
+                    self.assertEqual(daemon_rcon.java_heap(value), heap, (host, value))
+
+    def test_compact_object_headers_flag(self):
+        self.assertEqual(daemon_rcon.COMPACT_OBJECT_HEADERS, "-XX:+UseCompactObjectHeaders")
+
     def test_java_release_major(self):
         with tempfile.TemporaryDirectory() as tmp:
             self.assertEqual(daemon_rcon.java_release_major(tmp), 0)
@@ -380,6 +400,42 @@ class SmallHelperTests(ModuleDirTest):
         reply = daemon_rcon.extension_required(self.i18n, "steamcmd", "ue4-ini")
         self.assertEqual(reply, {"success": False, "error_code": "extension_required", "missing_extensions": ["steamcmd", "ue4-ini"],
                                  "message": "steamcmd, ue4-ini extension required. Install and enable it in Settings → Extensions."})
+
+    def test_player_capacity_answers_only_the_maximum(self):
+        self.assertEqual(daemon_rcon.player_capacity({"max_players": 20}), {"success": True, "max": 20})
+        self.assertEqual(daemon_rcon.player_capacity({"module_settings": {"max_players": "8"}}), {"success": True, "max": 8})
+        # 모르는 최대 인원은 싣지 않는다 (0명으로 보이지 않게)
+        for config in ({}, {"max_players": ""}, {"max_players": "many"}, {"max_players": 0}, {"max_players": -1}):
+            self.assertEqual(daemon_rcon.player_capacity(config), {"success": True}, config)
+
+    def test_safe_name_is_one_plain_path_piece(self):
+        for name in ("world", "My World", "a.b", "서버_1", " lead"):
+            self.assertTrue(daemon_rcon.safe_name(name), name)
+        # 구분자·드라이브·Windows가 받지 않는 글자, '.'·'..', Windows가 잘라 내는 끝 공백·점, 줄바꿈
+        for name in ("", ".", "..", "a/b", "a\\b", "C:", "a:b", "a*b", "a?b", 'a"b', "a<b", "a>b", "a|b",
+                     "world.", "world ", "a\nb", "a\x00b", None, 3):
+            self.assertFalse(daemon_rcon.safe_name(name), repr(name))
+
+    def test_load_extension_answers_extension_required_when_missing(self):
+        root = self.dir / "addons"
+        (root / "extensions" / "demo_ext").mkdir(parents=True)
+        (root / "extensions" / "demo_ext" / "__init__.py").write_text("VALUE = 1\n", encoding="utf-8")
+        (root / "extensions" / "broken_ext").mkdir()
+        (root / "extensions" / "broken_ext" / "__init__.py").write_text("import saba_no_such_library\n", encoding="utf-8")
+        sys.path.insert(0, str(root))
+        try:
+            ext, missing = daemon_rcon.load_extension(self.i18n, "demo-ext")
+            self.assertEqual((ext.VALUE, missing), (1, None))
+            ext, missing = daemon_rcon.load_extension(self.i18n, "steamcmd")
+            self.assertIsNone(ext)
+            self.assertEqual(missing, daemon_rcon.extension_required(self.i18n, "steamcmd"))
+            # 익스텐션 안의 다른 import 실패는 '없음'으로 덮지 않는다
+            with self.assertRaises(ModuleNotFoundError):
+                daemon_rcon.load_extension(self.i18n, "broken_ext")
+        finally:
+            sys.path.remove(str(root))
+            for name in [n for n in sys.modules if n == "extensions" or n.startswith("extensions.")]:
+                del sys.modules[name]
 
     def test_list_dir(self):
         (self.dir / "b").mkdir()
@@ -681,6 +737,8 @@ class ProgressAndLocaleTests(ModuleDirTest):
         for name in ("rcon_access", "remote_access_values", "enforce_remote_access", "auto_heap_mb", "java_release_major",
                      "diagnose_log", "extension_required", "list_dir", "fetch_json", "extension_data_dir"):
             self.assertEqual(daemon_rcon.SINCE[name], "0.1.14-beta.2", name)
+        for name in ("setting_default", "player_capacity", "java_heap", "COMPACT_OBJECT_HEADERS", "safe_name", "load_extension"):
+            self.assertEqual(daemon_rcon.SINCE[name], "0.1.14-beta.4", name)
 
 
 class ImportCostTests(unittest.TestCase):

@@ -363,10 +363,11 @@ pub(super) async fn set(ctx: &Ctx, query: &str, pairs: &[String]) -> Result<()> 
     let data = json!({ "success": true, "changed": patch, "response": r });
     // 게임 설정 파일에 쓰지 못했으면 끝에 실패로 알린다 (--json은 오류 문서 하나에 결과를 싣는다)
     let sync_error = sync_failure(&r);
-    if sync_error.is_none() || !ctx.out.json {
-        ctx.out.done(&t!("set.done", name = sv.name, count = pairs.len()), &data);
-    }
     let ignored: Vec<&str> = r.get("ignored").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).collect();
+    // 데몬이 무시한 키는 저장한 수에 넣지 않는다
+    if sync_error.is_none() || !ctx.out.json {
+        ctx.out.done(&t!("set.done", name = sv.name, count = pairs.len().saturating_sub(ignored.len())), &data);
+    }
     if !ignored.is_empty() {
         ctx.out.warn(&t!("set.ignored", keys = ignored.join(", ")));
     }

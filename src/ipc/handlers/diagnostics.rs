@@ -92,7 +92,7 @@ pub struct AuditExportRequest {
 }
 
 /// POST /api/audit/export `{path, instance?, since?, until?}` — 기간의 기록을 모두 CSV로 `path`에 쓴다.
-/// `{success, path, count}`. 경로가 절대 경로가 아니면 400 `INVALID_PATH`, 쓰지 못하면 500 `WRITE_FAILED`
+/// `{success, path, count}`. 경로가 절대 경로가 아니면 400 `invalid_path`, 쓰지 못하면 500 `write_failed`
 pub async fn audit_export(Json(req): Json<AuditExportRequest>) -> axum::response::Response {
     use axum::http::StatusCode;
     let fail = |status: StatusCode, code: &str, message: String| {
@@ -100,7 +100,7 @@ pub async fn audit_export(Json(req): Json<AuditExportRequest>) -> axum::response
     };
     let path = std::path::PathBuf::from(req.path.trim());
     if req.path.trim().is_empty() || !path.is_absolute() {
-        return fail(StatusCode::BAD_REQUEST, "INVALID_PATH", "path must be an absolute file path".into());
+        return fail(StatusCode::BAD_REQUEST, "invalid_path", "path must be an absolute file path".into());
     }
     let written = tokio::task::spawn_blocking(move || {
         let entries = crate::audit::log().query(&crate::audit::Filter {
@@ -114,8 +114,8 @@ pub async fn audit_export(Json(req): Json<AuditExportRequest>) -> axum::response
     .await;
     match written {
         Ok(Ok((path, count))) => Json(json!({ "success": true, "path": path.to_string_lossy(), "count": count })).into_response(),
-        Ok(Err(e)) => fail(StatusCode::INTERNAL_SERVER_ERROR, "WRITE_FAILED", format!("Could not write the audit export: {e}")),
-        Err(e) => fail(StatusCode::INTERNAL_SERVER_ERROR, "WRITE_FAILED", e.to_string()),
+        Ok(Err(e)) => fail(StatusCode::INTERNAL_SERVER_ERROR, "write_failed", format!("Could not write the audit export: {e}")),
+        Err(e) => fail(StatusCode::INTERNAL_SERVER_ERROR, "write_failed", e.to_string()),
     }
 }
 

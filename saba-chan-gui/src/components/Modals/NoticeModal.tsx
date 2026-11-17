@@ -6,9 +6,10 @@ import { useServerStore } from '../../stores/useServerStore';
 import type { ApiBody } from '../../types/daemon';
 import type { Notice } from '../../types/global';
 import { clearAllNotices, loadNotices, markAllRead, NOTICE_UPDATE, refreshNotices, removeNotice } from '../../utils/noticeInbox';
-import { groupNotices, noticeTime } from '../../utils/noticeView';
+import { groupNotices, noticeHintKey, noticeScreen, noticeTime, SERVER_UPDATE_ACTION } from '../../utils/noticeView';
+import { openScreen } from '../../utils/openScreen';
 import { initials } from '../../utils/serverView';
-import { applyServerUpdateFromNotice, SERVER_UPDATE_ACTION } from '../../utils/serverUpdateNotice';
+import { applyServerUpdateFromNotice } from '../../utils/serverUpdateNotice';
 import './Modals.css';
 import { Icon } from '../Icon';
 
@@ -75,7 +76,7 @@ function NoticeCard({ notice, onDismiss, onAction, t }: NoticeCardProps) {
                     {clickable && (
                         <span className="notice-action-hint">
                             {' '}
-                            {t(notice.action === SERVER_UPDATE_ACTION ? 'notice_modal.click_to_update' : 'notice_modal.click_to_open')}
+                            {t(noticeHintKey(notice.action!))}
                         </span>
                     )}
                 </span>
@@ -195,7 +196,11 @@ function NoticeModal({ isOpen, onClose, isClosing, onOpenUpdateModal, onOpenPatc
                                     notice={notice}
                                     onDismiss={handleDismiss}
                                     onAction={(action, n) => {
-                                        if (action === 'openUpdateModal' && onOpenUpdateModal) {
+                                        const screenAddress = noticeScreen(n);
+                                        if (screenAddress) {
+                                            onClose();
+                                            openScreen(screenAddress);
+                                        } else if (action === 'openUpdateModal' && onOpenUpdateModal) {
                                             onClose();
                                             onOpenUpdateModal();
                                         } else if (action === PATCH_NOTES_ACTION && onOpenPatchNotes) {

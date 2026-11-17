@@ -38,7 +38,7 @@
 
 | key | Rust 타입 | 필수/기본값 | 코드에서 실제 사용 여부 |
 |---|---|---|---|
-| `schema_version` | `u32` | `0` | `parse_manifest()`(`ext/manifest.rs`): `1`이면 모르는 키·발화되지 않는 hook·없는 python_modules 참조가 오류, `0`이면 같은 문제를 경고로만 남기고, 더 큰 값은 거부한다. 현재 세 manifest(steamcmd·ue4_ini·xna) 모두 `1`이다. |
+| `schema_version` | `u32` | `0` | `parse_manifest()`(`ext/manifest.rs`): `1`이면 모르는 키·발화되지 않는 hook·없는 python_modules 참조가 오류, `0`이면 같은 문제를 경고로만 남기고, 더 큰 값은 거부한다. 현재 네 manifest(desktop_pet·steamcmd·ue4_ini·xna) 모두 `1`이다. |
 | `id` | `String` | **필수** | discovered 맵의 키. 영문·숫자·`-`·`_`만 허용한다(`ext/manifest.rs`). 스캔 시 폴더 이름이 id이거나 하이픈을 밑줄로 바꾼 이름이어야 한다(`ext/discovery.rs`). `mount()`는 `manifest.id == ext_id`를 검사한다(`ext/discovery.rs`). |
 | `name` | `String` | **필수** | 목록과 로그 |
 | `version` | `String` | **필수** | 업데이트 비교(SemVer, 파싱 실패 시 문자열 비교 `ext/remote.rs`), 익스텐션 간 의존성 버전 검사 |
@@ -63,7 +63,7 @@
 
 - **`HookBinding`** (`ext/manifest.rs`): `module: String`(필수, `python_modules`의 키), `function: String`(필수), `condition: Option<String>`.
 - **`GuiManifest`** (`ext/manifest.rs`): `bundle`, `styles`, `assets: Option<String>`, `builtin: Option<bool>`, `slots: HashMap<String, Value>`.
-  - `assets`(saba-core 0.1.15-0): 번들이 처음 쓸 때 받는 정적 파일(그림 등) 폴더. 익스텐션 폴더 기준 상대 경로다(예: `gui/assets`). 데몬이 `GET /api/extensions/:id/gui/assets/*path`로 번들과 같은 조건에 서빙하고(4.1 보안), 번들은 `host.assetUrl(이름)`으로 받는다(4.5). 그림을 번들에 data URI로 넣지 않아도 되어, 번들이 작아지고 쓰지 않는 그림을 읽지 않는다. 이 키를 모르는 데몬은 schema v1 manifest를 모르는 키로 거부하므로, 쓰는 익스텐션은 `min_app_version`을 이 버전 이상으로 둔다. 목록 응답의 `gui`에는 선언했을 때만 실린다.
+  - `assets`(saba-core 0.1.14-beta.2): 번들이 처음 쓸 때 받는 정적 파일(그림 등) 폴더. 익스텐션 폴더 기준 상대 경로다(예: `gui/assets`). 데몬이 `GET /api/extensions/:id/gui/assets/*path`로 번들과 같은 조건에 서빙하고(4.1 보안), 번들은 `host.assetUrl(이름)`으로 받는다(4.5). 그림을 번들에 data URI로 넣지 않아도 되어, 번들이 작아지고 쓰지 않는 그림을 읽지 않는다. 이 키를 모르는 데몬은 schema v1 manifest를 모르는 키로 거부하므로, 쓰는 익스텐션은 `min_app_version`을 이 버전 이상으로 둔다. 목록 응답의 `gui`에는 선언했을 때만 실린다.
   - `builtin`은 daemon에서 읽지 않는다.
   - `slots`는 slot id → 표시 정보 `{label?, icon?, description?}`이다(옛 모양인 컴포넌트 이름 문자열도 받고 빈 표시 정보로 본다). 데몬은 검사하지 않고 `/api/extensions`의 `gui`에 그대로 싣는다. GUI가 slot 표와 대조하고, 창마다 읽을 번들을 고르고, 탭·버튼·카드 이름을 정한다(4.2). `bundle` 없이 `slots`만 써도 된다(설정 탭 자동 폼).
 - **`CliManifest`** (`ext/manifest.rs`): `slots: HashMap<String, Value>`. 데이터 slot 선언(4.3). 값은 항목 하나 또는 배열이다.
@@ -80,8 +80,8 @@
 
 ### 1.4 코드는 지원하는데 실제 manifest에서 안 쓰는 것
 
-- `gui` 전체: 현재 두 익스텐션 모두 `gui`가 없다. CSS 서빙 경로(`handlers/extension.rs`)와 번들 경로가 있지만 쓰는 익스텐션이 없다.
-- `commands`, `priority`, `i18n_dir`, `config_fields`, `cli`: 현재 manifest에서 쓰지 않는다.
+- `gui`·`i18n_dir`: desktop_pet만 쓴다(`gui.bundle`·`styles`·`assets`·`slots`, `i18n_dir = "locales"`). steamcmd·ue4_ini·xna에는 없다.
+- `commands`, `priority`, `config_fields`, `cli`: 현재 manifest에서 쓰지 않는다.
 - `dependencies`의 비-익스텐션 컴포넌트 키: HTTP enable은 `enable()`이 `{"saba-core": APP_VERSION}`을 넘기므로(`ext/enable.rs`) `saba-core` 버전 요구는 검사된다. 그 밖의 컴포넌트 키(`gui` 등)에 버전을 쓰면 설치 버전을 모르므로 활성화할 수 없다(`ext/enable.rs`).
 - `condition` 패턴은 `instance.ext_data.<key>` 하나뿐이다(`ext/hooks.rs`). 그 외 패턴은 warn을 남기고 false로 처리한다.
 
@@ -128,7 +128,7 @@
   1. 부를 익스텐션마다 context를 따로 만들고, `extension_config`에는 그 익스텐션 자신의 설정만 `{<id>: {k: v}}` 형태로 넣는다(`ext/hooks.rs`). 다른 익스텐션의 설정은 넘기지 않는다. 명령(`plan_command`)도 같다.
   2. `context.extension_data`로 `condition`을 평가한다(bool, 0이 아닌 숫자, 비어 있지 않은 문자열이면 true).
   3. `python_modules[binding.module]` 경로를 정한다. 없는 모듈이면 그 호출은 Err 결과가 된다.
-- `HookPlan::run(timeout)`(`ext/hooks.rs`): **락 밖에서** 순서대로 실행한다. 결과에 `handled == true`가 있으면 **나머지 익스텐션을 건너뛴다**. 에러가 나면 기록하고 계속 진행한다(graceful).
+- `HookPlan::run(timeout)`(`ext/hooks.rs`): **락 밖에서** 순서대로 실행한다. 결과에 `handled == true`가 있으면 **나머지 익스텐션을 건너뛴다**. 에러가 나거나 `success:false`로 답하면(Python 예외·격리 거부 포함) warn으로 기록하고 계속 진행한다(graceful). 결과를 버리는 호출부도 이 기록이 남는다.
 - `run_hook` = `run_hook_timed(…, 120)`(`ext/hooks.rs`). `run_hook_to(ext_id, …)`(`ext/hooks.rs`)는 익스텐션 하나에만 보낸다.
 - 결과 병합: 디스패처는 병합하지 않고 `Vec<(ext_id, Result<Value>)>`를 반환한다. 해석은 호출부마다 다르다(아래 표).
 
@@ -141,9 +141,9 @@
 | `daemon.startup` | `src/main.rs` | daemon 기동 직후 | `tokio::spawn` 백그라운드, 120s | `{}` (+extension_config) | 결과마다 `success`(기본 true), `message`, `error` → `ExtensionInitTracker`(`/api/extensions/init-status`) |
 | `daemon.startup` (재발화) | `handlers/extension.rs` | `POST /api/extensions/:id/enable` 성공 후 | spawn, 120s | `{}` | `run_hook_to`로 **방금 켠 익스텐션에만** 보낸다. |
 | `daemon.shutdown` | `src/main.rs` | 종료 경로(Ctrl-C/SIGTERM, 종료 API, 워치독) | 동기(await), hook 120s, 전체 30s 상한 | `instances[] {id,name,module,extension_data,instance_dir}` | `handled` 여부를 로그로만 남긴다 |
-| `server.pre_start` | `supervisor/start.rs` `run_pre_start_hook` (non-managed start, managed start. 문맥은 `plan_start`) | 서버 시작, 시작 전 검사(이미 켜짐·모듈 의존성·필수 익스텐션·포트 충돌)를 통과한 뒤 | 동기, 120s | 공통 + `config`(시작 설정, 비밀 값은 `***`), `managed`(bool). 두 시작 방식이 같은 키를 받는다 | `handled:true` + `success!=true` → 에러를 반환한다. `success:true`이면 `log_follower{program,args,working_dir,description,interactive,strip_prefix,env_vars}`로 `ManagedProcess::spawn`(interactive) 또는 `spawn_log_follower`를 실행한다. 그 결과를 그대로 반환하고 기본 시작 로직을 건너뛴다. |
-| `server.stop` | `supervisor/stop.rs` `stop_server_inner` | `stop_server` 진입 직후, 정지 전 | 동기, 120s | 공통 | `handled:true`이면 cooldown을 기록하고 그대로 반환한다. 익스텐션이 Err이거나 `success:false`이면 실패를 반환한다 |
-| `server.status` | `supervisor/status.rs` `get_server_status` | `GET /api/instance/:id/status` | 동기, 120s | 공통 + `process_patterns` | `handled:true`이면 그대로 반환한다 |
+| `server.pre_start` | `supervisor/start.rs` `run_pre_start_hook` (non-managed start, managed start. 문맥은 `plan_start`) | 서버 시작, 시작 전 검사(이미 켜짐·모듈 의존성·필수 익스텐션·포트 충돌)를 통과한 뒤 | 동기, 120s | 공통 + `config`(시작 설정, 비밀 값은 `***`), `managed`(bool). 두 시작 방식이 같은 키를 받는다 | 결과는 `server.stop`·`server.status`와 같은 규칙(`extension::hook_answer`)으로 읽는다: `handled:true`인 답이 먼저, 없으면 익스텐션의 실패(호출 실패·예외·`success:false`)를 답으로 쓰고 데몬이 대신 띄우지 않는다. `handled:true` + `success!=true` → 에러를 반환한다. `success:true`이면 `log_follower{program,args,working_dir,description,interactive,strip_prefix,env_vars}`로 `ManagedProcess::spawn`(interactive) 또는 `spawn_log_follower`를 실행한다. 그 결과를 그대로 반환하고 기본 시작 로직을 건너뛴다. |
+| `server.stop` | `supervisor/stop.rs` `stop_server_inner` | `stop_server` 진입 직후, 정지 전 | 동기, 120s | 공통 | `handled:true`이면 cooldown을 기록하고 그대로 반환한다. 익스텐션이 Err이거나 `success:false`이면 실패를 반환한다(`extension::hook_answer`) |
+| `server.status` | `supervisor/status.rs` `get_server_status` | `GET /api/instance/:id/status` | 동기, 120s | 공통 + `process_patterns` | `handled:true`이면 그대로 반환한다. 맡은 답이 없고 익스텐션이 Err이거나 `success:false`이면 그 실패를 상태 답으로 준다(`extension::hook_answer`) |
 | `server.list_enrich` | `handlers/server.rs` `enrich_results` | `GET /api/servers`, `extension_data`가 비어 있지 않고 캐시에 답이 없는 인스턴스마다 **함께** 실행(한 번에 4개까지, `LIST_ENRICH_AT_ONCE`) | 동기, **10s**, 결과를 30s TTL 캐시(`ipc/mod.rs`) | `instance_id, instance_name, module, extension_data, instance_dir, process_patterns` | `handled`와 무관하게 첫 번째 Ok를 캐시한다(실패는 캐시하지 않음). `handled:true`이면 `status`와 `extension_status[<res.extension_id or "default">]`를 채운다. `handled:true` 결과의 `status_line`(짧은 한 줄, 경로·비밀값 금지)은 디스코드 `/사바쨩 상태`에 나간다(05 §4 heartbeat `statusLine`) |
 | `server.post_create` | `service/instance/create.rs` `create` | 인스턴스 생성(`POST /api/instances`), `instance_store.add` 성공 직후 | `tokio::spawn` 백그라운드, 120s. 결과를 기다리지 않고 바로 네이티브 프로비저닝으로 넘어간다 | 공통 + `migration` | 결과를 버린다. 프로비저닝과 동시에 돈다 |
 | `server.pre_delete` | `handlers/instance/delete.rs` `pre_delete_hook` | 인스턴스 삭제 | 동기, 120s | 공통 | `handled`이면 2초 대기한다(파일 잠금 해제용) |
@@ -164,7 +164,7 @@ manifest에 발화되지 않는 hook을 새로 선언하면 `parse_manifest`가 
 - 인스턴스 문맥 없이 부른다: HOST 작업(`instance.stdin`·`instance.rcon`·`instance.rest`)은 `no_instance`다. 그래서 이벤트마다 게임 서버에 명령을 보내지 못한다.
 - 상한: 익스텐션마다 줄 하나와 일꾼 하나. 디스패처는 줄에 넣기만 하므로 버스를 막지 않는다. 한 익스텐션의 hook은 한 번에 하나씩(기본 120s 타임아웃) 돌고, 느리거나 실패하거나 패닉해도 다른 익스텐션의 hook은 기다리지 않는다. 줄은 32건까지, 넘치면 가장 오래된 것을 버리고 줄이 빌 때까지 경고를 한 번 남긴다. 디스패처가 버스(256)에 뒤처지면 놓친 수를 경고로 남긴다.
 
-- 업데이트 적용(`POST /api/instance/:id/apply-update`, `service/server_update/apply.rs` `begin_server_update_holding`)과 네이티브 프로비저닝(`service/instance/provision.rs` `install_new_server`)은 hook을 거치지 않는다. **module의 `lifecycle.py install_server`를 직접 호출**하고, module이 `from extensions.steamcmd import SteamCMD`로 익스텐션을 Python 라이브러리처럼 import한다. apply-update는 `install_method_<방식>`이 켜진 인스턴스만 받는다(`updatable`).
+- 업데이트 적용(`POST /api/instance/:id/apply-update`, `service/server_update/apply.rs` `begin_server_update_holding`)과 네이티브 프로비저닝(`service/instance/provision.rs` `install_new_server`)은 hook을 거치지 않는다. **module의 `lifecycle.py install_server`를 직접 호출**하고, module이 공용 `load_extension(i18n, "steamcmd")`(02 §2.5)로 익스텐션을 Python 라이브러리처럼 import한다. apply-update는 `install_method_<방식>`이 켜진 인스턴스만 받는다(`updatable`).
 
 ### 2.4 hook × extension 매트릭스
 
@@ -196,7 +196,7 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 
 ### 3.2 발견 (discover / rescan / mount)
 
-- `discover()`(`ext/discovery.rs`): 루트에 있는 `*.zip`을 먼저 푼 뒤 `scan()`을 실행한다. 다운로드와 ZIP 파일은 128 MiB, 항목은 10,000개, 누적 해제 크기는 512 MiB로 제한한다. 모듈 ZIP과 익스텐션 패키지는 같은 해제기(`src/archive.rs`)로 푼다: 폴더 밖을 가리키는 경로와 링크 항목은 거부하고, 권한 비트(SUID 등)는 옮기지 않는다. zip은 `.staging-<id>`에 풀어 manifest를 검사하고, 기존 폴더가 있으면 **새 내용으로 바꿔 끼운 뒤** zip을 삭제한다(`ext/discovery.rs`).
+- `discover()`(`ext/discovery.rs`): 루트에 있는 `*.zip`을 먼저 푼 뒤 `scan()`을 실행한다. 다운로드와 ZIP 파일은 128 MiB, 항목은 10,000개, 누적 해제 크기는 512 MiB로 제한한다. 모듈 ZIP과 익스텐션 패키지는 같은 해제기(`src/archive.rs`)로 푼다. 상한 검사·경로 규칙·복사는 업데이트 zip과 같은 updater-lib `check_zip`·`zip_entry_path`·`copy_zip_entry`다: 폴더 밖을 가리키는 경로, Windows의 `이름:스트림`, 링크 항목은 거부하고, 권한 비트(SUID 등)는 옮기지 않는다. zip은 `.staging-<id>`에 풀어 manifest를 검사하고, 기존 폴더가 있으면 **새 내용으로 바꿔 끼운 뒤** zip을 삭제한다(`ext/discovery.rs`).
 - `scan()`(`ext/discovery.rs`): 하위 디렉토리 중 `manifest.json`이 있는 것(`.`으로 시작하는 임시 폴더 제외)을 등록한다. **폴더 이름이 manifest.id(또는 하이픈→밑줄)와 다르면 건너뛰고**, 로드 실패와 함께 `load_errors`에 남긴다. 이 목록은 `GET /api/extensions`의 `failed`로 나간다(`handlers/extension.rs`).
 - `rescan()`(`ext/discovery.rs`): `scan()`과 같다. 기존 항목의 manifest를 다시 읽고 새 항목을 추가한다. 디스크에서 사라진 항목은 그대로 남긴다.
 - `mount(id)`(`ext/discovery.rs`): `ext_dir_on_disk`(discovered → `extension_dir`: 하이픈을 언더스코어로 바꾼 이름 → id 그대로. 둘 다 있으면 언더스코어 폴더로, `scan`·신뢰 판정(`sandbox`)도 같은 폴더를 쓴다)로 디렉토리를 찾고, `manifest.id == id`를 검사한다.
@@ -220,7 +220,7 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 - `GET /api/extensions/manifest`: 원격 목록과 `check_updates_against` 결과를 돌려준다(`handlers/extension.rs`).
 - `GET /api/extensions/updates`: 업데이트 목록만 돌려준다(`handlers/extension.rs`).
 - `POST /api/extensions/:id/install` (body `{download_url?, sha256?}`): body가 없거나 `{}`이면 원격 목록(서명된 카탈로그)에서 URL과 sha256을 찾는다. `download_url`만 주면 그 id의 카탈로그 URL과 같을 때만 카탈로그 sha256으로 받고, 다르면 해시 확인 없이 받지 않고 `sha256_required`로 거부한다. 둘 다 주면 그대로 받되, 카탈로그의 URL·해시와 같을 때만 공식 설치로 기록한다(`install_source`, `handlers/extension.rs`). 받기·검사·압축 해제는 락 없이 `stage_package`로 하고(sha256(있으면), manifest 스키마, id, `min_app_version` 확인, `ext/remote.rs`), 폴더 교체만 write 락 안에서 `install_staged`로 한다. 실행 중인 인스턴스가 쓰는 익스텐션이면 `in_use`로 거부하고, 바꿀 폴더의 `manifest.json` id가 설치할 id와 다르면(`a-b`와 `a_b`처럼 같은 폴더 이름이 되는 다른 익스텐션) `folder_in_use`(`related`: 설치할 id, 폴더 주인 id)로 거부한다(extensions/에 둔 zip도 같다, `ensure_folder_is_free_for`). 옛 폴더는 새 폴더가 자리 잡은 뒤에 지우며 실패하면 되돌린다(`ext/discovery.rs`·`ext/remote.rs`). 빠진 익스텐션 의존성도 차례로 함께 설치한다(`handlers/extension.rs`). 원격 목록에서 받을 때 그 버전이 설치된 버전보다 낮으면 `older_than_installed`로 거부한다(예전 서명 manifest 재전송 방지).
-- 업데이터의 일괄 업데이트(`/api/updates/*`)는 설치된 `ext-*`만 비교하고, 적용 뒤 `rescan()`으로 다시 읽는다(`src/ipc/updates.rs`).
+- 업데이터의 일괄 업데이트(`/api/updates/*`)는 설치된 `ext-*`만 비교하고, 적용 뒤 `rescan()`으로 다시 읽는다(`src/ipc/updates/`).
 - 배포: 익스텐션 저장소에는 릴리즈 워크플로도 생성된 `manifest.json`도 없다(CI는 pytest·ruff만, `E:.github/workflows/ci.yml`). 코어 릴리즈 워크플로가 `saba-chan-extensions`의 `main`을 checkout하고 `versions.py manifest --extensions-repo`가 `ext-<id>.zip`을 만들어 같은 릴리즈 manifest에 싣는다(`D:.github/workflows/publish.yml` `publish` 작업, `D:scripts/versions.py`). 지금 저장소에는 `steamcmd`, `ue4_ini`, `xna` 세 개가 있다.
 
 ### 3.5 의존성 처리
@@ -337,21 +337,21 @@ slot 이름·창·종류는 `SLOT_TABLE` 한 곳에 있다. 종류: `inline`은 
 ### 5.2 steamcmd
 
 - `SteamCMD` 클래스: 포터블 SteamCMD 탐색/설치, `install(...)`, `update`, buildid·브랜치 비교로 `check_update`. `check_update`는 설치된 빌드를 받은 때(appmanifest `LastUpdated`)와 그 브랜치의 빌드가 올라온 때(`app_info_print` branches의 `timeupdated`)를 `local_build_time`·`remote_build_time`으로 함께 답한다(Steam이 주지 않으면 `null`). 받은 SteamCMD 압축은 데몬 공용 `safe_extract`(02 §2.5)로 포터블 폴더에 바로 풀고, 풀기가 실패하면 실행 파일을 지워 다음 호출이 다시 받게 한다. 설치 시간 초과 때의 프로세스 트리 종료는 데몬 공용 `force_kill`이다.
-- daemon hook으로 실제로 쓰이는 것은 `server.check_update` 하나뿐이다. 설치는 module의 `lifecycle.py install_server`가 `from extensions.steamcmd import SteamCMD`로 직접 수행한다(palworld·zomboid `install_server`의 `install_for_module`).
-- `install_for_module(module_dir, install_dir, beta=None)`(steamcmd 다음 판): 모듈 module.toml `[install]`(`method = "steamcmd"`, `app_id`, `anonymous`, `beta`, `download_size`)을 읽어 SteamCMD를 준비하고 설치·업데이트한다. 앱 ID를 모듈 코드에 다시 적지 않는다. `[install]`에 steamcmd 앱 ID가 없으면 `ValueError`. `beta` 인자(인스턴스가 고른 브랜치, 02 §3.3 `list_versions`)가 있으면 `[install].beta`보다 먼저 쓴다. 반환은 `SteamCMD.install`과 같다.
+- daemon hook으로 실제로 쓰이는 것은 `server.check_update` 하나뿐이다. 설치는 module의 `lifecycle.py install_server`가 `load_extension`으로 불러온 steamcmd의 `install_for_module`로 직접 수행한다(palworld·zomboid).
+- `install_for_module(module_dir, install_dir, beta=None, executable=None)`: 모듈 module.toml `[install]`(`method = "steamcmd"`, `app_id`, `anonymous`, `beta`, `download_size`)을 읽어 SteamCMD를 준비하고 설치·업데이트한다. 앱 ID를 모듈 코드에 다시 적지 않는다. `[install]`에 steamcmd 앱 ID가 없으면 `ValueError`. `beta` 인자(인스턴스가 고른 브랜치, 02 §3.3 `list_versions`)가 있으면 `[install].beta`보다 먼저 쓴다. 반환은 `SteamCMD.install`과 같고, SteamCMD 준비·설치 중 오류도 예외 대신 공용 `errors.install_failed` 실패(`{success:false, message}`)로 답한다. `executable`(설치 폴더 기준 서버 실행 파일, steamcmd 0.1.11)을 주면 모듈 `install_server`가 그대로 돌려줄 `install_path`·`executable_path`(받은 파일이 없으면 `""`)를 붙인다. palworld·zomboid는 이것을 쓰고 `[module.dependencies] ext-steamcmd = ">=0.1.11"`이다.
 - 설치 진행률은 SteamCMD 출력의 `progress:` 줄 → 설치 폴더 appmanifest의 `BytesDownloaded`/`BytesToDownload`(`_manifest_progress`) → 늘어난 디스크 크기와 모듈이 적은 어림 총량(module.toml `[install] download_size`, `_disk_progress`) 순으로 읽는다. 앱 ID별 크기 같은 게임 지식은 그 게임의 module.toml에만 둔다. `download_size`가 없는 모듈은 디스크 크기로 어림하지 않는다. 출력은 파이프에서 버퍼에 묶이기 쉽다. 디스크 크기가 어림 총량을 넘으면(미리 잡은 파일 크기·받기 임시 파일) 진행률을 올리지 않고 직전 값을 유지한다.
 - instance_fields는 `install_method_steamcmd`(설치 방식 표시, hook 조건)와 `steamcmd_beta`(사용자가 고른 브랜치) 둘뿐이다. daemon이 module의 `[install] method`를 보고 **범용 규칙**(`install_method_<방식>`, `<방식>_beta`)으로 채운다(`ServerInstance::apply_install_extension_data`, `record_installed_version`). 앱 ID·익명 로그인·플랫폼 같은 모듈 값은 인스턴스에 복사하지 않아 `steamcmd_app_id`·`steamcmd_anonymous`·`steamcmd_platform` 필드는 지웠다(0.1.14-beta.2, `min_app_version` 0.1.14-beta.2). core에 steamcmd 이름은 없다.
 
 ### 5.4 ue4-ini (디렉토리명 `ue4_ini`)
 
-- `parse_option_settings(ini_path)`와 `write_option_settings(ini_path, props, section, quoted_keys, bare_keys)`를 제공하는 **순수 Python 라이브러리**다(`ue4_ini.py`). hook도 권한(`permissions`)도 선언하지 않는다. 쓰기는 데몬 공용 `atomic_write`(02-modules §2.5)를 그대로 쓴다(`min_app_version` 0.1.12): 같은 폴더 임시 파일에 쓰고 바꾸되, 격리 실행처럼 권한을 옮기지 못하거나 임시 파일을 만들 수 없으면 원래 파일을 제자리에서 덮어쓴다. 값의 따옴표는 기본으로 값 모양(True/False·숫자·괄호 목록은 그대로, 나머지는 따옴표)으로 정하고, 모듈이 형식을 아는 키는 `quoted_keys`(숫자처럼 보여도 문자열)·`bare_keys`(열거형·빈 목록)로 덮어쓴다. 줄바꿈이 든 값은 OptionSettings 줄을 깨므로 쓰지 않고 False를 돌려준다.
-- palworld가 `requires_extensions = ["steamcmd", "ue4-ini"]`로 요구한다(`M:palworld/module.toml`). `try/except ImportError`로 import하고 INI를 건드리는 함수만 `extension_required`를 돌려준다. disable하면 import 가드가 import를 막는다(2.1).
+- `parse_option_settings(ini_path, section)`와 `write_option_settings(ini_path, props, section, quoted_keys, bare_keys)`를 제공하는 **순수 Python 라이브러리**다(`ue4_ini.py`). `section`(대괄호는 있어도 없어도 된다)은 필수이고 기본값(특정 게임의 섹션)이 없다. 읽기도 그 섹션의 `OptionSettings` 줄만 본다(ue4-ini 0.1.12, palworld는 `[module.dependencies] ext-ue4-ini = ">=0.1.12"`). hook도 권한(`permissions`)도 선언하지 않는다. 쓰기는 데몬 공용 `atomic_write`(02-modules §2.5)를 그대로 쓴다(`min_app_version` 0.1.12): 같은 폴더 임시 파일에 쓰고 바꾸되, 격리 실행처럼 권한을 옮기지 못하거나 임시 파일을 만들 수 없으면 원래 파일을 제자리에서 덮어쓴다. 값의 따옴표는 기본으로 값 모양(True/False·숫자·괄호 목록은 그대로, 나머지는 따옴표)으로 정하고, 모듈이 형식을 아는 키는 `quoted_keys`(숫자처럼 보여도 문자열)·`bare_keys`(열거형·빈 목록)로 덮어쓴다. 줄바꿈이 든 값은 OptionSettings 줄을 깨므로 쓰지 않고 False를 돌려준다.
+- palworld가 `requires_extensions = ["steamcmd", "ue4-ini"]`로 요구한다(`M:palworld/module.toml`). INI를 건드릴 때 공용 `load_extension`으로 import하고, 없으면 그 함수만 `extension_required`를 돌려준다. disable하면 import 가드가 import를 막는다(2.1).
 
 ### 5.5 module → extension 참조 방식
 
 1. `module.toml [install] requires_extensions = [...]`. 모듈을 설치하면(데몬 `POST /api/modules/manifest/:id/install`, 설치기) 요구하는 익스텐션을 받고 켠다(02-modules §5.2). 앱 업데이트로 모듈이 바뀌어도 새로 필요해진 것 중 없는 것을 받고 켠다(02-modules §5.3). 인스턴스에 복사하지 않는다: 인스턴스가 쓰는 익스텐션은 지금 모듈의 이 목록과 인스턴스 `required_extensions`(인스턴스가 더한 것, 예전 판이 만들 때 복사해 둔 모듈 목록도 그대로 읽는다)의 합이다(`Supervisor::effective_required_extensions`). 생성 시점에 검증하고(`service/instance/create.rs` `create`), 시작 시점에 관리형·비관리형 모두 다시 검증한다(`supervisor/start.rs` `plan_start` → `extension_required`, `installed_and_enabled_set`). module 기능 엔드포인트에서도 검사한다(`handlers/managed.rs`). `[module.dependencies]`의 `ext-<id>` 버전 요구도 시작 시 검사한다(`supervisor/start.rs` `unmet_module_dependencies`).
 2. `module.toml [extensions.<id>]` 섹션은 `metadata.extensions["<id>"]`로 그대로 파싱된다(`module_loader/raw.rs`). settings_changed context의 `module_extensions`로 전달된다.
-3. Python 레벨: `from extensions.<pkg> import …`. PYTHONPATH 주입과 import 가드에 의존한다. 모듈은 `SABA_ENABLED_EXTENSIONS`를 따로 읽지 않고, import가 실패하면(없음·꺼짐, 가드의 `ModuleNotFoundError`) `error_code: "extension_required"`, `missing_extensions`로 답한다(palworld·zomboid `install_server`).
+3. Python 레벨: 공용 `load_extension(i18n, "<id>")`(02 §2.5, `extensions.<pkg>`를 import한다). PYTHONPATH 주입과 import 가드에 의존한다. 모듈은 `SABA_ENABLED_EXTENSIONS`를 따로 읽지 않고, 그 익스텐션 import가 실패하면(없음·꺼짐, 가드의 `ModuleNotFoundError`) 받은 `extension_required` 답(`missing_extensions`)을 돌려준다(palworld·zomboid `install_server`, terraria `validate`·`install_server`). 익스텐션 안의 다른 import 실패는 '없음'으로 보지 않고 예외로 올린다.
 
 ---
 

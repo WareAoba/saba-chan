@@ -13,7 +13,7 @@ export function serverListActions(set: StoreApi<ServerState>['setState'], get: (
     const fetchServers = async () => {
         const seq = ++internal.fetchSeq.sent;
         try {
-            const data = await retryWithBackoff(() => window.api.serverList(), 3, 800);
+            const data = await retryWithBackoff(() => window.api.serverList({ notices: true }), 3, 800);
             const list = data?.servers;
             if (list) {
                 const stale = seq < internal.fetchSeq.applied;

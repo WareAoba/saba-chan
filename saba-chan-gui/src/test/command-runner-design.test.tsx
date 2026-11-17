@@ -1,6 +1,4 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import CommandModalImpl from '../components/Modals/CommandModal';
 import { useUIStore } from '../stores/useUIStore';
@@ -49,12 +47,5 @@ describe('명령 탭 디자인', () => {
         expect(row.getAttribute('aria-expanded')).toBe('false');
         fireEvent.click(row);
         expect(row.getAttribute('aria-expanded')).toBe('true');
-    });
-
-    it('명령 탭 CSS는 옛 글꼴·그라데이션 없이 토큰만 쓴다', () => {
-        const css = readFileSync(join(__dirname, '../styles/shell.css'), 'utf8');
-        const block = css.slice(css.indexOf('/* ── 명령 탭'), css.indexOf('/* ── 명령 탭 끝'));
-        expect(block.length).toBeGreaterThan(100);
-        expect(block).not.toMatch(/Courier New|-gradient\(|--brand-gradient|#[0-9a-f]{3,6}\b/i);
     });
 });

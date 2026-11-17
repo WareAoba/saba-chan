@@ -234,4 +234,15 @@ describe('서버 설정 창: 실제 설정', () => {
         expect(vi.mocked(window.showToast!).mock.calls.map((c) => c[0])).toEqual(['Invalid format']);
         delete (window.api as unknown as Record<string, unknown>).instanceLaunchPreview;
     });
+
+    it('기본값 칸을 고치면 기본값 목록을 새 Set으로 바꿔 구독한 화면이 다시 그린다', async () => {
+        window.api.instanceReadLiveSettings = vi.fn().mockResolvedValue({ success: false, error: 'no file' });
+        const { result } = setup();
+        await act(async () => result.current.handleOpenSettings({ id: 's', name: 'S', module: 'game', port: 2222 } as never));
+        const before = result.current.unsetSettings;
+        expect(before.has('title')).toBe(true);
+        act(() => result.current.handleSettingChange('title', '새 이름'));
+        expect(result.current.unsetSettings).not.toBe(before);
+        expect(result.current.unsetSettings.has('title')).toBe(false);
+    });
 });

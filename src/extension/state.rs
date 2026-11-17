@@ -24,7 +24,9 @@ impl ExtensionManager {
             return None;
         }
         let content = std::fs::read_to_string(&path).ok()?;
-        serde_json::from_str(&content).ok()
+        serde_json::from_str(content.trim_start_matches('\u{feff}'))
+            .inspect_err(|e| tracing::warn!("Extension '{}' locale {} is not valid JSON: {}", ext_id, path.display(), e))
+            .ok()
     }
 
     /// 특정 익스텐션의 글로벌 설정을 반환합니다.

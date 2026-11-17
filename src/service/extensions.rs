@@ -51,9 +51,22 @@ pub(crate) async fn install_with_dependencies(
     explicit_url: Option<String>,
     explicit_sha: Option<String>,
 ) -> Result<Vec<String>, super::Failure> {
+    let remote = ExtensionManager::fetch_remote().await;
+    install_from(state, ext_id, explicit_url, explicit_sha, &remote).await
+}
+
+/// `install_with_dependencies`의 본체 (카탈로그는 부른 쪽이 준다).
+/// 본 익스텐션과 없는 의존 익스텐션을 모두 받아 검사(stage)한 뒤에야 바꿔 끼운다: 의존 익스텐션 하나를 받지 못하면
+/// 아무것도 바꾸지 않고 실패로 답한다 (본 익스텐션만 새 판으로 바뀐 채 "설치 실패"로 남지 않게)
+async fn install_from(
+    state: &IPCServer,
+    ext_id: &str,
+    explicit_url: Option<String>,
+    explicit_sha: Option<String>,
+    remote: &anyhow::Result<Vec<crate::extension::RemoteExtensionInfo>>,
+) -> Result<Vec<String>, super::Failure> {
     let ext_id = ext_id.to_string();
     let extensions_dir = state.extension_manager.read().await.extensions_dir().to_path_buf();
-    let remote = ExtensionManager::fetch_remote().await;
     let fail = |error: String, code: &str| {
         let status = match code {
             "sha256_required" => StatusCode::BAD_REQUEST,
@@ -62,61 +75,103 @@ pub(crate) async fn install_with_dependencies(
             "older_than_installed" => StatusCode::CONFLICT,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
-        Err(super::Failure::coded(status, code, error))
+        super::Failure::coded(status, code, error)
     };
     let refused = |(status, Json(body)): (StatusCode, Json<serde_json::Value>)| super::Failure::new(status, body);
 
+    // 받아 검사한 패키지: (id, 폴더, 공식 설치인가). 실패하면 모두 지운다
+    let mut staged: Vec<(String, std::path::PathBuf, bool)> = Vec::new();
+    let discard = |staged: &[(String, std::path::PathBuf, bool)]| {
+        for (_, dir, _) in staged {
+            let _ = std::fs::remove_dir_all(dir);
+        }
+    };
     let mut queue = vec![ext_id.clone()];
-    let mut installed: Vec<String> = Vec::new();
     while let Some(id) = queue.pop() {
-        if installed.contains(&id) {
+        if staged.iter().any(|(s, ..)| *s == id) {
             continue;
         }
-        let entry = remote.as_ref().ok().and_then(|r| r.iter().find(|e| e.id == id).cloned());
-        let explicit = if id == ext_id { (explicit_url.clone(), explicit_sha.clone()) } else { (None, None) };
-        let (url, sha) = match install_source(&id, explicit.0, explicit.1, &remote) {
-            Ok(source) => source,
-            Err((error, code)) => return fail(error, code),
+        let step = stage_one(state, &extensions_dir, &id, &ext_id, &explicit_url, &explicit_sha, remote).await;
+        let (dir, official) = match step {
+            Ok(done) => done,
+            Err(Stage::Failed(error, code)) => {
+                discard(&staged);
+                return Err(fail(error, code));
+            }
+            Err(Stage::Refused(refusal)) => {
+                discard(&staged);
+                return Err(refused(refusal));
+            }
         };
-
-        // 카탈로그가 설치된 것보다 낮은 버전을 주면 받지 않는다
-        if let Some(e) = entry.as_ref().filter(|e| e.download_url == url) {
-            let installed = state.extension_manager.read().await.discovered(&id).map(|d| d.manifest.version.clone());
-            if let Some(installed) = installed.filter(|v| saba_chan_updater_lib::version::is_downgrade(v, &e.version)) {
-                return fail(format!("Extension '{}' {} is older than the installed {}", id, e.version, installed), "older_than_installed");
+        // 의존 목록은 받은 패키지의 manifest에서 읽는다 (아직 설치하지 않았다)
+        if let Ok(r) = remote {
+            let manifest = std::fs::read_to_string(dir.join("manifest.json")).ok().and_then(|t| crate::extension::parse_manifest(&t).ok());
+            if let Some((manifest, _)) = manifest {
+                queue.extend(state.extension_manager.read().await.missing_dependencies(&manifest, r));
             }
         }
+        staged.push((id, dir, official));
+    }
 
-        let staged = match ExtensionManager::download_package(&url).await.and_then(|bytes| {
-            ExtensionManager::stage_package(&extensions_dir, &id, &bytes, sha.as_deref())
-        }) {
-            Ok(p) => p,
-            // 더 새 앱을 요구하는 패키지는 구조화된 이유(app_version_unsatisfied)로 답한다
-            Err(e) if e.downcast_ref::<ExtensionError>().is_some_and(|x| x.error_code == "app_version_unsatisfied") => {
-                return Err(refused(naming_extension(extension_err_response(&e), &id)))
-            }
-            Err(e) => return fail(format!("{:#}", e), "install_failed"),
-        };
-
-        let running = instance_ext_data(state, true).await;
-        let refs: Vec<(&str, &std::collections::HashMap<String, serde_json::Value>)> =
-            running.iter().map(|(n, d)| (n.as_str(), d)).collect();
-        let mut mgr = state.extension_manager.write().await;
-        // 카탈로그의 주소와 해시로 받았을 때만 공식 설치다
-        let official = entry.as_ref().is_some_and(|e| e.download_url == url && e.sha256.is_some() && e.sha256 == sha);
-        if let Err(e) = mgr.install_staged(&id, &staged, &refs, official) {
+    let running = instance_ext_data(state, true).await;
+    let refs: Vec<(&str, &std::collections::HashMap<String, serde_json::Value>)> =
+        running.iter().map(|(n, d)| (n.as_str(), d)).collect();
+    let mut mgr = state.extension_manager.write().await;
+    let mut installed: Vec<String> = Vec::new();
+    for (i, (id, dir, official)) in staged.iter().enumerate() {
+        if let Err(e) = mgr.install_staged(id, dir, &refs, *official) {
+            discard(&staged[i + 1..]);
             let refusal = extension_err_response(&e);
             if refusal.1.get("error_code").and_then(|c| c.as_str()) == Some("internal") {
-                return fail(e.to_string(), "install_failed");
+                return Err(fail(e.to_string(), "install_failed"));
             }
             return Err(refused(refusal));
         }
         installed.push(id.clone());
-        if let Ok(r) = &remote {
-            queue.extend(mgr.missing_dependencies(&id, r));
-        }
     }
     Ok(installed)
+}
+
+enum Stage {
+    Failed(String, &'static str),
+    Refused((StatusCode, Json<serde_json::Value>)),
+}
+
+/// 익스텐션 하나를 받아 검사한다: (검사한 폴더, 공식 설치인가)
+async fn stage_one(
+    state: &IPCServer,
+    extensions_dir: &std::path::Path,
+    id: &str,
+    ext_id: &str,
+    explicit_url: &Option<String>,
+    explicit_sha: &Option<String>,
+    remote: &anyhow::Result<Vec<crate::extension::RemoteExtensionInfo>>,
+) -> Result<(std::path::PathBuf, bool), Stage> {
+    let entry = remote.as_ref().ok().and_then(|r| r.iter().find(|e| e.id == id).cloned());
+    let explicit = if id == ext_id { (explicit_url.clone(), explicit_sha.clone()) } else { (None, None) };
+    let (url, sha) = install_source(id, explicit.0, explicit.1, remote).map_err(|(error, code)| Stage::Failed(error, code))?;
+
+    // 카탈로그가 설치된 것보다 낮은 버전을 주면 받지 않는다
+    if let Some(e) = entry.as_ref().filter(|e| e.download_url == url) {
+        let installed = state.extension_manager.read().await.discovered(id).map(|d| d.manifest.version.clone());
+        if let Some(installed) = installed.filter(|v| saba_chan_updater_lib::version::is_downgrade(v, &e.version)) {
+            return Err(Stage::Failed(format!("Extension '{}' {} is older than the installed {}", id, e.version, installed), "older_than_installed"));
+        }
+    }
+
+    let dir = match ExtensionManager::download_package(&url).await.and_then(|bytes| {
+        ExtensionManager::stage_package(extensions_dir, id, &bytes, sha.as_deref())
+    }) {
+        Ok(p) => p,
+        // 더 새 앱을 요구하는 패키지는 구조화된 이유(app_version_unsatisfied)로 답한다
+        Err(e) if e.downcast_ref::<ExtensionError>().is_some_and(|x| x.error_code == "app_version_unsatisfied") => {
+            return Err(Stage::Refused(naming_extension(extension_err_response(&e), id)))
+        }
+        Err(e) => return Err(Stage::Failed(format!("{:#}", e), "install_failed")),
+    };
+    // 카탈로그의 주소와 해시로 받았을 때만 공식 설치다
+    let official = entry.as_ref().is_some_and(|e| e.download_url == url && e.sha256.is_some() && e.sha256 == sha);
+    Ok((dir, official))
 }
 
 /// 모듈을 설치한 뒤 그 모듈이 요구하는 익스텐션을 맞춘다: 없으면 카탈로그에서 받고, 켠다 (`ExtensionManager::enable_for_module`).
@@ -149,7 +204,10 @@ pub(crate) async fn prepare_for_module(
         // 이미 있어도 의존 익스텐션이 빠졌을 수 있다 (꺼 둔 채 의존 익스텐션만 지운 경우): 카탈로그에 있는 것만 받는다
         if !unknown_deps.is_empty() {
             let missing = match ExtensionManager::fetch_remote().await {
-                Ok(remote) => state.extension_manager.read().await.missing_dependencies(id, &remote),
+                Ok(remote) => {
+                    let mgr = state.extension_manager.read().await;
+                    mgr.discovered(id).map(|e| mgr.missing_dependencies(&e.manifest, &remote)).unwrap_or_default()
+                }
                 Err(_) => Vec::new(),
             };
             for dep in missing {
@@ -312,5 +370,75 @@ pub async fn record_startup(init_tracker: &crate::ipc::ExtensionInitTracker, ext
             tracing::error!("Extension '{}' startup error: {}", ext_id, e);
             init_tracker.mark_finished(ext_id, false, &e.to_string()).await;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+    use tokio::sync::RwLock;
+
+    fn zip_package(manifest: serde_json::Value) -> Vec<u8> {
+        use std::io::Write;
+        let mut buf = std::io::Cursor::new(Vec::new());
+        {
+            let mut w = zip::ZipWriter::new(&mut buf);
+            w.start_file("manifest.json", zip::write::SimpleFileOptions::default()).unwrap();
+            w.write_all(manifest.to_string().as_bytes()).unwrap();
+            w.finish().unwrap();
+        }
+        buf.into_inner()
+    }
+
+    /// 의존 익스텐션을 받지 못하면 본 익스텐션도 설치하지 않고 실패로 답한다 (본 익스텐션만 바뀐 채 "설치 실패"로 남았다)
+    #[tokio::test]
+    async fn a_dependency_that_fails_to_download_leaves_nothing_installed() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let app = zip_package(json!({ "id": "app", "name": "App", "version": "1.0.0", "dependencies": { "dep": ">=1.0.0" } }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let served = app.clone();
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut sock, _)) = listener.accept().await else { return };
+                let mut buf = [0u8; 2048];
+                let n = sock.read(&mut buf).await.unwrap_or(0);
+                let response = if String::from_utf8_lossy(&buf[..n]).starts_with("GET /app.zip") {
+                    let mut r = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", served.len()).into_bytes();
+                    r.extend_from_slice(&served);
+                    r
+                } else {
+                    b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_vec()
+                };
+                let _ = sock.write_all(&response).await;
+            }
+        });
+        let tmp = tempfile::tempdir().unwrap();
+        let extensions = tmp.path().join("extensions");
+        std::fs::create_dir_all(&extensions).unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(tmp.path().join("modules").to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.extension_manager = Arc::new(RwLock::new(ExtensionManager::new_isolated(extensions.to_str().unwrap())));
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let sha = |bytes: &[u8]| {
+            use sha2::{Digest, Sha256};
+            hex::encode(Sha256::digest(bytes))
+        };
+        let remote: anyhow::Result<Vec<crate::extension::RemoteExtensionInfo>> = Ok(serde_json::from_value(json!([
+            { "id": "app", "name": "App", "version": "1.0.0", "download_url": format!("http://{addr}/app.zip"), "sha256": sha(&app) },
+            { "id": "dep", "name": "Dep", "version": "1.0.0", "download_url": format!("http://{addr}/dep.zip"), "sha256": sha(b"gone") },
+        ]))
+        .unwrap());
+
+        let result = install_from(&state, "app", None, None, &remote).await;
+        assert!(result.is_err(), "the dependency could not be downloaded");
+        assert!(state.extension_manager.read().await.discovered("app").is_none(), "app is not installed without its dependency");
+        let left: Vec<_> = std::fs::read_dir(&extensions)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|name| name == "app" || name.starts_with(".staging"))
+            .collect();
+        assert!(left.is_empty(), "no package folders are left behind: {left:?}");
     }
 }
