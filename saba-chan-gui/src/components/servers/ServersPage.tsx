@@ -4,7 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { useShallow } from 'zustand/react/shallow';
 import type { useDragReorder } from '../../hooks/useDragReorder';
 import { useSwapAnimation } from '../../hooks/useSwapAnimation';
-import { useWindowSize } from '../../hooks/useWindowSize';
+import { useWindowAtLeast } from '../../hooks/useWindowAtLeast';
+import { InstanceMaintenance } from '../../hooks/useInstanceMaintenance';
 import { type Server, useServerStore } from '../../stores/useServerStore';
 import { unsavedServerIds, useServerSettingsStore } from '../../stores/useServerSettingsStore';
 import { useSettingsStore } from '../../stores/useSettingsStore';
@@ -16,7 +17,7 @@ import { Icon } from '../Icon';
 import { Disclosure } from '../ui/Disclosure';
 import { LinkedText } from '../ui/ScreenLink';
 import { SabaArt } from '../ui/SabaArt';
-import { FloatingMonitor, monitorPlacement, SystemMonitor } from '../monitor/SystemMonitor';
+import { FloatingMonitor, MONITOR_SIDE_MIN_WIDTH, monitorPlacement, SystemMonitor } from '../monitor/SystemMonitor';
 import { useDaemonTarget } from '../shell/DaemonSwitcher';
 import { OtherDaemons } from '../shell/OtherDaemons';
 import { BranchServerDialog } from './BranchServerDialog';
@@ -71,11 +72,11 @@ export function ServersPage({
     const onCreateBranch = useServerStore((st) => st.addServer);
     // 저장하지 않은 설정이 남은 서버 (줄의 경고 표시)
     const unsavedIds = useServerSettingsStore(useShallow((st) => unsavedServerIds(st, modules)));
-    const { width } = useWindowSize();
-    const singleColumn = width < SINGLE_COLUMN_MAX_WIDTH;
+    const singleColumn = !useWindowAtLeast(SINGLE_COLUMN_MAX_WIDTH);
+    const monitorWide = useWindowAtLeast(MONITOR_SIDE_MIN_WIDTH);
     const monitorOpen = useSettingsStore((s) => s.systemMonitorExpanded);
     const monitorMode = useSettingsStore((s) => s.systemMonitorMode);
-    const monitorAt = monitorPlacement(monitorMode, monitorOpen, width);
+    const monitorAt = monitorPlacement(monitorMode, monitorOpen, monitorWide);
     // 합쳐 보기 (G1c): 다른 데몬의 서버를 목록 아래에 데몬별로
     const unified = useSettingsStore((s) => s.daemonView) === 'unified';
     const daemonTarget = useDaemonTarget();
@@ -187,6 +188,9 @@ export function ServersPage({
 
     return (
         <div className={clsx('page servers-page', { 'single-column': singleColumn })}>
+            {servers.map((server) => (
+                <InstanceMaintenance key={server.id || server.name} server={server} />
+            ))}
             {!listHidden && (
                 <aside className="server-list-pane" aria-label={t('shell.nav_servers')}>
                     <div className="server-list-head">

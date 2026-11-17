@@ -191,7 +191,7 @@ function App() {
     const { draggedId, cardRefs, skipNextClick, handleCardPointerDown } = useDragReorder(servers, setServers);
 
     // 익스텐션 초기화 상태 (daemon.startup hook 진행 중이면 스피너 표시)
-    const { initializing: extInitializing, inProgress: extInitInProgress } = useExtensionInitStatus();
+    const { initializing: extInitializing, inProgress: extInitInProgress } = useExtensionInitStatus(daemonRunning);
 
     // 서버 동작은 스토어 액션이다 (stores/serverActions). 관리 모드로 켜면 여는 콘솔은 이 창의 콘솔 훅이 들고 있다
     useEffect(() => setServerConsole(openConsole), [openConsole]);

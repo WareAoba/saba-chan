@@ -320,11 +320,11 @@ describe('시스템 모니터 표시 방식 (끔·고정·떠 있는 창)', () =
     });
 
     it('서버 페이지의 자리: 끄면 어디에도 없고, 떠 있는 창이면 고정 칸을 쓰지 않는다', () => {
-        expect(monitorPlacement('off', true, 2000)).toBe('none');
-        expect(monitorPlacement('docked', true, 2000)).toBe('side');
-        expect(monitorPlacement('docked', true, 1200)).toBe('top');
-        expect(monitorPlacement('docked', false, 2000)).toBe('top');
-        expect(monitorPlacement('floating', true, 2000)).toBe('float');
+        expect(monitorPlacement('off', true, true)).toBe('none');
+        expect(monitorPlacement('docked', true, true)).toBe('side');
+        expect(monitorPlacement('docked', true, false)).toBe('top');
+        expect(monitorPlacement('docked', false, true)).toBe('top');
+        expect(monitorPlacement('floating', true, true)).toBe('float');
     });
 
     it('끄기 버튼은 끔으로 두고, 알림의 되돌리기로 원래 방식으로 돌아간다', async () => {

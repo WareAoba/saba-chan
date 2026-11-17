@@ -215,28 +215,21 @@ export function ActivityBar() {
             }
         };
         const poll = async () => {
-            if (!document.hidden) {
-                await fetchLast();
-                if (alive) setNow(Date.now());
-            }
+            if (!document.hidden) await fetchLast();
             if (alive) timer = setTimeout(poll, eventsLive() ? ACTIVITY_SLOW_POLL_MS : ACTIVITY_POLL_MS);
         };
         const off = subscribeDaemonEvents((ev: { type: string; data: ApiBody }) => {
             if (!alive) return;
             if (ev.type === 'action.run') {
                 setLast(auditEntryOf(ev.data) as AuditEntry);
-                setNow(Date.now());
             } else if (ev.type === 'resync') {
                 fetchLast();
             }
         });
-        // 이벤트로 줄이 바뀌지 않아도 "몇 초 전"은 흐르게 한다
-        const clock = setInterval(() => !document.hidden && setNow(Date.now()), ACTIVITY_POLL_MS);
         poll();
         return () => {
             alive = false;
             clearTimeout(timer);
-            clearInterval(clock);
             off();
         };
     }, []);
@@ -249,8 +242,14 @@ export function ActivityBar() {
         const left = RECENT_SHOW_MS - (Date.now() - last.ts * 1000);
         if (left <= 0) return setRecent(false);
         setRecent(true);
+        setNow(Date.now());
         const timer = setTimeout(() => setRecent(false), Math.min(left, RECENT_SHOW_MS));
-        return () => clearTimeout(timer);
+        // 명령을 보이는 동안에만 "몇 초 전"이 흐른다 (기본 문구에는 시간이 없다)
+        const clock = setInterval(() => !document.hidden && setNow(Date.now()), ACTIVITY_POLL_MS);
+        return () => {
+            clearTimeout(timer);
+            clearInterval(clock);
+        };
     }, [lastKey]);
 
     const toggle = () => setOpen(!open);
