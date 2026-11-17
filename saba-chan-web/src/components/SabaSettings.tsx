@@ -19,19 +19,22 @@ export interface SabaValues {
 }
 
 const GAME_CHAT_MODES = ['off', 'all', 'keyword'];
-/** 'true'·'false' 글자로 저장된 값도 있다. 기본값은 데몬과 같다 (크래시 재시작 켜짐, 원인 모를 종료 꺼짐) */
+
+/** `effective`를 싣지 않는 예전 데몬의 저장 값 읽기: 'true'·'false' 글자로 저장된 값도 있다 */
 const asFlag = (v: unknown, dflt: boolean) => (v === true || v === 'true' ? true : v === false || v === 'false' ? false : dflt);
 
 /** 저장된 사바쨩 칸 값 (GUI useServerSettingsStore 와 같은 자리에서 읽는다) */
 export function sabaValues(server: Partial<Server> | ApiBody | null | undefined): SabaValues {
     const ms = server?.module_settings || {};
+    const e = server?.effective;
     return {
         memory_limit_mb: server?.memory_limit_mb == null ? '' : String(server.memory_limit_mb),
         stop_timeout: ms.stop_timeout == null ? '' : String(ms.stop_timeout),
         game_chat: server?.game_chat || 'off',
         game_chat_keyword: server?.game_chat_keyword || '',
-        auto_restart: asFlag(ms.auto_restart, true),
-        restart_on_unknown_exit: asFlag(ms.restart_on_unknown_exit, false),
+        // 데몬이 실제로 쓰는 값 (서버 정보 effective). 싣지 않는 예전 데몬이면 저장된 값으로 읽는다 (그때의 데몬 기본값: 켜짐·꺼짐)
+        auto_restart: e ? e.auto_restart !== false : asFlag(ms.auto_restart, true),
+        restart_on_unknown_exit: e ? e.restart_on_unknown_exit === true : asFlag(ms.restart_on_unknown_exit, false),
         controllers_only: server?.controllers_only === true,
     };
 }
@@ -169,7 +172,7 @@ export function SabaSettings({ api, server, running }: Omit<ServerPanelProps, 'm
         if (failed(res)) return toast(errorText(t, res), 'error');
         if (res?.revision) revision.current = res.revision;
         setOpened(next);
-        toast(running ? t('settings.saved_restart') : t('settings.saved'), 'ok');
+        toast(running && res?.restart_required?.length ? t('settings.saved_restart') : t('settings.saved'), 'ok');
     };
 
     return (

@@ -12,7 +12,7 @@ Modules reach the daemon only through the HOST channel; they get no IPC token.
     daemon_rcon_command()                        send an RCON command through the daemon
     loopback_exchange() / loopback_http()        talk to this instance's own port on 127.0.0.1
     is_process_alive() / wait_for_exit() / force_kill()   PID-safe process checks and kills
-    config_value()                               top level -> module_settings -> settings lookup
+    config_value() / setting_default()           top level -> module_settings -> settings lookup, module.toml setting default
     load_setting_types() / coerce_setting()      cast file values by module.toml field type
     atomic_write()                               replace a whole file without leaving it half written
     setting_file_keys() / settings_to_file() / settings_from_file() / setting_defaults_to_file()
@@ -21,10 +21,14 @@ Modules reach the daemon only through the HOST channel; they get no IPC token.
     remote_access_values() / enforce_remote_access() / rcon_access()
                                                  RCON·REST values saba-chan decides, from module.toml `[remote_access]`
     auto_heap_mb() / java_release_major()        JVM heap default for this PC, major version of a bundled JRE
+    java_heap() / COMPACT_OBJECT_HEADERS         memory setting -> JVM heap size, the Compact Object Headers flag (Java 25+)
     graceful_stop() / request_console() / request_terminate() / stop_timeout() / stop_command()
                                                  the save-then-stop procedure of a module `stop()`
     delete_paths()                               delete files and folders for a reset, collecting errors
     chat_reply() / extension_required()          the reply of a module `send_chat()`, the reply when an extension is missing
+    load_extension()                             import an extension package, or that reply when it is missing or off
+    player_capacity()                            the light `player_count()` reply (max players only)
+    safe_name()                                  is a user-chosen name one plain path piece (no separators, no trailing dot/space)
     diagnose_log() / load_diagnose_rules() / diagnose_lines() / tail_lines()
                                                  log diagnosis from module.toml `[[diagnose]]`
     progress() / download() / fetch_json() / safe_extract()
@@ -38,6 +42,7 @@ Environment (the daemon sets these for every Python run):
                         helpers then ask the daemon to make the connection (its own ports only)
 """
 
+import importlib
 import json
 import math
 import ntpath
@@ -101,6 +106,12 @@ SINCE = {
     "list_dir": "0.1.14-beta.2",
     "fetch_json": "0.1.14-beta.2",
     "extension_data_dir": "0.1.14-beta.2",
+    "setting_default": "0.1.14-beta.4",
+    "player_capacity": "0.1.14-beta.4",
+    "java_heap": "0.1.14-beta.4",
+    "COMPACT_OBJECT_HEADERS": "0.1.14-beta.4",
+    "safe_name": "0.1.14-beta.4",
+    "load_extension": "0.1.14-beta.4",
 }
 
 
@@ -110,6 +121,17 @@ class PathOutside(ValueError):
     def __init__(self, path):
         self.path = str(path)
         super().__init__(f"Path is outside root: {self.path}")
+
+
+# Windows가 이름에 받지 않는 글자 (구분자·드라이브 `:` 포함)
+_UNSAFE_NAME_CHARS = frozenset('<>:"/\\|?*')
+
+
+def safe_name(name):
+    """한 단계 경로 조각으로 쓸 수 있는 이름인가 (0.1.14-beta.4): 서버·월드 이름처럼 사용자가 정한 이름을 폴더·파일 이름으로 쓰기 전에 본다.
+    비었거나 구분자·드라이브·Windows가 받지 않는 글자·제어 문자가 있거나, Windows가 잘라 내는 끝 공백·점이 있으면(`.`·`..` 포함) 아니다"""
+    return (isinstance(name, str) and bool(name) and name[-1] not in " ."
+            and not any(c in _UNSAFE_NAME_CHARS or ord(c) < 32 for c in name))
 
 
 def safe_join(root, *parts):
@@ -695,6 +717,11 @@ def setting_defaults_to_file(module_dir, *, true="true", false="false"):
                             true=true, false=false)
 
 
+def setting_default(module_dir, name):
+    """설정 칸의 기본값: module.toml `[[settings.fields]] default` (0.1.14-beta.4). 없으면 None. 기본값을 module.toml 한 곳에만 둔다"""
+    return next((f.get("default") for f in _setting_fields(module_dir) if f["name"] == name), None)
+
+
 def settings_from_file(module_dir, values, *, true="true", false="false", case_insensitive=False):
     """게임 설정 파일 값 {파일 키: 문자열} → {설정 이름: 화면 형식}. 타입은 module.toml을 따른다.
     boolean은 true/false 표기가 맞을 때만 넣는다(모르는 표기는 짐작하지 않고 뺀다)"""
@@ -888,6 +915,29 @@ def java_release_major(java_home):
     return int(match.group(2) or 0) if match.group(1) == "1" else int(match.group(1))
 
 
+_HEAP_SIZE_RE = re.compile(r"\d+[KMGkmg]")
+
+
+def java_heap(value):
+    """메모리 설정 → JVM 힙 크기(-Xmx 값) (0.1.14-beta.4). "4G"·"1024M"·"512K"는 그대로, GB 숫자는 G로(소수는 M: 0.5 → 512M).
+    비었거나 읽을 수 없으면 이 PC에 맞춘 자동값(auto_heap_mb)"""
+    text = "" if value is None else str(value).strip()
+    if _HEAP_SIZE_RE.fullmatch(text):
+        return text
+    try:
+        gb = float(text)
+    except ValueError:
+        gb = 0.0
+    mb = int(gb * 1024) if math.isfinite(gb) else 0
+    if mb <= 0:
+        mb = auto_heap_mb()
+    return f"{mb // 1024}G" if mb % 1024 == 0 else f"{mb}M"
+
+
+# Compact Object Headers (JEP 519): Java 25에서 정식 기능, 힙을 아낀다. 25 아래 Java는 모르는 옵션이라 뜨지 않는다 (0.1.14-beta.4)
+COMPACT_OBJECT_HEADERS = "-XX:+UseCompactObjectHeaders"
+
+
 # ─── 정지 ─────────────────────────────────────────────────────
 
 # 데몬이 호출 제한(stop_call_limit)을 알려 주지 않으면(0.1.8) 120초 제한 안에서 끝낸다
@@ -985,6 +1035,28 @@ def extension_required(i18n, *extension_ids):
     문구는 공용 문구 `errors.extension_required`"""
     return {"success": False, "error_code": "extension_required", "missing_extensions": list(extension_ids),
             "message": i18n.t("errors.extension_required", extension=", ".join(extension_ids))}
+
+
+def load_extension(i18n, extension_id):
+    """모듈이 쓰는 익스텐션의 Python 패키지 `extensions.<id>` (0.1.14-beta.4): (패키지, None).
+    없거나 꺼져 있으면(import 가드) (None, `extension_required` 답). 익스텐션 안의 다른 import 실패는 그대로 올린다"""
+    package = "extensions." + extension_id.replace("-", "_")
+    try:
+        return importlib.import_module(package), None
+    except ModuleNotFoundError as e:
+        if e.name not in ("extensions", package):
+            raise
+        return None, extension_required(i18n, extension_id)
+
+
+def player_capacity(config):
+    """모듈 `player_count()`의 가벼운 답 (0.1.14-beta.4): 최대 인원(설정 `max_players`)만. 모르면 싣지 않는다.
+    1분 갱신(players_detail 없음)에는 게임에 묻지 않는다: 수는 데몬이 접속·퇴장 줄로 센다"""
+    try:
+        max_players = int(config_value(config, "max_players"))
+    except (TypeError, ValueError):
+        max_players = 0
+    return {"success": True, "max": max_players} if max_players > 0 else {"success": True}
 
 
 def list_dir(path):

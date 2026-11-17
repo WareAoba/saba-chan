@@ -691,6 +691,9 @@ pub struct ConfigStore {
     file: ConfigFile,
     gui_settings: RwLock<GuiSettings>,
     bot_config: RwLock<BotConfig>,
+    /// `gui.portConflictCheck`의 반대 값. 감독자가 시작·감시 때 읽는다(`Supervisor::skip_port_check`와 같은 것을 나눠 쓴다).
+    /// 앱 설정을 바꾸는 길(`adopt_gui`)이 늘 맞추므로 저장 경로마다 손으로 맞추지 않는다
+    skip_port_check: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 /// 이 PC에만 맞는 네임스페이스. 내보내기에서 뺀다 (`sandbox`: 이 PC 사용자가 확인한 동의,
@@ -784,11 +787,26 @@ impl ConfigStore {
             bot.prefixes.clear();
         }
 
+        let skip_port_check = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(!gui.port_conflict_check));
         Self {
             file,
             gui_settings: RwLock::new(gui),
             bot_config: RwLock::new(bot),
+            skip_port_check,
         }
+    }
+
+    /// 포트 검사를 끄는 스위치를 감독자의 것과 나눠 쓴다 (지금 설정 값을 그 스위치에 싣는다)
+    pub fn sharing_port_check(mut self, switch: std::sync::Arc<std::sync::atomic::AtomicBool>) -> Self {
+        switch.store(self.skip_port_check.load(std::sync::atomic::Ordering::Relaxed), std::sync::atomic::Ordering::Relaxed);
+        self.skip_port_check = switch;
+        self
+    }
+
+    /// 저장한 앱 설정을 메모리에 들이고 런타임 스위치를 맞춘다. 앱 설정을 바꾸는 길은 모두 여기를 지난다
+    fn adopt_gui(&self, slot: &mut GuiSettings, settings: GuiSettings) {
+        self.skip_port_check.store(!settings.port_conflict_check, std::sync::atomic::Ordering::Relaxed);
+        *slot = settings;
     }
 
     // ── Chatbot ──
@@ -852,7 +870,7 @@ impl ConfigStore {
         settings.validate().map_err(|e| ConfigStoreError::InvalidData(format!("Invalid GUI settings: {}", e)))?;
         let saved = serde_json::to_value(&settings)?;
         self.file.set_section("gui", saved.clone())?;
-        *current = settings.clone();
+        self.adopt_gui(&mut current, settings.clone());
         Ok((settings, patch::revision(&saved)))
     }
 
@@ -1033,7 +1051,7 @@ impl ConfigStore {
             let settings: GuiSettings = serde_json::from_value(Value::Object(full))
                 .map_err(|e| ConfigStoreError::InvalidData(format!("Invalid GUI settings: {}", e)))?;
             self.file.set_section("gui", serde_json::to_value(&settings)?)?;
-            **gui = settings;
+            self.adopt_gui(gui, settings);
             Ok(serde_json::to_value(&**gui).unwrap_or_default())
         } else {
             let mut current = bot.take().expect("held above");
@@ -1075,7 +1093,9 @@ impl ConfigStore {
             match key.as_str() {
                 "gui" => {
                     let merged = merge_json(self.get_gui_settings_json().await, value.clone());
-                    serde_json::from_value::<GuiSettings>(merged).map_err(|e| invalid("GUI settings", e))?;
+                    // 저장(`write_gui`)과 같은 검사: 고를 수 없는 선택지까지
+                    let settings = serde_json::from_value::<GuiSettings>(merged).map_err(|e| invalid("GUI settings", e))?;
+                    settings.validate().map_err(|e| ConfigStoreError::InvalidData(format!("Invalid GUI settings: {}", e)))?;
                 }
                 "relay" => {
                     // 저장(`merge_bot_config`)과 같은 검사: 접두사·릴레이 주소 규칙까지
@@ -1741,6 +1761,32 @@ mod tests {
             store.get_bot_config_json().await["nodeSettings"],
             json!({"g1": {"memo": "z", "members": {"u": 2}}, "g2": {"memo": "b"}, "g3": {"memo": "c"}})
         );
+    }
+
+    /// 포트 검사 설정은 저장·초기화하는 순간 나눠 쓰는 스위치에 바로 반영된다
+    #[tokio::test]
+    async fn the_port_check_switch_follows_every_app_settings_write() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let dir = tempfile::tempdir().unwrap();
+        let switch = std::sync::Arc::new(AtomicBool::new(true));
+        let store = ConfigStore::new(dir.path()).sharing_port_check(switch.clone());
+        assert!(!switch.load(Ordering::Relaxed), "the saved setting (check ports) is loaded into the switch");
+        store.write_gui(serde_json::json!({"portConflictCheck": false}), Apply::MergePatch, None).await.unwrap();
+        assert!(switch.load(Ordering::Relaxed));
+        store.reset_to_defaults("gui", Some(&["portConflictCheck".to_string()])).await.unwrap();
+        assert!(!switch.load(Ordering::Relaxed));
+    }
+
+    /// 가져오기 사전 검사는 앱 설정 저장이 거절할 값(고를 수 없는 선택지)도 미리 거절한다
+    #[tokio::test]
+    async fn the_import_precheck_refuses_app_settings_the_save_would_refuse() {
+        use serde_json::json;
+        let dir = tempfile::tempdir().unwrap();
+        let store = ConfigStore::new(dir.path());
+        for bad in [json!({"closeAction": "hide"}), json!({"newServerBackupKeep": 0})] {
+            let sections = serde_json::Map::from_iter([("gui".to_string(), bad.clone())]);
+            assert!(store.check_sections(&sections).await.is_err(), "{bad}");
+        }
     }
 
     /// PATCH는 보낸 칸만 바꾸고(`null`은 지우기), 읽은 뒤 바뀐 설정에는 쓰지 않는다

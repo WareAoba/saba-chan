@@ -38,7 +38,7 @@ const MAX_ENTRY_BYTES: u64 = 16 * 1024 * 1024;
 fn absolute_path(path: &str) -> Result<PathBuf, Response> {
     let p = PathBuf::from(path.trim());
     if path.trim().is_empty() || !p.is_absolute() {
-        return Err(error(StatusCode::BAD_REQUEST, "INVALID_PATH", "path must be an absolute file path"));
+        return Err(error(StatusCode::BAD_REQUEST, "invalid_path", "path must be an absolute file path"));
     }
     Ok(p)
 }
@@ -234,7 +234,7 @@ pub async fn export(State(state): State<IPCServer>, Json(req): Json<ExportReques
         node_token,
     };
     if let Err(e) = write_bundle(&path, &bundle) {
-        return error(StatusCode::INTERNAL_SERVER_ERROR, "WRITE_FAILED", format!("Could not write {}: {}", path.display(), e));
+        return error(StatusCode::INTERNAL_SERVER_ERROR, "write_failed", format!("Could not write {}: {}", path.display(), e));
     }
     Json(json!({
         "success": true,
@@ -267,7 +267,7 @@ pub async fn import(State(state): State<IPCServer>, Json(req): Json<ImportReques
     };
     let bundle = match read_bundle(&path) {
         Ok(b) => b,
-        Err(e) => return error(StatusCode::BAD_REQUEST, "INVALID_ARCHIVE", e.to_string()),
+        Err(e) => return error(StatusCode::BAD_REQUEST, "invalid_archive", e.to_string()),
     };
     // 설정이 잘못된 zip이면 인스턴스·노드 토큰을 바꾸기 전에 멈춘다.
     // 토큰을 가져오지 않으면 릴레이 연결 정보는 아래에서 버려지므로 검사하지 않는다
@@ -277,7 +277,7 @@ pub async fn import(State(state): State<IPCServer>, Json(req): Json<ImportReques
         keep_local_pairing(&mut checked);
     }
     if let Err(e) = state.config_store.check_sections(&checked).await {
-        return error(StatusCode::BAD_REQUEST, "INVALID_CONFIG", e.to_string());
+        return error(StatusCode::BAD_REQUEST, "invalid_config", e.to_string());
     }
 
     let (mut added, mut replaced, mut skipped, mut missing_modules) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
@@ -365,20 +365,13 @@ pub async fn import(State(state): State<IPCServer>, Json(req): Json<ImportReques
         // 챗봇 절은 챗봇 저장과 같은 차례를 지킨다
         let _turn = if sections.contains_key("chatbot") { Some(crate::service::chatbot::SAVE_LOCK.lock().await) } else { None };
         match state.config_store.import_sections(sections).await {
-            Ok(keys) => {
-                // 일반 설정 저장과 같이 실행 중인 포트 검사도 맞춘다
-                if keys.iter().any(|k| k == "gui") {
-                    let check = state.config_store.get_gui_settings().await.port_conflict_check;
-                    state.supervisor.read().await.skip_port_check.store(!check, std::sync::atomic::Ordering::Relaxed);
-                }
-                keys
-            }
+            Ok(keys) => keys,
             Err(e) => {
                 // 토큰은 이미 저장했다: 다음 기동까지 미루지 않고 지금 그 토큰으로 잇는다
                 if let Some((token, _)) = &adopted {
                     crate::relay_client::adopt_node_token(&state, token, true).await;
                 }
-                return error(StatusCode::BAD_REQUEST, "INVALID_CONFIG", e.to_string());
+                return error(StatusCode::BAD_REQUEST, "invalid_config", e.to_string());
             }
         }
     };
@@ -493,7 +486,7 @@ mod tests {
         let (state, path) = import_state(dir.path(), bundle, Some(old)).await;
         let req: ImportRequest = serde_json::from_value(json!({ "path": path, "overwrite": true })).unwrap();
         let res = crate::ipc::internal::into_internal(import(State(state.clone()), Json(req)).await).await;
-        assert_eq!(res.body["error_code"], "INVALID_CONFIG", "{}", res.body);
+        assert_eq!(res.body["error_code"], "invalid_config", "{}", res.body);
         let sup = state.supervisor.read().await;
         assert_eq!(sup.instance_store.get("a").unwrap().name, "old");
     }

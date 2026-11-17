@@ -201,7 +201,8 @@ custom_unknown_field = "should not cause error"
 "#;
     let meta = parse_module_toml(toml).unwrap();
     assert_eq!(meta.name, "palworld");
-    assert_eq!(meta.executable_path.as_deref(), Some("PalServer.exe"));
+    // 지운 키(0.1.14-beta.4): 읽는 곳이 없어 옛 모듈의 값은 모르는 키 경고로 넘긴다
+    assert!(meta.warnings.iter().any(|w| w.contains("config.executable_path")), "{:?}", meta.warnings);
     assert_eq!(meta.server_executable.as_deref(), Some("PalServer.exe"));
     assert_eq!(meta.default_port, Some(8211));
 }

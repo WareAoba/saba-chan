@@ -5,15 +5,16 @@ import { type RestartPending, unsavedSettingKeys } from '../stores/useServerSett
 import type { Server } from '../stores/useServerStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { useUIStore } from '../stores/useUIStore';
-import type { ModuleInfo, SettingField } from '../types/daemon';
+import type { ModuleInfo, PortConflictInfo, SettingField } from '../types/daemon';
 import { moduleSupports } from '../utils/helpers';
 import { extensionInstallMethod, versionBranchMethod } from '../utils/installMethod';
-import { checkPortConflicts, hiddenFields, validateAllSettings } from '../utils/validation';
+import { launchDraft } from '../utils/launchDraft';
+import { hiddenFields, validateAllSettings } from '../utils/validation';
 import { useExtensions } from '../contexts/ExtensionContext';
 import { changedForCli, SECRET_KEY } from '../utils/cliValues';
 import { CliLine } from './CliLine';
 import { CustomDropdown, ExtensionSlot, Icon } from './index';
-import { LaunchPreview } from './servers/LaunchPreview';
+import { DEBOUNCE_MS, LaunchPreview } from './servers/LaunchPreview';
 import { type ResetChoice, type ResetScope, ResetServerDialog } from './servers/ResetServerDialog';
 import { Popover } from './ui/Popover';
 import { SaveBar } from './ui/SaveBar';
@@ -57,7 +58,7 @@ interface GeneralTabProps {
     handleResetServer: (choice?: ResetChoice) => void;
     resettingServer?: boolean;
     validationErrors?: Record<string, SettingValidationError>;
-    portConflicts?: { port: number | string; conflictName: string }[];
+    portConflicts?: PortConflictInfo[];
     serverRunning?: boolean;
     section?: 'server' | 'saba';
     /** 화면을 열었을 때의 값 (바뀐 칸 표시용) */
@@ -243,7 +244,7 @@ function GeneralTab({
                         <strong>{t('errors.port_conflict')}</strong>
                         {portConflicts.map((c, i) => (
                             // biome-ignore lint/suspicious/noArrayIndexKey: 검사할 때마다 새로 만드는 읽기 전용 목록
-                            <div key={i}>{t('errors.port_conflict_detail', { port: c.port, name: c.conflictName })}</div>
+                            <div key={i}>{t('errors.port_conflict_detail', { port: c.port, name: c.conflict_name })}</div>
                         ))}
                     </div>
                 </div>
@@ -545,24 +546,26 @@ export function ServerSettingsModal({
         };
     }, [module, settingsValues, unsetSettings, settingsServer?.version_hidden]);
 
-    // ── Validation: 포트 충돌 검사 (모듈 프로토콜 인지) ──
-    const moduleProtocols = React.useMemo(() => {
-        const map: Record<string, string[]> = {};
-        for (const m of modules) {
-            if (m.protocols?.supported) map[m.name] = m.protocols.supported;
+    // ── 포트 충돌: 고치는 중인 값(저장할 때와 같은 변환)으로 데몬에 묻는다. 다른 서버의 포트가 바뀌어도 다시 묻는다 ──
+    const portDraft = JSON.stringify(launchDraft(module?.settings?.fields, settingsValues));
+    const otherPorts = JSON.stringify((servers || []).map((s) => [s.id, s.port, s.rest_port]));
+    const [portConflicts, setPortConflicts] = React.useState<PortConflictInfo[]>([]);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: otherPorts는 다른 서버의 포트가 바뀌면 다시 묻게 한다
+    React.useEffect(() => {
+        if (!useSettingsStore.getState().portConflictCheck) {
+            setPortConflicts([]);
+            return undefined;
         }
-        return map;
-    }, [modules]);
-
-    const portConflicts = React.useMemo(() => {
-        if (!useSettingsStore.getState().portConflictCheck) return [];
-        if (!settingsServer || !servers) return [];
-        const targetPorts = {
-            port: settingsValues.port ?? settingsServer.port,
-            rest_port: settingsValues.rest_port ?? settingsServer.rest_port,
+        let live = true;
+        const timer = setTimeout(async () => {
+            const res = await window.api.instancePortConflicts(settingsServer.id, JSON.parse(portDraft));
+            if (live) setPortConflicts(Array.isArray(res?.port_conflicts) ? res.port_conflicts : []);
+        }, DEBOUNCE_MS);
+        return () => {
+            live = false;
+            clearTimeout(timer);
         };
-        return checkPortConflicts(settingsServer.id, targetPorts, servers, moduleProtocols, settingsServer.module);
-    }, [settingsServer, settingsValues, servers, moduleProtocols]);
+    }, [settingsServer.id, portDraft, otherPorts]);
 
     return (
         <div className="ss-panel">

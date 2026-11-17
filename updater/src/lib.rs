@@ -43,7 +43,6 @@ mod apply;
 pub mod apply_session;
 pub mod autostart;
 mod state;
-mod time;
 
 #[cfg(test)]
 mod tests;
@@ -56,7 +55,7 @@ pub use marker::UpdateCompletionMarker;
 pub(crate) use apply::swap_dir_untouched;
 pub use apply::{carry_swap_dot_entries, replace_dir, Replacing, SWAP_FINGERPRINT};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -146,6 +145,11 @@ impl Component {
             Component::Extension(name) => format!("ext-{}", name),
             Component::Locales => "locales".to_string(),
         }
+    }
+
+    /// 바꾸려면 데몬이 내려가야 하는 구성요소 (업데이터가 적용한다). 나머지는 데몬이 떠 있는 채로 바꾼다
+    pub fn needs_daemon_down(&self) -> bool {
+        matches!(self, Component::Gui | Component::Updater | Component::CoreDaemon)
     }
 
     /// 구성요소 종류: `module`·`extension`(애드온, 사용자가 골라 받는다), 그 밖은 `app`(데몬이 묻지 않고 적용한다).
@@ -311,21 +315,6 @@ pub fn unmet_requires(component_key: &str, requires: &HashMap<String, String>, i
 
 // 업데이트 적용 관련 구조체 정의 (2-flow 아키텍처)
 
-/// 개별 컴포넌트 적용 결과
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ApplyComponentResult {
-    /// 컴포넌트 manifest 키 (예: "module-minecraft", "saba-core")
-    pub component: String,
-    /// 적용 성공 여부
-    pub success: bool,
-    /// 결과 메시지
-    pub message: String,
-    /// 업데이트 적용을 위해 중단한 프로세스 목록 (데몬 IPC 경유 적용 시)
-    pub stopped_processes: Vec<String>,
-    /// 재시작 필요 여부
-    pub restart_needed: bool,
-}
-
 /// 주기 확인 간격 (시간). 연결 여부와 상관없는 안전망이다
 pub const CHECK_EVERY_HOURS: u32 = 24;
 
@@ -431,6 +420,11 @@ exe_names! {
 
 /// GUI 실행 파일 이름들: 표준 이름과, 0.1.1 GUI zip처럼 Electron 폴더를 그대로 담은 경우의 productName
 pub const GUI_EXE_NAMES: &[&str] = if cfg!(windows) { &[GUI_EXE, LEGACY_GUI_EXE] } else { &[GUI_EXE] };
+
+/// 경로의 파일 이름이 GUI 실행 파일 이름(`GUI_EXE_NAMES`, 대소문자 무시)인가
+pub fn is_gui_exe(path: impl AsRef<Path>) -> bool {
+    path.as_ref().file_name().is_some_and(|n| GUI_EXE_NAMES.iter().any(|g| n.eq_ignore_ascii_case(g)))
+}
 
 /// 설치기가 업데이트 적용(`--apply`)을 맡은 첫 판. 이보다 옛 설치기(Windows 0.1.12-beta.1까지)는 `--apply`를 모르고 설치 창을 연다
 pub const INSTALLER_APPLIES_SINCE: &str = "0.1.12-beta.2";
@@ -636,36 +630,58 @@ fn path_parts(p: &Path) -> Vec<String> {
         .collect()
 }
 
-const ZIP_ENTRY_LIMIT: usize = 20_000;
-const ZIP_EXPANDED_LIMIT: u64 = 1024 * 1024 * 1024;
+/// zip 하나의 상한. `what`은 오류 문구의 주어다 ("Archive", "Module archive", "Extension package").
+/// 데몬의 모듈·익스텐션 패키지 풀기(`saba-core` `archive.rs`)도 이 규칙(`check_zip`·`zip_entry_path`·`copy_zip_entry`)을 쓴다
+#[derive(Debug, Clone, Copy)]
+pub struct ZipLimits {
+    pub what: &'static str,
+    pub entries: usize,
+    pub expanded: u64,
+}
 
-/// zip을 열고 파일 수와 풀린 크기(적힌 값)가 한도 안인지 본다
-fn open_zip(staged: &Path) -> Result<zip::ZipArchive<std::fs::File>> {
-    let mut archive = zip::ZipArchive::new(std::fs::File::open(staged)?)?;
-    if archive.len() > ZIP_ENTRY_LIMIT {
-        anyhow::bail!("Archive has too many files");
+/// 업데이트 zip의 상한
+const UPDATE_ZIP: ZipLimits = ZipLimits { what: "Archive", entries: 20_000, expanded: 1024 * 1024 * 1024 };
+
+/// 헤더에 적힌 항목 수·크기로 먼저 거른다 (풀기 전에 빨리 거절). 실제 크기는 풀면서 다시 센다(`copy_zip_entry`)
+pub fn check_zip<R: std::io::Read + std::io::Seek>(archive: &mut zip::ZipArchive<R>, limits: &ZipLimits) -> Result<()> {
+    if archive.len() > limits.entries {
+        anyhow::bail!("{} has too many files", limits.what);
     }
     let mut declared = 0u64;
     for i in 0..archive.len() {
         declared = declared.saturating_add(archive.by_index(i)?.size());
-        if declared > ZIP_EXPANDED_LIMIT {
-            anyhow::bail!("Archive expands beyond the size limit");
+        if declared > limits.expanded {
+            anyhow::bail!("{} expands beyond the size limit", limits.what);
         }
     }
+    Ok(())
+}
+
+/// zip을 열고 업데이트 상한(`UPDATE_ZIP`) 안인지 본다
+fn open_zip(staged: &Path) -> Result<zip::ZipArchive<std::fs::File>> {
+    let mut archive = zip::ZipArchive::new(std::fs::File::open(staged)?)?;
+    check_zip(&mut archive, &UPDATE_ZIP)?;
     Ok(archive)
 }
 
-/// 엔트리가 풀릴 상대 경로. 밖으로 나가는 경로는 거부한다
-fn zip_entry_path<R: std::io::Read>(entry: &zip::read::ZipFile<'_, R>, staged: &Path) -> Result<PathBuf> {
-    // enclosed_name은 `a/../b`를 받아 주므로 tar와 같이 평범한 칸만 받는다 (`..`를 지나면 링크 검사가 빗나간다)
-    match entry.enclosed_name().filter(|p| p.components().all(|c| matches!(c, std::path::Component::Normal(_)))) {
-        Some(rel) => Ok(rel),
-        None => anyhow::bail!("Unsafe path in archive {}: {}", staged.display(), String::from_utf8_lossy(entry.name_raw())),
+/// 엔트리가 풀릴 상대 경로. 보통 이름 조각만 받고(`..`·절대 경로·드라이브, Windows의 `name:stream` 거부), 링크 항목은 거부한다.
+/// enclosed_name은 `a/../b`를 받아 주므로 tar와 같이 평범한 칸만 받는다 (`..`를 지나면 링크 검사가 빗나간다).
+/// Windows에서 `name:stream`은 파일이 아니라 그 파일의 대체 데이터 스트림을 가리킨다
+pub fn zip_entry_path<R: std::io::Read>(entry: &zip::read::ZipFile<'_, R>, limits: &ZipLimits) -> Result<PathBuf> {
+    let plain = |part: std::path::Component| {
+        matches!(part, std::path::Component::Normal(name) if !(cfg!(windows) && name.to_string_lossy().contains(':')))
+    };
+    let Some(rel) = entry.enclosed_name().filter(|p| p.components().all(plain)) else {
+        anyhow::bail!("{} contains an invalid path", limits.what);
+    };
+    if entry.unix_mode().is_some_and(|mode| mode & 0o170000 == 0o120000) {
+        anyhow::bail!("{} contains a link", limits.what);
     }
+    Ok(rel)
 }
 
-/// 엔트리 내용을 `out`에 옮긴다 (끝까지 읽으면 zip이 CRC를 확인한다). `expanded`는 이 zip에서 지금까지 푼 크기
-fn copy_zip_entry(entry: &mut impl std::io::Read, out: &mut impl std::io::Write, expanded: &mut u64) -> std::io::Result<()> {
+/// 엔트리 내용을 `out`에 옮긴다 (끝까지 읽으면 zip이 CRC를 확인한다). `expanded`는 이 zip에서 지금까지 실제로 푼 크기
+pub fn copy_zip_entry(entry: &mut impl std::io::Read, out: &mut impl std::io::Write, expanded: &mut u64, limits: &ZipLimits) -> Result<()> {
     let mut buffer = [0u8; 64 * 1024];
     loop {
         let count = entry.read(&mut buffer)?;
@@ -673,8 +689,8 @@ fn copy_zip_entry(entry: &mut impl std::io::Read, out: &mut impl std::io::Write,
             return Ok(());
         }
         *expanded = expanded.saturating_add(count as u64);
-        if *expanded > ZIP_EXPANDED_LIMIT {
-            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Archive expands beyond the size limit"));
+        if *expanded > limits.expanded {
+            anyhow::bail!("{} expands beyond the size limit", limits.what);
         }
         out.write_all(&buffer[..count])?;
     }
@@ -687,16 +703,15 @@ pub fn verify_zip(staged: &Path) -> Result<()> {
     let mut expanded = 0u64;
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i)?;
-        zip_entry_path(&entry, staged)?;
-        copy_zip_entry(&mut entry, &mut std::io::sink(), &mut expanded)?;
+        zip_entry_path(&entry, &UPDATE_ZIP).with_context(|| format!("Unsafe entry in {}", staged.display()))?;
+        copy_zip_entry(&mut entry, &mut std::io::sink(), &mut expanded, &UPDATE_ZIP)?;
     }
     Ok(())
 }
 
-/// zip을 `target_dir`에 푼다. 모든 압축 해제는 이 함수를 거친다.
+/// 업데이트 zip을 `target_dir`에 푼다 (업데이트 적용의 모든 zip 풀기가 이 함수를 거친다).
 ///
-/// 엔트리 경로는 `enclosed_name()`으로 검사해 `..`나 절대 경로로
-/// `target_dir` 밖에 쓰는 엔트리(zip-slip)를 거부한다. `before_write`는
+/// 엔트리 경로·링크 항목은 `zip_entry_path`로 거른다. `before_write`는
 /// 파일을 쓰기 직전에 호출된다(실행 중 바이너리를 비켜 두는 데 쓴다).
 /// 대상 폴더 안의 기존 링크(Windows 정션 포함)를 따라 밖에 쓰지 않는다.
 /// 쓴 파일 경로를 돌려준다(무결성 기록용).
@@ -710,7 +725,7 @@ pub fn extract_zip(
     let mut expanded = 0u64;
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i)?;
-        let rel = zip_entry_path(&entry, staged)?;
+        let rel = zip_entry_path(&entry, &UPDATE_ZIP).with_context(|| format!("Unsafe entry in {}", staged.display()))?;
         reject_links_below(target_dir, &rel)?;
         let out_path = target_dir.join(&rel);
         if entry.is_dir() {
@@ -726,22 +741,22 @@ pub fn extract_zip(
         let mut partial = out_path.clone().into_os_string();
         partial.push(".update-new");
         let partial = PathBuf::from(partial);
-        let wrote = std::fs::File::create(&partial).and_then(|mut f| {
-            copy_zip_entry(&mut entry, &mut f, &mut expanded)?;
-            f.sync_all()
+        let wrote = std::fs::File::create(&partial).map_err(anyhow::Error::from).and_then(|mut f| {
+            copy_zip_entry(&mut entry, &mut f, &mut expanded, &UPDATE_ZIP)?;
+            Ok(f.sync_all()?)
         });
         // 리눅스 zip의 실행 파일은 실행 권한을 지닌다 (zip에 적힌 권한 중 실행 비트만 옮긴다)
         #[cfg(unix)]
         let wrote = wrote.and_then(|_| {
             use std::os::unix::fs::PermissionsExt;
             match entry.unix_mode() {
-                Some(mode) if mode & 0o111 != 0 => std::fs::set_permissions(&partial, std::fs::Permissions::from_mode(0o755)),
+                Some(mode) if mode & 0o111 != 0 => Ok(std::fs::set_permissions(&partial, std::fs::Permissions::from_mode(0o755))?),
                 _ => Ok(()),
             }
         });
-        if let Err(e) = wrote.and_then(|_| std::fs::rename(&partial, &out_path)) {
+        if let Err(e) = wrote.and_then(|_| Ok(std::fs::rename(&partial, &out_path)?)) {
             let _ = std::fs::remove_file(&partial);
-            return Err(e.into());
+            return Err(e);
         }
         written.push(out_path);
     }
@@ -1031,7 +1046,9 @@ impl UpdateManager {
                 {
                     true
                 } else if installed && current.is_empty() {
-                    let _ = Self::update_installed_version(key, &info.version);
+                    if let Err(e) = Self::update_installed_version_at(&self.installed_manifest_file, key, &info.version) {
+                        tracing::warn!("[UpdateManager] Recording {} {} as installed failed: {}", key, info.version, e);
+                    }
                     false
                 } else if addons.as_ref().is_some_and(|c| c.is_yanked(key, &current)) && info.version != current {
                     // 깐 판을 내렸다: 목록의 판으로 되돌린다 (더 낮은 판이어도)
@@ -1062,15 +1079,15 @@ impl UpdateManager {
             self.latest_release = Some(release.latest);
         }
 
-        let now = time::now_iso();
+        let now = chrono::Utc::now();
         // 주기 확인은 24시간마다다 (연결된 데몬은 heartbeat의 판 번호로 안다)
-        let next = time::iso_after_hours(CHECK_EVERY_HOURS);
+        let next = now + chrono::Duration::hours(CHECK_EVERY_HOURS.into());
         // 같은 판 베타를 받는 동안 기다리는 정식 판. 정식(그 판 이상)을 받으면 사라진다
         let stable_wait = relay::stable_wait_base(&channel, &current)
             .filter(|_| offered.as_deref().and_then(SemVer::parse).is_none_or(|v| v.is_prerelease()));
         self.status = UpdateStatus {
-            last_check: Some(now),
-            next_check: Some(next),
+            last_check: Some(now.to_rfc3339()),
+            next_check: Some(next.to_rfc3339()),
             components,
             checking: false,
             error: None,
@@ -1340,13 +1357,9 @@ impl UpdateManager {
             }
             on_progress(i, key, &applied);
             match self.apply_single_component(&Component::from_manifest_key(key)).await {
-                Ok(result) if result.success => {
+                Ok(()) => {
                     tracing::info!("[Apply] {} ✓", key);
                     applied.push(key.clone());
-                }
-                Ok(result) => {
-                    tracing::warn!("[Apply] {} failed: {}", key, result.message);
-                    failed.push(format!("{}: {}", key, result.message));
                 }
                 Err(e) => {
                     tracing::error!("[Apply] {} error: {}", key, e);
@@ -1375,10 +1388,8 @@ impl UpdateManager {
         match component {
             Component::Module(name) => self.apply_module_update(name, staged_path).await,
             Component::Extension(name) => self.apply_extension_update(name, staged_path).await,
-            Component::Cli => self.apply_binary_update("saba-cli", staged_path).await,
-            // 업데이터 자신(Windows는 실행 중인 exe의 이름을 바꿀 수 있다)과 데몬은 같은 방식
-            Component::Updater => self.apply_binary_update("saba-chan-updater", staged_path).await,
-            Component::CoreDaemon => self.apply_binary_update("saba-core", staged_path).await,
+            // CLI·업데이터 자신(실행 중인 exe는 비켜 두고 바꾼다)과 데몬은 같은 방식
+            Component::Cli | Component::Updater | Component::CoreDaemon => self.apply_binary_update(component, staged_path).await,
             Component::Gui => self.apply_gui_update(staged_path).await,
             Component::Installer => self.apply_installer_update(staged_path),
             // 옆 폴더에 다 푼 뒤 이름 바꾸기로 통째로 바꾸고 판 번호(`locales/version`)를 적는다: 읽는 쪽이 반쯤 바뀐 묶음을 보지 않는다
@@ -1654,20 +1665,20 @@ impl UpdateManager {
     ///
     /// Flow 1 (백그라운드 워커): IPC 커맨드를 통해 데몬이 직접 적용한 후 재시작
     /// Flow 2 (GUI/CLI): 직접 적용, self-update flow로 전환
-    pub async fn apply_single_component(&mut self, component: &Component) -> Result<ApplyComponentResult> {
+    pub async fn apply_single_component(&mut self, component: &Component) -> Result<()> {
         self.apply_single_component_with(component, false).await
     }
 
     /// 묻지 않는 모듈·익스텐션 교체: 교체 순간의 폴더가 카탈로그에서 깐 그대로일 때만 바꾼다 (`integrity::matches_install_record`).
     /// 사용자가 넣거나 고친 파일이 있으면 폴더를 건드리지 않고 실패로 돌려준다
-    pub async fn apply_untouched_addon(&mut self, component: &Component) -> Result<ApplyComponentResult> {
+    pub async fn apply_untouched_addon(&mut self, component: &Component) -> Result<()> {
         if !matches!(component, Component::Module(_) | Component::Extension(_)) {
             anyhow::bail!("{} is not a module or an extension", component.manifest_key());
         }
         self.apply_single_component_with(component, true).await
     }
 
-    async fn apply_single_component_with(&mut self, component: &Component, untouched_only: bool) -> Result<ApplyComponentResult> {
+    async fn apply_single_component_with(&mut self, component: &Component, untouched_only: bool) -> Result<()> {
         // 업데이터·데몬의 개별 적용도 지난 적용이 남긴 것부터 정리한다 (같은 프로세스가 적용하므로 안전하다)
         self.settle_interrupted_updates();
         let comp = self.status.components.iter()
@@ -1684,51 +1695,24 @@ impl UpdateManager {
         let files = if untouched_only { self.replace_untouched_addon(component, staged_path)? } else { self.apply_one(component, staged_path).await? };
         Self::record_files(component, &files);
 
-        let message = match component {
-            Component::Module(name) => format!("Module '{}' updated", name),
-            Component::Extension(name) => format!("Extension '{}' updated", name),
-            Component::CoreDaemon => "Saba-Core updated (restart required)".to_string(),
-            other => format!("{} updated", other.display_name()),
-        };
-        let result = ApplyComponentResult {
-            component: component.manifest_key(),
-            success: true,
-            message,
-            stopped_processes: Vec::new(), // IPC 커맨드 경유 시 해당 없음
-            // 데몬은 새 프로세스로, GUI는 업데이터가 다시 띄운다
-            restart_needed: matches!(component, Component::CoreDaemon | Component::Gui),
-        };
-
+        tracing::info!("[UpdateManager] {} updated", component.manifest_key());
         // 적용 성공 시 상태 업데이트
         self.mark_component_applied(component);
 
         // 로컬 매니페스트에 버전 기록
-        if result.success {
-            if let Some(comp_state) = self.status.components.iter()
-                .find(|c| &c.component == component)
-            {
-                if let Err(e) = Self::update_installed_version_at(
-                    &self.installed_manifest_file,
-                    &component.manifest_key(),
-                    &comp_state.current_version,
-                ) {
-                    tracing::warn!("[UpdateManager] Failed to update installed manifest for {}: {}", component.manifest_key(), e);
-                }
-            }
-
-            // 코어 컴포넌트가 업데이트된 경우, 레지스트리의 DisplayVersion도 갱신
-            if matches!(component, Component::CoreDaemon) {
-                if let Some(core_comp) = self.status.components.iter()
-                    .find(|c| matches!(c.component, Component::CoreDaemon))
-                {
-                    if let Err(e) = self.update_registry_display_version(&core_comp.current_version) {
-                        tracing::warn!("[UpdateManager] Failed to update registry DisplayVersion: {}", e);
-                    }
-                }
+        if let Some(comp_state) = self.status.components.iter().find(|c| &c.component == component) {
+            if let Err(e) = Self::update_installed_version_at(&self.installed_manifest_file, &component.manifest_key(), &comp_state.current_version) {
+                tracing::warn!("[UpdateManager] Failed to update installed manifest for {}: {}", component.manifest_key(), e);
             }
         }
 
-        Ok(result)
+        // 코어 컴포넌트가 업데이트된 경우, 레지스트리의 DisplayVersion도 갱신
+        if matches!(component, Component::CoreDaemon) {
+            if let Some(core_comp) = self.status.components.iter().find(|c| matches!(c.component, Component::CoreDaemon)) {
+                self.update_registry_display_version(&core_comp.current_version);
+            }
+        }
+        Ok(())
     }
 
     /// 컴포넌트의 적용 완료 상태를 표시

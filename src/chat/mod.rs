@@ -185,8 +185,9 @@ impl Done {
     }
 }
 
-/// 텍스트 명령을 처리하고 응답을 돌려줍니다. 실패해도 항상 응답을 만듭니다.
-pub async fn process<D: DaemonApi>(api: &D, settings: &ChatSettings, cat: &Catalog, req: &ChatRequest) -> Reply {
+/// 해석하고 실행해 응답을 돌려준다 (시험 도우미. 실제 경로는 `actions`가 `interpret`·`execute`를 따로 부른다)
+#[cfg(test)]
+pub(crate) async fn process<D: DaemonApi>(api: &D, settings: &ChatSettings, cat: &Catalog, req: &ChatRequest) -> Reply {
     let ctx = Ctx::new(api, settings, cat, req).await;
     match ctx.interpret().await {
         Interpreted::Reply(reply) => reply,
@@ -202,17 +203,6 @@ pub async fn interpret<D: DaemonApi>(api: &D, settings: &ChatSettings, cat: &Cat
 /// 해석한 명령을 실행한다
 pub async fn execute<D: DaemonApi>(api: &D, settings: &ChatSettings, cat: &Catalog, req: &ChatRequest, target: &Target) -> Done {
     Ctx::new(api, settings, cat, req).await.execute(target).await
-}
-
-/// 앞의 낱말 `n`개를 건너뛴 나머지 원문 (따옴표 안의 공백을 그대로 두려고 나누기 전 문자열을 쓴다)
-#[cfg(test)]
-fn skip_words(text: &str, n: usize) -> &str {
-    let mut rest = text.trim_start();
-    for _ in 0..n {
-        let end = rest.find(char::is_whitespace).unwrap_or(rest.len());
-        rest = rest[end..].trim_start();
-    }
-    rest
 }
 
 /// 글의 첫 낱말과 그 낱말이 끝난 자리 (바이트)
@@ -985,7 +975,7 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
             "no_command_path" => Text::seq(["❌ ".into(), self.t("errors.no_command_path", &[("name", &server.name)])]),
             "invalid_argument" => self.invalid_text(module, field, &resp),
             "auth_failed" => self.error_line(module_text.map(Text::from).unwrap_or_else(|| self.t("errors.auth_failed", &[]))),
-            "not_found" => self.error_line(resp.str_field("error").map(Text::from).unwrap_or_else(|| self.t("errors.not_found", &[]))),
+            "not_found" | "instance_not_found" => self.error_line(resp.str_field("error").map(Text::from).unwrap_or_else(|| self.t("errors.not_found", &[]))),
             _ => self.error_line(
                 module_text
                     .or_else(|| module.errors.get("internal_server_error").cloned())

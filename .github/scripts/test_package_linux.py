@@ -42,7 +42,7 @@ class LinuxZips(unittest.TestCase):
                 desktop = {i.filename: zf.read(i) for i in zf.infolist()}
             with zipfile.ZipFile(d / "out" / "saba-chan-installer-headless-linux-x64.zip") as zf:
                 headless = {i.filename: ((i.external_attr >> 16) & 0o777, zf.read(i)) for i in zf.infolist()}
-        self.assertEqual(modes, {"saba-core": 0o755, "saba-runner": 0o755, "i18n.py": 0o644, "daemon_rcon.py": 0o644, "common_locales.json": 0o644})
+        self.assertEqual(modes, {"saba-core": 0o755, "saba-runner": 0o755})
         # 데스크톱 리눅스 GUI: 앱 메뉴 항목(설치기)이 GUI 옆 아이콘을 가리킨다
         self.assertEqual(gui, {"saba-chan-gui": 0o755, "saba-chan-gui.png": 0o644})
         self.assertEqual(desktop, {"saba-chan-installer": b"\x7fELF"})

@@ -318,10 +318,6 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     },
 }));
 
-// 창 불투명도는 저장값을 불러올 때도, 바꿀 때도 창에 바로 적용한다 (Windows만, 다른 곳은 API가 없다)
-useSettingsStore.subscribe((state, prevState) => {
-});
-
 // ── Auto-save subscription (Zustand v5 single-listener) ──
 let settingsSaveTimer: ReturnType<typeof setTimeout> | undefined;
 const _settingsKeys: SettingKey[] = [

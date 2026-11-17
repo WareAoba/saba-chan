@@ -80,6 +80,7 @@ const SAME_EVERYWHERE = [
     'gui.json:discord.usage_module_word',
     // 가이드 카드의 딱지 (#948 부터 모든 언어가 'new!')
     'gui.json:guides.new',
+    'gui.json:server_settings.group_pvp',
 ];
 
 /** 영어와 글자가 같아도 그 언어에서 맞는 문구 (언어: 파일:키) */
@@ -207,6 +208,7 @@ const SAME_AS_EN: Record<string, string[]> = {
         'gui.json:branch.count',
         'gui.json:players.optional',
         'gui.json:players.online',
+        'gui.json:server_settings.group_mob',
     ],
     fr: [
         'gui.json:saba_storage.summary_addons',
@@ -276,6 +278,7 @@ const SAME_AS_EN: Record<string, string[]> = {
         'gui.json:server_settings.idle_stop_unit',
         'gui.json:shell.build',
         'gui.json:branch.count',
+        'gui.json:server_settings.group_communication',
     ],
     ru: ['gui.json:discord.bot_settings.tts_speed_unit'],
 };

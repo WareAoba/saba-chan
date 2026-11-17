@@ -88,6 +88,14 @@ fn peeked(path: &Path, stamp: &Stamp, key: &str) -> Option<Value> {
     Some(hit.doc.get(key).cloned().unwrap_or(Value::Null))
 }
 
+/// 데몬 IPC 포트: `SABA_IPC_PORT` > `config.json`의 `gui.ipcPort` > 기본값. 데몬·트레이·업데이터·CLI가 모두 이것을 읽는다
+pub fn ipc_port() -> u16 {
+    std::env::var("SABA_IPC_PORT")
+        .ok()
+        .and_then(|p| p.parse::<u16>().ok())
+        .unwrap_or_else(|| ConfigFile::default_location().ipc_port())
+}
+
 #[derive(Debug, Clone)]
 pub struct ConfigFile {
     dir: PathBuf,
@@ -125,6 +133,15 @@ impl ConfigFile {
     /// 한 네임스페이스. 없으면 `Value::Null`.
     pub fn section(&self, key: &str) -> Value {
         self.load().remove(key).unwrap_or(Value::Null)
+    }
+
+    /// 설정의 데몬 포트(`gui.ipcPort`). 없거나 u16 범위 밖이면 기본값. 환경 변수 없이 뜬 데몬(자동 실행)이 여는 포트다
+    pub fn ipc_port(&self) -> u16 {
+        self.peek_section("gui")
+            .get("ipcPort")
+            .and_then(Value::as_u64)
+            .and_then(|p| u16::try_from(p).ok())
+            .unwrap_or(crate::constants::DEFAULT_IPC_PORT)
     }
 
     /// 한 네임스페이스를 읽기만 한다: 잠그지 않고 이관·복구·저장도 하지 않는다 (경로 해석처럼 자주, 어디서나 부르는 곳).
@@ -332,6 +349,16 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let cfg = ConfigFile::at(dir.path());
         (dir, cfg)
+    }
+
+    /// 데몬·트레이·업데이터·CLI가 같은 포트를 읽는다: u16 범위를 넘는 값은 잘라 다른 포트로 읽지 않고 기본값으로 본다
+    #[test]
+    fn an_out_of_range_ipc_port_reads_as_the_default() {
+        let (_d, cfg) = file();
+        cfg.set_section("gui", json!({ "ipcPort": 60000 })).unwrap();
+        assert_eq!(cfg.ipc_port(), 60000);
+        cfg.set_section("gui", json!({ "ipcPort": 65536 + 57475 })).unwrap();
+        assert_eq!(cfg.ipc_port(), crate::constants::DEFAULT_IPC_PORT);
     }
 
     /// 자주 부르는 읽기(원격 중계는 요청마다)는 바뀌지 않은 파일을 다시 읽지 않는다. 이 프로세스의 저장과 밖에서 고친 것은 바로 보인다

@@ -380,12 +380,6 @@ export function lineAt(saved: LadderLevel[], draft: LadderLevel[], level: number
     return 0;
 }
 
-/** 줄을 `at` 칸에서 위(-1)·아래(1)로 한 칸 옮긴 자리. 더 못 가면 null */
-export function lineStep(draft: LadderLevel[], at: number, dir: -1 | 1) {
-    for (let i = at + dir; i >= 0 && i < draft.length; i += dir) if (lineSlot(draft[i])) return i;
-    return null;
-}
-
 /** 디스코드 되묻기 단계 */
 export const RISKS = ['safe', 'caution', 'danger'];
 
@@ -437,22 +431,6 @@ export function defaultMembers(
         const id = String(m?.id ?? '');
         return id && id !== owner && !(id in members);
     });
-}
-
-/**
- * 릴레이에 남은 부여값 중 데몬과 다른 것 (가져오기 후보).
- * 데몬은 자동으로 가져오지 않는다: 원본이 둘이 되지 않게 사용자가 골라서 데몬에 쓴다.
- */
-export function importCandidates(
-    perm: GuildPermissions | null | undefined,
-    relayMembers: DiscordMember[] | null | undefined,
-) {
-    const members = perm?.members || {};
-    const owner = String(perm?.ownerDiscordId ?? '');
-    return (relayMembers || []).filter(
-        (m) =>
-            grantable(perm).includes(m?.level as number) && String(m.id) !== owner && members[String(m.id)] !== m.level,
-    );
 }
 
 /**

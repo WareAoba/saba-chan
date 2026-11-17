@@ -8,6 +8,7 @@
 //! 상태(마지막으로 본 릴리즈 id, 단계, 읽은 완료 마커)는 `<staging>/live-update.json`에 둔다
 
 use crate::supervisor::core_swap::{CoreSwapBlocker, CoreSwapBlockerKind};
+use saba_chan_updater_lib::Component;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
@@ -190,7 +191,7 @@ pub fn is_app_component(key: &str) -> bool {
 
 /// 바꾸려면 데몬이 내려가야 하는 구성요소 (`apply_updates_with`가 업데이터에 넘기는 것)
 pub fn needs_restart(key: &str) -> bool {
-    matches!(key, crate::module_loader::CORE_COMPONENT | "gui" | "updater")
+    Component::try_from_manifest_key(key).is_some_and(|c| c.needs_daemon_down())
 }
 
 /// 자동 적용 판정의 입력

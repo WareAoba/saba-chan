@@ -29,8 +29,7 @@ def _mac():
 
 # 컴포넌트 → (zip 이름 앞부분, 실행 파일, 함께 넣는 저장소 파일 → zip 안 이름)
 LINUX_ASSETS = {
-    "saba-core": ("saba-core", ["saba-core", "saba-runner"], {
-        "modules/i18n.py": "i18n.py", "modules/daemon_rcon.py": "daemon_rcon.py", "modules/common_locales.json": "common_locales.json"}),
+    "saba-core": ("saba-core", ["saba-core", "saba-runner"], {}),
     "cli": ("saba-chan-cli", ["saba-chan-cli"], {}),
     "gui": ("saba-chan-gui", ["saba-chan-gui"], {"saba-chan-gui/src-tauri/icons/icon.png": "saba-chan-gui.png"}),
     "installer.desktop": ("saba-chan-installer-desktop", ["saba-chan-installer"], {}),

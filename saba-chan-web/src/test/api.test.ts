@@ -18,7 +18,7 @@ describe('웹 브리지', () => {
         const session = fakeSession({ status: 200, data: { servers: [{ id: 'a' }] } });
         const { api } = createWebApi(session);
         await expect(api.serverList()).resolves.toEqual({ servers: [{ id: 'a' }] });
-        expect(session.calls[0]).toMatchObject({ method: 'GET', path: '/api/servers?notices_after=0' });
+        expect(session.calls[0]).toMatchObject({ method: 'GET', path: '/api/servers' });
     });
 
     it('PC 에서만 하는 일은 문지기의 답을 그대로 돌려준다', async () => {

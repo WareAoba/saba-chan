@@ -11,7 +11,6 @@ const MONITOR_INTERVAL_SECS: u64 = 2;
 /// 하트비트 reaper 간격 (초)
 const HEARTBEAT_REAPER_INTERVAL_SECS: u64 = 30;
 /// 모니터 연속 실패 허용 횟수
-const MONITOR_MAX_CONSECUTIVE_ERRORS: u32 = 10;
 /// 데몬 로그 파일 상한. 넘으면 `daemon.log.1`로 넘긴다 (둘이 합쳐 이 값의 두 배까지)
 const DAEMON_LOG_CAP: u64 = 5 * 1024 * 1024;
 
@@ -308,17 +307,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // 포트: SABA_IPC_PORT > config.json의 gui.ipcPort > 기본값 (GUI·CLI가 같은 값을 읽는다)
-    let ipc_port = std::env::var("SABA_IPC_PORT")
-        .ok()
-        .and_then(|p| p.parse::<u16>().ok())
-        .or_else(|| {
-            saba_chan_updater_lib::config_file::ConfigFile::default_location()
-                .section("gui")
-                .get("ipcPort")
-                .and_then(|v| v.as_u64())
-                .and_then(|p| u16::try_from(p).ok())
-        })
-        .unwrap_or(constants::DEFAULT_IPC_PORT);
+    let ipc_port = saba_chan_updater_lib::config_file::ipc_port();
     let ipc_addr = format!("127.0.0.1:{}", ipc_port);
     plugin::set_ipc_port(ipc_port);
 
@@ -444,7 +433,7 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
-    spawn_background_tasks(&ipc_server, &supervisor, &client_registry, &daemon_log_buffer, daemon_only);
+    spawn_background_tasks(&ipc_server, &supervisor, &client_registry, daemon_only);
 
     // Windows가 GUI 알림(크래시 등 중대 알림)을 바로가기 없이도 띄우도록 앱 ID를 등록한다
     tokio::task::spawn_blocking(|| {
@@ -544,7 +533,6 @@ fn spawn_background_tasks(
     ipc_server: &ipc::IPCServer,
     supervisor: &Arc<RwLock<supervisor::Supervisor>>,
     client_registry: &ipc::ClientRegistry,
-    daemon_log_buffer: &daemon_log::DaemonLogBuffer,
     daemon_only: bool,
 ) {
     // ── CancellationToken: 모든 백그라운드 태스크에 graceful shutdown 전파 ──
@@ -588,13 +576,9 @@ fn spawn_background_tasks(
                 }
                 Err(e) => {
                     error_count += 1;
+                    // 처음 세 번과 그 뒤 열 번마다만 남긴다 (다음 주기에 다시 본다)
                     if error_count <= 3 || error_count % 10 == 0 {
                         tracing::error!("Monitor error (count: {}): {}", error_count, e);
-                    }
-                    
-                    if error_count >= MONITOR_MAX_CONSECUTIVE_ERRORS {
-                        tracing::error!("Monitor has failed {} consecutive times, restarting monitoring", error_count);
-                        error_count = 0;
                     }
                 }
             }
@@ -660,12 +644,11 @@ fn spawn_background_tasks(
     // 인터페이스가 모두 떠나도 데몬은 남는다 (데몬이 서비스의 주체). 스스로 끝내지 않고, 다음에 켠 GUI·CLI가
     // 다시 붙는다. 끄는 것은 /api/daemon/shutdown 또는 Ctrl+C·SIGTERM뿐이다. 다시 띄우는 것은 트레이를 든 상주 GUI뿐이다.
     if daemon_only {
-        // 데몬 온리 모드: 터미널 폴링 루프 시작 — 데몬 로그 + 프로세스 콘솔을 stderr에 표시
-        let term_buf = daemon_log_buffer.clone();
+        // 데몬 온리 모드: 서버 콘솔 줄을 stderr에 표시 (데몬 로그는 tracing이 이미 stderr로 낸다)
         let term_sup = supervisor.clone();
         let term_cancel = shutdown_token.clone();
         tokio::spawn(async move {
-            daemon_log::daemon_terminal_loop(term_buf, term_sup, term_cancel).await;
+            daemon_log::daemon_terminal_loop(term_sup, term_cancel).await;
         });
     }
 

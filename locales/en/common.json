@@ -45,6 +45,7 @@
   },
   "server": {
     "list_failed": "Failed to fetch server list (HTTP {{status}}): {{error}}",
+    "auth_failed": "Authentication failed. Daemon token may have changed.",
     "start_failed": "Failed to start: {{error}}",
     "stop_failed": "Failed to stop: {{error}}",
     "status_check_failed": "Status check failed (HTTP {{status}}): {{error}}",

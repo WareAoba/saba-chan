@@ -207,6 +207,66 @@ impl ProcessTracker {
     }
 }
 
+/// 데몬이 직접 띄운 non-managed 서버의 끝 (`InstanceRuntime::launched`). 띄운 프로세스의 손잡이를 들고 있어 끝나면 종료 코드를 안다.
+/// 데몬을 다시 켠 뒤 붙었거나 자동 감지한 프로세스에는 없다
+pub(crate) struct LaunchedExit {
+    /// 띄운 프로세스의 PID. 추적 PID가 이것과 다르면 이 종료 상태는 추적하던 서버의 것이 아니다
+    pub pid: u32,
+    waiter: Waiter,
+}
+
+enum Waiter {
+    /// tokio `Child`를 기다리는 작업이 채운다 (unix는 그 작업이 거둬야 PID가 사라진다)
+    Child(std::sync::Arc<std::sync::OnceLock<super::managed_process::ProcessExit>>),
+    /// 새 콘솔 창에 띄운 서버의 프로세스 핸들 (Windows)
+    #[cfg(windows)]
+    Handle(std::os::windows::io::OwnedHandle),
+}
+
+impl LaunchedExit {
+    pub fn from_child(pid: u32, mut child: tokio::process::Child) -> Self {
+        let slot = std::sync::Arc::new(std::sync::OnceLock::new());
+        let filled = slot.clone();
+        tokio::spawn(async move {
+            let exit = match child.wait().await {
+                Ok(status) => (&status).into(),
+                Err(e) => {
+                    tracing::warn!("Could not wait for non-managed server PID {}: {}", pid, e);
+                    Default::default()
+                }
+            };
+            let _ = filled.set(exit);
+        });
+        Self { pid, waiter: Waiter::Child(slot) }
+    }
+
+    #[cfg(windows)]
+    pub fn from_handle(pid: u32, handle: std::os::windows::io::OwnedHandle) -> Self {
+        Self { pid, waiter: Waiter::Handle(handle) }
+    }
+
+    /// 끝났으면 그 종료 상태 (종료 코드를 읽지 못했으면 빈 값), 아직 돌면 None
+    pub fn ended(&self) -> Option<super::managed_process::ProcessExit> {
+        match &self.waiter {
+            Waiter::Child(slot) => slot.get().copied(),
+            #[cfg(windows)]
+            Waiter::Handle(handle) => {
+                use std::os::windows::io::AsRawHandle;
+                use windows_sys::Win32::Foundation::WAIT_OBJECT_0;
+                use windows_sys::Win32::System::Threading::{GetExitCodeProcess, WaitForSingleObject};
+                let raw = handle.as_raw_handle() as _;
+                // 종료 코드 STILL_ACTIVE(259)로 끝난 프로세스와 헷갈리지 않게 핸들이 신호를 받았는지로 끝을 본다
+                if unsafe { WaitForSingleObject(raw, 0) } != WAIT_OBJECT_0 {
+                    return None;
+                }
+                let mut code = 0u32;
+                let read = unsafe { GetExitCodeProcess(raw, &mut code) } != 0;
+                Some(super::managed_process::ProcessExit { code: read.then_some(code as i32), ..Default::default() })
+            }
+        }
+    }
+}
+
 fn current_timestamp() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)

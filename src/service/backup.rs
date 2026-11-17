@@ -19,9 +19,17 @@ pub(crate) async fn is_running(state: &IPCServer, id: &str) -> bool {
     state.supervisor.read().await.is_running(id).await
 }
 
-/// 이름 하나로 게임 명령 실행 (저장·공지). 성공 여부만
-pub(crate) async fn run_command(state: &IPCServer, id: &str, name: &str, args: Value) -> bool {
-    command_reply(state, id, name, args).await.is_some()
+/// 이름 하나로 게임 명령 실행 (예약 저장·명령·공지, 자동 강퇴). 서버가 거절한 답(`rejected`)도 실패다.
+/// 실패면 그 `error_code`(서버의 거절은 `command_failed`)
+pub(crate) async fn run_command(state: &IPCServer, id: &str, name: &str, args: Value) -> Result<(), String> {
+    let resp = command_response(state, id, name, args).await;
+    if !answered(&resp) {
+        return Err(crate::audit::failure_code(&resp.body).unwrap_or_else(|| "command_failed".into()));
+    }
+    if resp.body.get("rejected").is_some() {
+        return Err("command_failed".into());
+    }
+    Ok(())
 }
 
 /// 백업이 안에서 보내는 저장 명령: 작업 기록에는 백업 한 줄만 남긴다.
@@ -34,13 +42,21 @@ async fn save_reply(state: &IPCServer, id: &str, name: &str, rcon_wait: Option<s
     }
 }
 
-/// 이름 하나로 게임 명령 실행. 성공하면 서버의 콘솔 답(없으면 빈 글자)
+/// 이름 하나로 게임 명령 실행. 성공하면 서버의 콘솔 답(없으면 빈 글자). 거절 여부는 부르는 쪽이 답으로 가린다
 async fn command_reply(state: &IPCServer, id: &str, name: &str, args: Value) -> Option<String> {
+    let resp = command_response(state, id, name, args).await;
+    answered(&resp).then(|| resp.body.pointer("/data/response").and_then(Value::as_str).unwrap_or_default().to_string())
+}
+
+async fn command_response(state: &IPCServer, id: &str, name: &str, args: Value) -> crate::ipc::internal::InternalResponse {
     let req = CommandRequest { command: name.to_string(), args };
     // 명령 실행 future는 크다: 백업 안에서 겹겹이 품지 않게 힙에 둔다 (디버그 빌드 스택 넘침)
-    let resp = crate::ipc::internal::InternalResponse::from(Box::pin(super::command::execute(state, id, req)).await);
-    let ok = resp.status.is_success() && resp.body.get("success").and_then(Value::as_bool) != Some(false);
-    ok.then(|| resp.body.pointer("/data/response").and_then(Value::as_str).unwrap_or_default().to_string())
+    crate::ipc::internal::InternalResponse::from(Box::pin(super::command::execute(state, id, req)).await)
+}
+
+/// 명령이 서버에 닿아 답을 받았다 (서버가 거절했는지는 따로 본다)
+fn answered(resp: &crate::ipc::internal::InternalResponse) -> bool {
+    resp.status.is_success() && resp.body.get("success").and_then(Value::as_bool) != Some(false)
 }
 
 /// 켜진 서버에서 저장 완료 줄(`[backup] save_done_pattern`)을 기다리는 가장 긴 시간 (큰 월드의 save-all flush)
@@ -189,7 +205,7 @@ async fn plan(state: &IPCServer, id: &str) -> Result<Option<Plan>, Failure> {
     let (spec, base, dir, keep, hook_call, lookup, boundary, module_name) = {
         let supervisor = state.supervisor.read().await;
         let Some(instance) = supervisor.instance_store.get(id).cloned() else {
-            return Err(Failure::coded(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id)));
+            return Err(Failure::instance_not_found(id));
         };
         let module = supervisor.module_loader.get_module(&instance.module_name).ok();
         let Some(spec) = module.as_ref().and_then(|m| m.metadata.backup.clone()) else {
@@ -264,7 +280,9 @@ pub(crate) async fn backup_targets(state: &IPCServer, id: &str) -> Vec<PathBuf> 
 /// 모듈이 백업을 지원하지 않으면 수동 백업만 오류이고, 자동 백업(업데이트 전·예약)은 건너뛴다
 pub(crate) async fn take_backup(state: &IPCServer, id: &str, kind: BackupKind) -> Result<Option<BackupInfo>, Failure> {
     let Some(guard) = InstanceLock::take(id).map(|g| g.purpose(Purpose::Backup)) else {
-        return Err(Failure::coded(StatusCode::CONFLICT, "backup_busy", "A backup or restore is already running for this instance"));
+        let busy = Err(Failure::coded(StatusCode::CONFLICT, "backup_busy", "A backup or restore is already running for this instance"));
+        announce_done(state, id, kind, &busy).await;
+        return busy;
     };
     let (state, id) = (state.clone(), id.to_string());
     detached(async move {
@@ -284,6 +302,16 @@ pub(crate) async fn take_backup_held(state: &IPCServer, id: &str, kind: BackupKi
     take_backup_locked(state, id, kind, None, &[]).await
 }
 
+/// 백업 한 번의 결과를 알린다 (`backup.done`). 백업할 것이 없었으면 알리지 않는다
+async fn announce_done(state: &IPCServer, id: &str, kind: BackupKind, result: &Result<Option<BackupInfo>, Failure>) {
+    let instance = state.supervisor.read().await.instance_store.get(id).map(|i| i.name.clone()).unwrap_or_default();
+    crate::events::emit("backup.done", match result {
+        Ok(None) => return,
+        Ok(Some(made)) => json!({ "instanceId": id, "instance": instance, "kind": kind, "name": made.name, "ok": true }),
+        Err(e) => json!({ "instanceId": id, "instance": instance, "kind": kind, "ok": false, "code": e.code(), "error": e.reason() }),
+    });
+}
+
 /// `also`의 경로를 더한다. 이미 담는 경로 안에 있는 것은 빼고, 담는 경로를 품는 것은 그 경로들을 대신한다
 fn add_paths(paths: &mut Vec<PathBuf>, also: &[PathBuf]) {
     for path in also {
@@ -299,7 +327,7 @@ fn add_paths(paths: &mut Vec<PathBuf>, also: &[PathBuf]) {
 async fn bare_plan(state: &IPCServer, id: &str) -> Result<Plan, Failure> {
     let supervisor = state.supervisor.read().await;
     let Some(instance) = supervisor.instance_store.get(id) else {
-        return Err(Failure::coded(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id)));
+        return Err(Failure::instance_not_found(id));
     };
     Ok(Plan {
         dir: backup::backups_dir(&supervisor.instance_store.instance_dir(id)),
@@ -314,8 +342,15 @@ async fn bare_plan(state: &IPCServer, id: &str) -> Result<Plan, Failure> {
 }
 
 /// `protect`: 정리에서 빼 둘 백업 이름 (복원 중인 백업)
-/// `also`: 지금 설정이 가리키지 않아도 함께 담을 경로 (복원이 덮을 경로). 없는 것과 이미 담는 경로와 겹치는 것은 뺀다
+/// `also`: 지금 설정이 가리키지 않아도 함께 담을 경로 (복원이 덮을 경로). 없는 것과 이미 담는 경로와 겹치는 것은 뺀다.
+/// 결과는 시작 전에 실패한 것(모듈 hook 등)까지 `backup.done`으로 알린다
 async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, protect: Option<String>, also: &[PathBuf]) -> Result<Option<BackupInfo>, Failure> {
+    let result = make_backup(state, id, kind, protect, also).await;
+    announce_done(state, id, kind, &result).await;
+    result
+}
+
+async fn make_backup(state: &IPCServer, id: &str, kind: BackupKind, protect: Option<String>, also: &[PathBuf]) -> Result<Option<BackupInfo>, Failure> {
     let mut plan = match plan(state, id).await? {
         Some(plan) => plan,
         None if kind == BackupKind::Manual => {
@@ -419,11 +454,6 @@ async fn take_backup_locked(state: &IPCServer, id: &str, kind: BackupKind, prote
             }
         }
     }
-    let instance = state.supervisor.read().await.instance_store.get(id).map(|i| i.name.clone()).unwrap_or_default();
-    crate::events::emit("backup.done", match &result {
-        Ok(made) => json!({ "instanceId": id, "instance": instance, "kind": kind, "name": made.name, "ok": true }),
-        Err(e) => json!({ "instanceId": id, "instance": instance, "kind": kind, "ok": false, "error": e.to_string() }),
-    });
     result.map(Some).map_err(|e| {
         let (status, mut body) = backup_error(&e);
         // 백업 실패 코드는 `cause`로 옮기고, 자동 저장이 꺼진 채라는 것을 앞세운다
@@ -456,15 +486,23 @@ fn backup_error(e: &anyhow::Error) -> (StatusCode, Value) {
         // 켜진 서버가 쥐고 있는 파일: 어느 파일인지 이름만 (경로는 PC 밖으로 내지 않는다)
         let file = locked.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         (StatusCode::CONFLICT, json!({ "success": false, "error": e.to_string(), "error_code": "backup_file_locked", "file": file }))
+    } else if disk_full(e) {
+        (StatusCode::INSUFFICIENT_STORAGE, json!({ "success": false, "error": format!("{e:#}"), "error_code": "backup_disk_full" }))
     } else {
         (StatusCode::INTERNAL_SERVER_ERROR, json!({ "success": false, "error": e.to_string(), "error_code": "backup_failed" }))
     }
 }
 
+/// 디스크(또는 할당량)가 차서 쓰지 못했다: 맥락이 붙은 안쪽 오류까지 본다
+fn disk_full(e: &anyhow::Error) -> bool {
+    use std::io::ErrorKind::{QuotaExceeded, StorageFull};
+    e.chain().filter_map(|c| c.downcast_ref::<std::io::Error>()).any(|io| matches!(io.kind(), StorageFull | QuotaExceeded))
+}
+
 pub(crate) async fn backups_dir(state: &IPCServer, id: &str) -> Result<PathBuf, Failure> {
     let supervisor = state.supervisor.read().await;
     if supervisor.instance_store.get(id).is_none() {
-        return Err(Failure::coded(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id)));
+        return Err(Failure::instance_not_found(id));
     }
     Ok(backup::backups_dir(&supervisor.instance_store.instance_dir(id)))
 }
@@ -475,7 +513,7 @@ pub(crate) async fn list(state: &IPCServer, id: &str) -> Outcome {
     // 게임이 만든 자동 백업도 함께 (새것부터 사바쨩 백업 뒤에)
     // 백업 파일마다 열어 읽는다: 느린 저장장치에서 Tokio 작업 스레드를 붙잡지 않게
     // 읽지 못한 것을 "백업 없음"으로 보이지 않는다
-    let (listed, total) = match tokio::task::spawn_blocking(move || backup::list_checked(&dir).map(|l| (l, backup::total_bytes(&dir)))).await {
+    let (listed, total) = match tokio::task::spawn_blocking(move || backup::list_checked(&dir).map(|l| (l, crate::utils::dir_size(&dir)))).await {
         Ok(Ok(found)) => found,
         Ok(Err(e)) => return Err(Failure::coded(StatusCode::INTERNAL_SERVER_ERROR, "backups_unreadable", format!("Could not read the backup folder: {}", e))),
         Err(e) => return Err(Failure::coded(StatusCode::INTERNAL_SERVER_ERROR, "backups_unreadable", e.to_string())),
@@ -534,7 +572,7 @@ async fn game_snapshots(state: &IPCServer, id: &str) -> Result<Vec<GameSnapshot>
     let (call, boundary, module_name) = {
         let supervisor = state.supervisor.read().await;
         let Some(instance) = supervisor.instance_store.get(id).cloned() else {
-            return Err(Failure::coded(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id)));
+            return Err(Failure::instance_not_found(id));
         };
         let Some(module) = supervisor.module_loader.get_module(&instance.module_name).ok().filter(|m| m.metadata.backup.as_ref().is_some_and(|b| b.snapshots)) else {
             return Ok(Vec::new());
@@ -647,6 +685,7 @@ async fn keep_snapshot_locked(state: &IPCServer, id: &str, snapshot: GameSnapsho
     match made {
         Ok(Ok(made)) => Ok(made),
         Ok(Err(e)) if e.downcast_ref::<backup::LockedFile>().is_some() => Err(Failure::coded(StatusCode::CONFLICT, "backup_file_locked", e.to_string())),
+        Ok(Err(e)) if disk_full(&e) => Err(Failure::coded(StatusCode::INSUFFICIENT_STORAGE, "backup_disk_full", format!("{e:#}"))),
         Ok(Err(e)) => Err(Failure::coded(StatusCode::INTERNAL_SERVER_ERROR, "backup_failed", e.to_string())),
         Err(e) => Err(Failure::coded(StatusCode::INTERNAL_SERVER_ERROR, "backup_failed", e.to_string())),
     }
@@ -674,7 +713,7 @@ pub(crate) async fn create_from(state: &IPCServer, id: &str, source: Source) -> 
         let instance = state.supervisor.read().await.instance_store.get(&id).map(|i| i.name.clone()).unwrap_or_default();
         crate::events::emit("backup.done", match &made {
             Ok(b) => json!({ "instanceId": id, "instance": instance, "kind": b.kind, "name": b.name, "ok": true }),
-            Err(_) => json!({ "instanceId": id, "instance": instance, "kind": BackupKind::Snapshot, "ok": false }),
+            Err(e) => json!({ "instanceId": id, "instance": instance, "kind": BackupKind::Snapshot, "ok": false, "code": e.code(), "error": e.reason() }),
         });
         made
     })
@@ -752,7 +791,7 @@ struct Transfer {
 async fn transfer(state: &IPCServer, id: &str) -> Result<Transfer, Failure> {
     let supervisor = state.supervisor.read().await;
     let Some(instance) = supervisor.instance_store.get(id) else {
-        return Err(Failure::coded(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id)));
+        return Err(Failure::instance_not_found(id));
     };
     let instance_dir = supervisor.instance_store.instance_dir(id);
     let module = supervisor.module_loader.get_module(&instance.module_name).ok();
@@ -878,7 +917,7 @@ pub(crate) async fn restore_held(state: &IPCServer, id: &str, name: &str, _guard
     let (mut roots, boundary) = {
         let supervisor = state.supervisor.read().await;
         let Some(instance) = supervisor.instance_store.get(id) else {
-            return Err(Failure::coded(StatusCode::NOT_FOUND, "not_found", format!("Instance not found: {}", id)));
+            return Err(Failure::instance_not_found(id));
         };
         let instance_dir = supervisor.instance_store.instance_dir(id);
         let module = supervisor.module_loader.get_module(&instance.module_name).ok();
@@ -944,7 +983,8 @@ async fn remote_cap_reached(dir: &FsPath, kind: BackupKind) -> Result<bool, Fail
     }
 }
 
-pub(crate) async fn announce(state: &IPCServer, id: &str, message: &str) -> bool {
+/// 서버 안에 공지 한 줄. 실패면 그 코드 (`run_command`)
+pub(crate) async fn announce(state: &IPCServer, id: &str, message: &str) -> Result<(), String> {
     let cmd = {
         let supervisor = state.supervisor.read().await;
         supervisor
@@ -953,10 +993,14 @@ pub(crate) async fn announce(state: &IPCServer, id: &str, message: &str) -> bool
             .and_then(|i| supervisor.module_loader.get_module(&i.module_name).ok())
             .and_then(|m| m.metadata.announce_command)
     };
-    match cmd {
+    let result = match cmd {
         Some(cmd) => run_command(state, id, &cmd, json!({ "message": message })).await,
-        None => false,
+        None => Err("command_failed".into()),
+    };
+    if let Err(code) = &result {
+        tracing::warn!("Announcement on '{}' failed: {}", id, code);
     }
+    result
 }
 
 #[cfg(test)]
@@ -971,6 +1015,16 @@ pub(crate) mod tests {
     };
     use std::sync::Arc;
     use tokio::sync::RwLock;
+
+    #[test]
+    fn a_full_disk_has_its_own_backup_code() {
+        // 이유 문장이 OS 원문(영어)이 아니라 "디스크 공간 부족"으로 보이게, 맥락이 붙은 안쪽 오류까지 본다
+        let full = anyhow::Error::from(std::io::Error::from(std::io::ErrorKind::StorageFull)).context("writing the backup");
+        let (status, body) = backup_error(&full);
+        assert_eq!((status, body["error_code"].as_str()), (StatusCode::INSUFFICIENT_STORAGE, Some("backup_disk_full")), "{body}");
+        let other = anyhow::Error::from(std::io::Error::from(std::io::ErrorKind::PermissionDenied));
+        assert_eq!(backup_error(&other).1["error_code"], "backup_failed");
+    }
 
     pub(crate) const NO_BACKUP: &str = "[module]\nschema_version = 1\nname = \"plain\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n";
 
@@ -1406,8 +1460,13 @@ else:
         let toml = format!("{NO_BACKUP}\n[backup]\npaths = []\nhook = true\n");
         let hook = "import json\nprint(json.dumps({'success': False, 'error_code': 'backup_failed', 'message': 'no world'}))\n";
         let (state, id, _tmp) = server_with(&toml, Some(hook)).await;
-        let err = take_backup(&state, &id, BackupKind::PreUpdate).await.err().expect("hook failure must not mean 'nothing to back up'");
+        let mut events = crate::events::bus().subscribe(None);
+        let err = take_backup(&state, &id, BackupKind::Scheduled).await.err().expect("hook failure must not mean 'nothing to back up'");
         assert_eq!(code(err).await, "backup_failed");
+        // 백업을 시작하기 전에 실패해도 실패를 알린다 (알림함의 예약 백업 실패)
+        let done: Vec<_> = std::iter::from_fn(|| events.rx.try_recv().ok()).filter(|e| e.kind == "backup.done" && e.data["instanceId"] == id.as_str()).collect();
+        assert_eq!(done.len(), 1, "{done:?}");
+        assert_eq!((&done[0].data["ok"], &done[0].data["kind"], &done[0].data["code"]), (&json!(false), &json!("scheduled"), &json!("backup_failed")));
     }
 
     #[tokio::test]

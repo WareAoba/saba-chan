@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Server } from '../../stores/useServerStore';
 import type { ApiBody } from '../../types/daemon';
-import { draftProblems, formatBytes, fromDraft, toDraft, WEEKDAYS } from '../../utils/schedule';
+import { draftProblems, fromDraft, toDraft, WEEKDAYS } from '../../utils/schedule';
 import { SabaFail } from '../ui/SabaArt';
 import { SabaSpinner } from '../ui/SabaUI';
 import { failed } from '../../utils/apiResult';
@@ -11,7 +11,7 @@ import { ScheduleCard, type ScheduleInfo } from './MaintenanceSchedule';
 import { errorText } from './maintenanceText';
 
 // 예전 경로로 가져오는 곳(시험)을 위해 다시 내보낸다
-export { draftProblems, formatBytes, fromDraft, toDraft, WEEKDAYS };
+export { draftProblems, fromDraft, toDraft, WEEKDAYS };
 
 
 /**

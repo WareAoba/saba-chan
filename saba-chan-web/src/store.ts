@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import type { Module, Server, SessionState } from './types';
 
 export type Tab = string;
-export type ToastTone = 'info' | 'ok' | 'error';
+export type ToastTone = 'info' | 'ok' | 'warn' | 'error';
 
 export interface ConfirmRequest {
     title: string;
@@ -58,7 +58,7 @@ export const useApp = create<AppState>()((set, get) => ({
     toast: (message, tone = 'info') => {
         const id = Math.random().toString(36).slice(2);
         set({ toasts: [...get().toasts, { id, message, tone }] });
-        setTimeout(() => set({ toasts: get().toasts.filter((t) => t.id !== id) }), tone === 'error' ? 6000 : 3500);
+        setTimeout(() => set({ toasts: get().toasts.filter((t) => t.id !== id) }), tone === 'error' || tone === 'warn' ? 6000 : 3500);
     },
 
     /** GUI 와 같은 확인 창. 누른 버튼이 확인이면 true */

@@ -90,7 +90,7 @@ async fn delete_instance_held(state: IPCServer, id: String, keep_settings: bool)
     let instance = match supervisor.instance_store.get(&id) {
         Some(inst) => inst.clone(),
         None => {
-            return super::super::error(StatusCode::NOT_FOUND, "not_found", "Instance not found");
+            return crate::service::Failure::instance_not_found(&id).into_response();
         }
     };
 

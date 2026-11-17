@@ -111,12 +111,12 @@ describe('데몬 응답 가공', () => {
             daemon_request: daemon({
                 'GET /api/relay/host/h1/nodes': { status: 401, data: { error: 'unauthorized' } },
                 'GET /api/relay/node/g1/members?withStatus=1': { status: 0, error: 'timeout', code: 'ETIMEDOUT' },
-                'GET /api/relay/node/g1/legacy-members': { status: 502, data: { error: 'relay_error' } },
+                'GET /api/permissions/g1/import': { status: 502, data: { error: 'relay_error' } },
             }),
         });
         expect(await api.relayListHostNodes('h1')).toMatchObject({ error: 'unauthorized' });
         expect(await api.relayListNodeMembers('g1')).toMatchObject({ error: expect.any(String) });
-        expect(await api.relayListLegacyMembers('g1')).toMatchObject({ error: 'relay_error' });
+        expect(await api.permissionsImportCandidates('g1')).toMatchObject({ error: 'relay_error' });
     });
 
     it('GUI 설정 저장은 부른 순서대로 한다 (앞 저장이 늦게 끝나 뒤 저장을 덮지 않게)', async () => {

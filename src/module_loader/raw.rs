@@ -271,8 +271,6 @@ impl Default for RestSettings {
 #[schemars(deny_unknown_fields)]
 struct ConfigSection {
     #[serde(default)]
-    executable_path: Option<String>,
-    #[serde(default)]
     server_executable: Option<String>,
     #[serde(default)]
     process_name: Option<String>,
@@ -720,7 +718,6 @@ impl ModuleToml {
             rest: self.protocols.as_ref().and_then(|p| p.rest.clone()).unwrap_or_default(),
             process_name: self.config.as_ref().and_then(|c| c.process_name.clone()),
             default_port: self.config.as_ref().and_then(|c| c.default_port),
-            executable_path: self.config.as_ref().and_then(|c| c.executable_path.clone()),
             server_executable: self.config.as_ref().and_then(|c| c.server_executable.clone()),
             stop_command: self.config.as_ref().and_then(|c| c.stop_command.clone()),
             stop_timeout: self.config.as_ref().and_then(|c| c.stop_timeout),

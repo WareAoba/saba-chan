@@ -675,7 +675,9 @@
     "minutes_ago": "vor {{count}} Min.",
     "yesterday": "Gestern",
     "click_to_open": "zum Öffnen klicken",
-    "click_to_update": "zum Aktualisieren klicken"
+    "click_to_update": "zum Aktualisieren klicken",
+    "open_backups": "Backups öffnen",
+    "open_schedule": "Zeitplan öffnen"
   },
   "updates": {
     "no_updates": "Alle Komponenten aktuell",
@@ -1621,6 +1623,7 @@
     "backup_unreadable": "kann nicht geöffnet werden",
     "backup_unreadable_hint": "Nicht lesbare Sicherung, Wiederherstellung nicht möglich. Ungenutzte Sicherungsinhalte werden erst nach dem Löschen bereinigt. Löschen.",
     "err_backup_file_locked": "Der Server verwendet eine Datei ({{file}}), Sicherung fehlgeschlagen. Server stoppen und erneut versuchen.",
+    "err_backup_disk_full": "Sicherung fehlgeschlagen: nicht genug Speicherplatz. Gib Speicher frei und versuche es erneut.",
     "err_autosave_not_resumed": "Sicherung erstellt, aber die automatische Speicherung des Servers ließ sich nicht wieder einschalten. Server neu starten.",
     "err_backup_failed_autosave_off": "Sicherung fehlgeschlagen, automatische Speicherung des Servers ließ sich ebenfalls nicht wieder einschalten. Server neu starten.",
     "err_backup_save_rejected": "Server hat den Speicherbefehl abgelehnt, keine Sicherung erstellt. Server stoppen und erneut sichern.",

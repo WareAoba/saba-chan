@@ -250,13 +250,12 @@ impl UpdateManager {
     // 레지스트리 버전 갱신 (Windows "설치된 앱" 표시)
 
     /// 이 설치본의 Windows "설치된 앱" DisplayVersion을 코어 버전으로 갱신한다 (다른 설치본 항목은 건드리지 않는다)
-    pub fn update_registry_display_version(&self, version: &str) -> Result<()> {
+    pub fn update_registry_display_version(&self, version: &str) {
         match uninstall_entry::set_display_version(&self.install_root, version) {
             Ok(true) => tracing::info!("[UpdateManager] Registry DisplayVersion updated to {}", version),
             Ok(false) => tracing::debug!("[UpdateManager] No uninstall entry for {}; DisplayVersion left alone", self.install_root.display()),
             Err(e) => tracing::warn!("[UpdateManager] DisplayVersion update failed: {}", e),
         }
-        Ok(())
     }
 
     // 버전 의존성 확인

@@ -187,26 +187,16 @@ impl ExtensionManager {
         updates
     }
 
-    /// 익스텐션 패키지(zip)를 받는다. 락 없이 부르면 된다
+    /// 익스텐션 패키지(zip)를 받는다. 락 없이 부르면 된다.
+    /// 모듈 설치와 같은 업데이터 받기(멈춤 기한·재시도·크기 상한)로 임시 파일에 받아 읽는다. 해시는 `stage_package`가 본다
     pub async fn download_package(download_url: &str) -> Result<Vec<u8>> {
-        let response = reqwest::get(download_url)
+        let http = saba_chan_updater_lib::tls::http_client_builder().build()?;
+        let dir = tempfile::tempdir().context("Failed to create a download folder")?;
+        let dest = dir.path().join("package.zip");
+        saba_chan_updater_lib::download::download_verified(&http, download_url, &dest, None, Some(PACKAGE_DOWNLOAD_LIMIT as u64), None)
             .await
             .with_context(|| format!("Failed to download extension from {}", download_url))?;
-        if !response.status().is_success() {
-            anyhow::bail!("Download failed: HTTP {}", response.status());
-        }
-        if response.content_length().is_some_and(|size| size > PACKAGE_DOWNLOAD_LIMIT as u64) {
-            anyhow::bail!("Extension package exceeds the download size limit");
-        }
-        let mut response = response;
-        let mut bytes = Vec::new();
-        while let Some(chunk) = response.chunk().await.context("Failed to read download response body")? {
-            if bytes.len().saturating_add(chunk.len()) > PACKAGE_DOWNLOAD_LIMIT {
-                anyhow::bail!("Extension package exceeds the download size limit");
-            }
-            bytes.extend_from_slice(&chunk);
-        }
-        Ok(bytes)
+        tokio::fs::read(&dest).await.context("Failed to read the downloaded extension package")
     }
 
     /// 받은 zip을 검사하고 `extensions/.staging-<id>-<uuid>`에 푼다. 락 없이 부르면 된다.
@@ -275,10 +265,8 @@ impl ExtensionManager {
     }
 
     /// 이 익스텐션이 의존하지만 아직 없는 익스텐션 (원격 목록에 있는 것만; `saba-core` 같은 컴포넌트는 제외)
-    pub fn missing_dependencies(&self, ext_id: &str, remote: &[RemoteExtensionInfo]) -> Vec<String> {
-        let Some(ext) = self.discovered.get(ext_id) else { return Vec::new() };
-        let mut missing: Vec<String> = ext
-            .manifest
+    pub fn missing_dependencies(&self, manifest: &ExtensionManifest, remote: &[RemoteExtensionInfo]) -> Vec<String> {
+        let mut missing: Vec<String> = manifest
             .dependencies
             .keys()
             .filter(|dep| !self.discovered.contains_key(*dep) && remote.iter().any(|r| &r.id == *dep))

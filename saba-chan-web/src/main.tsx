@@ -37,7 +37,8 @@ document.head.append(icon);
 
 // 번역을 읽은 뒤 연결한다 (오래된 브라우저 대상이라 최상위 await 를 쓰지 않는다)
 initI18n().then(() => {
-    const url = `${window.location.protocol === 'http:' ? 'ws' : 'wss'}://${window.location.host}/remote/ws`;
+    // 화면과 같은 배포 경로(vite `base`) 아래의 ws
+    const url = `${window.location.protocol === 'http:' ? 'ws' : 'wss'}://${window.location.host}${import.meta.env.BASE_URL}ws`;
     let bridge: ReturnType<typeof createWebApi> | null = null;
     const session = link
         ? createSession({

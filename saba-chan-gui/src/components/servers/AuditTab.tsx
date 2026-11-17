@@ -39,7 +39,7 @@ interface AuditRow extends AuditEntry {
 
 const PAGE = 100;
 const MAX = 1000; // 데몬 상한
-const EXPORT_ERRORS = ['INVALID_PATH', 'WRITE_FAILED']; // data_transfer.err_* 문구를 같이 쓴다
+const EXPORT_ERRORS = ['invalid_path', 'write_failed']; // data_transfer.err_* 문구를 같이 쓴다
 
 /** 받은 기록: 서버·기간마다 하나. 탭을 다시 열면 이것부터 바로 보이고 새 기록은 뒤에서 받아 바꾼다 */
 interface AuditPage {
@@ -142,7 +142,7 @@ export function AuditLog({ instanceId }: { instanceId?: string }) {
             if (failed(res)) {
                 // 데몬 문구는 영문이다: 아는 오류 코드만 번역해 덧붙인다
                 const known = EXPORT_ERRORS.includes(res?.error_code as string);
-                const detail = known ? ` ${t(`data_transfer.err_${res.error_code?.toLowerCase()}`)}` : '';
+                const detail = known ? ` ${t(`data_transfer.err_${res.error_code}`)}` : '';
                 safeShowToast(`${t('audit.export_failed')}${detail}`, 'error', 5000);
                 return;
             }

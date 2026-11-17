@@ -675,7 +675,9 @@
     "minutes_ago": "{{count}}분 전",
     "yesterday": "어제",
     "click_to_open": "눌러서 열기",
-    "click_to_update": "눌러서 업데이트"
+    "click_to_update": "눌러서 업데이트",
+    "open_backups": "백업 열기",
+    "open_schedule": "예약 열기"
   },
   "updates": {
     "no_updates": "모든 컴포넌트가 최신 버전",
@@ -1621,6 +1623,7 @@
     "backup_unreadable": "열 수 없음",
     "backup_unreadable_hint": "열 수 없는 백업. 복원 불가. 지우기 전까지는 쓰지 않는 백업 내용도 정리되지 않으니 삭제해 주세요.",
     "err_backup_file_locked": "서버가 쓰고 있는 파일({{file}})이 있어 백업 실패. 서버를 정지한 뒤 다시 시도해 주세요.",
+    "err_backup_disk_full": "디스크 공간이 부족해 백업 실패. 공간을 비운 뒤 다시 시도해 주세요.",
     "err_autosave_not_resumed": "백업은 만들었지만 서버 자동 저장 재개 실패. 서버를 재시작해 주세요.",
     "err_backup_failed_autosave_off": "백업 실패, 서버 자동 저장 재개도 실패. 서버를 재시작해 주세요.",
     "err_backup_save_rejected": "서버가 저장 명령을 받지 않아 백업하지 않음. 서버를 정지한 뒤 다시 백업해 주세요.",

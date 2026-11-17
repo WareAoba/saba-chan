@@ -45,6 +45,7 @@
   },
   "server": {
     "list_failed": "無法取得伺服器清單（HTTP {{status}}）：{{error}}",
+    "auth_failed": "驗證失敗。守護程序權杖可能已變更。",
     "start_failed": "啟動失敗：{{error}}",
     "stop_failed": "停止失敗：{{error}}",
     "status_check_failed": "狀態檢查失敗（HTTP {{status}}）：{{error}}",

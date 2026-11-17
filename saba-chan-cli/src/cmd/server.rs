@@ -950,6 +950,25 @@ pub(crate) mod tests {
         }
     }
 
+    /// 서버가 거절한 명령(모듈 `failure_patterns`에 맞은 답, `rejected`)은 실패로 끝난다 (종료 코드 1)
+    #[tokio::test]
+    async fn a_command_the_server_rejected_fails() {
+        crate::i18n::init("en");
+        fn daemon(line: &str, _: &Value) -> (u16, Value) {
+            match line {
+                "POST /api/instance/1/command" => (200, json!({ "success": true, "data": { "response": "Unknown command" }, "rejected": { "reason": "Unknown command" } })),
+                _ => (200, json!({})),
+            }
+        }
+        let (port, _) = fake_daemon(daemon).await;
+        let ctx = quiet_ctx(port);
+        let sv = crate::resolve::Server { id: "1".into(), name: "mc".into(), module: "minecraft".into(), raw: Value::Null };
+        let cat = crate::catalog::Catalog { commands: Vec::new(), interaction_mode: Some("console".into()) };
+        let err = exec_line(&ctx, &sv, &cat, "save-all").await.unwrap_err();
+        let err = err.downcast::<CliError>().unwrap();
+        assert_eq!((err.exit_code(), err.to_string()), (1, "Unknown command".to_string()));
+    }
+
     /// 마인크래프트 모듈 하나와 서버 둘(mc, 폴더 /srv/lobby를 쓰는 lobby)이 있는 데몬. 만들기 전 확인은 데몬이 판단한다
     fn add_daemon(line: &str, body: &Value) -> (u16, Value) {
         let reply = match line {

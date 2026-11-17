@@ -87,15 +87,25 @@ impl Supervisor {
                         }
                         continue;
                     }
-                    tracing::warn!("Process {} for instance '{}' is no longer running, removing from tracker", pid, instance.name);
-                    // tracker에서 제거하여 다음 사이클에서 다시 감지할 수 있도록 함
-                    self.tracker.untrack(&instance.id);
                     // 사바쨩이 시키지 않았는데 사라진 non-managed 서버 (managed는 위에서 판정했다)
                     let judged = dead.iter().any(|(id, _)| *id == instance.id) || self.managed_store.get(&instance.id).await.is_some();
-                    if !judged && !self.runtime.existing(&instance.id, |r| r.stop_requested.is_some()).unwrap_or(false) {
-                        let verdict = crash::ExitVerdict { kind: crash::ExitKind::UnknownExit, exit_code: None, signal: None, evidence: "exit status unknown".into() };
-                        let event = crash::ExitEvent { at: saba_runner::now(), verdict, restart_in_secs: None, note: None, note_code: None, note_args: None };
-                        self.record_exit(&instance.id, &instance.name, event, None, None);
+                    let unrequested = !judged && !self.runtime.existing(&instance.id, |r| r.stop_requested.is_some()).unwrap_or(false);
+                    // 데몬이 띄운 프로세스면 그 손잡이로 종료 상태를 안다. 끝을 아직 받지 못했으면(사라진 바로 그때) 다음 순회에 본다
+                    let launched = self
+                        .runtime
+                        .existing(&instance.id, |r| r.launched.as_ref().filter(|l| l.pid == pid).map(|l| l.ended()))
+                        .flatten();
+                    if unrequested && launched == Some(None) {
+                        continue;
+                    }
+                    tracing::warn!("Process {} for instance '{}' is no longer running, removing from tracker", pid, instance.name);
+                    let started_at = self.tracker.get_start_time(&instance.id);
+                    // tracker에서 제거하여 다음 사이클에서 다시 감지할 수 있도록 함
+                    self.tracker.untrack(&instance.id);
+                    self.runtime.existing(&instance.id, |r| r.launched = None);
+                    if unrequested {
+                        let ran_secs = started_at.map_or(u64::MAX, |t| saba_runner::now().saturating_sub(t));
+                        self.judge_unrequested_exit(instance, launched.flatten(), ran_secs);
                     }
                 }
                 continue;
@@ -130,17 +140,10 @@ impl Supervisor {
                 }
                 if let Some(process_name) = &instance.process_name {
                     // 모듈에서 cmd_patterns 가져오기 — java.exe 같은 범용 프로세스를 구분하기 위한 커맨드라인 패턴
-                    let modules = self.module_loader.modules().unwrap_or_default();
-                    let cmd_patterns = modules.iter().find(|m| m.metadata.name == instance.module_name)
-                        .map(|m| m.metadata.cmd_patterns.as_slice())
-                        .unwrap_or_default();
+                    let cmd_patterns = self.module_loader.get_module(&instance.module_name).map(|m| m.metadata.cmd_patterns.clone()).unwrap_or_default();
 
                     // snapshot 기반 검색 — 시스템 콜 없음
-                    let processes = if cmd_patterns.is_empty() {
-                        process_monitor::find_by_name_in(process_snapshot, process_name)
-                    } else {
-                        process_monitor::find_by_name_and_cmd_in(process_snapshot, process_name, cmd_patterns)
-                    };
+                    let processes = process_monitor::find_by_name_and_cmd_in(process_snapshot, process_name, &cmd_patterns);
 
                     // 같은 게임 인스턴스가 여럿이면 폴더로 주인을 가리고, 다른 인스턴스가 잡은 PID는 빼고 고른다
                     let siblings: Vec<&crate::instance::ServerInstance> = all_instances_snapshot
@@ -275,27 +278,36 @@ mod tests {
         assert!(sup.tracker.get_pid(&id).is_none(), "a later snapshot without the pid means it is gone");
     }
 
-    /// cleanup_dead()가 죽은 managed process를 정리할 때
-    /// stop_cooldowns에 등록되어 auto_detect 재탐색이 억제되는지 검증
+    /// 끝난 managed 서버를 치우면 잠깐(stop cooldown)은 auto-detect가 같은 게임의 프로세스를 다시 붙이지 않는다
+    #[cfg(unix)]
     #[tokio::test]
-    async fn test_cleanup_dead_registers_stop_cooldown() {
-        let supervisor = Supervisor::new("./modules");
-
-        // 가짜 인스턴스를 등록 (파일 시스템 없이 인메모리 테스트)
-        // cleanup_dead가 dead_ids를 반환하면 monitor_processes가 cooldown을 삽입해야 함
-        // managed_store에 직접 죽은 프로세스를 넣을 순 없으므로,
-        // 쿨다운 삽입 로직 자체를 단위 테스트
-        let cooldown = || supervisor.runtime.existing("test-instance-id", |r| r.stop_cooldown).flatten();
-        assert!(cooldown().is_none());
-
-        // dead_ids에 해당하는 쿨다운이 삽입됨을 시뮬레이션
-        let dead_ids = vec!["test-instance-id".to_string()];
-        for dead_id in &dead_ids {
-            supervisor.runtime.with(dead_id, |r| r.stop_cooldown = Some(Instant::now()));
+    async fn a_finished_managed_server_holds_off_auto_detect() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules_dir = tmp.path().join("modules");
+        let dir = modules_dir.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n").unwrap();
+        let mut sup = Supervisor::new_with_instances_dir(modules_dir.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("srv", "game");
+        inst.id = "ended".into();
+        inst.auto_detect = true;
+        inst.process_name = Some("fakegame".into());
+        sup.instance_store.add(inst).unwrap();
+        let proc = managed_process::ManagedProcess::spawn("sh", &["-c".into(), "exit 0".into()], tmp.path().to_str().unwrap(), Vec::new(), None, None)
+            .await
+            .unwrap();
+        sup.managed_store.insert("ended", proc).await;
+        for _ in 0..50 {
+            if sup.managed_store.running_instance_ids().await.is_empty() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         }
-
-        // 쿨다운이 30초 내이면 auto_detect를 건너뛰어야 함
-        let stopped_at = cooldown().unwrap();
-        assert!(stopped_at.elapsed().as_secs() < STOP_COOLDOWN_SECS);
+        let dir = sup.instance_store.instance_dir("ended").to_string_lossy().to_string();
+        let same_game = crate::process_monitor::RunningProcess { pid: 4_000_002, name: "fakegame".into(), executable_path: None, cmd: Vec::new(), cwd: Some(dir) };
+        sup.monitor_processes_taken_at(std::slice::from_ref(&same_game), u64::MAX).await.unwrap();
+        assert!(sup.tracker.get_pid("ended").is_none(), "not re-attached right after the managed server ended");
     }
 }
