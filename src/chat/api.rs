@@ -236,7 +236,7 @@ impl DaemonApi for IPCServer {
             .into_iter()
             .map(|m| {
                 let locale_dir = Some(std::path::PathBuf::from(&m.path));
-                let meta = m.metadata;
+                let meta = std::sync::Arc::unwrap_or_clone(m.metadata);
                 let mut command_aliases: Vec<(String, Vec<String>)> = meta
                     .command_aliases
                     .into_iter()

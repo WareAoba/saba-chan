@@ -79,7 +79,7 @@ pub(crate) async fn pre_delete_hook(state: &IPCServer, instance: &crate::instanc
     let ctx = {
         let sup = state.supervisor.read().await;
         let module = sup.module_loader.get_module(&instance.module_name).ok();
-        crate::extension::hook_context(instance, &sup.instance_store.instance_dir(&instance.id), module.as_ref().map(|m| &m.metadata))
+        crate::extension::hook_context(instance, &sup.instance_store.instance_dir(&instance.id), module.as_ref().map(|m| &*m.metadata))
     };
     let results = crate::plugin::with_instance(Some(state.host_context(&instance.id)), crate::extension::run_hook(&ext_mgr, "server.pre_delete", ctx)).await;
     let handled = results.iter().any(|(_id, r)| {

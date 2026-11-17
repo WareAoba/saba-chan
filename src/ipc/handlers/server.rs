@@ -80,7 +80,7 @@ pub async fn component_versions(state: &IPCServer) -> std::collections::BTreeMap
     versions.insert(crate::module_loader::CORE_COMPONENT.to_string(), crate::module_loader::DAEMON_VERSION.to_string());
     if let Ok(modules) = state.supervisor.read().await.list_modules() {
         for m in modules {
-            versions.insert(format!("module-{}", m.metadata.name), m.metadata.version);
+            versions.insert(format!("module-{}", m.metadata.name), m.metadata.version.clone());
         }
     }
     for ext in state.extension_manager.read().await.list() {
@@ -124,7 +124,7 @@ fn module_info(
     let update_version = addon.update_version(updates.announced_latest(&key).as_deref(), &m.metadata.version);
     let localized = crate::chat::api::locale_aliases(std::path::Path::new(&m.path), lang).unwrap_or_default();
     let unsupported_reason = m.metadata.unsupported_on(std::env::consts::OS, std::env::consts::ARCH).map(str::to_string);
-    let mut meta = m.metadata;
+    let mut meta = std::sync::Arc::unwrap_or_clone(m.metadata);
     crate::chat::api::push_words(&mut meta.module_aliases, localized.module.into_iter());
     for (cmd, words) in localized.commands {
         crate::chat::api::push_words(&mut meta.command_aliases.entry(cmd).or_default().aliases, words.into_iter());
@@ -293,7 +293,7 @@ pub async fn get_module_metadata(
                     "version": &module.metadata.version,
                     "description": &module.metadata.description,
                     "path": &module.path,
-                    "metadata": &module.metadata,
+                    "metadata": &*module.metadata,
                 })),
             )
                 .into_response(),

@@ -153,7 +153,7 @@ async fn checked_install(
     match sup.instance_store.get(id) {
         Some(inst) => {
             let metadata = sup.module_loader.get_module(&inst.module_name).ok();
-            let boundary = crate::module_paths::Boundary::for_instance(inst, &sup.instance_store.instance_dir(id), metadata.as_ref().map(|m| &m.metadata));
+            let boundary = crate::module_paths::Boundary::for_instance(inst, &sup.instance_store.instance_dir(id), metadata.as_ref().map(|m| &*m.metadata));
             boundary.returned_paths(&mut value, module, "install_server").map(|()| value)
         }
         None => Err(anyhow::anyhow!("Instance disappeared during install")),

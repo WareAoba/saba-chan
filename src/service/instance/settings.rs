@@ -246,8 +246,8 @@ pub(crate) async fn update(state: &IPCServer, id: &str, mut settings: Value) -> 
     if let Some(m) = module.as_ref().filter(|m| m.metadata.runtime_settings().iter().any(|(name, _)| settings.get(*name).is_some())) {
         super::open_user_runtime(m, &updated_clone);
     }
-    let mut hook_ctx = crate::extension::hook_context(&updated_clone, &instance_dir, module.as_ref().map(|m| &m.metadata));
-    hook_ctx["settings"] = crate::extension::redact_for_hooks(module.as_ref().map(|m| &m.metadata), &settings);
+    let mut hook_ctx = crate::extension::hook_context(&updated_clone, &instance_dir, module.as_ref().map(|m| &*m.metadata));
+    hook_ctx["settings"] = crate::extension::redact_for_hooks(module.as_ref().map(|m| &*m.metadata), &settings);
     hook_ctx["module_extensions"] = module
         .map(|m| serde_json::to_value(&m.metadata.extensions).unwrap_or_default())
         .unwrap_or_else(|| serde_json::json!({}));

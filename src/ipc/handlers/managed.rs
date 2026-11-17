@@ -110,7 +110,7 @@ pub async fn query_instance_handler(
         let Some(instance) = sup.instance_store.get(&id) else {
             return crate::service::Failure::instance_not_found(&id).into_response();
         };
-        sup.module_loader.get_module(&instance.module_name).ok().and_then(|m| m.metadata.queries.into_iter().find(|q| q.name == name))
+        sup.module_loader.get_module(&instance.module_name).ok().and_then(|m| m.metadata.queries.iter().find(|q| q.name == name).cloned())
     };
     let Some(query) = query else {
         return fail(StatusCode::NOT_FOUND, "unknown_query", format!("Unknown query: {}", name), None);
@@ -233,7 +233,7 @@ pub async fn chat_handler(Path(id): Path<String>, State(state): State<IPCServer>
         let Some(instance) = sup.instance_store.get(&id) else {
             return crate::service::Failure::instance_not_found(&id).into_response();
         };
-        let Some(function) = sup.module_loader.get_module(&instance.module_name).ok().and_then(|m| m.metadata.chat_send_function) else {
+        let Some(function) = sup.module_loader.get_module(&instance.module_name).ok().and_then(|m| m.metadata.chat_send_function.clone()) else {
             return fail(StatusCode::NOT_IMPLEMENTED, "not_supported", "This server's module cannot send chat".into());
         };
         if sup.tracker.get_pid(&id).is_none() {
@@ -431,7 +431,7 @@ pub async fn reset_preview_handler(Path(id): Path<String>, State(state): State<I
         };
         let instance_dir = supervisor.instance_store.instance_dir(&id);
         let module = supervisor.module_loader.get_module(&instance.module_name).ok();
-        let metadata = module.as_ref().map(|m| &m.metadata);
+        let metadata = module.as_ref().map(|m| &*m.metadata);
         (crate::module_paths::server_dir(instance, &instance_dir, metadata), crate::module_paths::Boundary::for_instance(instance, &instance_dir, metadata))
     };
     let backed_up = crate::service::backup::backup_targets(&state, &id).await;

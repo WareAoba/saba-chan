@@ -308,7 +308,7 @@ async fn commit(state: &IPCServer, plan: Plan<'_>) -> Outcome {
     {
         let ext_mgr = state.extension_manager.clone();
         let meta = supervisor.module_loader.get_module(&instance.module_name).ok().map(|m| m.metadata);
-        let mut ctx = crate::extension::hook_context(&instance, &instance_dir, meta.as_ref());
+        let mut ctx = crate::extension::hook_context(&instance, &instance_dir, meta.as_deref());
         ctx["migration"] = serde_json::json!(folder.migration_mode);
         let host_context = Some(state.host_context(&id));
         tokio::spawn(async move {
@@ -408,7 +408,7 @@ async fn provision(
     // install_server가 보는 인스턴스 설정(서버 종류처럼 받을 파일을 바꾸는 값)과 데이터 폴더
     // (설치 중에 데이터 폴더에 첫 설정을 쓰는 모듈, 좀보이드 첫 INI)
     let meta = supervisor.module_loader.get_module(&instance.module_name).ok().map(|m| m.metadata);
-    let target = crate::supervisor::InstanceInstall::of(&instance, instance_dir, meta.as_ref(), state.host_context(&id));
+    let target = crate::supervisor::InstanceInstall::of(&instance, instance_dir, meta.as_deref(), state.host_context(&id));
 
     // Drop supervisor lock before spawning background task
     drop(supervisor);
@@ -472,7 +472,7 @@ async fn import_existing(
         match migration_import_call(lifecycle_path, instance.working_dir.as_deref(), instance_dir).in_instance(Some(state.host_context(&id))).run().await {
             Ok(result) => {
                 if result.get("success").and_then(|v| v.as_bool()).unwrap_or(false) {
-                    match apply_imported(&instance, instance_dir, metadata.as_ref(), module, result) {
+                    match apply_imported(&instance, instance_dir, metadata.as_deref(), module, result) {
                         Ok((imported, found)) => {
                             instance = imported;
                             detected = found;
@@ -505,7 +505,7 @@ async fn import_existing(
     }
     // 해제할 때 되돌릴 원래 게임 설정 파일. 약관 반영·첫 시작이 파일을 고치기 전에 보관한다
     // (옮긴 서버도 서버 폴더 밖 데이터 폴더의 설정은 남으므로 보관한다)
-    save_migration_originals(state, &instance, instance_dir, metadata.as_ref()).await;
+    save_migration_originals(state, &instance, instance_dir, metadata.as_deref()).await;
     // 가져온 서버는 설치를 거치지 않으므로, 만들 때 동의한 약관을 모듈이 지금 반영한다 (예: eula.txt)
     if !instance.accepted_agreements.is_empty() {
         let ids: Vec<String> = instance.accepted_agreements.keys().cloned().collect();

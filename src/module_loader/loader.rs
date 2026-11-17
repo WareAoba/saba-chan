@@ -21,7 +21,7 @@ pub fn load_module_dir(module_path: &Path) -> Result<LoadedModule> {
     let content = fs::read_to_string(&toml_path)
         .map_err(|e| anyhow::anyhow!("Failed to read {}: {}", toml_path.display(), e))?;
     let module = LoadedModule {
-        metadata: parse_module_toml(&content)?,
+        metadata: Arc::new(parse_module_toml(&content)?),
         path: module_path.to_string_lossy().to_string(),
         source: module_path.to_string_lossy().to_string(),
     };
@@ -222,7 +222,7 @@ impl ModuleLoader {
         copy_dir_all(&extract_path.join(&root), &extracted_dir)?;
 
         let module = LoadedModule {
-            metadata,
+            metadata: Arc::new(metadata),
             path: extracted_dir.to_string_lossy().to_string(),
             source: zip_path.to_string_lossy().to_string(),
         };

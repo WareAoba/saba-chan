@@ -37,7 +37,7 @@ impl Supervisor {
             });
             let _ = STOPPED_AT.try_with(|at| at.set(Some(generation)));
             let module = s.module_loader.get_module(module_name).ok();
-            let ctx = crate::extension::hook_context(&instance, &s.instance_store.instance_dir(&instance.id), module.as_ref().map(|m| &m.metadata));
+            let ctx = crate::extension::hook_context(&instance, &s.instance_store.instance_dir(&instance.id), module.as_ref().map(|m| &*m.metadata));
             let hook = (s.extension_manager.clone(), ctx);
             let managed = s.managed_store.get(&instance.id).await;
             (instance, hook, managed, s.runtime.clone())
