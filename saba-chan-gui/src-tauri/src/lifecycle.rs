@@ -649,8 +649,12 @@ async fn reload_token_until_valid(app: &AppHandle) -> bool {
 async fn wait_for_new_daemon(app: &AppHandle) -> bool {
     let client = app.state::<AppState>().client.clone();
     let mut alive = false;
-    for _ in 0..20 {
-        sleep(500).await;
+    // 포트가 열리기 전에는 HTTP를 묻지 않는다 (Windows는 닫힌 포트의 거절에도 1초 넘게 걸린다). 열리면 바로 확인한다
+    for _ in 0..100 {
+        sleep(100).await;
+        if !client.listening(200).await {
+            continue;
+        }
         client.load_token();
         if client.identity_valid(800).await { return true; }
         alive |= client.get("/health", 500).await.is_ok();
@@ -661,11 +665,29 @@ async fn wait_for_new_daemon(app: &AppHandle) -> bool {
     false
 }
 
+async fn launch_new_daemon(app: &AppHandle) -> bool {
+    tracing::info!("No daemon detected, attempting to launch new one...");
+    status_t(app, "daemon", "daemon.starting");
+    start_daemon(app);
+    // 첫 실행은 데이터 폴더 준비로 느릴 수 있다 (최대 10초)
+    if wait_for_new_daemon(app).await {
+        tracing::info!("Daemon is now running");
+        status_t(app, "daemon", "daemon.started");
+        return true;
+    }
+    tracing::warn!("Daemon did not respond after startup");
+    false
+}
+
 /// 떠 있는 데몬이 있으면 재사용하고, 없으면 띄운다. 데몬이 응답하지 않으면 false
 async fn ensure_daemon(app: &AppHandle) -> bool {
     let state = app.state::<AppState>();
     state.client.load_token();
     status_t(app, "daemon", "daemon.checking");
+    // 포트가 닫혀 있으면 데몬이 없다: HTTP 연결 거절을 기다리지 않고 바로 띄운다
+    if !state.client.listening(200).await {
+        return launch_new_daemon(app).await;
+    }
     match state.client.get("/health", 1000).await {
         Ok(_) => {
             if !state.client.identity_valid(1000).await && !reload_token_until_valid(app).await {
@@ -686,17 +708,7 @@ async fn ensure_daemon(app: &AppHandle) -> bool {
             true
         }
         Err(e) if e.status.is_none() && (e.code == "ECONNREFUSED" || e.code == "ETIMEDOUT") => {
-            tracing::info!("No daemon detected, attempting to launch new one...");
-            status_t(app, "daemon", "daemon.starting");
-            start_daemon(app);
-            // 첫 실행은 데이터 폴더 준비로 느릴 수 있다 (최대 10초)
-            if wait_for_new_daemon(app).await {
-                tracing::info!("Daemon is now running");
-                status_t(app, "daemon", "daemon.started");
-                return true;
-            }
-            tracing::warn!("Daemon did not respond after startup");
-            false
+            launch_new_daemon(app).await
         }
         Err(e) => {
             // 데몬은 떠 있지만 다른 문제 — 경고만 하고 진행
