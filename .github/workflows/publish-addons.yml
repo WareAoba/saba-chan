@@ -70,7 +70,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.refs.outputs.core }}
-          sparse-checkout: modules
+          sparse-checkout: |
+            modules
+            .github/scripts
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: WareAoba/saba-chan-modules
@@ -84,25 +86,10 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.12'
-      - name: Extensions (ruff 치명 규칙, pytest)
-        working-directory: addons/extensions
-        # 익스텐션은 데몬 공용 모듈(daemon_rcon 등)을 import한다. 익스텐션 저장소 CI와 같은 값
-        env:
-          SABA_RUNTIME_DIR: ${{ github.workspace }}/modules
-        run: |
-          python -m pip install pytest ruff
-          python -m ruff check . --select E9,F63,F7,F82
-          python -m pytest -q
-      - name: Modules (conformance, pytest)
-        working-directory: addons/modules
+      # ci.yml(공용 런타임을 바꾼 PR)과 같은 검사
+      - name: Extensions and modules
         shell: bash
-        env:
-          SABA_RUNTIME_DIR: ${{ github.workspace }}/modules
-          SABA_EXTENSIONS_DIR: ${{ github.workspace }}/addons/extensions
-        run: |
-          python -m pip install -r requirements-dev.txt
-          python -m pytest conformance -q --shared-libs "$SABA_RUNTIME_DIR"
-          python -m pytest -q
+        run: bash .github/scripts/addon-tests.sh modules addons/modules addons/extensions
 
   # 관문 2: 선언하지 않은 능력을 쓰지 않는가 (main 데몬으로 본다) → 새 판 고르기. 서명은 sign 작업, 올리기는 publish 작업
   pick:

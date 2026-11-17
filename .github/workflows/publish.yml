@@ -18,6 +18,7 @@ name: Publish release
 #                정식 승격은 사용자가 promote-release.yml을 손으로 실행할 때만.
 #
 # 같은 소스: prepare가 main 커밋 하나를 고르고 모든 작업이 그 커밋을 빌드한다.
+# 전체 CI 먼저: 그 커밋에서 ci.yml 수동 실행(전체)이 통과하지 않았으면 멈춘다 (dry_run은 경고만).
 # 덮어쓰기 금지: 릴레이에 같은 버전이 있거나 R2 releases/<version>/ 에 파일이 있으면 멈춘다.
 #
 # 설정 (GitHub environment, 배포 브랜치 main만):
@@ -128,6 +129,20 @@ jobs:
           echo "extensions_ref=$EXTENSIONS_REF" >> "$GITHUB_OUTPUT"
           echo "### $VERSION ($CHANNEL) from \`$(git rev-parse HEAD)\`" >> "$GITHUB_STEP_SUMMARY"
 
+      # 발행할 커밋에서 전체 CI(ci.yml을 Actions 탭에서 실행: Linux·E2E 포함)가 통과했어야 한다.
+      # PR CI는 바뀐 경로의 일부 검사만 돌기 때문이다. dry_run은 경고만 한다
+      - name: Require a passing full CI run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.src.outputs.sha }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          passed=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$SHA&event=workflow_dispatch&status=success&per_page=1" --jq .total_count)
+          if [ "$passed" = "0" ]; then
+            msg="No passing full CI run for $SHA: run ci.yml (Run workflow) on this commit first"
+            if [ "$DRY_RUN" = "true" ]; then echo "::warning::$msg"; else echo "::error::$msg"; exit 1; fi
+          fi
+
       # 40분 빌드 전에 확인한다. 확인하지 못하면 "없다"로 치지 않고 멈춘다
       - name: Refuse an already registered version
         if: ${{ !inputs.dry_run }}
@@ -213,7 +228,8 @@ jobs:
       - name: Cargo cache
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
-          key: release
+          # preview.yml(PR 프리뷰 빌드)도 이 키로 읽는다 (Windows 릴리스 빌드)
+          shared-key: windows-release
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       # Tauri GUI가 build/를 exe에 넣으므로 cargo보다 먼저 끝나야 한다.
