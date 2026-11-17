@@ -349,6 +349,7 @@
       "access_needs_grant": "沒有 (config net-trace grant)",
       "access_needs_relogin": "已授予，重新登入 Windows 後可用",
       "access_unsupported": "此系統無法使用（僅 Windows）",
+      "elevation_hint": "守護程式所在電腦上會跳出系統管理員確認",
       "enable_hint": "開啟方法：saba-chan-cli config set systemMonitorNetTrace=on"
     },
     "public_address": {
@@ -528,6 +529,7 @@
       "move_failed": "資料夾移動失敗。請用「連接原位置」匯入。",
       "port_check_busy": "已在檢查中。請稍後再試",
       "net_trace_elevation_failed": "常駐程式所在電腦未取得系統管理員確認。請在該電腦前再試。",
+      "net_trace_not_revocable": "沒有可撤銷的內容：此權限不是 Saba-chan 授予的。其他方式授予的權限會保留。",
       "net_trace_failed": "權限變更失敗",
       "sandbox_allow": "要不隔離執行，請先同意：saba-chan-cli sandbox allow {{component}}"
     },

@@ -1979,7 +1979,6 @@
   "net_trace": {
     "label": "Red por servidor y puerto",
     "description": "Con el monitor del sistema desplegado, cuenta el tráfico por servidor y puerto con eventos de red de Windows. La primera vez requiere confirmación de administrador.",
-    "status_ok": "Con permiso. Cuenta al desplegar el monitor.",
     "status_needs_grant": "Esta cuenta no tiene permiso para leer eventos de red",
     "status_needs_relogin": "Permiso concedido. Al volver a iniciar sesión en Windows, se empieza a contar.",
     "grant": "Conceder permiso",

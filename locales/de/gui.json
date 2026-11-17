@@ -1979,7 +1979,6 @@
   "net_trace": {
     "label": "Netzwerk pro Server und Port",
     "description": "Zählt den Verkehr pro Server und Port aus Windows-Netzwerkereignissen, solange der Systemmonitor aufgeklappt ist. Beim ersten Mal ist eine Administratorbestätigung nötig.",
-    "status_ok": "Berechtigung vorhanden. Gezählt wird bei aufgeklapptem Monitor.",
     "status_needs_grant": "Dieses Konto darf keine Netzwerkereignisse lesen",
     "status_needs_relogin": "Berechtigung erteilt. Nach erneuter Anmeldung bei Windows wird gezählt.",
     "grant": "Berechtigung erteilen",

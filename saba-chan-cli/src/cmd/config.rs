@@ -144,7 +144,10 @@ async fn move_dir(ctx: &Ctx, kind: crate::cli::DirKind, folder: &std::path::Path
 async fn net_trace(ctx: &Ctx, action: Option<crate::cli::NetTraceAction>) -> Result<()> {
     use crate::cli::NetTraceAction;
     let r = match action {
-        Some(a) => ctx.api.net_trace_change(a == NetTraceAction::Grant).await?,
+        Some(a) => {
+            ctx.out.hint(&t!("config.net_trace.elevation_hint"));
+            ctx.api.net_trace_change(a == NetTraceAction::Grant).await?
+        }
         None => ctx.api.net_trace().await?,
     };
     let access = r["access"].as_str().unwrap_or("unsupported");

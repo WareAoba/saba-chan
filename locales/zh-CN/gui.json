@@ -1979,7 +1979,6 @@
   "net_trace": {
     "label": "按服务器·端口统计网络",
     "description": "系统监视器展开期间，通过 Windows 网络事件按服务器和端口统计流量。首次需要管理员确认一次。",
-    "status_ok": "已有权限。展开监视器后开始统计。",
     "status_needs_grant": "此账户没有读取网络事件的权限",
     "status_needs_relogin": "已授予权限。重新登录 Windows 后开始统计。",
     "grant": "授予权限",

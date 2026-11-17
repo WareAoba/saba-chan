@@ -349,6 +349,7 @@
       "access_needs_grant": "なし (config net-trace grant)",
       "access_needs_relogin": "付与済み。Windows に再サインインすると使えます",
       "access_unsupported": "この OS では使用不可 (Windows 専用)",
+      "elevation_hint": "デーモンPCに管理者の確認画面が表示されます",
       "enable_hint": "オンにするには: saba-chan-cli config set systemMonitorNetTrace=on"
     },
     "public_address": {
@@ -528,6 +529,7 @@
       "move_failed": "フォルダーの移動失敗。「現在の場所のまま」で取り込んでください。",
       "port_check_busy": "既に確認中です。しばらくしてから再試行してください",
       "net_trace_elevation_failed": "デーモン PC で管理者の確認を得られませんでした。その PC の前で再試行してください。",
+      "net_trace_not_revocable": "サバちゃんが付与した権限がないため、元に戻すものはありません。他で付与された権限はそのまま残します。",
       "net_trace_failed": "権限の変更失敗",
       "sandbox_allow": "分離せずに実行するには同意してください: saba-chan-cli sandbox allow {{component}}"
     },

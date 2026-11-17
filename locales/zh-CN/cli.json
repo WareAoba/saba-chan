@@ -349,6 +349,7 @@
       "access_needs_grant": "没有 (config net-trace grant)",
       "access_needs_relogin": "已获得，重新登录 Windows 后可用",
       "access_unsupported": "此系统不可用（仅限 Windows）",
+      "elevation_hint": "守护进程所在电脑上会弹出管理员确认",
       "enable_hint": "开启方法：saba-chan-cli config set systemMonitorNetTrace=on"
     },
     "public_address": {
@@ -528,6 +529,7 @@
       "move_failed": "文件夹移动失败。请用“保留在原位置”导入。",
       "port_check_busy": "正在检查中。请稍后重试",
       "net_trace_elevation_failed": "未能在守护进程所在电脑上获得管理员确认。请在那台电脑前重试。",
+      "net_trace_not_revocable": "没有可撤销的内容：此权限不是 Saba-chan 授予的。其他方式授予的权限会保留。",
       "net_trace_failed": "权限更改失败",
       "sandbox_allow": "要不隔离运行，请先同意：saba-chan-cli sandbox allow {{component}}"
     },

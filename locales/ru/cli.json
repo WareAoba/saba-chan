@@ -349,6 +349,7 @@
       "access_needs_grant": "нет (config net-trace grant)",
       "access_needs_relogin": "выдано, снова войдите в Windows, чтобы использовать",
       "access_unsupported": "недоступно в этой ОС (только Windows)",
+      "elevation_hint": "На ПК с демоном появится запрос администратора",
       "enable_hint": "Чтобы включить: saba-chan-cli config set systemMonitorNetTrace=on"
     },
     "public_address": {
@@ -528,6 +529,7 @@
       "move_failed": "Не удалось перенести папку. Импортируйте её через «Подключить на месте».",
       "port_check_busy": "Проверка уже идёт. Повторите позже",
       "net_trace_elevation_failed": "Подтверждение администратора на ПК демона не получено. Повторите за этим ПК.",
+      "net_trace_not_revocable": "Нечего отзывать: Saba-chan не выдавала это разрешение. Разрешения, выданные иначе, остаются.",
       "net_trace_failed": "Не удалось изменить разрешение",
       "sandbox_allow": "Чтобы запустить без изоляции, дайте согласие: saba-chan-cli sandbox allow {{component}}"
     },

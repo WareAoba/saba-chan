@@ -1979,7 +1979,6 @@
   "net_trace": {
     "label": "Per-server and per-port network",
     "description": "While the system monitor is expanded, counts traffic per server and port from Windows network events. Needs administrator confirmation once at first.",
-    "status_ok": "Permission granted. Counting starts when the monitor is expanded.",
     "status_needs_grant": "This account has no permission to read network events",
     "status_needs_relogin": "Permission granted. Sign in to Windows again to start counting.",
     "grant": "Grant permission",

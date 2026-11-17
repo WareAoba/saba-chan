@@ -438,9 +438,25 @@ pub(crate) fn fake_start(on: bool) {
     platform::FAKE_START.with(|f| f.set(on));
 }
 
+/// 권한 바꾸기에 실패한 까닭
+#[derive(Debug, PartialEq, Eq)]
+pub enum ElevateError {
+    /// 사바쨩이 준 권한(표시)이 없다: 거둘 것이 없으니 관리자 확인 창을 띄우지 않는다
+    NothingToRevoke,
+    Failed(String),
+}
+
+/// 사바쨩이 지금 사용자에게 준 권한(표시)이 남아 있어 되돌릴 수 있는지
+pub fn revocable() -> bool {
+    platform::revocable()
+}
+
 /// 관리자 확인 창을 띄워 지금 사용자를 그룹에 넣거나(`grant`) 뺀다
-pub fn elevate(grant: bool) -> Result<(), String> {
-    platform::elevate(grant)
+pub fn elevate(grant: bool) -> Result<(), ElevateError> {
+    if !grant && !revocable() {
+        return Err(ElevateError::NothingToRevoke);
+    }
+    platform::elevate(grant).map_err(ElevateError::Failed)
 }
 
 /// `saba-core net-trace grant|revoke <SID>`: 관리자 권한으로 다시 띄워졌을 때 그룹을 바꾼다.
@@ -491,6 +507,10 @@ mod platform {
 
     pub(super) fn elevate(_grant: bool) -> Result<(), String> {
         Err("unsupported".into())
+    }
+
+    pub(super) fn revocable() -> bool {
+        false
     }
 
     /// 거둘 것이 없다 (Windows만 권한을 준다)
@@ -807,6 +827,11 @@ mod platform {
         Access::from_parts(admin, group_in_token, member, provider)
     }
 
+    /// 표시는 HKLM\SOFTWARE 아래라 보통 권한으로도 읽힌다 (Users 읽기가 기본)
+    pub(super) fn revocable() -> bool {
+        current_user_sid().is_some_and(|sid| added_by_us("group", &sid) || added_by_us("provider", &sid))
+    }
+
     pub(super) fn elevate(grant: bool) -> Result<(), String> {
         let sid = current_user_sid().ok_or("cannot read the current user")?;
         run_elevated(&format!("net-trace {} {}", if grant { "grant" } else { "revoke" }, sid))
@@ -985,6 +1010,12 @@ mod platform {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn revoke_without_anything_saba_chan_granted_is_refused_without_elevation() {
+        assert!(!revocable());
+        assert_eq!(elevate(false), Err(ElevateError::NothingToRevoke));
+    }
 
     #[test]
     fn reset_revokes_each_marked_account_once() {
