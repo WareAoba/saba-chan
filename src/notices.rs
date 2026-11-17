@@ -147,8 +147,9 @@ fn exit_reason(d: &Value) -> Option<Text> {
 /// 복구 시도 하나의 카드: 크래시 카드와 그 시도의 재시작 실패 카드가 같은 값 (`restartAttempt`)
 fn restart_dedup(d: &Value) -> Option<String> {
     let attempt = d.get("restartAttempt").and_then(Value::as_u64)?;
-    Some(format!("restart:{}:{attempt}", str_of(d, "instanceId")?))
+    Some(format!("{RESTART_DEDUP}{}:{attempt}", str_of(d, "instanceId")?))
 }
+const RESTART_DEDUP: &str = "restart:";
 
 /// 데몬 이벤트 → 알림함에 할 일 (없으면 None). 앱에서 한 일(`source: gui`)은 그 자리에서 이미 봤으니 읽은 것으로 넣는다
 pub fn from_event(kind: &str, d: &Value) -> Option<Change> {
@@ -315,7 +316,7 @@ pub struct Store {
 impl Store {
     /// 파일에서 읽는다. 없거나 깨졌으면 빈 알림함
     pub fn open(path: PathBuf) -> Self {
-        let saved = std::fs::read_to_string(&path)
+        let mut saved: Saved = std::fs::read_to_string(&path)
             .ok()
             .and_then(|text| match serde_json::from_str(&text) {
                 Ok(s) => Some(s),
@@ -325,6 +326,13 @@ impl Store {
                 }
             })
             .unwrap_or_default();
+        // 복구 시도 번호(`restartAttempt`)는 데몬이 켜질 때마다 처음부터 센다: 지난 실행의 카드는 표시를 떼어,
+        // 새 실행의 같은 번호 크래시가 그 카드를 지우지 않게 한다
+        for n in &mut saved.notices {
+            if n.dedup.as_deref().is_some_and(|key| key.starts_with(RESTART_DEDUP)) {
+                n.dedup = None;
+            }
+        }
         Self { path: Some(path), saved: Mutex::new(saved) }
     }
 
@@ -711,6 +719,21 @@ mod tests {
         assert_eq!(again.list()[0].id, id);
         again.apply(from_event("instance.unresponsive", &json!({ "instanceId": "i1", "minutes": 3 })).unwrap());
         assert!(again.list()[0].id > id, "numbers keep counting up after a restart");
+    }
+
+    /// 복구 시도 번호는 데몬이 켜질 때마다 처음부터 센다: 새 실행의 같은 번호 크래시가 지난 실행의 실패 카드를 지우지 않는다
+    #[test]
+    fn a_crash_after_a_daemon_restart_keeps_the_earlier_failure_card() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("notices.json");
+        let crash = json!({ "instanceId": "i1", "instance": "mc", "kind": "crash", "restartInSecs": 10, "restartAttempt": 0 });
+        let first = Store::open(path.clone());
+        first.apply(from_event("instance.exit", &crash).unwrap());
+        first.apply(from_event("instance.restart_failed", &json!({ "instanceId": "i1", "instance": "mc", "kind": "crash", "noteArgs": { "reason": "x" }, "restartAttempt": 0 })).unwrap());
+        assert_eq!(first.list().len(), 1, "the same attempt rewrites its own card");
+        let again = Store::open(path);
+        again.apply(from_event("instance.exit", &crash).unwrap());
+        assert_eq!(again.list().len(), 2);
     }
 
     /// 업데이트 결과는 같은 결과를 한 번만, 확인한 결과는 넣지 않는다. 되돌리기는 확인한 것으로 남아도 한 번 알린다
