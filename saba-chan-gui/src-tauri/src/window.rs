@@ -137,17 +137,22 @@ pub fn show_off_taskbar(win: &WebviewWindow) {
     }
 }
 
-/// `WS_EX_APPWINDOW`를 빼고 `WS_EX_TOOLWINDOW`를 넣는다: 작업 표시줄·Alt+Tab에 나오지 않는다
+/// `WS_EX_APPWINDOW`를 빼고 `WS_EX_TOOLWINDOW`를 넣는다: 작업 표시줄·Alt+Tab에 나오지 않는다.
+/// `WS_SYSMENU`도 뺀다: tao는 테두리 없는 창에도 시스템 메뉴를 남기는데, 도구 창이 되면 Windows가
+/// 그 메뉴의 작은 닫기(X) 버튼을 모서리에 덧그린다. 판은 바깥 클릭·Esc로 닫는다
 #[cfg(windows)]
 fn make_tool_window(hwnd: windows_sys::Win32::Foundation::HWND) {
     use windows_sys::Win32::UI::WindowsAndMessaging::*;
     unsafe {
         let ex = GetWindowLongW(hwnd, GWL_EXSTYLE) as u32;
+        let style = GetWindowLongW(hwnd, GWL_STYLE) as u32;
         let tool = (ex & !WS_EX_APPWINDOW) | WS_EX_TOOLWINDOW;
-        if tool == ex {
+        let bare = style & !WS_SYSMENU;
+        if tool == ex && bare == style {
             return;
         }
         SetWindowLongW(hwnd, GWL_EXSTYLE, tool as i32);
+        SetWindowLongW(hwnd, GWL_STYLE, bare as i32);
         // 바꾼 스타일은 SetWindowPos(SWP_FRAMECHANGED) 뒤에 반영된다
         SetWindowPos(
             hwnd,
@@ -833,7 +838,8 @@ pub fn toggle_always_on_top(app: &AppHandle, instance_id: &str, pinned: bool) ->
 mod tests {
     use super::*;
 
-    /// 보였다 다시 그려진 창도 도구 창이 된다: 작업 표시줄 버튼·미리보기·Alt+Tab에서 빠진다
+    /// 보였다 다시 그려진 창도 도구 창이 된다: 작업 표시줄 버튼·미리보기·Alt+Tab에서 빠지고,
+    /// 시스템 메뉴가 없어 Windows가 닫기(X) 버튼을 덧그리지 않는다 (tao는 테두리 없는 창에도 `WS_SYSMENU`를 둔다)
     #[cfg(windows)]
     #[test]
     fn a_shown_app_window_becomes_a_tool_window() {
@@ -844,7 +850,7 @@ mod tests {
                 WS_EX_APPWINDOW,
                 class.as_ptr(),
                 std::ptr::null(),
-                WS_POPUP,
+                WS_POPUP | WS_SYSMENU,
                 0,
                 0,
                 10,
@@ -858,9 +864,11 @@ mod tests {
             ShowWindow(hwnd, SW_SHOWNOACTIVATE);
             make_tool_window(hwnd);
             let ex = GetWindowLongW(hwnd, GWL_EXSTYLE) as u32;
+            let style = GetWindowLongW(hwnd, GWL_STYLE) as u32;
             DestroyWindow(hwnd);
             assert_ne!(ex & WS_EX_TOOLWINDOW, 0);
             assert_eq!(ex & WS_EX_APPWINDOW, 0);
+            assert_eq!(style & WS_SYSMENU, 0);
         }
     }
 
