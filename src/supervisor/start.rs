@@ -456,7 +456,7 @@ impl Supervisor {
 
         // ── server.pre_start 문맥: 서버 hook 공통 문맥 + 시작 설정(비밀 값은 가린다)·시작 방식 ──
         let module = self.module_loader.get_module(module_name).ok();
-        let metadata = module.as_ref().map(|m| &m.metadata);
+        let metadata = module.as_ref().map(|m| &*m.metadata);
         let mut ctx = crate::extension::hook_context(&instance, &self.instance_store.instance_dir(&instance.id), metadata);
         ctx["config"] = crate::extension::redact_for_hooks(metadata, config);
         ctx["managed"] = json!(managed);
@@ -487,7 +487,7 @@ impl Supervisor {
             let s = sup.read().await;
             let Some(instance) = s.instance_store.get(instance_id) else { return };
             let module = s.module_loader.get_module(&instance.module_name).ok();
-            let meta = module.as_ref().map(|m| &m.metadata);
+            let meta = module.as_ref().map(|m| &*m.metadata);
             let patterns = meta.map(|m| m.ready_patterns.clone()).unwrap_or_default();
             let timeout = meta.and_then(|m| m.ready_timeout).unwrap_or(ready::DEFAULT_READY_TIMEOUT_SECS);
             let (join, leave) = meta.map(|m| (m.player_join_patterns.clone(), m.player_leave_patterns.clone())).unwrap_or_default();

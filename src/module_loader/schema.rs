@@ -2,6 +2,7 @@
 
 use super::*;
 use std::path::Path;
+use std::sync::Arc;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
@@ -691,9 +692,10 @@ impl ModuleSettings {
     }
 }
 
+/// 복제가 싸다: 모듈 정보(`metadata`)는 읽기만 하므로 함께 쓴다. `get_module`이 감시 루프·하트비트마다 불린다
 #[derive(Debug, Clone)]
 pub struct LoadedModule {
-    pub metadata: ModuleMetadata,
+    pub metadata: Arc<ModuleMetadata>,
     pub path: String,  // 압축 해제된 디렉토리 또는 원본 디렉토리 절대 경로
     /// 찾은 원본: 모듈 폴더, 또는 modules 폴더에 놓인 ZIP 파일 (제거 API가 지우는 것)
     pub source: String,

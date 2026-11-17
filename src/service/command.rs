@@ -58,7 +58,7 @@ async fn run_command(id: &str, state: &IPCServer, req: CommandRequest) -> Outcom
             if meta.commands.as_ref().is_some_and(|c| c.hook) && crate::commands::find(&meta, &request.name).is_none() =>
         {
             let extra = instance_commands(&state, &instance, false).await;
-            Some(crate::commands::with_instance_commands(&meta, &extra))
+            Some(std::sync::Arc::new(crate::commands::with_instance_commands(&meta, &extra)))
         }
         other => other,
     };
@@ -73,7 +73,7 @@ async fn run_command(id: &str, state: &IPCServer, req: CommandRequest) -> Outcom
     let module_has_it = metadata.as_ref().is_some_and(|m| crate::commands::find(m, &request.name).is_some());
     if !module_has_it {
         let instance_dir = state.supervisor.read().await.instance_store.instance_dir(&instance.id);
-        let mut context = crate::extension::hook_context(&instance, &instance_dir, metadata.as_ref());
+        let mut context = crate::extension::hook_context(&instance, &instance_dir, metadata.as_deref());
         context["running"] = json!(running);
         // 계획(익스텐션 경로)부터 실행이 끝날 때까지 익스텐션 폴더를 옮기지 못하게 한다
         let _in_use = crate::component_lock::in_use().await;
@@ -825,7 +825,7 @@ mod tests {
             "[module]\nname = \"m\"\nversion = \"1\"\nentry = \"lifecycle.py\"\n[errors]\nserver_not_running = \"Server is off\"\ntimeout = \"Timed out\"\n",
         )
         .unwrap();
-        let module = crate::module_loader::LoadedModule { metadata, path: dir.path().to_string_lossy().into(), source: dir.path().to_string_lossy().into() };
+        let module = crate::module_loader::LoadedModule { metadata: std::sync::Arc::new(metadata), path: dir.path().to_string_lossy().into(), source: dir.path().to_string_lossy().into() };
 
         let ko = module_errors(&module, "ko");
         assert_eq!(ko["server_not_running"], "서버가 꺼져 있어요");

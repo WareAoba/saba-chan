@@ -1226,7 +1226,7 @@ async fn players_read_as_a_count_and_names_for_supporting_modules() {
     let mut modules = state.supervisor.read().await.module_loader.discover_modules().unwrap();
     let (actions, _) = heartbeat_actions(&["ko"], &modules);
     assert_eq!(actions.iter().find(|a| a["id"] == "server.players").unwrap()["modules"], json!([]));
-    modules[0].metadata.players_function = Some("player_count".into());
+    std::sync::Arc::make_mut(&mut modules[0].metadata).players_function = Some("player_count".into());
     let (actions, _) = heartbeat_actions(&["ko"], &modules);
     let item = actions.iter().find(|a| a["id"] == "server.players").unwrap();
     assert_eq!((item["modules"].clone(), item["title"]["ko"].clone(), item["surfaces"].clone()), (json!(["plain"]), json!("플레이어"), json!(["discord", "chatbot"])));
@@ -1254,7 +1254,7 @@ async fn port_check_reads_as_a_verdict_without_the_address() {
     let mut modules = state.supervisor.read().await.module_loader.discover_modules().unwrap();
     let (actions, _) = heartbeat_actions(&["ko"], &modules);
     assert_eq!(actions.iter().find(|a| a["id"] == "server.port_check").unwrap()["modules"], json!([]));
-    let settings = modules[0].metadata.settings.get_or_insert_with(|| crate::module_loader::ModuleSettings { fields: Vec::new() });
+    let settings = std::sync::Arc::make_mut(&mut modules[0].metadata).settings.get_or_insert_with(|| crate::module_loader::ModuleSettings { fields: Vec::new() });
     settings.fields.push(crate::module_loader::SettingField { name: "port".into(), port: true, public: Some("udp".into()), ..Default::default() });
     let (actions, _) = heartbeat_actions(&["ko"], &modules);
     let item = actions.iter().find(|a| a["id"] == "server.port_check").unwrap();

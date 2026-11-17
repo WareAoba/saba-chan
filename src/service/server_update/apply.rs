@@ -51,7 +51,7 @@ pub async fn server_update_status(state: &IPCServer, id: &str) -> Option<Value> 
     }
 
     let instance_dir = supervisor.instance_store.instance_dir(id);
-    let mut ctx = crate::extension::hook_context(&instance, &instance_dir, module.as_ref().map(|m| &m.metadata));
+    let mut ctx = crate::extension::hook_context(&instance, &instance_dir, module.as_ref().map(|m| &*m.metadata));
     if let (Value::Object(ctx), Value::Object(extra)) = (&mut ctx, check_update_context(&instance, &instance_dir, install_config.as_ref())) {
         ctx.extend(extra);
     }
@@ -220,7 +220,7 @@ pub(crate) async fn begin_server_update_holding(
     let text = crate::chat::i18n::Catalog::for_language(&state.config_store.ui_language().await);
     let module = supervisor.module_loader.get_module(&instance.module_name).ok();
     // 처음 설치와 같은 인스턴스 설정·데이터 폴더·HOST 문맥
-    let target = crate::supervisor::InstanceInstall::of(&instance, &instance_dir, module.as_ref().map(|m| &m.metadata), state.host_context(id));
+    let target = crate::supervisor::InstanceInstall::of(&instance, &instance_dir, module.as_ref().map(|m| &*m.metadata), state.host_context(id));
     let job = UpdateJob {
         state: state.clone(),
         id: id.to_string(),

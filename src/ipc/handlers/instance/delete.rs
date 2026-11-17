@@ -26,7 +26,7 @@ async fn unlink_server_folder(state: &IPCServer, instance: &crate::instance::Ser
     if folder.is_none() && !crate::instance::migration::saved(&records) {
         return None;
     }
-    let boundary = crate::module_paths::Boundary::for_instance(instance, &records, metadata.as_ref());
+    let boundary = crate::module_paths::Boundary::for_instance(instance, &records, metadata.as_deref());
     let exe_dir = instance.executable_path.as_deref().and_then(|p| std::path::Path::new(p).parent()).map(std::path::Path::to_path_buf);
     // 실행 파일 폴더는 그 서버 폴더 안일 때만 (밖이면 다른 인스턴스와 함께 쓰는 런타임일 수 있다)
     let dirs: Vec<std::path::PathBuf> = folder.iter().map(std::path::PathBuf::from).collect();

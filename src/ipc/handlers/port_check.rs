@@ -65,7 +65,7 @@ pub async fn address(Path(id): Path<String>, State(state): State<IPCServer>) -> 
     let labels: std::collections::HashMap<String, String> = {
         let sup = state.supervisor.read().await;
         let module = sup.instance_store.get(&id).and_then(|i| sup.module_loader.get_module(&i.module_name).ok());
-        module.and_then(|m| m.metadata.settings).map(|s| s.fields.into_iter().map(|f| (f.name, f.label)).collect()).unwrap_or_default()
+        module.and_then(|m| m.metadata.settings.as_ref().map(|s| s.fields.iter().map(|f| (f.name.clone(), f.label.clone())).collect())).unwrap_or_default()
     };
     let Some(target) = crate::port_check::targets(&state, std::slice::from_ref(&id)).await.pop() else { return crate::service::Failure::instance_not_found(&id).into_response() };
     let mut ports: Vec<serde_json::Value> = Vec::new();
