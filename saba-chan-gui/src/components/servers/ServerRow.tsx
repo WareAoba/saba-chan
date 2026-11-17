@@ -1,7 +1,7 @@
 import clsx from 'clsx';
 import type { MutableRefObject, PointerEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useInstanceMaintenance, useMaintenanceOf } from '../../hooks/useInstanceMaintenance';
+import { useMaintenanceOf } from '../../hooks/useInstanceMaintenance';
 import { type Server, useServerStore } from '../../stores/useServerStore';
 import { useUIStore } from '../../stores/useUIStore';
 import type { ModuleInfo } from '../../types/daemon';
@@ -73,7 +73,6 @@ export function ServerRow({
     unsaved,
 }: ServerRowProps) {
     const { t } = useTranslation('gui');
-    useInstanceMaintenance(server);
     const { updateInfo, updateCheckError } = useMaintenanceOf(server.id);
     const modulesLoaded = useServerStore((s) => s.modulesLoaded);
     const status = viewStatus(server, moduleData, modulesLoaded);

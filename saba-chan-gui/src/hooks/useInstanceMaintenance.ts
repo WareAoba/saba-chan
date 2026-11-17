@@ -10,7 +10,7 @@ const PROVISION_SLOW_POLL_MS = 10_000;
 
 /**
  * 인스턴스별 "관리" 상태 — 게임 서버 업데이트 정보, 설치(프로비저닝) 진행률, 설치 완성 카드(cooked).
- * 목록 줄이 확인 작업을 돌리고(서버당 한 번), 상세 화면은 같은 값을 읽기만 한다.
+ * 서버 페이지가 서버마다 확인 작업을 돌리고(`InstanceMaintenance`), 목록 줄과 상세 화면은 같은 값을 읽기만 한다.
  */
 interface Maintenance {
     provisionProgress: ApiBody | null;
@@ -40,7 +40,7 @@ export function useMaintenanceOf(id: string) {
     return useMaintenanceStore((s) => s.byId[id]) || EMPTY;
 }
 
-/** 확인 작업 실행: 서버마다 정확히 한 곳(목록 줄)에서 호출한다 */
+/** 확인 작업 실행: 서버마다 정확히 한 곳(`InstanceMaintenance`)에서 호출한다 */
 export function useInstanceMaintenance(server: Server) {
     const patch = useMaintenanceStore((s) => s.patch);
 
@@ -105,6 +105,12 @@ export function useInstanceMaintenance(server: Server) {
             wake?.();
         };
     }, [server.id, server.provisioning, server.name, patch]);
+}
+
+/** 서버 하나의 확인 작업. 줄이 화면에 없어도(좁은 창의 상세·검색·접힌 브랜치) 돌게 서버 페이지가 서버마다 둔다 */
+export function InstanceMaintenance({ server }: { server: Server }) {
+    useInstanceMaintenance(server);
+    return null;
 }
 
 /** 데몬의 확인 결과 → 줄에 보일 값. 실패는 경고로, 새 빌드가 있으면 업데이트 버튼으로 */

@@ -730,22 +730,40 @@ export function ExtensionProvider({ children, surface = 'main' }: { children: Re
         [fetchExtensions, t],
     );
 
-    const value: ExtensionContextValue = {
-        extensions,
-        slots,
-        loading,
-        toggleExtension,
-        refreshExtensions: fetchExtensions,
-        removeExtension,
-        // 확인되지 않은 익스텐션의 GUI 허락
-        guiPending: allPending,
-        approveExtensionGui,
-        manifestExtensions,
-        manifestLoading,
-        installingIds,
-        fetchManifest,
-        installExtension,
-    };
+    // 값이 그대로면 같은 객체를 넘긴다: App이 다시 그려질 때마다 쓰는 곳(숨긴 탭 포함)이 따라 그려지지 않게
+    const value = useMemo<ExtensionContextValue>(
+        () => ({
+            extensions,
+            slots,
+            loading,
+            toggleExtension,
+            refreshExtensions: fetchExtensions,
+            removeExtension,
+            // 확인되지 않은 익스텐션의 GUI 허락
+            guiPending: allPending,
+            approveExtensionGui,
+            manifestExtensions,
+            manifestLoading,
+            installingIds,
+            fetchManifest,
+            installExtension,
+        }),
+        [
+            extensions,
+            slots,
+            loading,
+            toggleExtension,
+            fetchExtensions,
+            removeExtension,
+            allPending,
+            approveExtensionGui,
+            manifestExtensions,
+            manifestLoading,
+            installingIds,
+            fetchManifest,
+            installExtension,
+        ],
+    );
 
     return <ExtensionContext.Provider value={value}>{children}</ExtensionContext.Provider>;
 }
