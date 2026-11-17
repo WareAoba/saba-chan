@@ -939,6 +939,20 @@ const icons: Record<string, React.JSX.Element> = {
             />
         </svg>
     ),
+    /** Windows 관리자 확인(UAC) 방패. 확인 창이 뜨는 버튼에 붙인다. Windows 관례대로 색을 고정한다 */
+    uacShield: (
+        <svg viewBox="0 0 24 24">
+            <path d="M12 1.5 21 4.8v6.6c0 5.4-3.8 9.3-9 11.1-5.2-1.8-9-5.7-9-11.1V4.8z" fill="#f4c21b" />
+            <path d="M12 1.5 3 4.8V12h9z" fill="#2a6fdb" />
+            <path d="M12 12h8.9c-.6 4.9-4 8.6-8.9 10.5z" fill="#2a6fdb" />
+            <path
+                d="M12 1.5 21 4.8v6.6c0 5.4-3.8 9.3-9 11.1-5.2-1.8-9-5.7-9-11.1V4.8z"
+                fill="none"
+                stroke="rgba(0,0,0,.35)"
+                strokeWidth="1"
+            />
+        </svg>
+    ),
     key: (
         <svg xmlns="http://www.w3.org/2000/svg" className="ionicon" viewBox="0 0 512 512">
             <path

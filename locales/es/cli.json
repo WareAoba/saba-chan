@@ -349,6 +349,7 @@
       "access_needs_grant": "falta (config net-trace grant)",
       "access_needs_relogin": "concedido; vuelve a iniciar sesión en Windows para usarlo",
       "access_unsupported": "no disponible en este sistema (solo Windows)",
+      "elevation_hint": "Aparecerá una confirmación de administrador en el PC del daemon",
       "enable_hint": "Para activarla: saba-chan-cli config set systemMonitorNetTrace=on"
     },
     "public_address": {
@@ -528,6 +529,7 @@
       "move_failed": "Error al mover la carpeta. Impórtala con «Dejarla donde está».",
       "port_check_busy": "Comprobación ya en curso. Inténtalo de nuevo en un momento",
       "net_trace_elevation_failed": "Sin confirmación de administrador en el PC del daemon. Inténtalo de nuevo desde ese PC.",
+      "net_trace_not_revocable": "Nada que quitar: Saba-chan no concedió este permiso. Los permisos concedidos en otro sitio se conservan.",
       "net_trace_failed": "Error al cambiar el permiso",
       "sandbox_allow": "Para ejecutar sin aislamiento, da tu consentimiento: saba-chan-cli sandbox allow {{component}}"
     },

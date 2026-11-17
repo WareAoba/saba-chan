@@ -1980,7 +1980,6 @@
   "net_trace": {
     "label": "依伺服器·連接埠統計網路",
     "description": "系統監視器展開期間，以 Windows 網路事件依伺服器和連接埠統計流量。首次需要一次系統管理員確認。",
-    "status_ok": "已有權限。展開監視器即開始統計。",
     "status_needs_grant": "此帳戶無網路事件讀取權限",
     "status_needs_relogin": "已取得權限。重新登入 Windows 後開始統計。",
     "grant": "授予權限",

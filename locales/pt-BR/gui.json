@@ -1980,7 +1980,6 @@
   "net_trace": {
     "label": "Rede por servidor e porta",
     "description": "Com o monitor do sistema expandido, conta o tráfego por servidor e por porta usando eventos de rede do Windows. Exige confirmação de administrador na primeira vez.",
-    "status_ok": "Permissão concedida. A contagem começa ao expandir o monitor.",
     "status_needs_grant": "Esta conta não tem permissão para ler eventos de rede",
     "status_needs_relogin": "Permissão concedida. Entre no Windows novamente para iniciar a contagem.",
     "grant": "Conceder permissão",

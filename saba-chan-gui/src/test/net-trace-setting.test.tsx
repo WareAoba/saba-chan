@@ -18,7 +18,8 @@ describe('설정 > 게임 서버: 포트·서버별 네트워크 (/api/system/ne
         expect(screen.queryByRole('button', { name: 'Grant permission' })).toBeNull();
         fireEvent.click(screen.getByRole('checkbox', { name: 'Per-server and per-port network' }));
         expect(useSettingsStore.getState().systemMonitorNetTrace).toBe(true);
-        expect(screen.getByRole('button', { name: 'Grant permission' })).toBeInTheDocument();
+        // 관리자 확인 창이 뜨는 버튼에는 Windows 방패를 붙인다
+        expect(screen.getByRole('button', { name: 'Grant permission' }).querySelector('svg')).not.toBeNull();
     });
 
     it('권한 받기는 데몬이 관리자 확인을 띄우고, 돌려준 상태를 보인다', async () => {
@@ -27,6 +28,7 @@ describe('설정 > 게임 서버: 포트·서버별 네트워크 (/api/system/ne
             success: true,
             access: 'needs_relogin',
             enabled: true,
+            revocable: true,
         });
         await act(async () => render(<NetTraceSetting />));
         await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Grant permission' })));
@@ -46,6 +48,31 @@ describe('설정 > 게임 서버: 포트·서버별 네트워크 (/api/system/ne
         await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Grant permission' })));
         expect(screen.getByRole('alert')).toHaveTextContent('Administrator confirmation failed');
         expect(screen.getByRole('button', { name: 'Grant permission' })).toBeInTheDocument();
+    });
+
+    it('권한이 있으면 상태 문구 없이, 사바쨩이 준 권한일 때만 되돌리기 버튼을 보인다', async () => {
+        useSettingsStore.setState({ systemMonitorNetTrace: true });
+        vi.mocked(window.api.systemNetTrace).mockResolvedValue({
+            success: true,
+            access: 'ok',
+            enabled: true,
+            revocable: true,
+        });
+        const { unmount } = await act(async () => render(<NetTraceSetting />));
+        expect(screen.getByRole('button', { name: 'Remove permission' })).toBeInTheDocument();
+        expect(screen.queryByText(/Permission granted|net_trace\./i)).toBeNull();
+        unmount();
+
+        // 사바쨩 밖에서 받은 권한은 되돌리지 않으므로 아무것도 보이지 않는다
+        vi.mocked(window.api.systemNetTrace).mockResolvedValue({
+            success: true,
+            access: 'ok',
+            enabled: true,
+            revocable: false,
+        });
+        await act(async () => render(<NetTraceSetting />));
+        expect(screen.queryByRole('button', { name: 'Remove permission' })).toBeNull();
+        expect(screen.queryByText(/Permission granted|net_trace\./i)).toBeNull();
     });
 
     it('Windows가 아니면 보이지 않는다', async () => {

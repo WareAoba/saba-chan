@@ -349,6 +349,7 @@
       "access_needs_grant": "없음 (config net-trace grant)",
       "access_needs_relogin": "받음. Windows에 다시 로그인하면 쓸 수 있습니다",
       "access_unsupported": "이 OS에서는 사용 불가 (Windows 전용)",
+      "elevation_hint": "데몬 PC에 관리자 확인 창이 뜹니다",
       "enable_hint": "켜려면: saba-chan-cli config set systemMonitorNetTrace=on"
     },
     "public_address": {
@@ -528,6 +529,7 @@
       "move_failed": "폴더 이동 실패. '그 자리에 연결'로 가져와 주세요.",
       "port_check_busy": "이미 확인 중. 잠시 뒤 다시 시도해 주세요",
       "net_trace_elevation_failed": "데몬 PC에서 관리자 확인을 받지 못함. 그 PC 앞에서 다시 시도해 주세요.",
+      "net_trace_not_revocable": "사바쨩이 준 권한이 없어 되돌릴 것이 없음. 밖에서 받은 권한은 남겨 둡니다.",
       "net_trace_failed": "권한 변경 실패",
       "sandbox_allow": "격리 없이 실행하려면 동의해 주세요: saba-chan-cli sandbox allow {{component}}"
     },

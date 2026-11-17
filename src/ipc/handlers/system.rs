@@ -5,9 +5,11 @@
 //!   `?sizes=false`: 인스턴스 폴더 크기를 새로 재지 않는다 (요약만 보는 화면). 포트·서버별 네트워크(`net_trace`)는
 //!   설정 `systemMonitorNetTrace`가 켜져 있을 때 `sizes=true`(펼친 화면) 요청이 오는 동안만 센다.
 //!   `?gpu=true`: GPU를 읽는다(화면에서 GPU를 골랐을 때). 없으면 `gpus`는 null이고 NVIDIA 라이브러리를 올리지 않는다
-//! - `GET /api/system/net-trace` — `{ok, access: "ok"|"needs_grant"|"needs_relogin"|"unsupported", enabled}`
+//! - `GET /api/system/net-trace` — `{ok, access: "ok"|"needs_grant"|"needs_relogin"|"unsupported", revocable, enabled}`
+//!   (`revocable`: 사바쨩이 준 권한이 남아 있어 되돌릴 수 있다)
 //! - `POST /api/system/net-trace/grant` | `/revoke` — 이 PC에 관리자 확인 창을 띄워 지금 사용자에게
-//!   커널 네트워크 이벤트 권한을 주거나 거둔다. 실패는 HTTP 200 `{ok: false, error_code: "net_trace_<코드>", error}`
+//!   커널 네트워크 이벤트 권한을 주거나 거둔다. 실패는 HTTP 200 `{ok: false, error_code: "net_trace_<코드>", error}`.
+//!   되돌릴 것(사바쨩이 준 권한)이 없으면 확인 창 없이 `net_trace_not_revocable`
 
 use axum::{
     extract::{Query, State},
@@ -46,7 +48,8 @@ pub async fn get_metrics(State(state): State<IPCServer>, Query(q): Query<Metrics
 }
 
 fn net_trace_status(enabled: bool) -> serde_json::Value {
-    json!({ "success": true, "access": crate::system_monitor::net_trace::access().as_str(), "enabled": enabled })
+    use crate::system_monitor::net_trace;
+    json!({ "success": true, "access": net_trace::access().as_str(), "revocable": net_trace::revocable(), "enabled": enabled })
 }
 
 /// GET /api/system/net-trace
@@ -70,6 +73,7 @@ pub async fn revoke_net_trace(State(state): State<IPCServer>) -> impl IntoRespon
 
 /// 관리자 확인 창을 띄우고 끝날 때까지 기다린다 (확인 뒤 하위 명령은 최대 60초)
 async fn change_net_trace_access(state: IPCServer, grant: bool) -> axum::response::Response {
+    use crate::system_monitor::net_trace::ElevateError;
     let enabled = state.config_store.get_gui_settings().await.system_monitor_net_trace;
     let done = tokio::task::spawn_blocking(move || {
         crate::system_monitor::net_trace::elevate(grant).map(|()| net_trace_status(enabled))
@@ -82,7 +86,10 @@ async fn change_net_trace_access(state: IPCServer, grant: bool) -> axum::respons
     }
     match done {
         Ok(Ok(v)) => Json(v).into_response(),
-        Ok(Err(e)) => super::error(StatusCode::CONFLICT, "net_trace_elevation_failed", e),
+        Ok(Err(ElevateError::NothingToRevoke)) => {
+            super::error(StatusCode::CONFLICT, "net_trace_not_revocable", "nothing saba-chan granted to revoke")
+        }
+        Ok(Err(ElevateError::Failed(e))) => super::error(StatusCode::CONFLICT, "net_trace_elevation_failed", e),
         Err(e) => super::error(StatusCode::INTERNAL_SERVER_ERROR, "net_trace_failed", e.to_string()),
     }
 }

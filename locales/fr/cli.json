@@ -349,6 +349,7 @@
       "access_needs_grant": "manquante (config net-trace grant)",
       "access_needs_relogin": "accordé ; reconnectez-vous à Windows pour l'utiliser",
       "access_unsupported": "indisponible sur ce système (Windows uniquement)",
+      "elevation_hint": "Une confirmation administrateur va s'afficher sur le PC du daemon",
       "enable_hint": "Pour l'activer : saba-chan-cli config set systemMonitorNetTrace=on"
     },
     "public_address": {
@@ -528,6 +529,7 @@
       "move_failed": "Échec du déplacement du dossier. Importez-le avec « Le laisser en place ».",
       "port_check_busy": "Vérification déjà en cours. Réessayez dans un instant",
       "net_trace_elevation_failed": "Confirmation administrateur non obtenue sur le PC du daemon. Réessayez devant ce PC.",
+      "net_trace_not_revocable": "Rien à retirer : Saba-chan n'a pas accordé cette autorisation. Les autorisations accordées ailleurs sont conservées.",
       "net_trace_failed": "Échec de la modification de l'autorisation",
       "sandbox_allow": "Pour exécuter sans isolation, donnez votre accord : saba-chan-cli sandbox allow {{component}}"
     },

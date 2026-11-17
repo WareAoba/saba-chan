@@ -111,6 +111,12 @@ async fn set_install_path(state: State<'_, SharedState>, path: String) -> Result
     Ok(path)
 }
 
+/// 그 폴더에 설치하면 관리자 확인 창이 뜨는지 (설치 버튼의 방패)
+#[tauri::command]
+async fn install_needs_admin(path: String) -> Result<bool, String> {
+    Ok(cfg!(windows) && saba_chan_installer_core::needs_admin(Path::new(&path)))
+}
+
 /// 모듈·익스텐션 폴더를 고른다. 쓸 수 없는 폴더면 이유 코드(`component_dirs::PathError::code`)로 거절한다
 #[tauri::command]
 async fn set_components_dir(state: State<'_, SharedState>, path: String) -> Result<String, String> {
@@ -324,6 +330,12 @@ impl InstallHooks for WindowHooks {
 
 // Tauri 커맨드 — 제거
 
+/// 제거하면 관리자 확인 창이 뜨는지 (제거 버튼의 방패: 사바쨩이 준 네트워크 권한이 남았을 때)
+#[tauri::command]
+async fn uninstall_needs_admin() -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(uninstall::needs_admin).await.map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 async fn start_uninstall(app: AppHandle, keep_settings: bool, keep_instances: bool) -> Result<(), String> {
     let guard = WorkGuard::try_begin().ok_or_else(|| "busy".to_string())?;
@@ -435,6 +447,7 @@ pub(crate) fn run(app_mode: AppMode) {
         .invoke_handler(tauri::generate_handler![
             get_installer_state,
             set_install_path,
+            install_needs_admin,
             set_components_dir,
             set_language,
             set_shortcut_options,
@@ -445,6 +458,7 @@ pub(crate) fn run(app_mode: AppMode) {
             prepare_install,
             start_install,
             start_setup,
+            uninstall_needs_admin,
             start_uninstall,
             get_app_mode,
             crate::get_preferred_language,

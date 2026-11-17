@@ -19,6 +19,8 @@ export function NetTraceSetting() {
     const { t } = useTranslation('gui');
     const enabled = useSettingsStore((s) => s.systemMonitorNetTrace);
     const [access, setAccess] = useState<string | null>(null);
+    // 사바쨩이 준 권한이 남아 있어 되돌릴 수 있다 (밖에서 받은 권한은 되돌리지 않는다)
+    const [revocable, setRevocable] = useState(false);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -27,7 +29,10 @@ export function NetTraceSetting() {
         window.api
             .systemNetTrace()
             .then((res: ApiBody) => {
-                if (alive && !failed(res)) setAccess(String(res.access));
+                if (alive && !failed(res)) {
+                    setAccess(String(res.access));
+                    setRevocable(res.revocable === true);
+                }
             })
             .catch(() => {});
         return () => {
@@ -36,6 +41,10 @@ export function NetTraceSetting() {
     }, []);
 
     if (!access || !ACCESS.includes(access)) return null;
+
+    // 권한이 있으면 상태 문구는 없다. 되돌리기는 사바쨩이 준 권한일 때만 (밖에서 받은 권한은 되돌리지 않는다)
+    const status = access !== 'ok';
+    const button = access === 'needs_grant' ? 'grant' : revocable ? 'revoke' : null;
 
     const change = async (grant: boolean) => {
         setBusy(true);
@@ -51,6 +60,7 @@ export function NetTraceSetting() {
                 return;
             }
             setAccess(String(res.access));
+            setRevocable(res.revocable === true);
         } catch {
             setError(t('net_trace.err_generic'));
         } finally {
@@ -73,30 +83,23 @@ export function NetTraceSetting() {
                     onChange={(checked) => useSettingsStore.getState().update({ systemMonitorNetTrace: checked })}
                 />
             </div>
-            {enabled && (
+            {enabled && (status || button || error) && (
                 <div className="setting-sublist">
-                    <div className="setting-subitem">
-                        <span>{t(`net_trace.status_${access}`)}</span>
-                        {access === 'needs_grant' ? (
-                            <button
-                                type="button"
-                                className="btn btn-ghost btn-sm"
-                                disabled={busy}
-                                onClick={() => change(true)}
-                            >
-                                {t('net_trace.grant')}
-                            </button>
-                        ) : (
-                            <button
-                                type="button"
-                                className="btn btn-ghost btn-sm"
-                                disabled={busy}
-                                onClick={() => change(false)}
-                            >
-                                {t('net_trace.revoke')}
-                            </button>
-                        )}
-                    </div>
+                    {(status || button) && (
+                        <div className="setting-subitem">
+                            <span>{status && t(`net_trace.status_${access}`)}</span>
+                            {button && (
+                                <button
+                                    type="button"
+                                    className="btn btn-ghost btn-sm"
+                                    disabled={busy}
+                                    onClick={() => change(button === 'grant')}
+                                >
+                                    <Icon name="uacShield" size="sm" /> {t(`net_trace.${button}`)}
+                                </button>
+                            )}
+                        </div>
+                    )}
                     {error && (
                         <div className="setting-validation-error" role="alert">
                             <Icon name="alertCircle" size="sm" /> {error}
