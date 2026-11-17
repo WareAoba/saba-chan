@@ -24,7 +24,7 @@ const server = { id: 's1', name: 'S', module: 'mc', status: 'stopped' };
 
 function Harness({ enabled = true }: { enabled?: boolean }) {
     const ref = useRef<HTMLDivElement>(null);
-    const [advanced, setAdvanced] = useState(false);
+    const [openGroups, setOpenGroups] = useState<string[]>([]);
     const props = {
         section: 'server',
         embedded: true,
@@ -34,8 +34,8 @@ function Harness({ enabled = true }: { enabled?: boolean }) {
         settingsActiveTab: 'general',
         setSettingsActiveTab: vi.fn(),
         modules,
-        advancedExpanded: advanced,
-        setAdvancedExpanded: setAdvanced,
+        openGroups,
+        setGroupOpen: (g: string, open: boolean) => setOpenGroups((prev) => (open ? [...prev, g] : prev.filter((x) => x !== g))),
         availableVersions: [],
         handleSettingChange: vi.fn(),
         handleInstallVersion: vi.fn(),

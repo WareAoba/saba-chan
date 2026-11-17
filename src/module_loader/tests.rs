@@ -1341,3 +1341,18 @@ entry = "lifecycle.py"
     let issues = meta.check_dependencies(&partial);
     assert_eq!(issues.len(), 2, "gui too low + cli missing");
 }
+
+// 설정 카테고리(`group`)는 앱이 정한 공통 이름만 쓴다. 모르는 이름은 막지 않고(화면은 고급 카드로) 경고한다
+#[test]
+fn setting_groups_are_the_shared_categories() {
+    let schema = module_json_schema();
+    let groups = &schema["definitions"]["SettingFieldToml"]["properties"]["group"]["enum"];
+    for g in ["basic", "saba-chan", "pvp", "mob", "advanced"] {
+        assert!(groups.as_array().unwrap().contains(&serde_json::json!(g)), "{g} in {groups}");
+    }
+    let field = |group: &str| format!("{V1}\n[[settings.fields]]\nname = \"ff\"\ntype = \"boolean\"\ngroup = \"{group}\"\n");
+    assert!(parse_module_toml(&field("pvp")).unwrap().warnings.is_empty());
+    let odd = parse_module_toml(&field("guild")).unwrap();
+    assert_eq!(odd.settings.unwrap().fields[0].group.as_deref(), Some("guild"));
+    assert!(odd.warnings.iter().any(|w| w.contains("'ff'") && w.contains("guild")), "{:?}", odd.warnings);
+}

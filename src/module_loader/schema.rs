@@ -572,7 +572,8 @@ pub struct SettingField {
     pub max: Option<f64>,
     pub step: Option<f64>,
     pub options: Option<Vec<String>>,
-    pub group: Option<String>,  // "basic" (default), "advanced", "saba-chan" etc.
+    /// 화면 묶음: 없음·"basic"(기본) | "saba-chan" | 공통 카테고리 (`SETTING_GROUPS`)
+    pub group: Option<String>,
     /// 네트워크 포트 값인가. 같은 게임을 여러 개 만들 때 데몬이 겹치지 않게 옮긴다
     #[serde(default)]
     pub port: bool,
@@ -674,6 +675,13 @@ pub const COMMAND_INPUT_TYPES: &[&str] = &["text", "password", "number", "select
 
 /// 인스턴스 필드로도 저장되는 포트 설정 이름 (`ServerInstance::port`)
 pub const CORE_PORT_FIELDS: &[&str] = &["port"];
+
+/// 설정 `group`에 쓰는 이름: 기본·사바쨩 설정과 앱이 정한 공통 카테고리. 카테고리 이름·번역은 앱 locales
+/// (`server_settings.group_<id>`, GUI `SETTING_GROUPS`)에만 두고, 모듈은 이름표만 붙인다
+pub const SETTING_GROUPS: &[&str] = &[
+    "basic", SABA_SETTINGS_GROUP, "player", "world", "mob", "item", "building", "admin", "pvp", "communication", "network",
+    "integration", "advanced",
+];
 
 /// 사바쨩 설정 묶음: 실행 방식(Java 경로·메모리·실행 인자 등)처럼 사바쨩이 쓰는 값. 게임 설정 파일로 넘기지 않는다
 pub const SABA_SETTINGS_GROUP: &str = "saba-chan";
@@ -877,6 +885,16 @@ pub(crate) fn schema_version_schema(_: &mut schemars::SchemaGenerator) -> schema
     serde_json::from_value(serde_json::json!({
         "description": "이 파일이 따르는 스키마 버전. 1, 또는 list·multiline 설정과 restart_required·visible_when 등을 쓰면 2(saba-core >=0.1.9)",
         "enum": [BASE_SCHEMA_VERSION, MODULE_SCHEMA_VERSION, null]
+    }))
+    .expect("static schema")
+}
+
+pub(crate) fn setting_group_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+    let mut groups: Vec<serde_json::Value> = SETTING_GROUPS.iter().map(|g| serde_json::json!(g)).collect();
+    groups.push(serde_json::Value::Null);
+    serde_json::from_value(serde_json::json!({
+        "description": "화면 묶음: 없음·basic(기본), saba-chan(사바쨩 설정), 공통 카테고리. 모르는 이름은 고급으로 보인다",
+        "enum": groups
     }))
     .expect("static schema")
 }

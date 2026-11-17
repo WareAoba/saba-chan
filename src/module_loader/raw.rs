@@ -341,8 +341,9 @@ struct SettingFieldToml {
     step: Option<f64>,
     #[serde(default)]
     options: Option<Vec<String>>,
-    /// "basic"(기본) | "advanced" | "saba-chan" 등
+    /// 화면 묶음: 없음·"basic"(기본) | "saba-chan" | 공통 카테고리 (`SETTING_GROUPS`)
     #[serde(default)]
+    #[schemars(schema_with = "setting_group_schema")]
     group: Option<String>,
     /// 네트워크 포트 값이면 true. 인스턴스를 만들 때 다른 인스턴스와 겹치지 않게 옮겨진다
     #[serde(default)]
@@ -895,6 +896,12 @@ pub(crate) fn parse_module_toml(content: &str) -> Result<ModuleMetadata> {
     // 데몬이 호출마다 정해 넣는 이름: 모듈 설정 값은 넘기지 않는다 (`RESERVED_CALL_KEYS`)
     for f in meta.settings.iter().flat_map(|s| &s.fields).filter(|f| RESERVED_CALL_KEYS.contains(&f.name.as_str())) {
         meta.warnings.push(format!("settings field '{}' is a name saba-chan sets on each call; its value is not passed to the module", f.name));
+    }
+    // 모르는 카테고리는 막지 않는다: 화면은 고급 카드에 넣는다
+    for f in meta.settings.iter().flat_map(|s| &s.fields) {
+        if let Some(g) = f.group.as_deref().filter(|g| !SETTING_GROUPS.contains(g)) {
+            meta.warnings.push(format!("settings field '{}' has unknown group '{}'; shown under advanced", f.name, g));
+        }
     }
     for w in unknown.iter().chain(&daemon_warnings) {
         tracing::warn!("module '{}': {}", meta.name, w);

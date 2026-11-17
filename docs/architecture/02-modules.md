@@ -129,7 +129,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 | `default` | toml::Value | — (`get_setting_default`가 Int/String/Float/Bool을 파싱). 스키마 2 `list`의 기본값은 PATCH와 같은 검사(`validate_setting_value`: 항목 수·중복·`options`·형식)를 받고, 맞지 않으면 로드 오류 |
 | `min`, `max`, `step` | f64 | — |
 | `options` | **Vec<String>** | 문자열만 허용 |
-| `group` | String | `saba-chan` / `advanced` / 없음(basic) 등. `saba-chan`은 사바쨩 설정(실행 방식·Java 경로·메모리·실행 인자처럼 게임 설정 파일에 없는 값)이라는 선언이다: 설정 PATCH 뒤 `configure`의 `settings`로 넘기지 않는다. 그 밖의 묶음은 표시용이다 |
+| `group` | String | 없음·`basic`(서버 설정), `saba-chan`, 또는 공통 카테고리 `player`·`world`·`mob`·`item`·`building`·`admin`·`pvp`·`communication`·`network`·`integration`·`advanced` (`module_loader::SETTING_GROUPS`, JSON Schema enum). `saba-chan`은 사바쨩 설정(실행 방식·Java 경로·메모리·실행 인자처럼 게임 설정 파일에 없는 값)이라는 선언이다: 설정 PATCH 뒤 `configure`의 `settings`로 넘기지 않는다. 카테고리는 표시용이다: GUI가 서버 설정 다음에 이 순서로 접는 카드를 그리고, 카드 이름은 앱 locales `server_settings.group_<id>`에만 둔다(모듈 locales에 쓰지 않는다). 모르는 이름은 로드되지만 `warnings`에 실리고 고급 카드에 보인다. 화면에 바로 드러나지 않는 성능·진단 값(저장 주기·틱·캐시·로그 형식)은 `advanced` |
 | `port` | bool | `false`. 네트워크 포트 값이면 true. 같은 게임 인스턴스를 여럿 만들 때 데몬이 겹치지 않게 옮긴다 |
 | `public` | string? | `"tcp"`·`"udp"`·`"both"`. 친구가 밖에서 접속하는 포트이면 그 프로토콜. 포트포워딩 확인(01 `/api/instance/:id/port-check`)이 이 칸만 본다. `port = true`가 필요하다. 옛 데몬은 모르는 칸 키로 무시한다 |
 | `install` | bool | `false`. 서버를 만들 때 고르는 설정(받을 서버 파일·새 월드가 달라지는 값). GUI 새 서버 화면, 웹 원격 서버 만들기, CLI `server add`가 칸 종류(select·boolean·text·number, 그 밖의 종류는 만든 뒤 설정 화면에서)대로 묻고, 고친 칸만(비운 칸은 빼고) `POST /api/instances`의 `module_settings`로 보낸다. select 선택지 이름은 모듈 locales `settings.<칸>.options.<값>`(없으면 값 그대로, 설정 화면도 같다) |
