@@ -1224,15 +1224,20 @@ pub fn consented(kind: Consent, key: &str, dir: &Path) -> bool {
     section.get(kind.key()).and_then(|m| m.get(key)).and_then(Value::as_str).is_some_and(|fp| fp == fingerprint(dir))
 }
 
-/// 동의 목록: `[{component, fingerprint, current}]` (`current`: 지금 파일과 지문이 같은가. 다르면 다시 묻는다)
+/// 동의 목록: `[{component, fingerprint, current}]` (`current`: 지금 파일과 지문이 같은가. 다르면 다시 묻는다).
+/// 동의한 뒤 카탈로그에서 받아 확인된 구성요소는 동의를 쓰지 않으므로 뺀다
 pub fn consent_list(kind: Consent) -> Vec<Value> {
     let section = consent_file().section(CONSENT_SECTION);
     let Some(entries) = section.get(kind.key()).and_then(Value::as_object) else { return Vec::new() };
     entries
         .iter()
-        .map(|(key, fp)| {
-            let current = component_dir(key).is_some_and(|d| fp.as_str() == Some(fingerprint(&d).as_str()));
-            serde_json::json!({ "component": key, "fingerprint": fp, "current": current })
+        .filter_map(|(key, fp)| {
+            let dir = component_dir(key);
+            if dir.as_deref().is_some_and(|d| saba_chan_updater_lib::integrity::trust_of(key, d) == Trust::Verified) {
+                return None;
+            }
+            let current = dir.is_some_and(|d| fp.as_str() == Some(fingerprint(&d).as_str()));
+            Some(serde_json::json!({ "component": key, "fingerprint": fp, "current": current }))
         })
         .collect()
 }
@@ -1689,6 +1694,29 @@ mod tests {
         std::os::unix::fs::symlink(&evil, inst.join("server")).unwrap();
         let roots = LaunchRoots { dirs: vec![inst.clone()], runtimes: vec![] };
         assert_eq!(check_launch(&inst.join("server").to_string_lossy(), &roots), Err("launch_outside_instance"));
+    }
+
+    /// 허락 뒤에 카탈로그에서 받아(확인됨) 허락이 필요 없어진 구성요소는 허락 목록에 보이지 않는다
+    #[test]
+    fn a_component_installed_from_the_catalog_leaves_the_consent_list() {
+        let ext = tempfile::Builder::new().prefix("consentlist").tempdir_in(crate::plugin::resolve_extensions_dir()).unwrap();
+        let id = ext.path().file_name().unwrap().to_string_lossy().into_owned();
+        std::fs::write(ext.path().join("manifest.json"), serde_json::json!({ "id": id }).to_string()).unwrap();
+        let key = format!("{}{}", saba_chan_updater_lib::relay::EXTENSION_PREFIX, id);
+        let listed = |kind| consent_list(kind).iter().any(|e| e["component"] == key.as_str());
+        for kind in [Consent::ExtensionGui, Consent::Unisolated] {
+            set_consent(kind, &key, true).unwrap();
+            assert!(listed(kind), "{kind:?}");
+        }
+
+        std::fs::write(ext.path().join("gui.js"), "window.x = 2").unwrap();
+        saba_chan_updater_lib::integrity::record_dir(&key, ext.path()).unwrap();
+        saba_chan_updater_lib::integrity::set_official(&key, true).unwrap();
+        for kind in [Consent::ExtensionGui, Consent::Unisolated] {
+            assert!(!listed(kind), "{kind:?}");
+            set_consent(kind, &key, false).unwrap();
+        }
+        saba_chan_updater_lib::integrity::set_official(&key, false).unwrap();
     }
 
     #[test]

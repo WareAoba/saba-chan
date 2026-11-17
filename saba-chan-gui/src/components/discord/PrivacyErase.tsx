@@ -1,4 +1,3 @@
-import clsx from 'clsx';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { safeShowToast } from '../../utils/helpers';
@@ -11,15 +10,14 @@ const POLL_MS = 3000;
 
 interface PrivacyEraseProps {
     onErased: () => void;
-    className?: string;
 }
 
 /**
- * 개인정보 모두 지우기 (데몬 POST·GET /api/relay/privacy/erase).
+ * 설정 › 보안의 개인정보 초기화 카드 (데몬 POST·GET /api/relay/privacy/erase).
  * 누르면 데몬이 릴레이에서 받은 웹사이트 동의 페이지를 연다. 사용자가 동의하면 릴레이가 지우고,
  * 데몬이 이 PC 의 릴레이 연결을 끊는다. 여기서는 끝났는지 묻고 화면만 비운다(`onErased`).
  */
-export function PrivacyErase({ onErased, className }: PrivacyEraseProps) {
+export function PrivacyErase({ onErased }: PrivacyEraseProps) {
     const { t, i18n } = useTranslation('gui');
     // null | 'starting' | 'waiting'
     const [phase, setPhase] = useState<'starting' | 'waiting' | null>(null);
@@ -67,11 +65,25 @@ export function PrivacyErase({ onErased, className }: PrivacyEraseProps) {
     };
 
     return (
-        <div className={clsx('dc-row-actions dc-danger-zone', className)}>
-            <span className="muted">{phase === 'waiting' ? t('discord.erase_waiting') : t('discord.erase_desc')}</span>
-            <button type="button" className="btn btn-ghost btn-danger-text" onClick={start} disabled={phase === 'starting'}>
-                <Icon name="trash" size="sm" /> {t('discord.erase')}
-            </button>
-        </div>
+        <section className="saba-card">
+            <h4 className="saba-card-title">
+                <Icon name="user" size="sm" /> {t('discord.erase')}
+            </h4>
+            <div className="setting-item">
+                <span className="setting-label">
+                    <span className="setting-description">
+                        {phase === 'waiting' ? t('discord.erase_waiting') : t('discord.erase_desc')}
+                    </span>
+                </span>
+                <button
+                    type="button"
+                    className="btn btn-ghost btn-sm btn-danger-text"
+                    onClick={start}
+                    disabled={phase === 'starting'}
+                >
+                    <Icon name="trash" size="sm" /> {t('discord.erase_button')}
+                </button>
+            </div>
+        </section>
     );
 }
