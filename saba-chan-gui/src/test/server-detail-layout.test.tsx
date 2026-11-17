@@ -1,5 +1,6 @@
 import type { ComponentProps, ComponentType } from 'react';
 import { render } from '@testing-library/react';
+import i18n from 'i18next';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../components/ExtensionSlot', () => ({ default: () => null, SlotView: () => null, useSlotPages: () => [] }));
@@ -13,13 +14,14 @@ import { useUIStore } from '../stores/useUIStore';
 const ServerDetail = ServerDetailFull as unknown as ComponentType<Partial<ComponentProps<typeof ServerDetailFull>>>;
 
 const server = { id: 'srv-1', name: 'Lay', module: 'mc', status: 'running', port: 25565 };
-const open = (tab: string) => {
+const mc = { name: 'mc', protocols: { supported: ['stdin'], default: 'stdin' } };
+const open = (tab: string, moduleData: object = mc) => {
     useServerStore.setState({ modulesLoaded: true });
     useUIStore.setState({ requestedServerTab: tab } as never);
     return render(
         <ServerDetail
             server={server as never}
-            moduleData={{ name: 'mc', protocols: { supported: ['stdin'], default: 'stdin' } } as never}
+            moduleData={moduleData as never}
             modules={[]}
             servers={[server] as never}
             consoleProps={{ consoles: {}, popoutOpen: {}, consolePopoutIds: [] } as never}
@@ -40,6 +42,13 @@ describe('인스턴스 화면 배치', () => {
 
     it('콘솔 탭은 상세를 칸 높이에 맞춘다', () => {
         const { container } = open('console');
+        expect(container.querySelector('.server-detail.server-detail--fit > .detail-body')).toBeTruthy();
+    });
+
+    // 사용자 11-17: 명령 탭도 콘솔 탭처럼 바깥이 스크롤하지 않는다
+    it('명령 탭도 상세를 칸 높이에 맞춘다', () => {
+        const { container } = open('commands', { ...mc, commands: { fields: [{ name: 'say' }] } });
+        expect(container.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toContain(i18n.t('gui:shell.tab_commands'));
         expect(container.querySelector('.server-detail.server-detail--fit > .detail-body')).toBeTruthy();
     });
 });
