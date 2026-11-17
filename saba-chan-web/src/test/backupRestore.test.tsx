@@ -15,10 +15,15 @@ describe('웹 백업 복원', () => {
         useApp.setState({ confirm: null, toasts: [] });
     });
 
-    const mount = async (backups: object[], restoreRes: object = { success: true }) => {
+    const mount = async (
+        backups: object[],
+        restoreRes: object = { success: true },
+        createRes: object = { success: true },
+    ) => {
         const api = {
             instanceBackups: vi.fn().mockResolvedValue({ success: true, backups }),
             instanceBackupRestore: vi.fn().mockResolvedValue(restoreRes),
+            instanceBackupCreate: vi.fn().mockResolvedValue(createRes),
         };
         render(<BackupsPanel api={mockApi(api)} server={{ id: 's1' }} running={false} />);
         await flush();
@@ -47,5 +52,31 @@ describe('웹 백업 복원', () => {
         ]);
         expect(screen.getAllByText(/cannot be opened/)).toHaveLength(1);
         expect(restoreButtons().map((b) => (b as HTMLButtonElement).disabled)).toEqual([false, true]);
+    });
+
+    // 백업 오류는 데몬 원문(OS 문구) 대신 앱과 같은 코드별 문구로 보인다
+    it('백업 오류는 앱과 같은 코드별 문구로 보인다', async () => {
+        await mount([], undefined, {
+            success: false,
+            error: 'No space left on device (os error 28)',
+            error_code: 'backup_disk_full',
+        });
+        fireEvent.click(screen.getByRole('button', { name: /Back up now/ }));
+        await flush();
+        expect(useApp.getState().toasts.at(-1)).toMatchObject({
+            message: 'Backup failed: not enough disk space. Free up space and try again.',
+            tone: 'error',
+        });
+    });
+
+    it('목록을 읽지 못한 오류도 코드별 문구로 보인다', async () => {
+        const api = {
+            instanceBackups: vi
+                .fn()
+                .mockResolvedValue({ success: false, error: 'EACCES', error_code: 'backups_unreadable' }),
+        };
+        render(<BackupsPanel api={mockApi(api)} server={{ id: 's1' }} running={false} />);
+        await flush();
+        expect(useApp.getState().toasts.at(-1)?.message).toMatch(/^Backup folder read failed/);
     });
 });

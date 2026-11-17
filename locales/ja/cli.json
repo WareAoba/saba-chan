@@ -476,6 +476,7 @@
       "import_other_module": "別のゲームサーバーのバックアップのため、このサーバーにはインポートできません",
       "export_old_backup": "古いバージョンで作成したバックアップのため、エクスポートできません",
       "backup_file_locked": "サーバーが使用中のファイル ({{file}}) があります。サーバーを停止してから再試行してください: saba-chan-cli stop 名前",
+      "backup_disk_full": "ディスク容量不足です。空き容量を確保してから再試行してください。",
       "autosave_not_resumed": "バックアップは完了したが、サーバーの自動保存を再開できませんでした。サーバーを再起動してください: saba-chan-cli restart <name>",
       "backup_failed_autosave_off": "バックアップ失敗。サーバーの自動保存も再開できませんでした。サーバーを再起動してください: saba-chan-cli restart <name>",
       "backup_save_rejected": "サーバーが保存コマンドを拒否したためバックアップしませんでした。サーバーを停止してから再度バックアップしてください: saba-chan-cli stop <name>",

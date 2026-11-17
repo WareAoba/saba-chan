@@ -25,6 +25,12 @@ describe('사바쨩 설정', () => {
         });
     });
 
+    it('effective 를 싣지 않는 예전 데몬이면 재시작 칸을 저장된 값으로 읽는다', () => {
+        const old = { module_settings: { auto_restart: 'false', restart_on_unknown_exit: true } };
+        expect(sabaValues(old)).toMatchObject({ auto_restart: false, restart_on_unknown_exit: true });
+        expect(sabaValues({})).toMatchObject({ auto_restart: true, restart_on_unknown_exit: false });
+    });
+
     it('바꾼 칸만 보내고, 비운 숫자 칸은 null 로 보낸다', () => {
         const values = { ...sabaValues(server), memory_limit_mb: '', auto_restart: true, game_chat_keyword: ' ! ' };
         expect(sabaPatch(sabaValues(server), values)).toEqual({ memory_limit_mb: null, auto_restart: true });

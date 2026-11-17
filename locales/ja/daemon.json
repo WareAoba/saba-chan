@@ -37,6 +37,7 @@
     "backup_save_unconfirmed": "サーバーの保存完了応答なし",
     "backup_server_stopped": "バックアップ中にサーバーが終了",
     "backup_file_locked": "サーバーが使用中のファイルあり",
+    "backup_disk_full": "ディスク容量不足",
     "autosave_not_resumed": "バックアップ後に自動保存を再開できず",
     "command_failed": "サーバーがコマンドを拒否",
     "not_running": "サーバーが停止していた",

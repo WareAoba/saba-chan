@@ -476,6 +476,7 @@
       "import_other_module": "Backup of a different game's server; can't be imported into this server",
       "export_old_backup": "Backup made by an old version; can't be exported",
       "backup_file_locked": "The server is using a file ({{file}}). Stop the server and try again: saba-chan-cli stop <name>",
+      "backup_disk_full": "Not enough disk space. Free up space and try again.",
       "autosave_not_resumed": "Backup complete, but server autosave could not be turned back on. Restart the server: saba-chan-cli restart <name>",
       "backup_failed_autosave_off": "Backup failed, and server autosave could not be turned back on. Restart the server: saba-chan-cli restart <name>",
       "backup_save_rejected": "The server refused the save command; no backup made. Stop the server and back up again: saba-chan-cli stop <name>",

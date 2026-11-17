@@ -476,6 +476,7 @@
       "import_other_module": "这是其他游戏服务器的备份，无法导入到此服务器",
       "export_old_backup": "这是旧版本创建的备份，无法导出",
       "backup_file_locked": "服务器正在使用文件（{{file}}）。请停止服务器后重试：saba-chan-cli stop 名称",
+      "backup_disk_full": "磁盘空间不足。请释放空间后重试。",
       "autosave_not_resumed": "备份已完成，但服务器自动保存未能重新开启。请重启服务器：saba-chan-cli restart <name>",
       "backup_failed_autosave_off": "备份失败，服务器自动保存也未能重新开启。请重启服务器：saba-chan-cli restart <name>",
       "backup_save_rejected": "服务器拒绝了保存命令，未备份。请停止服务器后重新备份：saba-chan-cli stop 名称",

@@ -56,6 +56,11 @@ pub fn give_up(instance_id: &str, started: u64) {
     given_up().lock().unwrap_or_else(|e| e.into_inner()).insert(instance_id.to_string(), started);
 }
 
+/// 설정을 저장했다: 정지 방식을 바꿔 정지할 수 있게 됐을 수 있으니 그만둔 실행도 다시 해 본다
+pub fn retry(instance_id: &str) {
+    given_up().lock().unwrap_or_else(|e| e.into_inner()).remove(instance_id);
+}
+
 /// 켜진 서버를 한 번 본다. 지금 정지해야 하면 비어 있던 것으로 알릴 분(`rule.minutes`).
 /// `started`는 그 프로세스를 켠 시각: 다시 켠 서버는 처음부터 센다
 pub fn observe(instance_id: &str, rule: Option<Rule>, started: u64, players: Option<u32>, now: u64) -> Option<u64> {
@@ -148,6 +153,20 @@ mod tests {
         let restarted = started + 50 * MIN;
         assert_eq!(observe(id, rule, restarted, Some(0), started + 52 * MIN), None);
         assert_eq!(observe(id, rule, restarted, Some(0), started + 62 * MIN), Some(10));
+    }
+
+    /// 정지할 길이 없어 그만둔 실행도 설정을 저장하면 다시 해 본다 (정지 방식을 바꿔 정지할 수 있게 됐을 수 있다)
+    #[test]
+    fn a_given_up_run_is_tried_again_once_its_settings_are_saved() {
+        let id = "idle-give-up-test";
+        let rule = Some(Rule { minutes: 10, grace_minutes: 0 });
+        let started = 3_000_000;
+        assert_eq!(observe(id, rule, started, Some(0), started), None);
+        assert_eq!(observe(id, rule, started, Some(0), started + 10 * MIN), Some(10));
+        give_up(id, started);
+        assert_eq!(observe(id, rule, started, Some(0), started + 20 * MIN), None);
+        retry(id);
+        assert_eq!(observe(id, rule, started, Some(0), started + 21 * MIN), Some(10));
     }
 
     #[test]

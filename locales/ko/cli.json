@@ -476,6 +476,7 @@
       "import_other_module": "다른 게임 서버의 백업이라 이 서버로 가져오기 불가",
       "export_old_backup": "예전 버전이 만든 백업이라 내보내기 불가",
       "backup_file_locked": "서버가 사용 중인 파일({{file}}) 있음. 서버를 정지한 뒤 다시 시도해 주세요: saba-chan-cli stop 이름",
+      "backup_disk_full": "디스크 공간 부족. 공간을 비운 뒤 다시 시도해 주세요.",
       "autosave_not_resumed": "백업은 완료했지만 서버 자동 저장을 다시 켜지 못함. 서버를 재시작해 주세요: saba-chan-cli restart <name>",
       "backup_failed_autosave_off": "백업 실패, 서버 자동 저장도 다시 켜지 못함. 서버를 재시작해 주세요: saba-chan-cli restart <name>",
       "backup_save_rejected": "서버가 저장 명령을 거부해 백업하지 않음. 서버를 정지한 뒤 다시 백업해 주세요: saba-chan-cli stop 이름",

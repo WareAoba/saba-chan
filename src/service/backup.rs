@@ -486,9 +486,17 @@ fn backup_error(e: &anyhow::Error) -> (StatusCode, Value) {
         // 켜진 서버가 쥐고 있는 파일: 어느 파일인지 이름만 (경로는 PC 밖으로 내지 않는다)
         let file = locked.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         (StatusCode::CONFLICT, json!({ "success": false, "error": e.to_string(), "error_code": "backup_file_locked", "file": file }))
+    } else if disk_full(e) {
+        (StatusCode::INSUFFICIENT_STORAGE, json!({ "success": false, "error": format!("{e:#}"), "error_code": "backup_disk_full" }))
     } else {
         (StatusCode::INTERNAL_SERVER_ERROR, json!({ "success": false, "error": e.to_string(), "error_code": "backup_failed" }))
     }
+}
+
+/// 디스크(또는 할당량)가 차서 쓰지 못했다: 맥락이 붙은 안쪽 오류까지 본다
+fn disk_full(e: &anyhow::Error) -> bool {
+    use std::io::ErrorKind::{QuotaExceeded, StorageFull};
+    e.chain().filter_map(|c| c.downcast_ref::<std::io::Error>()).any(|io| matches!(io.kind(), StorageFull | QuotaExceeded))
 }
 
 pub(crate) async fn backups_dir(state: &IPCServer, id: &str) -> Result<PathBuf, Failure> {
@@ -677,6 +685,7 @@ async fn keep_snapshot_locked(state: &IPCServer, id: &str, snapshot: GameSnapsho
     match made {
         Ok(Ok(made)) => Ok(made),
         Ok(Err(e)) if e.downcast_ref::<backup::LockedFile>().is_some() => Err(Failure::coded(StatusCode::CONFLICT, "backup_file_locked", e.to_string())),
+        Ok(Err(e)) if disk_full(&e) => Err(Failure::coded(StatusCode::INSUFFICIENT_STORAGE, "backup_disk_full", format!("{e:#}"))),
         Ok(Err(e)) => Err(Failure::coded(StatusCode::INTERNAL_SERVER_ERROR, "backup_failed", e.to_string())),
         Err(e) => Err(Failure::coded(StatusCode::INTERNAL_SERVER_ERROR, "backup_failed", e.to_string())),
     }
@@ -1006,6 +1015,16 @@ pub(crate) mod tests {
     };
     use std::sync::Arc;
     use tokio::sync::RwLock;
+
+    #[test]
+    fn a_full_disk_has_its_own_backup_code() {
+        // 이유 문장이 OS 원문(영어)이 아니라 "디스크 공간 부족"으로 보이게, 맥락이 붙은 안쪽 오류까지 본다
+        let full = anyhow::Error::from(std::io::Error::from(std::io::ErrorKind::StorageFull)).context("writing the backup");
+        let (status, body) = backup_error(&full);
+        assert_eq!((status, body["error_code"].as_str()), (StatusCode::INSUFFICIENT_STORAGE, Some("backup_disk_full")), "{body}");
+        let other = anyhow::Error::from(std::io::Error::from(std::io::ErrorKind::PermissionDenied));
+        assert_eq!(backup_error(&other).1["error_code"], "backup_failed");
+    }
 
     pub(crate) const NO_BACKUP: &str = "[module]\nschema_version = 1\nname = \"plain\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n";
 
