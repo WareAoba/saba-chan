@@ -6,15 +6,18 @@
 # 릴리스를 깨뜨리는 것만 본다. 나머지 전체 시험은 수동/태그 실행으로 옮겼다.
 #
 # PR (바뀐 경로에 해당하는 것만):
-#   guard    — versions.toml 일치, 릴리스 패키징 스크립트 시험 (항상)
+#   guard    — versions.toml 일치, 릴리스 패키징 스크립트 시험, 공용 런타임(modules/*.py) 시험 (항상)
 #   windows  — Windows clippy + cargo test (Rust 변경 시). Windows 전용 코드는
 #              로컬 클라우드에서 실행되지 않는다. 리눅스 배포물은 publish.yml이 빌드하고,
 #              리눅스 빌드·시험은 전체 실행(linux 작업)에서 본다
-#   frontend — GUI 번들 빌드, GUI·웹 타입 검사·린트, 업데이터/설치기 스크립트 문법 (GUI·웹 변경 시)
+#   frontend — GUI 번들 빌드, GUI·웹 타입 검사·린트, GUI Vitest, 업데이터/설치기 스크립트 문법 (GUI·웹 변경 시)
+#   addons   — 모듈·익스텐션 저장소 검사를 이 PR의 공용 런타임(modules/)으로 (Windows·Ubuntu, modules/ 변경 시).
+#              두 저장소에 이 PR과 같은 이름의 브랜치가 있으면 그것을 쓴다
 #   macos-package — 맥 구성요소 zip·Saba-chan.app·서명 없는 .dmg (패키징·워크플로 변경 시)
 #
 # 전체 (Actions 탭 workflow_dispatch, 또는 v* 태그 push):
-#   위 전부 + linux(Ubuntu clippy + cargo test), gui-tests(Vitest), e2e(Python E2E)
+#   위 전부 + linux(Ubuntu clippy + cargo test), e2e(Python E2E)
+#   publish.yml은 발행할 커밋에서 이 전체 실행이 통과했는지 먼저 확인한다
 #
 # main push: Rust(Windows·macOS)만 돌려 의존성 빌드 캐시를 main에 남긴다.
 #   PR 실행이 만든 캐시는 그 PR의 재실행만 쓸 수 있고, 새 PR은 main(기본 브랜치) 캐시만 읽는다.
@@ -33,6 +36,10 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+
+# 저장소를 읽기만 한다 (main push에서 도는 외부 액션에 쓰기 토큰을 넘기지 않는다)
+permissions:
+  contents: read
 
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
@@ -54,6 +61,7 @@ jobs:
       rust: ${{ steps.f.outputs.rust }}
       frontend: ${{ steps.f.outputs.frontend }}
       macpkg: ${{ steps.f.outputs.macpkg }}
+      addons: ${{ steps.f.outputs.addons }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -63,7 +71,7 @@ jobs:
         run: |
           # main push: 캐시를 채우는 Rust 작업만
           if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            printf 'full=false\nrust=true\nfrontend=false\nmacpkg=false\n' >> "$GITHUB_OUTPUT"
+            printf 'full=false\nrust=true\nfrontend=false\nmacpkg=false\naddons=false\n' >> "$GITHUB_OUTPUT"
             exit 0
           fi
           if [ "${{ github.event_name }}" != "pull_request" ]; then
@@ -71,6 +79,7 @@ jobs:
             echo "rust=true" >> "$GITHUB_OUTPUT"
             echo "frontend=true" >> "$GITHUB_OUTPUT"
             echo "macpkg=true" >> "$GITHUB_OUTPUT"
+            echo "addons=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           files=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")
@@ -92,6 +101,11 @@ jobs:
           else
             echo "macpkg=false" >> "$GITHUB_OUTPUT"
           fi
+          if echo "$files" | grep -qE '^(modules/|\.github/scripts/addon-tests\.sh)'; then
+            echo "addons=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "addons=false" >> "$GITHUB_OUTPUT"
+          fi
 
   # ─────────────────────────────────────────
   # 릴리스 버전·패키징 (몇 초)
@@ -106,6 +120,9 @@ jobs:
         run: python3 scripts/versions.py check
       - name: Release packaging tests
         run: python3 -m unittest discover -s .github/scripts -p 'test_*.py'
+      # 데몬이 모듈·익스텐션에 넣어 주는 공용 파일(daemon_rcon.py, i18n.py, saba_audit.py)
+      - name: Shared runtime tests
+        run: python3 -m unittest discover -s tests -p 'test_*.py'
 
   # ─────────────────────────────────────────
   # Rust — Windows (PR) / Ubuntu (전체만)
@@ -211,15 +228,58 @@ jobs:
         working-directory: saba-chan-web
         run: npx biome lint ./src
 
-      # Vitest는 GUI 작업에서 매번 돌린다. 전체 실행에서만 다시 돌린다
-      - name: Test — GUI (full only)
-        if: needs.changes.outputs.full == 'true'
+      - name: Test — GUI
         working-directory: saba-chan-gui
-        run: npx vitest run
+        run: npx vitest run --reporter=dot
 
       # 번들러 없이 그대로 실리는 스크립트는 문법만 확인한다
       - name: Syntax check — updater, installer
         run: node --check installer/gui/src/common.js && node --check installer/gui/src/updater.js && node --check installer/gui/src/installer.js
+
+  # ─────────────────────────────────────────
+  # 모듈·익스텐션 — 공용 런타임(modules/*.py)을 바꾸면 그것을 쓰는 두 저장소 검사까지
+  # ─────────────────────────────────────────
+  addons:
+    name: Addons (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.addons == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      # 모듈·익스텐션을 같이 바꾸는 작업은 세 저장소에 같은 이름의 브랜치를 쓴다
+      - name: Pick addon branches
+        id: refs
+        env:
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: |
+          for repo in saba-chan-modules saba-chan-extensions; do
+            ref=main
+            if git ls-remote --exit-code --heads "https://github.com/WareAoba/$repo" "$BRANCH" >/dev/null; then ref="$BRANCH"; fi
+            echo "$repo=$ref" >> "$GITHUB_OUTPUT"
+          done
+      - uses: actions/checkout@v7
+        with:
+          repository: WareAoba/saba-chan-modules
+          ref: ${{ steps.refs.outputs.saba-chan-modules }}
+          path: .addons/modules
+      - uses: actions/checkout@v7
+        with:
+          repository: WareAoba/saba-chan-extensions
+          ref: ${{ steps.refs.outputs.saba-chan-extensions }}
+          path: .addons/extensions
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Extensions and modules
+        run: bash .github/scripts/addon-tests.sh modules .addons/modules .addons/extensions
 
   # ─────────────────────────────────────────
   # E2E — 실제 데몬·CLI·러너를 띄우는 Python 시험 (전체만)

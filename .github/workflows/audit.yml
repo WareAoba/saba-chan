@@ -2,7 +2,8 @@
 # 의존성 보안 점검 (RustSec, npm advisory)
 # ═══════════════════════════════════════════════════════════
 #
-# 알려진 취약점이 있는 의존성을 알린다. PR을 막지는 않는다: 결과는 job 요약과 실패 표시로 본다.
+# 알려진 취약점이 있는 의존성을 알린다. PR은 막지 않는다(job에 실패 표시만).
+# 주간·수동 실행은 실패로 끝나 실행 실패 알림이 온다.
 # 받아들이기로 한 RustSec 항목은 .cargo/audit.toml의 [advisories] ignore에 이유와 함께 적는다.
 
 name: Audit
@@ -24,7 +25,7 @@ jobs:
   cargo:
     name: cargo audit
     runs-on: ubuntu-latest
-    continue-on-error: true
+    continue-on-error: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v7
       - uses: taiki-e/install-action@v2
@@ -35,7 +36,7 @@ jobs:
   npm:
     name: npm audit (${{ matrix.dir }})
     runs-on: ubuntu-latest
-    continue-on-error: true
+    continue-on-error: ${{ github.event_name == 'pull_request' }}
     strategy:
       fail-fast: false
       matrix:
