@@ -7,6 +7,7 @@ import i18n from 'i18next';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MaintenanceTab } from '../components/servers/MaintenanceTab';
 import type { Server } from '../stores/useServerStore';
+import type { ApiBody } from '../types/daemon';
 
 const server = { id: 'srv1', status: 'stopped' } as unknown as Server;
 const API_KEYS = ['instanceScheduleGet', 'instanceBackups'];
@@ -57,5 +58,56 @@ describe('백업 목록 용량', () => {
         render(<MaintenanceTab server={server} />);
         await screen.findByRole('button', { name: i18n.t('gui:maintenance.retry') });
         expect(screen.queryByText(i18n.t('gui:maintenance.backups_empty'))).toBeNull();
+    });
+
+    // 사용자 11-17: 탭을 오가도 백업 목록을 다시 불러오는 동안 비워 두지 않는다
+    it('다시 열면 받아 둔 목록을 바로 보이고 새 목록은 뒤에서 받는다', async () => {
+        const cached = { id: 'srv-cache', status: 'stopped' } as unknown as Server;
+        window.api.instanceScheduleGet = vi.fn().mockResolvedValue({ success: true, schedule: [], backup_keep: 5, backup_supported: true, revision: 'r1' });
+        window.api.instanceBackups = vi.fn().mockResolvedValue({
+            success: true,
+            total_bytes: 1024,
+            backups: [{ name: '20261109-164142-262-manual.zip', kind: 'manual', created: 1762674102, size: 1024, stored: 1024, readable: true }],
+        });
+        const first = render(<MaintenanceTab server={cached} />);
+        await screen.findByText(/manual\.zip/);
+        first.unmount();
+
+        window.api.instanceBackups = vi.fn(() => new Promise<ApiBody>(() => {}));
+        render(<MaintenanceTab server={cached} />);
+        expect(screen.getByText(/manual\.zip/)).toBeTruthy();
+        expect(window.api.instanceBackups).toHaveBeenCalledWith('srv-cache');
+    });
+
+    // 받아 둔 예약 정보로 먼저 보인 뒤 새 정보가 와도, 일정이 그대로면 그사이 고친 내용은 지우지 않는다
+    it('다시 연 뒤 새 정보가 오기 전에 고친 보관 개수는 같은 일정이 오면 남는다', async () => {
+        const cached = { id: 'srv-draft', status: 'stopped' } as unknown as Server;
+        const info = { success: true, schedule: [], backup_keep: 5, backup_supported: true, revision: 'r1' };
+        window.api.instanceBackups = vi.fn().mockResolvedValue({ success: true, total_bytes: 0, backups: [] });
+        window.api.instanceScheduleGet = vi.fn().mockResolvedValue(info);
+        const first = render(<MaintenanceTab server={cached} />);
+        await screen.findByDisplayValue('5');
+        first.unmount();
+
+        let answer: (v: ApiBody) => void = () => {};
+        window.api.instanceScheduleGet = vi.fn(() => new Promise<ApiBody>((r) => { answer = r; }));
+        render(<MaintenanceTab server={cached} />);
+        fireEvent.change(screen.getByDisplayValue('5'), { target: { value: '7' } });
+        await act(async () => answer({ ...info, next_runs: [] }));
+        expect(screen.getByDisplayValue('7')).toBeTruthy();
+    });
+
+    it('첫 응답 전에 떠났다 돌아와도 같은 응답이 오면 로딩에 머물지 않는다', async () => {
+        const fresh = { id: 'srv-left', status: 'stopped' } as unknown as Server;
+        const info = { success: true, schedule: [], backup_keep: 5, backup_supported: true, revision: 'r1' };
+        window.api.instanceBackups = vi.fn().mockResolvedValue({ success: true, total_bytes: 0, backups: [] });
+        const answers: ((v: ApiBody) => void)[] = [];
+        window.api.instanceScheduleGet = vi.fn(() => new Promise<ApiBody>((r) => { answers.push(r); }));
+        const first = render(<MaintenanceTab server={fresh} />);
+        first.unmount();
+        render(<MaintenanceTab server={fresh} />);
+        await act(async () => answers[0](info));
+        await act(async () => answers[1](info));
+        expect(screen.getByDisplayValue('5')).toBeTruthy();
     });
 });

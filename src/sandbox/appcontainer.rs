@@ -1382,6 +1382,21 @@ mod imp {
             assert!(launch_integrity(&exe) >= 0x2000, "after the labels go the server starts at the daemon's level");
         }
 
+        /// 예전 격리 실행이 공용 익스텐션 데이터 폴더에 남긴 낮은 수준 표시: 데몬이 시작하며 덮어 포터블 SteamCMD가 중간으로 뜬다
+        #[test]
+        fn daemon_start_restores_programs_in_the_shared_extension_data() {
+            let tmp = tempfile::tempdir().unwrap();
+            let data = std::fs::canonicalize(tmp.path()).unwrap();
+            let own = crate::sandbox::extension_data_root(&data, None).join("steamcmd");
+            std::fs::create_dir_all(&own).unwrap();
+            super::label_low(&own).unwrap();
+            let exe = own.join("steamcmd.exe");
+            std::fs::copy(std::env::current_exe().unwrap(), &exe).unwrap();
+            assert_eq!(launch_integrity(&exe), 0x1000);
+            crate::sandbox::restore_extension_data(&data);
+            assert!(launch_integrity(&exe) >= 0x2000);
+        }
+
         /// 가져온 서버를 빼면(`release`) 서버를 띄우려고 실행 파일에 붙인 중간 수준 표시도 남지 않는다
         #[test]
         fn releasing_a_folder_leaves_no_label_on_its_executables() {

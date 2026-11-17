@@ -739,7 +739,7 @@
     border-radius: var(--r-md);
 }
 
-/* 콘솔 탭: 상세를 칸 높이에 맞춰 콘솔이 남은 자리를 채운다 (칸이 스크롤하지 않게) */
+/* 콘솔·명령 탭: 상세를 칸 높이에 맞춰 콘솔·명령 창이 남은 자리를 채운다 (칸이 스크롤하지 않게) */
 .server-detail-host:has(> .server-detail--fit) {
     flex: 1 1 0;
     min-height: 0;
@@ -1560,12 +1560,10 @@ button.activity-line:hover {
     }
     .cmd-runner {
         flex-direction: column;
-        height: auto;
     }
     .cmd-list,
     .cmd-history-list {
         min-height: 120px;
-        max-height: 280px;
     }
 }
 
@@ -2052,15 +2050,6 @@ button.activity-line:hover {
     justify-content: flex-end;
     gap: var(--sp-2);
     flex-wrap: wrap;
-}
-/* 설정 > 보안으로 옮긴 디스코드 계정 줄: 다른 설정 줄과 같은 상자 */
-.setting-item.dc-row-actions {
-    justify-content: space-between;
-    gap: var(--sp-4);
-    padding: var(--sp-4);
-    border-top: 1px solid var(--line);
-    font-size: inherit;
-    flex-wrap: nowrap;
 }
 .dc-danger-zone {
     justify-content: space-between;
@@ -6045,9 +6034,10 @@ button.appbar-pill:focus-visible {
 
 /* ── 명령 탭: 왼쪽 명령 목록 + 입력, 오른쪽 실행 기록. 카드·목록 항목·입력은 콘솔·명령 팔레트와 같은 모양 ── */
 .cmd-runner {
+    flex: 1;
     display: flex;
     gap: var(--sp-4);
-    height: max(360px, calc(100vh - 330px));
+    min-height: 360px;
 }
 .cmd-panel {
     display: flex;

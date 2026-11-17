@@ -517,7 +517,7 @@ pub struct Isolation {
     pub grants: appcontainer::Grants,
     pub pycache: PathBuf,
     pub temp: PathBuf,
-    /// 익스텐션이 쓸 수 있는 전용 폴더 (`<data>/extension-data/<이름>`, 환경 변수 `SABA_EXTENSION_DATA_DIR`)
+    /// 익스텐션이 쓸 수 있는 전용 폴더 (`<extension_root>/<이름>`, 환경 변수 `SABA_EXTENSION_DATA_DIR`)
     pub data: Option<PathBuf>,
     /// 이 실행이 import한 익스텐션들이 쓸 폴더의 뿌리 (`extension_data_root`, 환경 변수 `SABA_EXTENSION_DATA_ROOT`)
     pub extension_root: PathBuf,
@@ -632,13 +632,14 @@ fn remove_created(paths: &[PathBuf]) {
     }
 }
 
-/// 익스텐션 키면 그 익스텐션 전용 데이터 폴더
-fn extension_data_dir(data_dir: &Path, key: &str) -> Option<PathBuf> {
+/// 익스텐션 키면 격리된 그 익스텐션의 전용 데이터 폴더 `<이 실행의 뿌리>/<이름>`. 공용 `extension-data/<이름>`은 주지 않는다:
+/// 쓰기를 주면 그 폴더에 낮은 수준 표시가 붙어, 격리 없이 도는 실행이 거기서 띄운 프로그램도 낮은 무결성으로 뜬다
+fn extension_data_dir(extension_root: &Path, key: &str) -> Option<PathBuf> {
     let name = key.strip_prefix(saba_chan_updater_lib::relay::EXTENSION_PREFIX)?;
     if name.is_empty() || name.contains(['/', '\\', ':']) || name.starts_with('.') {
         return None;
     }
-    Some(data_dir.join("extension-data").join(name))
+    Some(extension_root.join(name))
 }
 
 /// import된 익스텐션이 `<뿌리>/<id>`에 받은 파일을 두는 뿌리. 격리된 실행(`isolated_tag`)은 구성요소마다 따로 둔다:
@@ -858,6 +859,23 @@ pub fn reset() -> Result<usize, Vec<String>> {
     }
 }
 
+/// 데몬이 시작할 때: 공용 익스텐션 데이터 폴더(`extension-data`) 아래 실행 파일에 걸린 낮은 수준 표시를 덮는다 (Windows).
+/// 0.1.14-beta.3까지는 격리된 익스텐션에 그 아래 전용 폴더의 쓰기를 주어 표시가 남았을 수 있다. 표시가 걸린 실행 파일
+/// (포터블 SteamCMD 등)은 격리 없는 실행에서도 낮은 무결성으로 떠 제대로 돌지 못한다
+pub fn restore_extension_data(data_dir: &Path) {
+    let root = extension_data_root(data_dir, None);
+    #[cfg(windows)]
+    if root.is_dir() {
+        match appcontainer::clear_low_labels(&root) {
+            Ok(0) => {}
+            Ok(n) => tracing::info!("[Sandbox] set {} executable(s) under {} to medium integrity", n, root.display()),
+            Err(failed) => tracing::warn!("[Sandbox] could not remove the low integrity label under {}: {:?}", root.display(), failed),
+        }
+    }
+    #[cfg(not(windows))]
+    let _ = root;
+}
+
 /// 데몬이 시작할 때: 예전에 준 런타임 읽기 권한 중 지금 쓰지 않는 것을 거둔다. 지금 쓰는 것은 데몬이 아는 런타임과
 /// 인스턴스마다 사용자가 런타임 경로 설정에 정한 값(`(모듈 진입 파일, 런타임 실행 파일 경로)`)이다. Windows에서만 한다
 pub fn reconcile_runtimes(user_runtimes: &[(String, String)]) {
@@ -1065,13 +1083,10 @@ pub fn isolation_for(entry: &Path, config: &Value, runtime_settings: &[String], 
             }
         }
     }
-    let data = extension_data_dir(&raw_data_dir, &key);
-    if let Some(d) = &data {
-        let _ = std::fs::create_dir_all(d);
-        grants.push(d, Access::Write, &data_dir, home);
-    }
+    // 전용 폴더는 뿌리 안이라 뿌리의 쓰기 권한을 함께 받는다
     let extension_root = extension_data_root(&raw_data_dir, Some(&tag));
-    let _ = std::fs::create_dir_all(&extension_root);
+    let data = extension_data_dir(&extension_root, &key);
+    let _ = std::fs::create_dir_all(data.as_deref().unwrap_or(&extension_root));
     grants.push(&extension_root, Access::Write, &data_dir, home);
     // 런타임은 없어도 되는 권한: 주지 못하면 그 폴더만 빼고 띄운다 (Java를 쓰지 않는 구성요소까지 막지 않게)
     for runtime in runtime_homes(None, std::env::var_os("JAVA_HOME").as_deref(), std::env::var_os("PATH").as_deref()) {
@@ -1209,15 +1224,20 @@ pub fn consented(kind: Consent, key: &str, dir: &Path) -> bool {
     section.get(kind.key()).and_then(|m| m.get(key)).and_then(Value::as_str).is_some_and(|fp| fp == fingerprint(dir))
 }
 
-/// 동의 목록: `[{component, fingerprint, current}]` (`current`: 지금 파일과 지문이 같은가. 다르면 다시 묻는다)
+/// 동의 목록: `[{component, fingerprint, current}]` (`current`: 지금 파일과 지문이 같은가. 다르면 다시 묻는다).
+/// 동의한 뒤 카탈로그에서 받아 확인된 구성요소는 동의를 쓰지 않으므로 뺀다
 pub fn consent_list(kind: Consent) -> Vec<Value> {
     let section = consent_file().section(CONSENT_SECTION);
     let Some(entries) = section.get(kind.key()).and_then(Value::as_object) else { return Vec::new() };
     entries
         .iter()
-        .map(|(key, fp)| {
-            let current = component_dir(key).is_some_and(|d| fp.as_str() == Some(fingerprint(&d).as_str()));
-            serde_json::json!({ "component": key, "fingerprint": fp, "current": current })
+        .filter_map(|(key, fp)| {
+            let dir = component_dir(key);
+            if dir.as_deref().is_some_and(|d| saba_chan_updater_lib::integrity::trust_of(key, d) == Trust::Verified) {
+                return None;
+            }
+            let current = dir.is_some_and(|d| fp.as_str() == Some(fingerprint(&d).as_str()));
+            Some(serde_json::json!({ "component": key, "fingerprint": fp, "current": current }))
         })
         .collect()
 }
@@ -1676,6 +1696,29 @@ mod tests {
         assert_eq!(check_launch(&inst.join("server").to_string_lossy(), &roots), Err("launch_outside_instance"));
     }
 
+    /// 허락 뒤에 카탈로그에서 받아(확인됨) 허락이 필요 없어진 구성요소는 허락 목록에 보이지 않는다
+    #[test]
+    fn a_component_installed_from_the_catalog_leaves_the_consent_list() {
+        let ext = tempfile::Builder::new().prefix("consentlist").tempdir_in(crate::plugin::resolve_extensions_dir()).unwrap();
+        let id = ext.path().file_name().unwrap().to_string_lossy().into_owned();
+        std::fs::write(ext.path().join("manifest.json"), serde_json::json!({ "id": id }).to_string()).unwrap();
+        let key = format!("{}{}", saba_chan_updater_lib::relay::EXTENSION_PREFIX, id);
+        let listed = |kind| consent_list(kind).iter().any(|e| e["component"] == key.as_str());
+        for kind in [Consent::ExtensionGui, Consent::Unisolated] {
+            set_consent(kind, &key, true).unwrap();
+            assert!(listed(kind), "{kind:?}");
+        }
+
+        std::fs::write(ext.path().join("gui.js"), "window.x = 2").unwrap();
+        saba_chan_updater_lib::integrity::record_dir(&key, ext.path()).unwrap();
+        saba_chan_updater_lib::integrity::set_official(&key, true).unwrap();
+        for kind in [Consent::ExtensionGui, Consent::Unisolated] {
+            assert!(!listed(kind), "{kind:?}");
+            set_consent(kind, &key, false).unwrap();
+        }
+        saba_chan_updater_lib::integrity::set_official(&key, false).unwrap();
+    }
+
     #[test]
     fn fingerprint_changes_with_any_file_but_not_bytecode_cache() {
         let tmp = tempfile::tempdir().unwrap();
@@ -1786,11 +1829,21 @@ mod tests {
         assert_eq!(instance_access("module-minecraft"), Access::Write);
         assert_eq!(instance_access("ext-steamcmd"), Access::Read);
         assert_eq!(instance_access("/somewhere/else"), Access::Read);
-        let data = Path::new("data");
-        assert_eq!(extension_data_dir(data, "ext-steamcmd"), Some(data.join("extension-data").join("steamcmd")));
+        let root = extension_data_root(Path::new("data"), Some("tag"));
         for key in ["module-minecraft", "ext-", "ext-../x", "ext-.hidden", "ext-a/b", "/somewhere/else"] {
-            assert_eq!(extension_data_dir(data, key), None, "{key}");
+            assert_eq!(extension_data_dir(&root, key), None, "{key}");
         }
+    }
+
+    /// 격리된 익스텐션의 전용 폴더는 그 실행의 뿌리 안이다. 공용 `extension-data/<이름>`에 쓰기를 주면 그 폴더에 낮은 수준
+    /// 표시가 붙고, 격리 없이 도는 같은 익스텐션이 거기서 띄운 프로그램(포터블 SteamCMD)이 낮은 무결성으로 떠 죽는다
+    #[test]
+    fn an_isolated_extension_writes_inside_its_own_root_not_the_shared_folder() {
+        let data = Path::new("data");
+        let root = extension_data_root(data, Some("tag"));
+        let own = extension_data_dir(&root, "ext-steamcmd").unwrap();
+        assert_eq!(own, root.join("steamcmd"));
+        assert!(!own.starts_with(extension_data_root(data, None)), "{}", own.display());
     }
 
     #[test]
