@@ -43,7 +43,7 @@ export interface PaletteServer {
     /** 불러온 명령 (번역한 이름). 아직 없으면 명령 줄이 없다 */
     commands?: PaletteCommand[];
     /** 모듈 설정 칸 (번역한 이름). tab = 그 칸이 있는 서버 탭 */
-    settings?: { name: string; label: string; tab: string; advanced?: boolean }[];
+    settings?: { name: string; label: string; tab: string }[];
 }
 
 export interface PaletteGuild {

@@ -174,7 +174,7 @@ export interface SettingField {
     max: number | null;
     step: number | null;
     options: string[] | null;
-    /** basic(기본) · advanced · saba-chan … */
+    /** basic(기본) · saba-chan · 공통 카테고리(ServerSettingsParts SETTING_GROUPS). 모르는 값은 advanced로 그린다 */
     group: string | null;
     port: boolean;
     public?: string;

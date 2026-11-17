@@ -50,6 +50,10 @@ pub fn redirected() -> bool {
     SINK.read().map(|s| s.is_some()).unwrap_or(false)
 }
 
+/// 창구를 바꿔 끼우는 시험끼리 겹치지 않게
+#[cfg(test)]
+pub(crate) static SINK_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// 창구를 바꿔 끼운다. 놓으면 터미널로 돌아간다 (TUI가 끼운다)
 #[must_use]
 pub struct SinkGuard(());
@@ -414,7 +418,6 @@ mod tests {
         assert_eq!(dot("stopping").replace('◐', "●"), dot("running"));
     }
 
-    static SINK_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     #[test]
     fn module_call_errors_show_local_diagnostics() {

@@ -59,13 +59,13 @@ describe('서버 설정 저장 뒤', () => {
     it('화면을 닫지 않고 그 자리에서 기준 값과 revision을 다시 읽는다', async () => {
         const { result, shown } = setup();
         await act(async () => result.current.handleOpenSettings(server as never));
-        act(() => result.current.setAdvancedExpanded(true));
+        act(() => result.current.setGroupOpen('advanced', true));
         act(() => result.current.handleSettingChange('title', 'new'));
         const from = shown.length;
         await act(async () => result.current.handleSaveSettings());
 
         expect(shown.slice(from)).not.toContain(false);
-        expect(result.current.advancedExpanded).toBe(true);
+        expect(result.current.openGroups).toEqual(['advanced']);
         expect(result.current.settingsValues.title).toBe('new');
         expect(result.current.openedSettings.title).toBe('new');
 

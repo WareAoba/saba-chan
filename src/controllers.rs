@@ -252,7 +252,6 @@ async fn gate(state: &IPCServer, id: &str, player: &str) {
     let reason = crate::chat::i18n::Catalog::for_language(&language).t("controllers.kick_reason", &[]);
     let ok = crate::service::backup::run_command(state, id, &command, kick_args(&inputs, player, &reason)).await.is_ok();
     tracing::info!("[Controllers] 자동 강퇴 '{}': instance={} ok={}", player, id, ok);
-    crate::events::emit("instance.player_kicked", json!({ "instanceId": id, "player": player, "success": ok }));
 }
 
 #[cfg(test)]

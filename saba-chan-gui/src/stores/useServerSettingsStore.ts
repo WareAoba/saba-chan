@@ -111,7 +111,8 @@ interface ServerSettingsData {
     /** 'loading' 실제 설정 읽는 중 / 'live' 실제 설정 / 'stored' 못 읽어 저장된 값을 보여 주는 중 */
     settingsSource: string;
     settingsActiveTab: string;
-    advancedExpanded: boolean;
+    /** 펼친 설정 카테고리 카드 (ServerSettingsParts SETTING_GROUPS id) */
+    openGroups: string[];
     availableVersions: Array<Record<string, Json>>;
     versionsLoading: boolean;
     versionInstalling: boolean;
@@ -126,7 +127,7 @@ interface ServerSettingsData {
 
 interface ServerSettingsState extends ServerSettingsData {
     setSettingsActiveTab: (tab: string) => void;
-    setAdvancedExpanded: (expanded: boolean) => void;
+    setGroupOpen: (group: string, open: boolean) => void;
     /** reload: 저장한 뒤 열린 화면 그대로 다시 읽는다 (보던 탭·접힘을 두고, 읽는 사이 고친 칸도 둔다) */
     handleOpenSettings: (server: Server, reload?: boolean, saved?: SettingsValues) => Promise<void>;
     handleSettingChange: (fieldName: string, value: unknown) => void;
@@ -149,7 +150,7 @@ const initialData = (): ServerSettingsData => ({
     unsetSettings: new Set(),
     settingsSource: 'loading',
     settingsActiveTab: 'general',
-    advancedExpanded: false,
+    openGroups: [],
     availableVersions: [],
     versionsLoading: false,
     versionInstalling: false,
@@ -201,7 +202,8 @@ export const useServerSettingsStore = create<ServerSettingsState>()((set, get) =
     const setSettingsServer = field('settingsServer');
     const setSettingsSource = field('settingsSource');
     const setSettingsActiveTab = field('settingsActiveTab');
-    const setAdvancedExpanded = field('advancedExpanded');
+    const setGroupOpen = (group: string, open: boolean) =>
+        set((s) => ({ openGroups: open ? [...new Set([...s.openGroups, group])] : s.openGroups.filter((g) => g !== group) }));
     const setAvailableVersions = field('availableVersions');
     const setVersionsLoading = field('versionsLoading');
     const setVersionInstalling = field('versionInstalling');
@@ -338,7 +340,7 @@ export const useServerSettingsStore = create<ServerSettingsState>()((set, get) =
 
         if (!reload) {
             setSettingsActiveTab('general');
-            setAdvancedExpanded(false);
+            set({ openGroups: [] });
         }
         setShowSettingsModal(true);
 
@@ -922,7 +924,7 @@ export const useServerSettingsStore = create<ServerSettingsState>()((set, get) =
     return {
         ...initialData(),
         setSettingsActiveTab,
-        setAdvancedExpanded,
+        setGroupOpen,
         handleOpenSettings,
         handleSettingChange,
         handleSettingLoaded,

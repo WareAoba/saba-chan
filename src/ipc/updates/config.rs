@@ -20,6 +20,72 @@ pub(super) async fn get_config(
 /// 앱에서 고를 수 있는 업데이트 채널 (위 채널은 아래 채널 릴리즈도 받는다, updater `relay::CHANNELS`). 설치할 때 고르는 채널과 같다
 use saba_chan_updater_lib::relay::SELECTABLE_CHANNELS;
 
+/// 업데이트 설정 부분 변경. 바꿀 수 없는 키나 형식이 틀린 값은 아무것도 바꾸지 않고 거절한다 (말없이 넘기면 저장된 줄 안다)
+pub(super) fn apply_config_patch(cfg: &mut UpdateConfig, body: &Value) -> Result<(), (axum::http::StatusCode, Value)> {
+    use axum::http::StatusCode;
+    let refuse = |status: StatusCode, error: String, code: &str| {
+        Err((status, json!({ "success": false, "error": error, "error_code": code })))
+    };
+    let Some(patch) = body.as_object() else {
+        return refuse(StatusCode::BAD_REQUEST, "The body must be a JSON object".into(), "invalid_update_config_value");
+    };
+    let settable = saba_chan_updater_lib::SETTABLE_CONFIG_KEYS;
+    if let Some(key) = patch.keys().find(|k| !settable.contains(&k.as_str())) {
+        return refuse(
+            StatusCode::BAD_REQUEST,
+            format!("Unknown update setting '{}' ({})", key, settable.join(", ")),
+            "unknown_update_config_key",
+        );
+    }
+    let mut next = cfg.clone();
+    for (key, v) in patch {
+        let wrong_type = || {
+            refuse(
+                StatusCode::BAD_REQUEST,
+                format!("Update setting '{}' has the wrong type: {}", key, v),
+                "invalid_update_config_value",
+            )
+        };
+        match key.as_str() {
+            "enabled" | "auto_download" | "auto_apply" => {
+                let Some(b) = v.as_bool() else { return wrong_type() };
+                *match key.as_str() {
+                    "enabled" => &mut next.enabled,
+                    "auto_download" => &mut next.auto_download,
+                    _ => &mut next.auto_apply,
+                } = b;
+            }
+            // 업데이트 출처는 앱에서 바꾸지 않는다: config.json의 updates.relay_url로만.
+            // 모의 릴레이를 믿는 개발 빌드만 앱(개발 옵션)에서 바꿀 수 있다. 비우기(기본 릴레이로 되돌리기)는 늘 된다
+            "relay_url" => {
+                let Some(url) = v.as_str() else { return wrong_type() };
+                if !url.is_empty() && !cfg!(feature = "mock-relay") {
+                    return refuse(
+                        StatusCode::FORBIDDEN,
+                        "The update source can only be changed in config.json (updates.relay_url)".into(),
+                        "relay_url_not_settable",
+                    );
+                }
+                next.relay_url = if url.is_empty() { None } else { Some(url.to_string()) };
+            }
+            // 채널은 정식(stable)·미리보기(rc)·베타(beta)만 고른다 (nightly는 쓰지 않는다)
+            _ => {
+                let Some(channel) = v.as_str() else { return wrong_type() };
+                if !SELECTABLE_CHANNELS.contains(&channel) {
+                    return refuse(
+                        StatusCode::BAD_REQUEST,
+                        format!("Unknown update channel '{}' (stable, rc, beta)", channel),
+                        "invalid_channel",
+                    );
+                }
+                next.channel = channel.to_string();
+            }
+        }
+    }
+    *cfg = next;
+    Ok(())
+}
+
 /// PUT /api/updates/config
 pub(super) async fn set_config(
     State(state): State<UpdateState>,
@@ -27,47 +93,8 @@ pub(super) async fn set_config(
 ) -> impl IntoResponse {
     let mut mgr = state.manager.write().await;
     let mut cfg = mgr.get_config();
-
-    // 부분 업데이트
-    if let Some(v) = body.get("enabled").and_then(|v| v.as_bool()) {
-        cfg.enabled = v;
-    }
-    if let Some(v) = body.get("auto_download").and_then(|v| v.as_bool()) {
-        cfg.auto_download = v;
-    }
-    if let Some(v) = body.get("auto_apply").and_then(|v| v.as_bool()) {
-        cfg.auto_apply = v;
-    }
-    // 업데이트 출처는 앱에서 바꾸지 않는다: config.json의 updates.relay_url로만.
-    // 모의 릴레이를 믿는 개발 빌드만 앱(개발 옵션)에서 바꿀 수 있다. 비우기(기본 릴레이로 되돌리기)는 늘 된다
-    if let Some(v) = body.get("relay_url").and_then(|v| v.as_str()) {
-        if !v.is_empty() && !cfg!(feature = "mock-relay") {
-            return (
-                axum::http::StatusCode::FORBIDDEN,
-                Json(json!({
-                    "success": false,
-                    "error": "The update source can only be changed in config.json (updates.relay_url)",
-                    "error_code": "relay_url_not_settable",
-                })),
-            )
-                .into_response();
-        }
-        cfg.relay_url = if v.is_empty() { None } else { Some(v.to_string()) };
-    }
-    // 채널은 정식(stable)·미리보기(rc)·베타(beta)만 고른다 (nightly는 쓰지 않는다)
-    if let Some(v) = body.get("channel").and_then(|v| v.as_str()) {
-        if !SELECTABLE_CHANNELS.contains(&v) {
-            return (
-                axum::http::StatusCode::BAD_REQUEST,
-                Json(json!({
-                    "success": false,
-                    "error": format!("Unknown update channel '{}' (stable, rc, beta)", v),
-                    "error_code": "invalid_channel",
-                })),
-            )
-                .into_response();
-        }
-        cfg.channel = v.to_string();
+    if let Err((status, body)) = apply_config_patch(&mut cfg, &body) {
+        return (status, Json(body)).into_response();
     }
 
     let channel_changed = mgr.get_config().channel != cfg.channel;

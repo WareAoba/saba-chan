@@ -473,10 +473,10 @@ mod tests {
     #[test]
     fn the_config_form_shows_only_what_the_daemon_and_cli_use() {
         crate::i18n::init("ko");
-        let f = config_form(&json!({ "language": "ja", "windowOpacity": 100, "sounds": { "enabled": true }, "newServerBackupKeep": 5 }));
+        let f = config_form(&json!({ "language": "ja", "accentColor": "#667eea", "sounds": { "enabled": true }, "newServerBackupKeep": 5 }));
         let keys: Vec<(&str, &str)> = f.fields.iter().map(|x| (x.key.as_str(), x.group.as_str())).collect();
         assert!(keys.contains(&("language", "connection")) && keys.contains(&("newServerBackupKeep", "servers")) && keys.contains(&("auditKeepDays", "storage")));
-        assert!(!keys.iter().any(|(k, _)| *k == "windowOpacity" || k.starts_with("sounds")));
+        assert!(!keys.iter().any(|(k, _)| *k == "accentColor" || k.starts_with("sounds")));
         assert_eq!(f.fields.iter().find(|x| x.key == "newServerBackupKeep").unwrap().value, "5");
         assert_eq!(f.fields.iter().find(|x| x.key == "language").unwrap().value, "ja");
         assert!(f.fields.iter().all(|x| !x.label.starts_with("tui.")), "every field has a label");

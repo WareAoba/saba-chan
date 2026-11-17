@@ -74,7 +74,6 @@ pub struct GuiSettings {
     pub console_bg_color: String,
     pub console_text_color: String,
     pub sidebar_compact: bool,
-    pub window_opacity: u32,
     /// 창 바탕 반투명: 켜기, OS별 재질, 덮는 바탕의 진하기·밝기 (GUI 셸·인스톨러가 창을 만들 때 읽는다)
     pub window_backdrop: saba_chan_updater_lib::window_backdrop::WindowBackdrop,
     /// 콘솔 글꼴 배율 (%)
@@ -309,7 +308,6 @@ impl Default for GuiSettings {
             console_bg_color: "#1e1e2e".to_string(),
             console_text_color: "#cdd6f4".to_string(),
             sidebar_compact: false,
-            window_opacity: 100,
             window_backdrop: Default::default(),
             console_font_scale: 100,
             console_token_colors: HashMap::new(),
@@ -1547,8 +1545,9 @@ mod tests {
         assert!(value.get("consoleBufferSize").is_some());
         assert!(value.get("accentColor").is_some());
         assert!(value.get("portConflictCheck").is_some());
-        assert!(value.get("windowOpacity").is_some());
         assert!(value.get("sidebarCompact").is_some());
+        // 읽는 곳이 없어 지운 칸
+        assert!(value.get("windowOpacity").is_none());
         // snake_case가 아니어야 함
         assert!(value.get("auto_refresh").is_none());
         assert!(value.get("ipc_port").is_none());
@@ -2025,6 +2024,7 @@ mod tests {
             "ipcPort": 57474,
             "consoleBufferSize": 3000,
             "accentColor": "#ff00ff",
+            // 지운 칸이 남은 옛 파일도 읽는다
             "windowOpacity": 80
         });
         std::fs::write(
@@ -2038,7 +2038,6 @@ mod tests {
         assert_eq!(gui.refresh_interval, 5000);
         assert_eq!(gui.console_buffer_size, 3000);
         assert_eq!(gui.accent_color, "#ff00ff");
-        assert_eq!(gui.window_opacity, 80);
         // 파일에 없는 필드는 기본값
         assert!(gui.port_conflict_check);
         assert!(gui.enable_transitions);

@@ -96,11 +96,12 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 #### `[detection]` (`DetectionSection`)
 | 키 | 타입 | 사용처 |
 |---|---|---|
-| `process_patterns` | Vec<String> | extension hook `server.status` 컨텍스트로만 전달 (`mod.rs`). 네이티브 auto-detect에는 **미사용** |
 | `cmd_patterns` | Vec<String> | auto-detect 때 커맨드라인 필터 (`mod.rs`) |
 | `dir_signatures` | Vec<String> | `/api/modules`로 노출. 데몬도 `POST /api/modules/detect`로 매칭한다(`server.rs`, 항목은 전부 있어야 함). 한 항목 안의 `|`는 그중 하나, `*`는 그 폴더 바로 아래 파일 이름 패턴이다(`"server.jar|paper-*.jar"`, `module_loader/schema.rs` `signature_present`). `..`가 든 항목은 맞지 않는다. GUI 마이그레이션 화면도 이 결과만 쓴다: `migrationScanDir`가 이 API를 부르고(`saba-chan-gui/src/api/createApi.ts`), 화면은 돌아온 `matches`로 모듈을 고른다(`AddInstanceMigration.tsx`) |
 | `graceful_exit_patterns` | Vec<String> | 정상 종료 문구(정규식). 종료 판정에 쓴다 (§3.6) |
 | `crash_artifacts` | Vec<String> | 크래시 때 생기는 파일. 종료 판정에 쓴다 (§3.6) |
+
+예전 키 `process_patterns`는 읽는 곳이 없어 지웠다. 남은 module.toml도 그대로 로드된다(JSON Schema는 새 모듈에서 거절한다).
 
 `common_paths`와 `[detection.linux]`는 스키마에 없고, 실제 모듈에서도 지워졌다.
 
@@ -127,7 +128,7 @@ L3에서 지웠다. 모듈 업데이트는 릴리즈 manifest의 `module-<이름
 | `default` | toml::Value | — (`get_setting_default`가 Int/String/Float/Bool을 파싱). 스키마 2 `list`의 기본값은 PATCH와 같은 검사(`validate_setting_value`: 항목 수·중복·`options`·형식)를 받고, 맞지 않으면 로드 오류 |
 | `min`, `max`, `step` | f64 | — |
 | `options` | **Vec<String>** | 문자열만 허용 |
-| `group` | String | `saba-chan` / `advanced` / 없음(basic) 등. `saba-chan`은 사바쨩 설정(실행 방식·Java 경로·메모리·실행 인자처럼 게임 설정 파일에 없는 값)이라는 선언이다: 설정 PATCH 뒤 `configure`의 `settings`로 넘기지 않는다. 그 밖의 묶음은 표시용이다 |
+| `group` | String | 없음·`basic`(서버 설정), `saba-chan`, 또는 공통 카테고리 `player`·`world`·`mob`·`item`·`building`·`admin`·`pvp`·`communication`·`network`·`integration`·`advanced` (`module_loader::SETTING_GROUPS`, JSON Schema enum). `saba-chan`은 사바쨩 설정(실행 방식·Java 경로·메모리·실행 인자처럼 게임 설정 파일에 없는 값)이라는 선언이다: 설정 PATCH 뒤 `configure`의 `settings`로 넘기지 않는다. 카테고리는 표시용이다: GUI가 서버 설정 다음에 이 순서로 접는 카드를 그리고, 카드 이름은 앱 locales `server_settings.group_<id>`에만 둔다(모듈 locales에 쓰지 않는다). 모르는 이름은 로드되지만 `warnings`에 실리고 고급 카드에 보인다. 화면에 바로 드러나지 않는 성능·진단 값(저장 주기·틱·캐시·로그 형식)은 `advanced` |
 | `port` | bool | `false`. 네트워크 포트 값이면 true. 같은 게임 인스턴스를 여럿 만들 때 데몬이 겹치지 않게 옮긴다 |
 | `public` | string? | `"tcp"`·`"udp"`·`"both"`. 친구가 밖에서 접속하는 포트이면 그 프로토콜. 포트포워딩 확인(01 `/api/instance/:id/port-check`)이 이 칸만 본다. `port = true`가 필요하다. 옛 데몬은 모르는 칸 키로 무시한다 |
 | `install` | bool | `false`. 서버를 만들 때 고르는 설정(받을 서버 파일·새 월드가 달라지는 값). GUI 새 서버 화면, 웹 원격 서버 만들기, CLI `server add`가 칸 종류(select·boolean·text·number, 그 밖의 종류는 만든 뒤 설정 화면에서)대로 묻고, 고친 칸만(비운 칸은 빼고) `POST /api/instances`의 `module_settings`로 보낸다. select 선택지 이름은 모듈 locales `settings.<칸>.options.<값>`(없으면 값 그대로, 설정 화면도 같다) |
@@ -251,7 +252,7 @@ off = { enable-rcon = "false" }
 채팅(디스코드)은 답하는 언어(디스코드는 길드 봇 언어, 없으면 앱 언어)의 별명·게임명만 맞춘다(`ModuleView::in_language`, `chat::api::locale_aliases`). 모듈 이름·명령 이름·서버 이름은 언어와 상관없이 늘 맞춘다. 게임명·별명으로 서버를 부르는 것은 그 게임의 서버가 하나일 때만이다(01 §4 `serverWords`). `GET /api/modules`의 `module_aliases`·`command_aliases`는 module.toml 낱말에 앱 언어의 locales 별명을 더한 값이다(GUI·CLI가 쓴다).
 
 #### `[errors]`
-오류 코드 → 사용자 문구. 메타데이터 `errors`에 실리고, `POST /api/instance/:id/command`가 실패 응답에 `error_message`로 붙인다 (`D:src/ipc/handlers/command.rs`). 문구는 GUI 언어의 모듈 locales `errors.<code>`가 있으면 그것을, 없으면 module.toml 값을 쓴다 (`module_errors`).
+오류 코드 → 사용자 문구. 메타데이터 `errors`에 실리고, `POST /api/instance/:id/command`가 실패 응답에 `error_message`로 붙인다 (`D:src/ipc/handlers/command.rs`). 문구는 GUI 언어의 모듈 locales `errors.<code>`가 있으면 그것을, 없으면 module.toml 값을 쓴다 (`module_errors`). 모듈 함수가 `error_code` 없이 `{success:false, message}`로 실패하면 `[errors]` 문구 대신 그 `message`를 `error_message`로 붙인다(`command_reply`): 상태로 정한 대체 코드 `internal_server_error`의 문구가 모듈이 알려 준 사유를 덮지 않게 한다.
 
 #### `[[presets]]` (`ModulePreset`)
 서버를 만들 때 고르는 추천 설정 묶음(예: "친구용 소규모", "하드코어"). `id`(소문자·숫자·`-`·`_`, 모듈 안에서 겹치지 않음), `label?`, `description?`, `[presets.settings]`(`[[settings.fields]]` 이름 → 값). 값은 그 설정의 규칙(형식·범위·select 선택지)을 따라야 하고, `password`·`file`·`path` 형식 설정은 넣지 못한다. 어기면 스키마 v1 모듈은 로드에 실패한다. 표시 문구는 모듈 locales의 `presets.<id>.label`·`description`이 덮는다. `GET /api/modules`의 각 모듈 `presets`, heartbeat `modules[].presets`(`{id, label}`만)에 실리고, `POST /api/instances`의 `preset`으로 고른다(01 §`POST /api/instances`). CLI는 `server add --preset <id>`(주지 않으면 새 서버일 때 묻는다), `module info`가 id를 보여 준다.

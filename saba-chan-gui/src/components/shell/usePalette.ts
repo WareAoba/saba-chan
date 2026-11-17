@@ -178,7 +178,6 @@ export function usePalette(onClose: () => void, busyRef: MutableRefObject<boolea
                         name: f.name,
                         label: tr(`mod_${s.module}:settings.${f.name}.label`, { defaultValue: f.label || f.name }),
                         tab: f.group === 'saba-chan' ? 'saba' : 'settings',
-                        advanced: f.group === 'advanced',
                     })),
                 };
             }),

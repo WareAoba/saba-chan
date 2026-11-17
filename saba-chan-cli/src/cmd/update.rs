@@ -5,7 +5,7 @@
 //! 그때 CLI도 바로 끝낸다 (실행 중인 CLI 파일은 교체되지 않으므로).
 
 use crate::cli::UpdateCmd;
-use crate::cmd::{guess, split_pairs};
+use crate::cmd::{coerce, split_pairs};
 use crate::ctx::Ctx;
 use crate::error::Result;
 use crate::output::{self, s};
@@ -707,37 +707,40 @@ async fn config(ctx: &Ctx, pairs: &[String]) -> Result<()> {
         });
         return Ok(());
     }
-    // 데몬이 모르는 키(예전 GitHub 설정 등)는 조용히 무시되니 저장 전에 막는다
+    // 값의 형식은 지금 값을 따른다 (못 읽으면 추측한다: 데몬이 틀린 형식을 거절한다)
     let current = ctx
         .api
         .update_config()
         .await
         .ok()
         .and_then(|r| r.get("config").cloned());
-    let mut patch = Map::new();
-    for (k, raw) in split_pairs(pairs)? {
-        if let Some(known) = current
-            .as_ref()
-            .and_then(Value::as_object)
-            .filter(|c| !c.contains_key(&k))
-        {
-            let keys: Vec<&str> = known.keys().map(String::as_str).collect();
-            return Err(crate::error::usage(t!(
-                "update.unknown_key",
-                key = k,
-                keys = keys.join(", ")
-            )));
-        }
-        // 문자열 칸은 숫자처럼 보여도 문자열로 (channel 등)
-        let v = match k.as_str() {
-            "source" | "relay_url" | "channel" => Value::String(raw),
-            _ => guess(&raw),
-        };
-        patch.insert(k, v);
-    }
+    let patch = config_patch(current.as_ref(), pairs)?;
     let r = ctx.api.save_update_config(Value::Object(patch)).await?;
     ctx.out.done(&t!("update.config_saved"), &r);
     Ok(())
+}
+
+/// `update config KEY=VALUE`를 데몬에 보낼 값으로. 앱에서 바꿀 수 없는 키(데몬이 관리하는 상태, 예전 GitHub 설정 등)는 막고,
+/// 값은 지금 값의 형식에 맞춘다 (`config set`과 같은 규칙: `auto_apply=off`는 거짓)
+fn config_patch(current: Option<&Value>, pairs: &[String]) -> Result<Map<String, Value>> {
+    let settable = saba_chan_updater_lib::SETTABLE_CONFIG_KEYS;
+    let mut patch = Map::new();
+    for (k, raw) in split_pairs(pairs)? {
+        if !settable.contains(&k.as_str()) {
+            return Err(crate::error::usage(t!(
+                "update.unknown_key",
+                key = k,
+                keys = settable.join(", ")
+            )));
+        }
+        // 주소·채널은 숫자처럼 보여도 문자열이다
+        let v = match k.as_str() {
+            "relay_url" | "channel" => Value::String(raw),
+            _ => coerce(&raw, current.and_then(|c| c.get(&k)))?,
+        };
+        patch.insert(k, v);
+    }
+    Ok(patch)
 }
 
 /// `update last`와 적용 뒤 기다리기가 함께 쓰는 결과 표시: 줄 + 앱 언어 패치노트
@@ -827,6 +830,19 @@ fn last_rows(r: &Value) -> Vec<(String, String)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 업데이트 설정도 지금 값의 형식을 따르고, 데몬이 관리하는 상태 키는 저장 전에 막는다
+    #[test]
+    fn update_config_values_follow_the_current_type() {
+        let current = json!({ "enabled": true, "auto_apply": true, "channel": "stable", "relay_url": null, "failed_release": null });
+        let pairs = |p: &[&str]| p.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let patch = config_patch(Some(&current), &pairs(&["auto_apply=off", "enabled=1", "channel=1"])).unwrap();
+        assert_eq!(Value::Object(patch), json!({ "auto_apply": false, "enabled": true, "channel": "1" }));
+        assert!(config_patch(Some(&current), &pairs(&["auto_apply=maybe"])).is_err());
+        for key in ["failed_release", "user_held", "live_update_migrated", "source"] {
+            assert!(config_patch(Some(&current), &pairs(&[&format!("{key}=x")])).is_err(), "{key}");
+        }
+    }
 
     /// 이벤트 스트림에 받기 진행 두 건을 흘리고, 받기 요청에는 잠깐 뒤에 답하는 가짜 데몬
     async fn daemon_that_reports_progress() -> u16 {

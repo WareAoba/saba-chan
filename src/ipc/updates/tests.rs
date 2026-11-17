@@ -765,6 +765,31 @@ async fn an_update_setting_that_cannot_be_saved_is_not_adopted() {
     assert_eq!(mgr.get_config().auto_apply, before);
 }
 
+/// 형식이 틀린 값이나 바꿀 수 없는 키는 말없이 넘기지 않고 거절한다. GUI가 보내는 모양은 그대로 받는다
+#[test]
+fn a_wrong_typed_or_unknown_update_config_key_is_refused() {
+    let refused = |body: Value| {
+        let mut cfg = UpdateConfig::default();
+        let before = serde_json::to_value(&cfg).unwrap();
+        let err = apply_config_patch(&mut cfg, &body).expect_err("must be refused");
+        assert_eq!(serde_json::to_value(&cfg).unwrap(), before, "nothing changes on a refusal");
+        (err.0, err.1["error_code"].as_str().unwrap_or_default().to_string())
+    };
+    let bad = (axum::http::StatusCode::BAD_REQUEST, "invalid_update_config_value".to_string());
+    assert_eq!(refused(json!({ "auto_apply": "off" })), bad);
+    assert_eq!(refused(json!({ "enabled": 1 })), bad);
+    assert_eq!(refused(json!({ "auto_download": true, "channel": 1 })), bad);
+    let unknown = (axum::http::StatusCode::BAD_REQUEST, "unknown_update_config_key".to_string());
+    for key in ["failed_release", "user_held", "live_update_migrated", "install_root"] {
+        assert_eq!(refused(json!({ key: "x" })), unknown, "{key}");
+    }
+
+    let mut cfg = UpdateConfig::default();
+    apply_config_patch(&mut cfg, &json!({ "auto_download": true, "auto_apply": false })).unwrap();
+    apply_config_patch(&mut cfg, &json!({ "enabled": false, "channel": "beta", "relay_url": "" })).unwrap();
+    assert_eq!((cfg.enabled, cfg.auto_download, cfg.auto_apply, cfg.channel.as_str()), (false, true, false, "beta"));
+}
+
 /// 모르는 채널은 저장하지 않는다
 #[tokio::test]
 async fn an_unknown_update_channel_is_refused() {

@@ -19,7 +19,16 @@ import { type ResetChoice, type ResetScope, ResetServerDialog } from './servers/
 import { Popover } from './ui/Popover';
 import { SaveBar } from './ui/SaveBar';
 import { SabaBehaviorCards } from './SabaBehaviorCards';
-import { Card, type SettingValidationError, type SettingValues, SettingRow, SettingsField, valueKey } from './ServerSettingsParts';
+import {
+    Card,
+    FoldCard,
+    foldGroups,
+    type SettingValidationError,
+    type SettingValues,
+    SettingRow,
+    SettingsField,
+    valueKey,
+} from './ServerSettingsParts';
 import './ServerSettings.css';
 
 /*
@@ -35,8 +44,9 @@ interface GeneralTabProps {
     settingsValues: SettingValues;
     unsetSettings?: Set<string>;
     modules: ModuleInfo[];
-    advancedExpanded: boolean;
-    setAdvancedExpanded: (expanded: boolean) => void;
+    /** 펼친 카테고리 카드 (SETTING_GROUPS id) */
+    openGroups: string[];
+    setGroupOpen: (group: string, open: boolean) => void;
     versionsLoading?: boolean;
     availableVersions: { id?: string; version?: string; type?: string; name?: string }[];
     versionInstalling?: boolean;
@@ -60,8 +70,8 @@ function GeneralTab({
     settingsValues,
     unsetSettings,
     modules,
-    advancedExpanded,
-    setAdvancedExpanded,
+    openGroups,
+    setGroupOpen,
     versionsLoading,
     availableVersions,
     versionInstalling,
@@ -79,7 +89,6 @@ function GeneralTab({
     const { t } = useTranslation('gui');
     const { extensions } = useExtensions();
     const versionId = useId();
-    const advancedId = useId();
     // 초기화 확인 창에 보일 범위 (데몬이 알려 준 지울 항목). 모듈이 알려 주지 않으면 예전 확인 문구로 묻는다
     const [resetScopes, setResetScopes] = useState<ResetScope[] | null>(null);
     // 버전 때문에 숨긴 설정의 이름을 펼쳤는가 ("목록 보기")
@@ -109,7 +118,7 @@ function GeneralTab({
     const fields = hasModuleSettings ? module!.settings!.fields.filter((f) => !hidden.has(f.name)) : [];
     const sabaFields = showSaba ? fields.filter((f) => f.group === 'saba-chan') : [];
     const basicFields = showServer ? fields.filter((f) => !f.group || f.group === 'basic') : [];
-    const advancedFields = showServer ? fields.filter((f) => f.group === 'advanced') : [];
+    const folds = showServer ? foldGroups(fields) : [];
     // 설치 방식 익스텐션으로 받는 서버는 같은 칸에서 브랜치를 고른다 (모듈이 브랜치 목록을 줄 때만)
     const branchMethod = versionBranchMethod(module);
     const branchPicker = !!branchMethod && availableVersions.length > 0;
@@ -120,12 +129,13 @@ function GeneralTab({
         moduleSupports(module, 'list_versions') &&
         moduleSupports(module, 'install_server');
     const autoUpdatable = extensionInstallMethod(settingsServer, module) !== null;
-    // 명령 팔레트가 고급 묶음의 칸을 찾아 달라고 하면 펼친다 (칸을 찾아 반짝이는 일은 팔레트가 한다)
+    // 명령 팔레트가 접힌 카드의 칸을 찾아 달라고 하면 그 카드를 편다 (칸을 찾아 반짝이는 일은 팔레트가 한다)
     const findField = useUIStore((s) => s.findSettingField);
     // biome-ignore lint/correctness/useExhaustiveDependencies: 찾기 요청이 올 때만
     useEffect(() => {
-        if (findField && advancedFields.some((f) => f.name === findField.name)) {
-            setAdvancedExpanded(true);
+        const fold = findField && folds.find((g) => g.fields.some((f) => f.name === findField.name));
+        if (fold) {
+            setGroupOpen(fold.id, true);
             useUIStore.setState({ findSettingField: null }); // 한 번만 (다음에 이 탭을 열 때 다시 펼치지 않게)
         }
     }, [findField?.seq]);
@@ -246,35 +256,12 @@ function GeneralTab({
                 </Card>
             )}
 
-            {/* 고급 설정: 머리를 눌러 접고 편다 */}
-            {advancedFields.length > 0 && (
-                <Card
-                    icon="settings"
-                    title=""
-                    className="ss-advanced"
-                    head={
-                        <button
-                            type="button"
-                            className="ss-card-toggle"
-                            aria-expanded={advancedExpanded}
-                            aria-controls={advancedId}
-                            onClick={() => setAdvancedExpanded(!advancedExpanded)}
-                        >
-                            <h2 className="ss-card-title" data-find="name">
-                                <Icon name="tool" size="sm" />{' '}
-                                {t('server_settings.advanced_group', { defaultValue: 'Advanced Settings' })}
-                                <span className="ss-count">{advancedFields.length}</span>
-                            </h2>
-                            <Icon name={advancedExpanded ? 'chevronUp' : 'chevronDown'} size="sm" />
-                        </button>
-                    }
-                >
-                    {/* 접혀 있어도 그려 둔다: Ctrl+F가 안을 세고, 그 결과로 가면 편다 */}
-                    <div id={advancedId} className="ss-fold" data-find-fold hidden={!advancedExpanded}>
-                        {fieldRows(advancedFields)}
-                    </div>
-                </Card>
-            )}
+            {/* 카테고리 카드: 머리를 눌러 접고 편다 */}
+            {folds.map((g) => (
+                <FoldCard key={g.id} group={g} open={openGroups.includes(g.id)} onToggle={(open) => setGroupOpen(g.id, open)}>
+                    {fieldRows(g.fields)}
+                </FoldCard>
+            ))}
 
             {/* 설치된 버전에 없어 숨긴 설정: 몇 개인지와 모듈이 적어 둔 까닭(locales settings_note.version_hidden) */}
             {versionHiddenFields.length > 0 && (
@@ -340,7 +327,7 @@ function GeneralTab({
                 </Card>
             )}
 
-            {showServer && !basicFields.length && !advancedFields.length && (section === 'server' || !hasModuleSettings) && (
+            {showServer && !basicFields.length && !folds.length && (section === 'server' || !hasModuleSettings) && (
                 <div className="empty-inline">
                     <Icon name="settings" size="lg" />
                     <p>{t('server_settings.no_settings')}</p>
@@ -511,8 +498,8 @@ export function ServerSettingsModal({
     settingsActiveTab,
     setSettingsActiveTab,
     modules,
-    advancedExpanded,
-    setAdvancedExpanded,
+    openGroups,
+    setGroupOpen,
     availableVersions,
     versionsLoading,
     versionInstalling,
@@ -625,8 +612,8 @@ export function ServerSettingsModal({
                     settingsValues={settingsValues}
                     unsetSettings={unsetSettings}
                     modules={modules}
-                    advancedExpanded={advancedExpanded}
-                    setAdvancedExpanded={setAdvancedExpanded}
+                    openGroups={openGroups}
+                    setGroupOpen={setGroupOpen}
                     versionsLoading={versionsLoading}
                     availableVersions={availableVersions}
                     versionInstalling={versionInstalling}

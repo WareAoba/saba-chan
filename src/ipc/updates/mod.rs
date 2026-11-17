@@ -76,7 +76,7 @@ use addons::{
 #[cfg(test)]
 use apply::{ApplyRequest, DownloadRequest, body_or_default, core_apply, restore_pending};
 #[cfg(test)]
-use config::{adopt_config, load_updater_config_from, save_updater_config_to};
+use config::{adopt_config, apply_config_patch, load_updater_config_from, save_updater_config_to};
 #[cfg(test)]
 use handoff::{
     LaunchUpdaterRequest, addons_needing_core, close_guis, gui_must_restart, installer_applies, last_result_at,

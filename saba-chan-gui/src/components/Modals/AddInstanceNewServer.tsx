@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { type ReactNode, useEffect, useId, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { useExtensions } from '../../contexts/ExtensionContext';
@@ -27,7 +27,7 @@ import { AddServerOptions, addServerExtensionData } from '../DataSlots';
 import ExtensionSlot, { type SlotPage } from '../ExtensionSlot';
 import Icon from '../Icon';
 import { ModuleMakerCard } from '../ModuleMakerCard';
-import { Card, SettingRow, SettingsField } from '../ServerSettingsParts';
+import { Card, FoldCard, foldGroups, SettingRow, SettingsField } from '../ServerSettingsParts';
 import { PageFind, PageFindButton } from '../servers/PageFind';
 import { LinkedText } from '../ui/ScreenLink';
 import { SabaNumberInput, SabaSpinner, SabaToggle } from '../ui/SabaUI';
@@ -86,12 +86,11 @@ export function AddInstanceNewServer({
     const [agreed, setAgreed] = useState<Record<string, boolean>>({}); // 약관 id → 체크 여부
     const [extValues, setExtValues] = useState<Record<string, Json | undefined>>({}); // AddServer.options 답 (field → 값)
     const [edits, setEdits] = useState<Record<string, unknown>>({}); // 상세 설정에서 손댄 칸 (이름 → 값)
-    const [advancedExpanded, setAdvancedExpanded] = useState(false);
+    const [openGroups, setOpenGroups] = useState<string[]>([]);
     const { extensions: daemonExtensions } = useExtensions();
     const nameInputRef = useRef<HTMLInputElement>(null);
     const detailRef = useRef<HTMLDivElement>(null);
     const checkSeq = useRef(0);
-    const advancedId = useId();
     const [autoName, setAutoName] = useState(false); // 이름 칸을 아직 고치지 않았다
 
     const selectedModule = extensions.find((m) => m.name === selectedExtension);
@@ -122,7 +121,7 @@ export function AddInstanceNewServer({
         setAgreed({});
         setExtValues({});
         setEdits({});
-        setAdvancedExpanded(false);
+        setOpenGroups([]);
         setStep('summary');
     };
 
@@ -420,7 +419,7 @@ export function AddInstanceNewServer({
             ));
         const saba = visible.filter((f) => f.group === 'saba-chan');
         const basic = visible.filter((f) => !f.group || f.group === 'basic');
-        const advanced = visible.filter((f) => f.group === 'advanced');
+        const folds = foldGroups(visible);
         return (
             <AddServerFrame
                 wide
@@ -459,33 +458,16 @@ export function AddInstanceNewServer({
                             {rows(basic)}
                         </Card>
                     )}
-                    {advanced.length > 0 && (
-                        <Card
-                            icon="settings"
-                            title=""
-                            head={
-                                <button
-                                    type="button"
-                                    className="ss-card-toggle"
-                                    aria-expanded={advancedExpanded}
-                                    aria-controls={advancedId}
-                                    onClick={() => setAdvancedExpanded(!advancedExpanded)}
-                                >
-                                    <h2 className="ss-card-title" data-find="name">
-                                        <Icon name="tool" size="sm" />{' '}
-                                        {t('server_settings.advanced_group', { defaultValue: 'Advanced Settings' })}
-                                        <span className="ss-count">{advanced.length}</span>
-                                    </h2>
-                                    <Icon name={advancedExpanded ? 'chevronUp' : 'chevronDown'} size="sm" />
-                                </button>
-                            }
+                    {folds.map((g) => (
+                        <FoldCard
+                            key={g.id}
+                            group={g}
+                            open={openGroups.includes(g.id)}
+                            onToggle={(open) => setOpenGroups((prev) => (open ? [...prev, g.id] : prev.filter((id) => id !== g.id)))}
                         >
-                            {/* 접혀 있어도 그려 둔다: Ctrl+F가 안을 세고, 그 결과로 가면 편다 */}
-                            <div id={advancedId} className="ss-fold" data-find-fold hidden={!advancedExpanded}>
-                                {rows(advanced)}
-                            </div>
-                        </Card>
-                    )}
+                            {rows(g.fields)}
+                        </FoldCard>
+                    ))}
                 </div>
             </AddServerFrame>
         );

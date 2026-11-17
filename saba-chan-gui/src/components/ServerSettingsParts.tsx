@@ -290,3 +290,75 @@ export function Card({
         </section>
     );
 }
+
+/**
+ * 서버 설정의 공통 카테고리 (module.toml `[[settings.fields]] group`). 모듈은 이름표만 붙이고,
+ * 카드 이름은 앱 locales `server_settings.group_<id>`에 한 번만 둔다. 이 순서로 카드를 그린다
+ */
+export const SETTING_GROUPS: readonly { id: string; icon: string; label: string }[] = [
+    { id: 'player', icon: 'user', label: 'Player' },
+    { id: 'world', icon: 'globe', label: 'World' },
+    { id: 'mob', icon: 'sonar', label: 'Mobs' },
+    { id: 'item', icon: 'package', label: 'Items' },
+    { id: 'building', icon: 'home', label: 'Buildings' },
+    { id: 'admin', icon: 'key', label: 'Admin & Permissions' },
+    { id: 'pvp', icon: 'zap', label: 'PvP' },
+    { id: 'communication', icon: 'messageSquare', label: 'Communication' },
+    { id: 'network', icon: 'network', label: 'Network' },
+    { id: 'integration', icon: 'plug', label: 'Integrations' },
+    { id: 'advanced', icon: 'tool', label: 'Advanced Settings' },
+];
+
+/** 접는 카드로 그릴 설정 묶음: saba-chan·기본 설정 밖의 칸을 카테고리 순서로. 모르는 group은 고급으로 */
+export function foldGroups(fields: SettingField[]) {
+    const known = new Set(SETTING_GROUPS.map((g) => g.id));
+    const idOf = (f: SettingField) => (f.group && known.has(f.group) ? f.group : 'advanced');
+    const rest = fields.filter((f) => f.group && f.group !== 'basic' && f.group !== 'saba-chan');
+    return SETTING_GROUPS.map((g) => ({ ...g, fields: rest.filter((f) => idOf(f) === g.id) })).filter((g) => g.fields.length);
+}
+
+/** 머리를 눌러 접고 펴는 설정 카드. 접혀 있어도 안을 그려 둔다: Ctrl+F가 안을 세고, 그 결과로 가면 편다 */
+export function FoldCard({
+    group,
+    open,
+    onToggle,
+    children,
+}: {
+    group: { id: string; icon: string; label: string; fields: SettingField[] };
+    open: boolean;
+    onToggle: (open: boolean) => void;
+    children: ReactNode;
+}) {
+    const { t } = useTranslation('gui');
+    const bodyId = useId();
+    const title =
+        group.id === 'advanced'
+            ? t('server_settings.advanced_group', { defaultValue: group.label })
+            : t(`server_settings.group_${group.id}`, { defaultValue: group.label });
+    return (
+        <Card
+            icon={group.icon}
+            title=""
+            className={clsx('ss-fold-card', group.id === 'advanced' && 'ss-advanced')}
+            head={
+                <button
+                    type="button"
+                    className="ss-card-toggle"
+                    aria-expanded={open}
+                    aria-controls={bodyId}
+                    onClick={() => onToggle(!open)}
+                >
+                    <h2 className="ss-card-title" data-find="name">
+                        <Icon name={group.icon} size="sm" /> {title}
+                        <span className="ss-count">{group.fields.length}</span>
+                    </h2>
+                    <Icon name={open ? 'chevronUp' : 'chevronDown'} size="sm" />
+                </button>
+            }
+        >
+            <div id={bodyId} className="ss-fold" data-find-fold data-group={group.id} hidden={!open}>
+                {children}
+            </div>
+        </Card>
+    );
+}

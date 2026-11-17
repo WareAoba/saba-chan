@@ -38,17 +38,23 @@ pub async fn run(ctx: &Ctx, a: ConsoleArgs) -> Result<()> {
         }
         r => r?,
     };
-    if ctx.out.json {
+    // `--json`은 지금까지의 줄을 한 문서로. 따라가면 줄마다 JSON 한 줄 (`events`·`monitor --watch`처럼)
+    if ctx.out.json && !a.follow {
         ctx.out.data(&first, |_| {});
         return Ok(());
     }
+    let show = |x: Seen| match x {
+        Seen::Line(l) if ctx.out.json => say!("{}", crate::output::event_line(l.clone())),
+        Seen::Note(_) if ctx.out.json => {}
+        x => say!("{}", x.text()),
+    };
     let lines = first
         .get("lines")
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_default();
     for l in &lines {
-        say!("{}", format_line(l));
+        show(Seen::Line(l));
     }
     let mut cursor = Cursor::from(&first);
     // `--lines 0`이면 보인 줄이 없어도 지금까지의 줄은 건너뛴다: 마지막 순번만 알아 둔다
@@ -71,7 +77,23 @@ pub async fn run(ctx: &Ctx, a: ConsoleArgs) -> Result<()> {
         attach(ctx, &sv, cursor).await
     } else {
         ctx.out.note(&t!("console.following", name = sv.name));
-        follow_printing(ctx, &sv, cursor, |line| say!("{}", line)).await
+        follow_printing(ctx, &sv, cursor, show).await
+    }
+}
+
+/// 따라가며 받은 것: 콘솔 한 줄이거나 실행 상태 알림 (시작·멈춤·다시 붙음)
+enum Seen<'a> {
+    Line(&'a Value),
+    Note(String),
+}
+
+impl Seen<'_> {
+    /// 사람이 읽는 한 줄
+    fn text(&self) -> String {
+        match self {
+            Seen::Line(l) => format_line(l),
+            Seen::Note(n) => style(n).cyan().dim().to_string(),
+        }
     }
 }
 
@@ -109,7 +131,7 @@ fn reattached(cur: &Cursor, fresh: &Cursor) -> bool {
 }
 
 /// 새 줄을 받아 `emit`으로 넘긴다. Ctrl+C로 끝.
-async fn follow_printing(ctx: &Ctx, sv: &Server, mut cur: Cursor, emit: impl Fn(String)) -> Result<()> {
+async fn follow_printing(ctx: &Ctx, sv: &Server, mut cur: Cursor, emit: impl Fn(Seen)) -> Result<()> {
     loop {
         tokio::select! {
             _ = tokio::time::sleep(POLL) => {}
@@ -119,7 +141,7 @@ async fn follow_printing(ctx: &Ctx, sv: &Server, mut cur: Cursor, emit: impl Fn(
     }
 }
 
-async fn poll_once(ctx: &Ctx, sv: &Server, cur: Cursor, emit: &impl Fn(String)) -> Cursor {
+async fn poll_once(ctx: &Ctx, sv: &Server, cur: Cursor, emit: &impl Fn(Seen)) -> Cursor {
     // 디스크 로그는 since를 무시하므로, 꺼져 있는 동안은 실행 여부만 본다.
     // 실행 중인데 아직 받은 줄이 없으면(빈 콘솔) 처음부터 받는다: 첫 줄을 놓치지 않게
     let since = if cur.disk {
@@ -140,9 +162,9 @@ async fn poll_once(ctx: &Ctx, sv: &Server, cur: Cursor, emit: &impl Fn(String)) 
     if reattached(&cur, &fresh) {
         // 옛 순번으로 받은 줄은 버리고, 새 버퍼의 최근 줄부터 이어 읽는다
         if let Ok(recent) = ctx.api.console(&sv.id, None, Some(REATTACH_LINES)).await {
-            emit(style(t!("console.reattached")).cyan().dim().to_string());
+            emit(Seen::Note(t!("console.reattached")));
             for l in recent.get("lines").and_then(Value::as_array).into_iter().flatten() {
-                emit(format_line(l));
+                emit(Seen::Line(l));
             }
             let next = Cursor::from(&recent);
             return Cursor {
@@ -156,20 +178,20 @@ async fn poll_once(ctx: &Ctx, sv: &Server, cur: Cursor, emit: &impl Fn(String)) 
     if restarted {
         // 새 프로세스: 순번이 새로 시작한다 → 최근 줄부터 다시
         if let Ok(recent) = ctx.api.console(&sv.id, Some(0), None).await {
-            emit(style(t!("console.started")).cyan().dim().to_string());
+            emit(Seen::Note(t!("console.started")));
             for l in recent.get("lines").and_then(Value::as_array).into_iter().flatten() {
-                emit(format_line(l));
+                emit(Seen::Line(l));
             }
             return Cursor::from(&recent);
         }
         return cur;
     }
     if cur.running && !fresh.running {
-        emit(style(t!("console.stopped")).cyan().dim().to_string());
+        emit(Seen::Note(t!("console.stopped")));
     }
     let lines = resp.get("lines").and_then(Value::as_array).map(Vec::as_slice).unwrap_or_default();
     for l in new_lines(since, &cur, &fresh, lines) {
-        emit(format_line(l));
+        emit(Seen::Line(l));
     }
     Cursor {
         next: fresh.next.or(cur.next),
@@ -434,8 +456,8 @@ async fn attach(ctx: &Ctx, sv: &Server, cur: Cursor) -> Result<()> {
     let poll_sv = sv.clone();
     let poll_cursor = cursor.clone();
     let poller = tokio::spawn(async move {
-        let emit = |line: String| {
-            let _ = tx.send(line);
+        let emit = |x: Seen| {
+            let _ = tx.send(x.text());
         };
         loop {
             tokio::time::sleep(POLL).await;
@@ -500,7 +522,7 @@ async fn attach(ctx: &Ctx, sv: &Server, cur: Cursor) -> Result<()> {
         report(ctx, crate::cmd::server::exec_line(ctx, sv, &cat, text).await);
         // 답이 버퍼에 들어올 틈을 조금 주고, 입력 줄을 다시 열기 전에 직접 찍는다
         tokio::time::sleep(POLL).await;
-        *cur = poll_once(ctx, sv, cur.clone(), &|line: String| say!("{}", line)).await;
+        *cur = poll_once(ctx, sv, cur.clone(), &|x: Seen| say!("{}", x.text())).await;
     }
     poller.abort();
     drop(rl);
@@ -517,11 +539,16 @@ fn report(ctx: &Ctx, r: Result<()>) {
 /// `daemon logs`
 pub async fn daemon_logs(ctx: &Ctx, lines: usize, follow: bool) -> Result<()> {
     let first = ctx.api.daemon_console(None, Some(lines)).await?;
-    if ctx.out.json {
+    // `--json`은 지금까지의 줄을 한 문서로. 따라가면 줄마다 JSON 한 줄 (`events`·`monitor --watch`처럼)
+    if ctx.out.json && !follow {
         ctx.out.data(&first, |_| {});
         return Ok(());
     }
     let print = |l: &Value| {
+        if ctx.out.json {
+            say!("{}", crate::output::event_line(l.clone()));
+            return;
+        }
         let lvl = s(l, "level");
         let lvl_s = match lvl {
             "error" => style(format!("{:5}", lvl.to_uppercase())).red().to_string(),
@@ -574,6 +601,50 @@ fn restarted(seen: Option<u64>, now: Option<u64>) -> bool {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// `--json`으로 따라가면 받은 줄을 한 줄에 하나씩 JSON으로 계속 낸다 (`events`·`monitor --watch`처럼).
+    /// 첫 묶음만 내고 끝나지 않는다
+    #[tokio::test(flavor = "multi_thread")]
+    async fn following_with_json_streams_one_line_per_entry() {
+        crate::i18n::init("en");
+        fn daemon(line: &str, _: &Value) -> (u16, Value) {
+            let console = |lines: Value| json!({ "lines": lines, "running": true, "epoch": 1 });
+            let reply = if line.starts_with("GET /api/instances") {
+                json!([{ "id": "1", "name": "mc", "module_name": "minecraft" }])
+            } else if line.starts_with("GET /api/instance/1/console") {
+                match line {
+                    l if l.contains("since=1") => console(json!([{ "id": 1, "content": "second-console-line" }])),
+                    l if l.contains("since=") => console(json!([])),
+                    _ => console(json!([{ "id": 0, "content": "first-console-line" }])),
+                }
+            } else if line.starts_with("GET /api/daemon/console") {
+                match line {
+                    l if l.contains("since=2") => json!({ "lines": [{ "id": 2, "level": "info", "message": "second-log-line" }], "epoch": 1 }),
+                    l if l.contains("since=") => json!({ "lines": [], "epoch": 1 }),
+                    _ => json!({ "lines": [{ "id": 1, "level": "info", "message": "first-log-line" }], "epoch": 1 }),
+                }
+            } else {
+                json!({})
+            };
+            (200, reply)
+        }
+        let (port, _) = crate::cmd::server::tests::fake_daemon(daemon).await;
+        let ctx = crate::cmd::server::tests::quiet_ctx(port);
+        let _lock = crate::output::SINK_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let rec = seen.clone();
+        let _guard = crate::output::SinkGuard::install(Box::new(move |_, text| rec.lock().unwrap().push(text.to_string())));
+
+        let args = ConsoleArgs { server: Some("mc".into()), lines: 50, follow: true, print: false };
+        let _ = tokio::time::timeout(Duration::from_secs(2), run(&ctx, args)).await;
+        let _ = tokio::time::timeout(Duration::from_secs(2), daemon_logs(&ctx, 10, true)).await;
+
+        let got = seen.lock().unwrap().clone();
+        let entry = |text: &str| got.iter().filter_map(|l| serde_json::from_str::<Value>(l).ok()).find(|v| v.to_string().contains(text));
+        for text in ["first-console-line", "second-console-line", "first-log-line", "second-log-line"] {
+            assert!(entry(text).is_some(), "{text} not streamed: {got:?}");
+        }
+    }
 
     /// 서버가 멈추면 데몬은 디스크 로그로 바꿔 since를 무시하고 최근 줄을 준다: 이미 찍은 줄은 다시 찍지 않고,
     /// 마지막으로 본 줄 뒤에 남은 줄(멈추기 직전 출력)만 찍는다

@@ -152,7 +152,7 @@ pub enum Cmd {
         #[arg(value_name = "KEY=VALUE")]
         input: Vec<String>,
         /// Several steps as JSON: [{"id": "...", "instance": "...", "input": {...}}, ...] (instead of ACTION)
-        #[arg(long, value_name = "JSON", conflicts_with = "action")]
+        #[arg(long, value_name = "JSON", conflicts_with_all = ["action", "server", "input"])]
         steps: Option<String>,
         /// Progress of a multi-step run that continues in the background
         #[arg(long = "run", value_name = "RUN_ID", conflicts_with_all = ["action", "steps"])]
@@ -1878,6 +1878,16 @@ mod tests {
         assert!(matches!(p(&["bot", "agent", "--unlink"]).unwrap().cmd, Some(Cmd::Bot(BotCmd::Agent { unlink: true }))));
         assert!(p(&["--json", "status"]).unwrap().global.json);
         assert!(p(&["status", "--json"]).unwrap().global.json);
+    }
+
+    /// `do --steps`는 단계마다 대상과 입력을 JSON에 적는다: `--server`·`KEY=VALUE`를 함께 주면 버리지 않고 거절한다
+    #[test]
+    fn do_steps_refuses_a_server_or_input_it_would_drop() {
+        let p = |args: &[&str]| Cli::try_parse_from(std::iter::once("saba-chan-cli").chain(args.iter().copied()));
+        let steps = r#"[{"id":"server.restart"}]"#;
+        assert!(p(&["do", "--steps", steps]).is_ok());
+        assert!(p(&["do", "--steps", steps, "--server", "survival"]).is_err());
+        assert!(p(&["do", "--steps", steps, "-s", "survival"]).is_err());
     }
 
     /// AI가 명령을 추측하지 않게 명령 트리·인자·종료 코드를 JSON으로 낸다
