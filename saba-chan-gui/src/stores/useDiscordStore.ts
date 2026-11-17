@@ -489,7 +489,9 @@ export const useDiscordStore = create<DiscordState>()((set, get) => ({
         set({
             relayConnecting: false,
             relayConnected: relayOk,
-            relayChecked: !!state.discordCloudHostId,
+            // 첫 확인이 끝났는가: 붙었거나 실패가 정해졌을 때만. 막 켠 봇이 연결 중이거나 한 번만 실패했으면 아직이다
+            // (오프닝이 이 답을 기다린다, utils/opening.ts. 사용자 11-18)
+            relayChecked: prev.relayChecked || (!!state.discordCloudHostId && (relayOk || (settled && !!relayFailure))),
             relayError: settled ? relayFailure : get().relayError,
             relayErrorKind: settled ? failureKind : get().relayErrorKind,
             _relayFailures: failures,

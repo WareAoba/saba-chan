@@ -76,6 +76,25 @@ describe('릴레이 연결은 데몬 에이전트가 안다', () => {
         expect(s.discordBotStatus).toBe('connecting');
     });
 
+    // 오프닝은 첫 확인이 끝날 때까지 기다린다: 연결 중·한 번 실패는 아직 확인이 끝난 것이 아니다 (사용자 11-18)
+    it('막 켠 봇이 연결 중이거나 한 번만 실패했으면 아직 확인이 끝나지 않았고, 붙거나 실패가 정해지면 끝난다', async () => {
+        vi.mocked(window.api.discordBotStatus).mockResolvedValue(link(false, '', false) as never);
+        await useDiscordStore.getState().checkStatus();
+        expect(useDiscordStore.getState().relayChecked).toBe(false);
+        vi.mocked(window.api.discordBotStatus).mockResolvedValue(link(true) as never);
+        await useDiscordStore.getState().checkStatus();
+        expect(useDiscordStore.getState()).toMatchObject({ relayChecked: true, relayConnected: true });
+
+        useDiscordStore.getState()._resetForTest();
+        useDiscordStore.setState({ discordCloudHostId: 'host-1', _botConfigLoaded: true });
+        vi.mocked(window.api.discordBotStatus).mockResolvedValue(link(false, 'heartbeat 401 (node token rejected)') as never);
+        vi.mocked(window.api.relayCheckHostStatus).mockResolvedValue({ error: 'INVALID_TOKEN' } as never);
+        await useDiscordStore.getState().checkStatus();
+        expect(useDiscordStore.getState().relayChecked).toBe(false);
+        await useDiscordStore.getState().checkStatus();
+        expect(useDiscordStore.getState()).toMatchObject({ relayChecked: true, relayConnected: false });
+    });
+
     it('끊긴 것 같으면 30초를 기다리지 않고 5초 뒤 다시 보고 끊김을 정한다', async () => {
         useDiscordStore.getState().startStatusPolling();
         await vi.advanceTimersByTimeAsync(300);
