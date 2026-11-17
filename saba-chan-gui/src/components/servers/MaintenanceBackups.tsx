@@ -49,16 +49,25 @@ const KIND_TONE: Record<string, 'ok' | 'stop' | 'warn' | 'info' | 'idle'> = {
 // 게임이 스스로 만든 자동 백업 (데몬 `game-snapshot:<id>`). 내보내려면 먼저 보관한다
 const GAME_SNAPSHOT = 'game-snapshot';
 
+/** 받은 백업 목록: 서버마다 하나. 탭을 다시 열면 이것부터 바로 보이고 새 목록은 뒤에서 받아 바꾼다 */
+interface BackupList {
+    backups: Backup[];
+    /** 백업 폴더가 디스크에 차지하는 크기 (데몬이 계산. 같은 내용은 한 번만 센다) */
+    totalBytes: number | null;
+    /** 모듈이 게임 자동 백업을 알려 주는가 (`[backup] snapshots`) */
+    snapshots: boolean;
+}
+const lists = new Map<string, BackupList>();
+
 export function BackupsCard({ server }: { server: Server }) {
     const { t, i18n } = useTranslation('gui');
     const openMenu = useContextMenu();
-    const [backups, setBackups] = useState<Backup[] | null>(null);
-    // 백업 폴더가 디스크에 차지하는 크기 (데몬이 계산. 같은 내용은 한 번만 센다)
-    const [totalBytes, setTotalBytes] = useState<number | null>(null);
+    const [data, setData] = useState<BackupList | null>(() => lists.get(server.id) ?? null);
+    const backups = data?.backups ?? null;
+    const totalBytes = data?.totalBytes ?? null;
+    const snapshots = data?.snapshots ?? false;
     // 목록을 읽지 못한 이유. 빈 목록("백업 없음")과 구별해 보인다
     const [loadError, setLoadError] = useState<string | null>(null);
-    // 모듈이 게임 자동 백업을 알려 주는가 (`[backup] snapshots`)
-    const [snapshots, setSnapshots] = useState(false);
     const [busy, setBusy] = useState<string | null>(null); // 'create' | `restore:${name}` | `delete:${name}`
     const [armed, setArmed] = useState<string | null>(null); // 두 번 눌러 확정할 동작
     // 가져오려고 고른 zip (데몬이 검사해 알려 준 내용). 확인하면 목록에 올린다
@@ -79,10 +88,14 @@ export function BackupsCard({ server }: { server: Server }) {
                 setLoadError(errorText(res, t('maintenance.load_failed'), t));
                 return;
             }
+            const next = {
+                backups: res.backups,
+                totalBytes: typeof res?.total_bytes === 'number' ? res.total_bytes : null,
+                snapshots: res?.snapshots_supported === true,
+            };
+            lists.set(server.id, next);
             setLoadError(null);
-            setBackups(res.backups);
-            setTotalBytes(typeof res?.total_bytes === 'number' ? res.total_bytes : null);
-            setSnapshots(res?.snapshots_supported === true);
+            setData(next);
         } catch (e) {
             if (alive.current) setLoadError(e instanceof Error && e.message ? e.message : t('maintenance.load_failed'));
         }

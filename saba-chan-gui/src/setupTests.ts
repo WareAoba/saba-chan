@@ -17,6 +17,12 @@ afterEach(() => {
     cleanup();
 });
 
+// jsdom 31부터 스타일시트의 animation-name을 계산해 돌려준다. jsdom은 애니메이션을 돌리지 않아 animationend가 오지 않으므로,
+// 닫힘 애니메이션을 기다리는 Radix(Dialog·Select 등)가 닫힌 뒤에도 남는다. 시험에서는 애니메이션·전환을 끈다
+const noMotion = document.createElement('style');
+noMotion.textContent = '*, *::before, *::after { animation: none !important; transition: none !important; }';
+document.head.appendChild(noMotion);
+
 // i18n 초기화 (테스트 환경용 - 영어로 설정)
 const initializeTestI18n = async () => {
     if (!i18n.isInitialized) {
