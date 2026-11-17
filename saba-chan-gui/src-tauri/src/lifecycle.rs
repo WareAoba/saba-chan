@@ -26,6 +26,9 @@ pub struct Lifecycle {
     child: Mutex<Option<Child>>,
     /// 이 GUI가 띄우지 않았지만 이미 떠 있어 붙은 데몬 (트레이가 꺼짐으로 보이지 않게)
     attached_daemon: AtomicBool,
+    /// 이 GUI가 데몬을 띄운 적이 있다. 오프닝은 이 값으로 정한다: 붙은 데몬 표시(`attached_daemon`)는 heartbeat가
+    /// 닿을 때마다 켜므로, 첫 박자가 ready보다 먼저 닿으면 새로 띄운 기동도 붙은 것으로 보였다 (사용자 11-17)
+    launched_daemon: AtomicBool,
     /// 사용자가 트레이에서 데몬을 껐다: 데몬이 없어도 상주 GUI는 남아 다시 켤 수 있게 한다 (`TRAY_STOP_*`)
     stopped_from_tray: AtomicU8,
     init_started: AtomicBool,
@@ -109,8 +112,8 @@ fn emit_status(app: &AppHandle, payload: Value) {
 
 /// 초기화를 마쳤다는 `ready`. `opening`: 이번 기동에서 이 GUI가 데몬을 띄웠는가 (이미 떠 있던 데몬에 붙었으면 false).
 /// 렌더러는 데몬까지 모두 준비한 기동에서만 오프닝을 재생한다 (사용자 11-15)
-fn ready_status(message: &str, attached: bool) -> Value {
-    json!({ "step": "ready", "message": message, "ts": chrono::Utc::now().timestamp_millis(), "opening": !attached })
+fn ready_status(message: &str, launched: bool) -> Value {
+    json!({ "step": "ready", "message": message, "ts": chrono::Utc::now().timestamp_millis(), "opening": launched })
 }
 
 /// 새로 붙은 렌더러(새로고침·트레이에서 다시 연 창)에 다시 보내는 마지막 단계: 이미 끝난 기동이라 오프닝은 없다
@@ -200,8 +203,10 @@ async fn finish_background_init(app: &AppHandle) {
     // 바탕화면 오버레이를 쓸 익스텐션이 켜져 있으면 띄운다
     crate::overlay::sync(app).await;
 
-    let attached = state.life.attached_daemon.load(Ordering::SeqCst);
-    emit_status(app, ready_status(&state.t("init.ready", &[]), attached));
+    emit_status(
+        app,
+        ready_status(&state.t("init.ready", &[]), state.life.launched_daemon()),
+    );
 
     // 업데이터가 다시 띄웠으면 첫 ready 뒤 한 번 알린다
     if state.after_update && !state.life.ready_sent.swap(true, Ordering::SeqCst) {
@@ -297,6 +302,11 @@ impl Lifecycle {
     /// 이 GUI가 데몬을 새로 띄웠다: 예전에 붙었던 데몬 표시는 버린다 (이제는 띄운 데몬의 생사만 본다)
     fn own_daemon_started(&self) {
         self.attached_daemon.store(false, Ordering::SeqCst);
+        self.launched_daemon.store(true, Ordering::SeqCst);
+    }
+
+    fn launched_daemon(&self) -> bool {
+        self.launched_daemon.load(Ordering::SeqCst)
     }
 }
 
@@ -1265,9 +1275,19 @@ mod tests {
     /// 오프닝은 이 GUI가 데몬을 띄운 기동의 첫 ready에서만. 새로 붙은 렌더러에 다시 보내는 ready는 오프닝 없이
     #[test]
     fn opening_only_for_the_startup_that_launched_the_daemon() {
-        assert_eq!(ready_status("ok", false)["opening"], json!(true));
-        assert_eq!(ready_status("ok", true)["opening"], json!(false), "attached to a daemon that was already up");
-        assert_eq!(replayed_status(ready_status("ok", false))["opening"], json!(false));
+        // 이 GUI가 데몬을 띄웠다. ready 전에 heartbeat 첫 박자가 닿아도(붙은 데몬 표시가 켜져도) 오프닝은 그대로다 (사용자 11-17)
+        let launched = Lifecycle::default();
+        launched.own_daemon_started();
+        launched.note_reachable(true);
+        assert_eq!(ready_status("ok", launched.launched_daemon())["opening"], json!(true));
+        let attached = Lifecycle::default();
+        attached.attached_daemon.store(true, Ordering::SeqCst);
+        assert_eq!(
+            ready_status("ok", attached.launched_daemon())["opening"],
+            json!(false),
+            "attached to a daemon that was already up"
+        );
+        assert_eq!(replayed_status(ready_status("ok", true))["opening"], json!(false));
         let daemon = json!({ "step": "daemon", "message": "m" });
         assert_eq!(replayed_status(daemon.clone()), daemon);
     }
