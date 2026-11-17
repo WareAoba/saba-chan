@@ -636,6 +636,8 @@ mod tests {
         assert_eq!(backup["level"], "error");
         store.apply(from_event("backup.done", &json!({ "instanceId": "i1", "instance": "mc", "kind": "scheduled", "ok": false, "code": "backup_failed", "error": "No space left on device" })).unwrap());
         assert_eq!(render(&ko, &store.list()[0])["detail"], "No space left on device");
+        store.apply(from_event("backup.done", &json!({ "instanceId": "i1", "instance": "mc", "kind": "scheduled", "ok": false, "code": "backup_disk_full", "error": "No space left on device" })).unwrap());
+        assert_eq!(render(&ko, &store.list()[0])["detail"], "디스크 공간 부족");
         store.apply(from_event("schedule.failed", &json!({ "instanceId": "i2", "instance": "pal", "action": "save", "seconds": 1, "code": "command_failed" })).unwrap());
         let task = render(&ko, &store.list()[0]);
         assert_eq!(task["message"], "pal · 예약 작업 실패");

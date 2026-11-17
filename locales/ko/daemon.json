@@ -37,6 +37,7 @@
     "backup_save_unconfirmed": "서버의 저장 완료 응답 없음",
     "backup_server_stopped": "백업 중 서버가 종료됨",
     "backup_file_locked": "서버가 쓰는 파일이 있음",
+    "backup_disk_full": "디스크 공간 부족",
     "autosave_not_resumed": "백업 뒤 자동 저장을 다시 켜지 못함",
     "command_failed": "서버가 명령을 거절함",
     "not_running": "서버가 정지되어 있었음",

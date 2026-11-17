@@ -37,6 +37,7 @@
     "backup_save_unconfirmed": "Le serveur n'a pas confirmé l'enregistrement",
     "backup_server_stopped": "Le serveur s'est arrêté pendant la sauvegarde",
     "backup_file_locked": "Le serveur utilise un fichier",
+    "backup_disk_full": "Espace disque insuffisant",
     "autosave_not_resumed": "Impossible de réactiver l'enregistrement automatique après la sauvegarde",
     "command_failed": "Le serveur a refusé la commande",
     "not_running": "Le serveur était arrêté",

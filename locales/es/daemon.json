@@ -37,6 +37,7 @@
     "backup_save_unconfirmed": "El servidor no confirmó el guardado",
     "backup_server_stopped": "El servidor se detuvo durante la copia",
     "backup_file_locked": "El servidor está usando un archivo",
+    "backup_disk_full": "Espacio en disco insuficiente",
     "autosave_not_resumed": "No se pudo reactivar el guardado automático tras la copia",
     "command_failed": "El servidor rechazó el comando",
     "not_running": "El servidor estaba detenido",

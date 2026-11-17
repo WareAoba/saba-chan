@@ -476,6 +476,7 @@
       "import_other_module": "Backup de servidor de outro jogo; importação neste servidor impossível",
       "export_old_backup": "Backup criado por versão antiga; exportação impossível",
       "backup_file_locked": "O servidor está usando um arquivo ({{file}}). Pare o servidor e tente de novo: saba-chan-cli stop <nome>",
+      "backup_disk_full": "Espaço em disco insuficiente. Libere espaço e tente novamente.",
       "autosave_not_resumed": "Backup concluído, mas falha ao religar o salvamento automático do servidor. Reinicie o servidor: saba-chan-cli restart <name>",
       "backup_failed_autosave_off": "Backup falhou e o salvamento automático do servidor não foi religado. Reinicie o servidor: saba-chan-cli restart <name>",
       "backup_save_rejected": "O servidor recusou o comando de salvar; sem backup. Pare o servidor e refaça o backup: saba-chan-cli stop <name>",

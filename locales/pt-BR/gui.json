@@ -1624,6 +1624,7 @@
     "backup_unreadable": "não pode ser aberto",
     "backup_unreadable_hint": "Backup que não pode ser aberto; não pode ser restaurado. O conteúdo de backups não utilizados só é limpo depois que ele for excluído. Exclua-o.",
     "err_backup_file_locked": "O servidor está usando um arquivo ({{file}}); backup falhou. Pare o servidor e tente novamente.",
+    "err_backup_disk_full": "Falha no backup: espaço em disco insuficiente. Libere espaço e tente novamente.",
     "err_autosave_not_resumed": "Backup criado, mas falha ao retomar o salvamento automático do servidor. Reinicie o servidor.",
     "err_backup_failed_autosave_off": "Falha no backup e também ao retomar o salvamento automático do servidor. Reinicie o servidor.",
     "err_backup_save_rejected": "O servidor não aceitou o comando de salvar; nenhum backup feito. Pare o servidor e refaça o backup.",

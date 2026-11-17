@@ -37,6 +37,7 @@
     "backup_save_unconfirmed": "服务器未确认保存完成",
     "backup_server_stopped": "备份期间服务器已退出",
     "backup_file_locked": "服务器正在使用文件",
+    "backup_disk_full": "磁盘空间不足",
     "autosave_not_resumed": "备份后无法重新开启自动保存",
     "command_failed": "服务器拒绝了命令",
     "not_running": "服务器已停止",

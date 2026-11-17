@@ -37,6 +37,7 @@
     "backup_save_unconfirmed": "伺服器未確認儲存完成",
     "backup_server_stopped": "備份期間伺服器已結束",
     "backup_file_locked": "伺服器正在使用檔案",
+    "backup_disk_full": "磁碟空間不足",
     "autosave_not_resumed": "備份後無法重新開啟自動儲存",
     "command_failed": "伺服器拒絕了指令",
     "not_running": "伺服器已停止",

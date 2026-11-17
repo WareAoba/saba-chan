@@ -476,6 +476,7 @@
       "import_other_module": "Sicherung eines anderen Spielservers, Import nicht möglich",
       "export_old_backup": "Sicherung stammt aus einer alten Version, Export nicht möglich",
       "backup_file_locked": "Eine Datei ({{file}}) ist vom Server belegt. Server stoppen und erneut versuchen: saba-chan-cli stop <Name>",
+      "backup_disk_full": "Nicht genug Speicherplatz. Gib Speicher frei und versuche es erneut.",
       "autosave_not_resumed": "Backup erstellt, aber Autospeichern des Servers nicht wieder eingeschaltet. Server neu starten: saba-chan-cli restart <name>",
       "backup_failed_autosave_off": "Backup fehlgeschlagen, Autospeichern des Servers nicht wieder eingeschaltet. Server neu starten: saba-chan-cli restart <name>",
       "backup_save_rejected": "Server hat den Speicherbefehl abgelehnt, kein Backup. Server stoppen und erneut sichern: saba-chan-cli stop <name>",

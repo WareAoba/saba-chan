@@ -37,6 +37,7 @@
     "backup_save_unconfirmed": "O servidor não confirmou o salvamento",
     "backup_server_stopped": "O servidor parou durante o backup",
     "backup_file_locked": "O servidor está usando um arquivo",
+    "backup_disk_full": "Espaço em disco insuficiente",
     "autosave_not_resumed": "Não foi possível religar o salvamento automático após o backup",
     "command_failed": "O servidor recusou o comando",
     "not_running": "O servidor estava parado",
