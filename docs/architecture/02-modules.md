@@ -253,7 +253,7 @@ off = { enable-rcon = "false" }
 채팅(디스코드)은 답하는 언어(디스코드는 길드 봇 언어, 없으면 앱 언어)의 별명·게임명만 맞춘다(`ModuleView::in_language`, `chat::api::locale_aliases`). 모듈 이름·명령 이름·서버 이름은 언어와 상관없이 늘 맞춘다. 게임명·별명으로 서버를 부르는 것은 그 게임의 서버가 하나일 때만이다(01 §4 `serverWords`). `GET /api/modules`의 `module_aliases`·`command_aliases`는 module.toml 낱말에 앱 언어의 locales 별명을 더한 값이다(GUI·CLI가 쓴다).
 
 #### `[errors]`
-오류 코드 → 사용자 문구. 메타데이터 `errors`에 실리고, `POST /api/instance/:id/command`가 실패 응답에 `error_message`로 붙인다 (`D:src/ipc/handlers/command.rs`). 문구는 GUI 언어의 모듈 locales `errors.<code>`가 있으면 그것을, 없으면 module.toml 값을 쓴다 (`module_errors`).
+오류 코드 → 사용자 문구. 메타데이터 `errors`에 실리고, `POST /api/instance/:id/command`가 실패 응답에 `error_message`로 붙인다 (`D:src/ipc/handlers/command.rs`). 문구는 GUI 언어의 모듈 locales `errors.<code>`가 있으면 그것을, 없으면 module.toml 값을 쓴다 (`module_errors`). 모듈 함수가 `error_code` 없이 `{success:false, message}`로 실패하면 `[errors]` 문구 대신 그 `message`를 `error_message`로 붙인다(`command_reply`): 상태로 정한 대체 코드 `internal_server_error`의 문구가 모듈이 알려 준 사유를 덮지 않게 한다.
 
 #### `[[presets]]` (`ModulePreset`)
 서버를 만들 때 고르는 추천 설정 묶음(예: "친구용 소규모", "하드코어"). `id`(소문자·숫자·`-`·`_`, 모듈 안에서 겹치지 않음), `label?`, `description?`, `[presets.settings]`(`[[settings.fields]]` 이름 → 값). 값은 그 설정의 규칙(형식·범위·select 선택지)을 따라야 하고, `password`·`file`·`path` 형식 설정은 넣지 못한다. 어기면 스키마 v1 모듈은 로드에 실패한다. 표시 문구는 모듈 locales의 `presets.<id>.label`·`description`이 덮는다. `GET /api/modules`의 각 모듈 `presets`, heartbeat `modules[].presets`(`{id, label}`만)에 실리고, `POST /api/instances`의 `preset`으로 고른다(01 §`POST /api/instances`). CLI는 `server add --preset <id>`(주지 않으면 새 서버일 때 묻는다), `module info`가 id를 보여 준다.

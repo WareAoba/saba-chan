@@ -382,7 +382,15 @@ fn command_reply(
     body.insert("command".into(), json!(command));
     if !resp.status.is_success() {
         let code = crate::commands::error_code(resp.status.as_u16(), &Value::Object(body.clone()));
-        if let Some(message) = errors.get(&code) {
+        // 모듈이 코드 없이 사유(`message`)만 주고 실패했으면 그 사유가 먼저다: 상태로 정한 코드의 문구("서버 내부 오류")로 덮지 않는다
+        let coded = body.get("error_code").and_then(Value::as_str).is_some();
+        let reason = body
+            .get("message")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|m| !m.is_empty() && !coded && body.contains_key("module"))
+            .map(str::to_string);
+        if let Some(message) = reason.or_else(|| errors.get(&code).cloned()) {
             body.insert("error_message".into(), json!(message));
         }
         body.insert("error_code".into(), json!(code));
@@ -755,6 +763,35 @@ mod tests {
         assert_eq!(rejected["error_message"], "비밀번호를 확인하세요");
         let other = body(reply(ProtocolError::HttpStatus(500, "boom".into())));
         assert_eq!(other["error_code"], "internal_server_error");
+    }
+
+    /// 모듈 명령이 사유(`message`)만 주고 실패하면 그 사유를 보인다. "서버 내부 오류"나 HTTP 상태로 덮지 않는다.
+    /// 모듈이 오류 코드를 주면 지금처럼 그 코드의 `[errors]` 문구가 먼저다
+    #[test]
+    fn a_failed_module_command_shows_the_modules_own_reason() {
+        let errors: std::collections::HashMap<String, String> = [
+            ("auth_failed".to_string(), "비밀번호를 확인하세요".to_string()),
+            ("internal_server_error".to_string(), "서버 내부 오류".to_string()),
+        ]
+        .into();
+        let reply = |body: Value| {
+            command_reply(crate::ipc::internal::InternalResponse { status: StatusCode::INTERNAL_SERVER_ERROR, body }, "kick", &errors)
+                .unwrap_err()
+                .body
+        };
+        let module = |extra: Value| {
+            let mut body = json!({ "success": false, "message": "플레이어 없음", "module": "palworld", "function": "command" });
+            body.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
+            body
+        };
+        let reason = reply(module(json!({})));
+        assert_eq!(reason["error_message"], "플레이어 없음");
+        assert_eq!(reason["error_code"], "internal_server_error");
+        // minecraft처럼 코드 칸이 null이어도 사유를 쓴다
+        assert_eq!(reply(module(json!({ "error_code": null })))["error_message"], "플레이어 없음");
+        assert_eq!(reply(module(json!({ "error_code": "auth_failed" })))["error_message"], "비밀번호를 확인하세요");
+        // 모듈 사유가 없는 데몬 실패는 지금처럼 코드 문구
+        assert_eq!(reply(json!({ "success": false, "error": "boom", "error_code": "internal_server_error" }))["error_message"], "서버 내부 오류");
     }
 
     /// 콘솔 답이 모듈의 실패 모양이면 명령 라우트가 `rejected`로 표시한다 (앱·웹·CLI·채팅이 실패로 알린다)
