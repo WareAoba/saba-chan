@@ -2053,15 +2053,6 @@ button.activity-line:hover {
     gap: var(--sp-2);
     flex-wrap: wrap;
 }
-/* 설정 > 보안으로 옮긴 디스코드 계정 줄: 다른 설정 줄과 같은 상자 */
-.setting-item.dc-row-actions {
-    justify-content: space-between;
-    gap: var(--sp-4);
-    padding: var(--sp-4);
-    border-top: 1px solid var(--line);
-    font-size: inherit;
-    flex-wrap: nowrap;
-}
 .dc-danger-zone {
     justify-content: space-between;
     padding-top: var(--sp-3);
