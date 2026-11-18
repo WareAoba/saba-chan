@@ -121,6 +121,9 @@ pub async fn daemon_status(app: AppHandle) -> Value {
             identity = client.identity_valid(1000).await;
         }
     }
+    if identity {
+        lifecycle::resume_init(&app);
+    }
     daemon_status_body(health, identity)
 }
 
