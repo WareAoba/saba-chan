@@ -269,7 +269,7 @@ async fn try_hold_starts(state: &UpdateState) -> Option<tokio::sync::OwnedRwLock
 }
 
 /// 켜진 서버 중 이 모듈·익스텐션을 쓰는 것의 이름
-async fn servers_using(state: &UpdateState, component: &Component) -> Vec<String> {
+pub(crate) async fn servers_using(state: &UpdateState, component: &Component) -> Vec<String> {
     let uses = |user: &AddonUser| match component {
         Component::Module(name) => user.module == *name,
         Component::Extension(id) => user.extensions.contains(id),
