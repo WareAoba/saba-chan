@@ -1214,11 +1214,40 @@ fn test_check_updates_against() {
         has_icon: false,
     }];
 
-    let updates = mgr.check_updates_against(&remote);
+    let updates = mgr.check_updates_against(&remote, |_, _| Default::default());
     assert_eq!(updates.len(), 1);
     assert_eq!(updates[0].id, "test_ext");
     assert_eq!(updates[0].installed_version, "1.0.0");
     assert_eq!(updates[0].latest_version, "2.0.0");
+}
+
+/// check_updates_against — 고정했거나 고른 판을 기다리는 익스텐션은 업데이트로 내지 않는다 (`AddonChoice::update_version`)
+#[test]
+fn check_updates_skips_pinned_and_pending_extensions() {
+    use saba_chan_updater_lib::addon_pins::{AddonChoice, AddonPin};
+    let tmp = tempfile::tempdir().unwrap();
+    for id in ["free_ext", "pinned_ext", "waiting_ext"] {
+        let dir = tmp.path().join(id);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("manifest.json"), format!(r#"{{"id":"{id}","name":"T","version":"1.0.0"}}"#)).unwrap();
+    }
+    let mut mgr = ExtensionManager::new_isolated(tmp.path().to_str().unwrap());
+    mgr.discover().unwrap();
+    let remote: Vec<RemoteExtensionInfo> = ["free_ext", "pinned_ext", "waiting_ext"]
+        .iter()
+        .map(|id| serde_json::from_value(serde_json::json!({ "id": id, "name": id, "version": "2.0.0", "download_url": "https://example.com/x.zip" })).unwrap())
+        .collect();
+
+    let updates = mgr.check_updates_against(&remote, |key, installed| {
+        assert_eq!(installed, "1.0.0");
+        match key {
+            "ext-pinned_ext" => AddonChoice { pinned: Some(AddonPin { version: "1.0.0".into(), until_newer_than: "2.0.0".into() }), pending_version: None },
+            "ext-waiting_ext" => AddonChoice { pinned: None, pending_version: Some("1.5.0".into()) },
+            _ => AddonChoice::default(),
+        }
+    });
+    let ids: Vec<&str> = updates.iter().map(|u| u.id.as_str()).collect();
+    assert_eq!(ids, vec!["free_ext"]);
 }
 
 /// check_updates_against — 이미 최신이면 빈 목록
@@ -1254,7 +1283,7 @@ fn test_check_updates_already_latest() {
         has_icon: false,
     }];
 
-    let updates = mgr.check_updates_against(&remote);
+    let updates = mgr.check_updates_against(&remote, |_, _| Default::default());
     assert!(updates.is_empty(), "Same version should not be an update");
 }
 
