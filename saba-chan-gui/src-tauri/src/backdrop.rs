@@ -16,8 +16,10 @@ use tauri::{AppHandle, Manager, WebviewWindow, WebviewWindowBuilder};
 static CURRENT: Mutex<Option<WindowBackdrop>> = Mutex::new(None);
 /// 투명하게 만든 창 라벨
 static TRANSPARENT: Mutex<Option<HashSet<String>>> = Mutex::new(None);
-/// 창마다 마지막으로 OS에 건 효과 (None = 걷음). 같은 효과를 다시 걸면 Windows가 재질을 새로 그려 깜빡인다
-static APPLIED: Mutex<Option<HashMap<String, Option<Vec<&'static str>>>>> = Mutex::new(None);
+/// OS에 건 효과 이름 (None = 걷음)
+type Effects = Option<Vec<&'static str>>;
+/// 창마다 마지막으로 OS에 건 효과. 같은 효과를 다시 걸면 Windows가 재질을 새로 그려 깜빡인다
+static APPLIED: Mutex<Option<HashMap<String, Effects>>> = Mutex::new(None);
 
 /// 이 컴퓨터에서 쓸 수 있는 것. 처음 부르는 곳은 메인 스레드다 (창 만들기·동기 명령)
 pub fn support() -> &'static Support {
@@ -33,7 +35,7 @@ pub fn current(app: &AppHandle) -> WindowBackdrop {
 }
 
 /// 이 창에 건 효과를 기록한다. 처음이거나 바뀌었을 때만 true (그때만 OS에 건다)
-fn remember_effects(label: &str, effects: Option<Vec<&'static str>>) -> bool {
+fn remember_effects(label: &str, effects: Effects) -> bool {
     let mut applied = APPLIED.lock().unwrap();
     let applied = applied.get_or_insert_with(HashMap::new);
     if applied.get(label) == Some(&effects) {
