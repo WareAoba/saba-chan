@@ -2112,9 +2112,11 @@ async fn execute(server: &IPCServer, r: &Resolved, caller: &Caller) -> Value {
         }
     }
     if let (false, Some(_)) = (ok, &caller.remote) {
+        // 서버가 낸 까닭은 사람에게만 그대로 보인다. AI 에이전트에는 고정 문구를 준다 (원문은 `result.rejected`에 자료로 남는다)
+        let agent = caller.origin.via.as_deref() == Some(MCP_VIA);
         let reason = match &rejected {
-            Some(Some(reason)) => crate::chat::Text::from(reason.as_str()),
-            Some(None) => crate::chat::reason("rejected", &out["result"]),
+            Some(Some(reason)) if !agent => crate::chat::Text::from(reason.as_str()),
+            Some(_) => crate::chat::reason("rejected", &out["result"]),
             None => crate::chat::reason(&crate::commands::error_code(resp.status.as_u16(), &out["result"]), &out["result"]),
         };
         out["reason"] = reason.to_json();

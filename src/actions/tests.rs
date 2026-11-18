@@ -1312,6 +1312,23 @@ async fn a_failed_remote_action_carries_a_short_reason() {
     assert!(local.get("reason").is_none(), "{local}");
 }
 
+/// 서버가 낸 거절 까닭은 사람이 보는 디스코드에는 그대로, AI 에이전트(원격 MCP)에는 고정 문구로 준다
+#[tokio::test]
+async fn the_servers_own_rejection_text_is_not_the_reason_given_to_an_agent() {
+    let module = format!("{MODULE}\n[commands]\nfailure_patterns = ['^(?P<reason>No player.*)$']\n\n[[commands.fields]]\nname = \"kick\"\nmethod = \"module\"\ninputs = [{{ name = \"player\", type = \"text\" }}]\n");
+    let lifecycle = "import json, sys\njson.load(sys.stdin)\nprint(json.dumps({'success': True, 'message': 'No player was found'}))\n";
+    let (state, id, _tmp) = server_running(&module, lifecycle).await;
+    set_node(&state, json!({ "ownerDiscordId": "owner" })).await;
+    state.supervisor.read().await.tracker.track(&id, std::process::id());
+    let input = json!({ "player": "steve" });
+    let discord = run(&state, "server.command:kick", Some(&id), &input, None, &relay("owner", false)).await.unwrap();
+    let agent = Caller::mcp("owner".into(), "owner".into(), Some("owner".into()), None, "en".into());
+    let mcp = run(&state, "server.command:kick", Some(&id), &input, None, &agent).await.unwrap();
+    let _ = state.supervisor.read().await.tracker.untrack(&id);
+    assert_eq!(shown(&discord["reason"]), "No player was found", "{discord}");
+    assert_eq!((mcp["success"].as_bool(), shown(&mcp["reason"])), (Some(false), "[reasons.rejected file=]".to_string()), "{mcp}");
+}
+
 /// 서버가 거절한 명령(`rejected`, 모듈의 실패 모양)은 액션으로 보내도 실패다: 문장 명령과 같은 이유를 준다
 #[tokio::test]
 async fn a_command_the_server_rejected_fails_as_an_action() {
