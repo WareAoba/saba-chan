@@ -281,10 +281,14 @@ async fn launch_updater_via(app: &AppHandle, path: &str) -> Value {
             }
             launch_result(&data, handoff)
         }
+        // 실패 이유는 데몬이 준 것(`error`·구성요소별 `errors`)만 넘긴다: 렌더러가 `errors`를 먼저 보인다
         Ok(data) => {
-            let error = data.get("error").filter(|e| e.as_str().is_some_and(|s| !s.is_empty()));
             let errors = data.get("errors").cloned().unwrap_or_else(|| json!([]));
-            json!({ "ok": false, "error": error.cloned().unwrap_or_else(|| json!("Failed to launch updater")), "errors": errors })
+            let mut body = json!({ "ok": false, "errors": errors });
+            if let Some(error) = data.get("error").filter(|e| e.as_str().is_some_and(|s| !s.is_empty())) {
+                body["error"] = error.clone();
+            }
+            body
         }
         Err(e) => e.error_body(json!({ "ok": false })),
     }
