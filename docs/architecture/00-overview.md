@@ -52,7 +52,7 @@
    │     │            ├─ plugin 실행기: python <file>.py <fn>  ─┼─► 모듈 lifecycle.py
    │     │            │                                        ├─► 플러그인 hook (*.py)
    │     │            └─ managed process(stdin/stdout), REST ─► 게임 서버
-   │     ├─ relay_agent ─(롱폴링, HMAC 서명, 바깥으로만)────────┼─► 클라우드 릴레이 ─ 사바쨩 봇 ─ Discord
+   │     ├─ relay_agent ─(롱폴링, Bearer 노드 토큰, 바깥으로만)────────┼─► 클라우드 릴레이 ─ 사바쨩 봇 ─ Discord
    │     ├─ /api/relay/* 프록시(페어링·봇 초대·노드 조회) ───────┼─► 클라우드 릴레이
    │     └─ /api/updates/* ─ updater lib ─► 릴레이 + R2         │
    └───────────────────────────────────────────────────────────┘
@@ -73,7 +73,7 @@
 | 게임 명령 | 우선순위 stdin(서버 콘솔) → REST → RCON. RCON은 `rcon`만 받는 모듈에만 쓴다(127.0.0.1, 데몬이 만든 인스턴스별 비밀번호). 모듈의 콘솔 명령은 `method = "console"` + `console_template`(`rcon`도 별칭으로 받는다). `/api/instance/:id/rcon`은 이름만 남은 호환 경로로 콘솔 출력을 잠깐 모아 돌려준다. 콘솔 없는 서버는 409 `no_command_path`. palworld는 REST(`/rest`)만 쓴다. 정지도 RCON 없이 콘솔 명령이나 REST로 한다 | 01 §5.4, 02 RCON 정책 |
 | 데몬 → 플러그인 | 같은 실행기로 hook 함수 호출. `FIRED_HOOKS` 목록(`daemon.startup/shutdown`, `server.pre_start/stop/status/list_enrich/post_create/pre_delete/settings_changed/check_update`, 익스텐션 명령 `command.<name>`). 목록의 hook이 모두 발화되는지 테스트가 확인한다. 순서는 `priority`, id 순 | 03 §2 |
 | 플러그인 → GUI | GUI가 `/api/extensions/:id/gui` 번들을 로드, 전역 `window.SabaExt<Pascal>`의 `registerSlots()`로 slot에 컴포넌트 주입 | 03 §4 |
-| 데몬 ↔ relay | 데몬 안의 relay_agent가 바깥으로 롱폴링하고 HMAC 서명으로 요청한다. 페어링·봇 초대·노드 조회는 데몬 `/api/relay/*` 프록시 | 04 §4, 05 §4 |
+| 데몬 ↔ relay | 데몬 안의 relay_agent가 바깥으로 롱폴링하고 Bearer 노드 토큰으로 요청한다. 페어링·봇 초대·노드 조회는 데몬 `/api/relay/*` 프록시 | 04 §4, 05 §4 |
 | 업데이트 | 데몬이 updater 라이브러리를 내장. 릴레이에서 Ed25519 서명 manifest를 받아 검증하고, 파일은 R2에서 SHA-256을 확인하며 받는다. 모듈(`module-*`)·익스텐션(`ext-*`)도 같은 manifest에 든다. 확인 주기는 데몬 스케줄러가 돈다. GUI/코어/업데이터 자신은 데몬이 `saba-chan-updater --apply`를 일회용 티켓과 함께 띄운다(`POST /api/updates/launch-updater`). 설치 후 무결성은 적용 때 기록한 파일별 해시로 비교한다 | 05 §1 |
 
 ## 4. 원칙 위반 종합 (오너 정의 기준)

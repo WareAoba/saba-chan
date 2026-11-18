@@ -410,7 +410,7 @@ Discord ─ 릴레이의 사바쨩 봇 ─(롱폴링, HMAC 서명)─ 데몬 rel
 | 명령 받기 | `GET /poll` (롱폴링) | 디스코드에서 온 명령. `payload.action`은 `plan`(문장 계획 `text`, 한 액션 `id`, 여러 단계 `steps`)·`run_plan`·`query`·`catalog`(원격 MCP만)·`permission`·`web_session`·`remote_tunnel` 등이다(05 §4.4) |
 | 결과 보내기 | `POST /result/:id` | 채팅 처리기의 응답 `{success, data:{text}}` |
 
-- 모든 요청은 노드 토큰으로 HMAC 서명하고 `X-Saba-Client: 1` 헤더를 붙인다(`relay_agent/mod.rs` `Session::signed`·`send_signed`, `handlers/relay.rs` `signed_headers`). 노드 토큰을 싣는 프록시 요청(`/api/relay/host/*`, `/node/*`)은 `?relayUrl=`이 설정된 릴레이와 같거나 루프백일 때만 따르고, 아니면 설정된 릴레이로 보낸다(`handlers/relay.rs`).
+- 모든 요청은 노드 토큰을 `Authorization: Bearer`로 싣고 `X-Saba-Client: 1` 헤더를 붙인다. `x-request-*` 서명 머리도 함께 붙지만 릴레이는 검증하지 않는다(`relay_agent/mod.rs` `Session::signed`·`send_signed`, `handlers/relay.rs` `signed_headers`). 노드 토큰을 싣는 프록시 요청(`/api/relay/host/*`, `/node/*`)은 `?relayUrl=`이 설정된 릴레이와 같거나 루프백일 때만 따르고, 아니면 설정된 릴레이로 보낸다(`handlers/relay.rs`).
 - 데몬이 뜨면 `auto_start`가 에이전트를 켠다(토큰이 없으면 info 로그만 남기고 건너뜀, `ipc/mod.rs`, `relay_agent/mod.rs` `auto_start`). 에이전트가 연결되면 첫 하트비트 응답을 처리한 뒤 AI 챗봇 설정도 릴레이에 맞춘다(`relay_agent/heartbeat.rs` `chatbot_sync_due`, 01 디스코드 길드 설정).
 - 상태 `GET /api/relay/agent`: `{running, relay_url, has_token, agent_version, last_heartbeat_at, last_error, commands_handled}` (`relay_agent/mod.rs` `AgentStatus`). 켜고 끄기는 `POST /api/relay/agent/start`, `/stop`.
 - 새 명령 종류는 `handle_payload`의 action 분기에 더한다.
