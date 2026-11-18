@@ -803,7 +803,7 @@
     "mock_server_label": "Mock server (test)",
     "real_api_label": "Real GitHub API",
     "module_busy": "Another install or removal of this module is in progress. Try again when it finishes.",
-    "module_in_use": "A running server uses this module. Stop the server before removing it.",
+    "module_in_use": "A running server uses this module. Stop the server and try again.",
     "extensions_enabled": "Extensions used by this module enabled: {{ids}}",
     "extension_failed": "Extension {{id}} setup failed: {{error}}",
     "remove_failed": "Module removal failed: {{error}}",

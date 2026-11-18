@@ -803,7 +803,7 @@
     "mock_server_label": "Mock 서버 (테스트)",
     "real_api_label": "실제 GitHub API",
     "module_busy": "이 모듈의 다른 설치·제거 진행 중. 끝난 뒤 다시 시도해 주세요.",
-    "module_in_use": "실행 중인 서버가 이 모듈을 사용 중. 서버를 정지한 뒤 제거해 주세요.",
+    "module_in_use": "실행 중인 서버가 이 모듈을 사용 중. 서버를 정지한 뒤 다시 시도해 주세요.",
     "extensions_enabled": "이 모듈이 쓰는 익스텐션 활성화됨: {{ids}}",
     "extension_failed": "익스텐션 {{id}} 준비 실패: {{error}}",
     "remove_failed": "모듈 제거 실패: {{error}}",

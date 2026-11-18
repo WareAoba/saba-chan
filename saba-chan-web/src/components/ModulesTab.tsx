@@ -90,6 +90,7 @@ function ModuleCheck({ api, name }: { api: WebApi; name: string }) {
 
 function GameModules({ api }: { api: WebApi }) {
     const { t, i18n } = useTranslation();
+    const { t: tg } = useTranslation('gui');
     const toast = useApp((s) => s.toast);
     const { modules, setModules } = useData();
     const [catalog, setCatalog] = useState<CatalogModule[] | CatalogFailure | null>(null);
@@ -113,7 +114,12 @@ function GameModules({ api }: { api: WebApi }) {
     const fetchOne = async (id: string) => {
         const res = await api.moduleInstallFromManifest(id);
         if (!failed(res)) return null;
-        return res?.error_code === 'module_busy' ? t('modules.busy') : errorText(t, res);
+        // 켜진 서버가 쓰거나 손으로 고친 모듈은 데몬이 바꾸지 않는다: 앱과 같은 문구로 보인다
+        if (res?.error_code === 'module_busy') return t('modules.busy');
+        if (res?.error_code === 'module_in_use') return tg('saba_storage.module_in_use');
+        if (res?.error_code === 'module_modified' || res?.error_code === 'module_unverified')
+            return tg(`saba_storage.version_error.${res.error_code.replace('module_', '')}`);
+        return errorText(t, res);
     };
     const refresh = async () => {
         const list = await api.moduleRefresh();

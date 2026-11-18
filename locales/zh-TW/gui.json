@@ -803,7 +803,7 @@
     "update_done": "更新處理完成",
     "restart_required_title": "需要重新啟動",
     "module_busy": "此模組有其他安裝或移除進行中。完成後請再試。",
-    "module_in_use": "執行中的伺服器正在使用此模組。請先停止伺服器再移除。",
+    "module_in_use": "執行中的伺服器正在使用此模組。請先停止伺服器再重試。",
     "extensions_enabled": "已啟用此模組使用的擴充功能：{{ids}}",
     "extension_failed": "擴充功能 {{id}} 準備失敗：{{error}}",
     "remove_failed": "模組移除失敗：{{error}}",
