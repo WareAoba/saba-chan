@@ -86,6 +86,9 @@ pub struct Draft {
     pub data: Value,
     pub read: bool,
     pub dedup: Option<String>,
+    /// 서버를 켤 때마다 다시 오는 알림(업데이트)의 내용 표시. 같은 `dedup`에 이 값이 같으면 이미 알린 것이다:
+    /// 있는 카드를 그대로 두고, 사용자가 지웠으면 다시 넣지 않는다. 없으면 같은 `dedup`의 새 알림은 늘 새 카드다
+    pub once: Option<String>,
 }
 
 impl Draft {
@@ -100,6 +103,7 @@ impl Draft {
             data: Value::Null,
             read: false,
             dedup: None,
+            once: None,
         }
     }
 
@@ -115,7 +119,7 @@ impl Draft {
 /// 이벤트가 알림함에 하는 일
 #[derive(Debug, Clone, PartialEq)]
 pub enum Change {
-    Add(Draft),
+    Add(Box<Draft>),
     /// 이 dedup 값의 알림을 지운다 (더 할 일이 없어졌다)
     Drop(String),
 }
@@ -128,6 +132,13 @@ fn str_of(d: &Value, key: &str) -> Option<String> {
 const EXIT_REASONS: &[&str] = &["memory_limit", "exit_code", "signal", "crash_file", "ended_early"];
 /// 알림함에 넣는 종료: 정상 정지(`user_stop`·`in_game_stop`)는 넣지 않는다
 const EXIT_KINDS: &[&str] = &["crash", "start_failed", "unknown_exit"];
+
+/// 모듈 새 버전 알림. 모듈마다 하나 (`module_update:<모듈>`)
+const MODULE_UPDATE_DEDUP: &str = "module_update";
+
+fn module_update_dedup(module: &str) -> String {
+    format!("{MODULE_UPDATE_DEDUP}:{module}")
+}
 
 fn server_update_dedup(id: &str) -> String {
     format!("server_update:{id}")
@@ -242,10 +253,15 @@ pub fn from_event(kind: &str, d: &Value) -> Option<Change> {
                     json!({ "name": server_name(d), "module": d.get("module"), "version": d.get("latest") }),
                 );
                 n.action = Some(UPDATE_MODAL_ACTION.into());
-                n.dedup = Some("module_update".into());
+                n.dedup = Some(module_update_dedup(&str_of(d, "module").unwrap_or_default()));
+                n.once = Some(str_of(d, "latest").unwrap_or_default());
                 n
             }
-            "server" => server_update(d, "server_update", json!({})),
+            "server" => {
+                let mut n = server_update(d, "server_update", json!({}));
+                n.once = Some(String::new());
+                n
+            }
             _ => return None,
         },
         "instance.update_waiting" => match d.get("players").filter(|p| p.is_u64()) {
@@ -259,7 +275,7 @@ pub fn from_event(kind: &str, d: &Value) -> Option<Change> {
         "instance.updated" => return str_of(d, "instanceId").map(|id| Change::Drop(server_update_dedup(&id))),
         _ => return None,
     };
-    Some(Change::Add(draft))
+    Some(Change::Add(Box::new(draft)))
 }
 
 /// 누르면 그 서버를 업데이트하는 알림. 서버마다 하나
@@ -306,6 +322,9 @@ struct Saved {
     /// 알린 마지막 업데이트 결과의 시각 (같은 결과를 데몬이 켜질 때마다 다시 넣지 않게)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     noted_update: Option<String>,
+    /// 이미 알린 업데이트 알림: `dedup` → 내용 표시(`Draft::once`). 카드를 읽거나 지워도 남고, 업데이트를 마치면 지운다
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    announced: std::collections::BTreeMap<String, String>,
 }
 
 pub struct Store {
@@ -331,6 +350,13 @@ impl Store {
         for n in &mut saved.notices {
             if n.dedup.as_deref().is_some_and(|key| key.starts_with(RESTART_DEDUP)) {
                 n.dedup = None;
+            }
+            // 0.1.13까지의 모듈 업데이트 카드(모듈을 가리지 않는 하나)는 그 모듈의 카드로 옮겨 적는다: 다음 시작이 같은 카드를 또 넣지 않는다
+            let arg = |key: &str| n.text.args.get(key).and_then(Value::as_str);
+            if let (Some(MODULE_UPDATE_DEDUP), Some(module), Some(version)) = (n.dedup.as_deref(), arg("module"), arg("version")) {
+                let key = module_update_dedup(module);
+                saved.announced.insert(key.clone(), version.to_string());
+                n.dedup = Some(key);
             }
         }
         Self { path: Some(path), saved: Mutex::new(saved) }
@@ -358,9 +384,16 @@ impl Store {
         out
     }
 
+    /// 넣은 알림의 번호. 이미 알린 것(`Draft::once`)이면 넣지 않고 0
     pub fn add(&self, draft: Draft) -> u64 {
         self.change(|s| {
             if let Some(key) = &draft.dedup {
+                if let Some(once) = &draft.once {
+                    if s.announced.get(key) == Some(once) {
+                        return (0, false);
+                    }
+                    s.announced.insert(key.clone(), once.clone());
+                }
                 s.notices.retain(|n| n.dedup.as_ref() != Some(key));
             }
             s.next = s.next.max(s.notices.iter().map(|n| n.id).max().unwrap_or(0)) + 1;
@@ -389,13 +422,14 @@ impl Store {
     pub fn apply(&self, change: Change) {
         match change {
             Change::Add(draft) => {
-                self.add(draft);
+                self.add(*draft);
             }
             Change::Drop(key) => {
                 self.change(|s| {
                     let before = s.notices.len();
                     s.notices.retain(|n| n.dedup.as_deref() != Some(key.as_str()));
-                    ((), s.notices.len() != before)
+                    let announced = s.announced.remove(&key).is_some();
+                    ((), announced || s.notices.len() != before)
                 });
             }
         }
@@ -409,7 +443,9 @@ impl Store {
             if fresh {
                 s.noted_update = Some(marker.timestamp.clone());
                 if marker.success && marker.result.is_none() {
-                    s.notices.retain(|n| n.dedup.as_deref() != Some("module_update"));
+                    let module_update = |key: &str| key.starts_with(MODULE_UPDATE_DEDUP);
+                    s.notices.retain(|n| !n.dedup.as_deref().is_some_and(module_update));
+                    s.announced.retain(|key, _| !module_update(key));
                 }
             }
             (fresh, fresh)
@@ -556,7 +592,7 @@ mod tests {
 
     fn added(kind: &str, d: Value) -> Option<Draft> {
         match from_event(kind, &d) {
-            Some(Change::Add(draft)) => Some(draft),
+            Some(Change::Add(draft)) => Some(*draft),
             _ => None,
         }
     }
@@ -689,6 +725,56 @@ mod tests {
         assert_eq!(mc["data"], json!({ "instanceId": "i1", "name": "mc" }));
         store.apply(from_event("instance.updated", &json!({ "instanceId": "i1", "instance": "mc" })).unwrap());
         assert_eq!(store.list().iter().map(|n| n.instance_id.clone().unwrap()).collect::<Vec<_>>(), vec!["i2"]);
+    }
+
+    /// 사용자 규칙: 평범한 시작은 알림함을 건드리지 않는다. 서버를 켤 때마다 다시 오는 같은 업데이트 알림은 읽었거나 지운 그대로 두고,
+    /// 새 버전이 나오거나 업데이트를 마친 뒤에야 다시 알린다
+    #[test]
+    fn the_same_update_notice_on_every_start_is_announced_once() {
+        let store = Store::in_memory();
+        let module = |server: &str, latest: &str| from_event("instance.update_notice", &json!({ "instanceId": server, "instance": server, "kind": "module", "module": "minecraft", "latest": latest })).unwrap();
+        let server = || from_event("instance.update_notice", &json!({ "instanceId": "i1", "instance": "mc", "kind": "server" })).unwrap();
+        store.apply(module("a", "2.0"));
+        store.apply(server());
+        store.mark_all_read();
+        let before = store.list();
+        // 예약 재시작: 같은 알림이 다시 온다 (같은 모듈을 쓰는 다른 서버의 시작도 같다)
+        store.apply(module("a", "2.0"));
+        store.apply(module("b", "2.0"));
+        store.apply(server());
+        assert_eq!(store.list(), before, "read state, order and ids stay");
+
+        // 지운 것도 다시 넣지 않는다
+        for n in &before {
+            store.remove(n.id);
+        }
+        store.apply(module("a", "2.0"));
+        store.apply(server());
+        assert!(store.list().is_empty());
+
+        // 새 버전은 읽지 않은 새 카드다
+        store.apply(module("a", "2.1"));
+        assert_eq!(store.list().iter().map(|n| n.read).collect::<Vec<_>>(), [false]);
+        // 업데이트를 마치면 지움 기록도 치운다: 다음 새 빌드는 다시 알린다
+        store.apply(from_event("instance.updated", &json!({ "instanceId": "i1", "instance": "mc" })).unwrap());
+        store.apply(server());
+        assert_eq!(store.list().len(), 2);
+        // 다른 알림은 같은 자리 표시라도 새 카드로 다시 올린다
+        let unread = |s: &Store| s.list().iter().filter(|n| !n.read).count();
+        store.mark_all_read();
+        store.apply(from_event("instance.update_waiting", &json!({ "instanceId": "i1", "instance": "mc", "players": 2 })).unwrap());
+        store.apply(from_event("instance.update_waiting", &json!({ "instanceId": "i1", "instance": "mc", "players": 2 })).unwrap());
+        assert_eq!((store.list().len(), unread(&store)), (2, 1));
+
+        // 0.1.13이 남긴 모듈 업데이트 카드도 같은 알림으로 본다
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("notices.json");
+        let old = json!({ "next": 7, "notices": [{ "id": 7, "at": 1, "level": "info", "read": true, "dedup": "module_update",
+            "text": { "key": "module_update", "args": { "name": "a", "module": "minecraft", "version": "2.0" } } }] });
+        std::fs::write(&path, old.to_string()).unwrap();
+        let store = Store::open(path);
+        store.apply(module("a", "2.0"));
+        assert_eq!(store.list().iter().map(|n| (n.id, n.read)).collect::<Vec<_>>(), [(7, true)]);
     }
 
     #[test]
