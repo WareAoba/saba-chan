@@ -79,26 +79,6 @@ pub fn load_settings(data_dir: &Path) -> Value {
     Value::Object(out)
 }
 
-/// JSON Merge Patch (RFC 7396): 객체는 칸 단위로 합치고 `null`은 지운다. 데몬 `PATCH /api/config/gui`와 같다
-pub fn merge_patch(base: &mut Value, patch: &Value) {
-    let Value::Object(patch) = patch else {
-        *base = patch.clone();
-        return;
-    };
-    if !base.is_object() {
-        *base = Value::Object(Map::new());
-    }
-    if let Value::Object(out) = base {
-        for (key, value) in patch {
-            if value.is_null() {
-                out.remove(key);
-            } else {
-                merge_patch(out.entry(key.clone()).or_insert(Value::Null), value);
-            }
-        }
-    }
-}
-
 /// 얕은 병합 ({...base, ...overlay})
 pub fn merge(base: Value, overlay: &Value) -> Value {
     let mut out = match base {

@@ -1224,7 +1224,7 @@ impl Apply {
             Apply::Overlay => merge_json(current, body),
             Apply::MergePatch => {
                 let mut merged = current;
-                patch::merge_patch(&mut merged, &body);
+                saba_chan_updater_lib::config_file::merge_patch(&mut merged, &body);
                 merged
             }
             Apply::Import => {

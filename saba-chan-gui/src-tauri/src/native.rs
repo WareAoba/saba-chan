@@ -437,7 +437,7 @@ pub async fn save_settings(state: &AppState, s: &Value) -> bool {
     }
     let _guard = LOCAL_SAVE.lock().unwrap_or_else(|e| e.into_inner());
     let mut merged = state.settings();
-    settings::merge_patch(&mut merged, s);
+    saba_chan_updater_lib::config_file::merge_patch(&mut merged, s);
     save_local(state, &merged)
 }
 
