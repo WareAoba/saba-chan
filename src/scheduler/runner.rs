@@ -494,7 +494,16 @@ async fn run_task_now(state: &IPCServer, id: &str, task: &ScheduledTask, fire: c
         TaskAction::Update => Box::pin(run_update(state, id, task, fire, key)).await,
         TaskAction::Start if !running => {
             tracing::info!("Scheduled start of '{}'", id);
-            let result = Box::pin(crate::service::lifecycle::start(state, id)).await;
+            // 백업·업데이트가 잠금을 쥐고 있으면 끝나기를 기다렸다 켠다. 그사이 사용자가 켜거나 끄거나 지우면 그만둔다
+            let generation = state.supervisor.read().await.run_generation_of(id);
+            let wanted = || async {
+                let supervisor = state.supervisor.read().await;
+                supervisor.instance_store.get(id).is_some() && supervisor.run_generation_of(id) == generation
+            };
+            let Some(result) = Box::pin(crate::service::lifecycle::start_when_free(state, id, generation, wanted)).await else {
+                tracing::info!("Scheduled start of '{}' skipped: started, stopped or removed while waiting", id);
+                return skipped("start_cancelled");
+            };
             if let Err(failure) = &result {
                 tracing::warn!("Scheduled start of '{}' failed: {}", id, failure.body);
             }
@@ -587,8 +596,9 @@ mod tests {
     use super::*;
     use crate::ipc::handlers::schedule::get_schedule;
     use crate::service::backup::tests::{live_module, server_with, NO_BACKUP};
+    use crate::service::backup::tests::WORK_DEADLINE;
     #[cfg(unix)]
-    use crate::service::backup::tests::{run_fake_server, WORK_DEADLINE};
+    use crate::service::backup::tests::run_fake_server;
     use axum::extract::{Path, State};
 
     #[tokio::test]
@@ -772,6 +782,32 @@ mod tests {
         tokio::time::timeout(WORK_DEADLINE, run).await.unwrap().unwrap();
         let entries = crate::audit::log().recent(10, Some(&id));
         assert!(entries.iter().any(|e| e["action"] == "restart"), "the restart was skipped: {entries:?}");
+    }
+
+    // 예약 시작이 백업·업데이트와 겹치면 잠금이 풀리기를 기다렸다 켠다: 바로 instance_busy로 실패하지 않는다
+    #[tokio::test]
+    async fn a_scheduled_start_waits_for_a_running_backup() {
+        let (state, id, _tmp) = server_with(NO_BACKUP, None).await;
+        let task: ScheduledTask = serde_json::from_value(json!({"action": "start", "at": "04:00"})).unwrap();
+        {
+            let mut sup = state.supervisor.write().await;
+            let mut instance = sup.instance_store.get(&id).unwrap().clone();
+            instance.schedule = vec![task.clone()];
+            sup.instance_store.update(&id, instance).unwrap();
+        }
+        let backup = crate::instance::lock::InstanceLock::take(&id).expect("free");
+        let fire = chrono::Local::now().naive_local() - chrono::Duration::seconds(5);
+        let run = {
+            let (state, id, task) = (state.clone(), id.clone(), task.clone());
+            let key = crate::scheduler::task_key(&id, &task);
+            tokio::spawn(async move { run_task(&state, &id, &task, fire, &key).await })
+        };
+        tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+        assert!(!run.is_finished(), "the start gave up while the backup held the instance");
+        drop(backup);
+        tokio::time::timeout(WORK_DEADLINE, run).await.unwrap().unwrap();
+        let body = crate::ipc::internal::into_internal(get_schedule(Path(id.clone()), State(state.clone())).await).await.body;
+        assert_ne!(body["history"][0][0]["code"], "instance_busy", "{}", body);
     }
 
     /// 하트비트의 예약 목록: 켜 둔 것만, 가까운 순으로, 상한까지
