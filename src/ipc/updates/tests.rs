@@ -119,6 +119,11 @@ async fn a_requested_install_waits_for_running_work_and_then_installs() {
         "update_available": true, "download_url": null, "asset_name": "saba-chan-gui-linux-x64.zip",
         "release_notes": null, "published_at": null, "downloaded": true,
         "downloaded_path": staged.to_string_lossy(), "installed": true
+    }, {
+        "component": { "module": "requested-install" }, "current_version": "1.0.0", "latest_version": "1.1.0",
+        "update_available": true, "download_url": null, "asset_name": "module-requested-install.zip",
+        "release_notes": null, "published_at": null, "downloaded": true,
+        "downloaded_path": staged.to_string_lossy(), "installed": true
     }]);
     std::fs::write(staging.join("pending.json"), pending.to_string()).unwrap();
     let fake = staging.join("fake-updater.sh");
@@ -158,8 +163,12 @@ async fn a_requested_install_waits_for_running_work_and_then_installs() {
     let next_round = UpdateState { stop_requested: None, ..state.clone() };
     super::core_apply(&next_round).await;
     assert!(state.updater_launched(), "the install goes on once the backup is done, with auto-apply off");
+    // 요청한 설치는 받아 둔 것 전부다: 기다린 뒤에도 모듈·익스텐션이 빠지지 않는다
+    let targets: Vec<String> = serde_json::from_slice(&std::fs::read(staging.join("apply-targets.json")).unwrap()).unwrap();
+    assert!(targets.contains(&"gui".to_string()) && targets.contains(&"module-requested-install".to_string()), "{targets:?}");
 
     std::fs::remove_file(staging.join("pending.json")).ok();
+    std::fs::remove_file(staging.join("apply-targets.json")).ok();
     std::fs::remove_file(&staged).ok();
 }
 

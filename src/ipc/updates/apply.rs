@@ -94,7 +94,9 @@ pub(super) async fn core_apply(state: &UpdateState) {
             Decision::Apply(targets) => {
                 tracing::info!("[Updates] Applying {:?} without asking", targets);
                 state.set_phase(Phase::new(PhaseState::Applying, version.clone(), notes.clone()));
-                let answer = into_internal(apply_updates_with(state.clone(), ApplyRequest { components: targets, ..Default::default() }).await).await.body;
+                // 사용자가 고른 설치는 받아 둔 것 전부다 (기다리지 않는 `install_checked`와 같다): 모듈·익스텐션이 빠지지 않게
+                let components = if requested { Vec::new() } else { targets };
+                let answer = into_internal(apply_updates_with(state.clone(), ApplyRequest { components, ..Default::default() }).await).await.body;
                 if answer.get("requires_updater").and_then(Value::as_bool) == Some(true) {
                     let launched = into_internal(launch_updater(State(state.clone()), LooseJson(None)).await).await.body;
                     if launched.get("success").and_then(Value::as_bool) != Some(true) {
