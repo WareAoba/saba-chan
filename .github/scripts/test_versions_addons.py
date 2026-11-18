@@ -229,6 +229,12 @@ class AddonPublishEntries(unittest.TestCase):
         _, problems = self.run_with("0.1.6", self.published(yanked={"module-game": ["0.1.6"]}), {"module.toml": b"v2"})
         self.assertIn("yanked", problems[0])
 
+    def test_a_prerelease_addon_version_is_refused(self):
+        for published in (self.published(), {"addons": [], "yanked": []}):
+            _, problems = self.run_with("0.1.6-beta.1", published, {"module.toml": b"v2"})
+            self.assertEqual(len(problems), 1)
+            self.assertIn("prerelease", problems[0])
+
     def test_a_module_the_relay_has_never_seen_is_published(self):
         entries, problems = self.run_with("0.1.0", {"addons": [], "yanked": []})
         self.assertEqual(problems, [])

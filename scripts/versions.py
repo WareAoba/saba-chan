@@ -362,13 +362,19 @@ def zip_contents(blob: bytes) -> dict[str, str]:
 
 
 def addon_version_problems(components: dict, assets: Path, previous: dict, fetch) -> list[str]:
-    """지난 릴리즈(`previous` manifest)보다 버전이 낮거나, 같은 버전인데 파일이 바뀐 모듈·익스텐션.
+    """꼬리표(`-beta.1` 등)가 붙었거나, 지난 릴리즈(`previous` manifest)보다 버전이 낮거나, 같은 버전인데 파일이 바뀐 모듈·익스텐션.
     업데이터·데몬은 버전이 오른 것만 받으므로, 바뀐 것을 같은 버전으로 실으면 이미 깐 사용자는 받지 못한다.
     같은 버전이면 지난 zip을 `fetch(url)`로 받아 파일 내용을 비교한다"""
     problems = []
     for key, comp in components.items():
+        if not key.startswith(("module-", "ext-")):
+            continue
+        # 모듈·익스텐션은 꼬리표 없는 번호만 쓴다: 베타 번호가 실리면 정식 채널로도 나간다
+        if "-" in comp["version"]:
+            problems.append(f"{key} {comp['version']} carries a prerelease tag; modules and extensions use X.Y.Z only")
+            continue
         old = previous.get("components", {}).get(key)
-        if not old or not key.startswith(("module-", "ext-")):
+        if not old:
             continue
         new_v, old_v = (versions_semver(comp["version"]), versions_semver(old["version"]))
         if new_v < old_v:
@@ -876,10 +882,9 @@ def cmd_manifest(data: dict, args: argparse.Namespace) -> int:
     components = platform_components(data, args, assets, args.platform, packaged,
                                      listed_components(previous, args.platform) if previous else None)
     addons = addon_components(args, assets)
-    if previous:
-        problems = addon_version_problems(addons, assets, previous, fetch_url)
-        if problems:
-            sys.exit("modules/extensions:\n  " + "\n  ".join(problems))
+    problems = addon_version_problems(addons, assets, previous or {"components": {}}, fetch_url)
+    if problems:
+        sys.exit("modules/extensions:\n  " + "\n  ".join(problems))
     addon_entries = {}
     for key, comp in addons.items():
         old = (previous or {}).get("components", {}).get(key)
