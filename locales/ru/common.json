@@ -82,7 +82,8 @@
     "daemon_stopped": "Демон остановлен",
     "stop_daemon": "Остановить демон",
     "start_daemon": "Запустить демон",
-    "quit_all": "Выйти полностью"
+    "quit_all": "Выйти полностью",
+    "switch_cli_failed": "Не удалось открыть CLI. {{reason}}"
   },
   "updates": {
     "notification_title": "Обновления Saba-chan",

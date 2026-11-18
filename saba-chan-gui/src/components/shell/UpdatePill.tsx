@@ -265,6 +265,11 @@ export function UpdatePill() {
             safeShowToast(t('update_pill.restart_failed', { error: res.error || '-' }), 'error', 6000);
             return;
         }
+        // 데몬이 그대로다 (받을 것이 없거나 모듈·익스텐션만 적용했다): 내려갔다 오기를 기다리지 않고 지금 상태를 읽는다
+        if (res?.daemon_stopping === false) {
+            void useUpdateStore.getState().refresh();
+            return;
+        }
         restarting.current = Date.now();
         daemonWentDown.current = false;
         stateRef.current = 'applying';

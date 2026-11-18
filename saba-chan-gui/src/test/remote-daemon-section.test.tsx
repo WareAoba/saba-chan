@@ -282,6 +282,29 @@ describe('설정 > 연결: 원격 데몬 (/api/remote/*)', () => {
         }
     });
 
+    // 리뷰 11-18: 진행 읽기가 실패해도(데몬 재시작·연결 끊김) 멈추지 않고 다시 묻는다. 계속 실패하면 이유를 보인다
+    it('리눅스에 설치: 진행 읽기가 실패해도 계속 묻고, 연달아 실패하면 이유를 보인다', async () => {
+        vi.mocked(window.api.remoteInstallStart).mockResolvedValue({ id: 'i1' });
+        vi.mocked(window.api.remoteInstall).mockResolvedValue({ error: 'connection refused' });
+        vi.useFakeTimers();
+        try {
+            await act(async () => render(<RemoteDaemonSection />));
+            await act(async () => fireEvent.click(within(cards()).getByRole('button', { name: /Install on Linux/ })));
+            const dialog = screen.getByRole('dialog', { name: 'Install on Linux' });
+            fireEvent.change(within(dialog).getByRole('textbox', { name: 'Address' }), { target: { value: 'nas.local' } });
+            fireEvent.change(within(dialog).getByRole('textbox', { name: 'User' }), { target: { value: 'saba' } });
+            await act(async () => fireEvent.click(within(dialog).getByRole('button', { name: 'Install' })));
+            await act(async () => vi.advanceTimersByTimeAsync(3000));
+            expect(within(dialog).getByRole('alert')).toHaveTextContent('connection refused');
+            vi.mocked(window.api.remoteInstall).mockResolvedValue({ phase: 'done', output: 'ok\n', offset: 3, hostId: 'host-n', name: '김마무(nas)', label: '김마무(nas)' });
+            await act(async () => vi.advanceTimersByTimeAsync(800));
+            expect(within(dialog).getByText('김마무(nas) connected')).toBeInTheDocument();
+            expect(within(dialog).queryByRole('alert')).toBeNull();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it('SSH가 안 되면 한 줄 설치 뒤 나온 코드를 넣어 붙인다', async () => {
         vi.mocked(window.api.remoteClaim).mockResolvedValue({ hostId: 'host-n', name: 'nas', label: '김마무(nas)' });
         await act(async () => render(<RemoteDaemonSection />));

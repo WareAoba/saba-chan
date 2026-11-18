@@ -264,26 +264,63 @@ async fn launch_updater_via(app: &AppHandle, path: &str) -> Value {
         .await
     {
         Ok(data) if data["success"].as_bool() == Some(true) => {
-            if !quits_for_update(&data) {
-                tracing::info!("[Updater] Daemon launched the updater; the GUI is unchanged and stays open");
-                app.state::<AppState>().life.expect_daemon_update();
-                return json!({ "ok": true, "gui_restart": false });
+            let handoff = update_handoff(&data);
+            match handoff {
+                UpdateHandoff::Quit => {
+                    tracing::info!("[Updater] Daemon launched the updater; quitting GUI");
+                    lifecycle::spawn_clean_quit(app, 500);
+                }
+                UpdateHandoff::AwaitDaemon => {
+                    tracing::info!("[Updater] Daemon launched the updater; the GUI is unchanged and stays open");
+                    app.state::<AppState>().life.expect_daemon_update();
+                }
+                UpdateHandoff::Stay => tracing::info!("[Updater] The daemon applied the update without restarting"),
             }
-            tracing::info!("[Updater] Daemon launched the updater; quitting GUI");
-            lifecycle::spawn_clean_quit(app, 500);
-            json!({ "ok": true, "gui_restart": true })
+            launch_result(&data, handoff)
         }
         Ok(data) => {
             let error = data.get("error").filter(|e| e.as_str().is_some_and(|s| !s.is_empty()));
-            json!({ "ok": false, "error": error.cloned().unwrap_or_else(|| json!("Failed to launch updater")) })
+            let errors = data.get("errors").cloned().unwrap_or_else(|| json!([]));
+            json!({ "ok": false, "error": error.cloned().unwrap_or_else(|| json!("Failed to launch updater")), "errors": errors })
         }
         Err(e) => e.error_body(json!({ "ok": false })),
     }
 }
 
-/// GUI가 업데이트 대상이 아니면(`gui_restart: false`) 데몬이 데몬만 다시 띄우고 GUI는 남는다. 그 밖에는 끝난다
-fn quits_for_update(launch: &Value) -> bool {
-    launch["gui_restart"].as_bool() != Some(false)
+/// 업데이터를 띄우는 데몬 답에 따라 GUI가 할 일
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum UpdateHandoff {
+    /// GUI도 바뀐다: 끝나고 업데이터가 다시 띄운다
+    Quit,
+    /// 데몬만 내려가 바뀐다: GUI는 남아 다시 뜬 데몬을 기다린다
+    AwaitDaemon,
+    /// 데몬이 내려가지 않았다 (`restart`가 받을 것이 없거나 모듈·익스텐션만 적용했다)
+    Stay,
+}
+
+/// 데몬이 내려가지 않으면(`daemon_stopping`·`updater_launched`가 모두 거짓) 그대로 둔다.
+/// 내려가면 GUI가 업데이트 대상이 아닐 때(`gui_restart: false`)만 남고, 그 밖에는 끝난다
+fn update_handoff(launch: &Value) -> UpdateHandoff {
+    let stopping =
+        launch["daemon_stopping"].as_bool() == Some(true) || launch["updater_launched"].as_bool() == Some(true);
+    if !stopping {
+        UpdateHandoff::Stay
+    } else if launch["gui_restart"].as_bool() == Some(false) {
+        UpdateHandoff::AwaitDaemon
+    } else {
+        UpdateHandoff::Quit
+    }
+}
+
+/// 렌더러에 돌려줄 결과: 데몬 답의 `daemon_stopping`·`updater_launched`·`errors`를 그대로 싣는다
+fn launch_result(launch: &Value, handoff: UpdateHandoff) -> Value {
+    json!({
+        "ok": true,
+        "gui_restart": handoff == UpdateHandoff::Quit,
+        "updater_launched": launch["updater_launched"].as_bool().unwrap_or(false),
+        "daemon_stopping": launch["daemon_stopping"].as_bool().unwrap_or(false),
+        "errors": launch.get("errors").cloned().unwrap_or_else(|| json!([])),
+    })
 }
 
 // ── 제거 ──
@@ -384,10 +421,13 @@ pub fn launch_uninstaller(app: AppHandle) -> Value {
 
 // ── 설정·언어 ──
 
-/// 바꾼 키만 받는다. 데몬이 응답하면 API로만 저장한다(단일 원천, 데몬이 잠근 채 합친다).
-/// 데몬이 아예 응답하지 않을 때만 지금 로컬 설정에 합쳐 파일에 쓴다
+/// 로컬 설정 파일의 읽고-합치고-쓰기를 한 번에 하나씩
+static LOCAL_SAVE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// 바꾼 칸만 받는다(JSON Merge Patch). 데몬이 응답하면 API(`PATCH`)로만 저장한다(단일 원천, 데몬이 잠근 채 합친다).
+/// 데몬이 아예 응답하지 않을 때만 지금 로컬 설정에 같은 규칙으로 합쳐 파일에 쓴다
 pub async fn save_settings(state: &AppState, s: &Value) -> bool {
-    match state.client.put("/api/config/gui", s, 5000).await {
+    match state.client.patch("/api/config/gui", s, 5000).await {
         Ok(_) => return true,
         Err(e) if e.status.is_some() => {
             tracing::error!("[saveSettings] Daemon rejected settings: {}", e.message);
@@ -395,7 +435,10 @@ pub async fn save_settings(state: &AppState, s: &Value) -> bool {
         }
         Err(_) => {}
     }
-    save_local(state, &settings::merge(state.settings(), s))
+    let _guard = LOCAL_SAVE.lock().unwrap_or_else(|e| e.into_inner());
+    let mut merged = state.settings();
+    settings::merge_patch(&mut merged, s);
+    save_local(state, &merged)
 }
 
 fn save_local(state: &AppState, s: &Value) -> bool {
@@ -420,6 +463,7 @@ pub fn settings_local_load(app: AppHandle) -> Value {
 #[tauri::command]
 pub fn settings_local_save(app: AppHandle, settings: Value) -> bool {
     let state = app.state::<AppState>();
+    let _guard = LOCAL_SAVE.lock().unwrap_or_else(|e| e.into_inner());
     let merged = settings::merge(state.settings(), &settings);
     // 연결 주소는 바꾸지 않는다: 지금 데몬은 옛 포트에 있고, 새 포트는 데몬을 다시 띄울 때 쓴다
     save_local(&state, &merged)
@@ -728,12 +772,31 @@ mod tests {
         assert_eq!(uninstall_command(dir, Some(dir)), Some((dir.join("saba-chan-installer"), &["--uninstall"][..])));
     }
 
-    /// 데몬만 바뀌었으면 GUI는 끝나지 않는다
+    /// 데몬만 바뀌었으면 GUI는 끝나지 않고 다시 뜬 데몬을 기다린다. 데몬이 내려가지 않으면 기다리지도 않는다
     #[test]
     fn the_gui_quits_for_an_update_only_when_it_is_replaced() {
-        assert!(!quits_for_update(&json!({"ok": true, "gui_restart": false})));
-        assert!(quits_for_update(&json!({"ok": true, "gui_restart": true})));
-        assert!(quits_for_update(&json!({"ok": true, "updater_launched": true})));
+        let stopping = |gui_restart: bool| json!({"success": true, "updater_launched": true, "daemon_stopping": true, "gui_restart": gui_restart});
+        assert_eq!(update_handoff(&stopping(true)), UpdateHandoff::Quit);
+        assert_eq!(update_handoff(&stopping(false)), UpdateHandoff::AwaitDaemon);
+        // `restart`가 받을 것이 없거나 모듈·익스텐션만 적용했다: 데몬은 그대로다
+        let unchanged = json!({"success": true, "updater_launched": false, "daemon_stopping": false, "gui_restart": false, "errors": []});
+        assert_eq!(update_handoff(&unchanged), UpdateHandoff::Stay);
+    }
+
+    /// 셸 결과에 데몬 답의 `daemon_stopping`·`updater_launched`·`errors`를 그대로 싣는다 (렌더러가 다시 읽을지 정한다)
+    #[test]
+    fn the_shell_result_carries_whether_the_daemon_stops() {
+        let unchanged = json!({"success": true, "updater_launched": false, "daemon_stopping": false, "gui_restart": false, "errors": ["x"]});
+        assert_eq!(
+            launch_result(&unchanged, UpdateHandoff::Stay),
+            json!({"ok": true, "gui_restart": false, "updater_launched": false, "daemon_stopping": false, "errors": ["x"]})
+        );
+        let stopping =
+            json!({"success": true, "updater_launched": true, "daemon_stopping": true, "gui_restart": false});
+        assert_eq!(
+            launch_result(&stopping, UpdateHandoff::AwaitDaemon),
+            json!({"ok": true, "gui_restart": false, "updater_launched": true, "daemon_stopping": true, "errors": []})
+        );
     }
 
     /// `/health` 본문 문자열만으로 데몬 신원을 인정하지 않는다.
@@ -782,11 +845,12 @@ mod tests {
         }
     }
 
-    /// 셸도 바꾼 키만 넘긴다. 데몬이 없으면 지금 로컬 설정에 합쳐 써서 다른 값을 지우지 않는다
+    /// 셸도 바꾼 칸만 넘긴다. 데몬이 없으면 지금 로컬 설정에 칸 단위로 합쳐 써서 다른 값을 지우지 않는다
     #[tokio::test]
     async fn a_local_save_keeps_the_settings_it_was_not_given() {
         let dir = tempfile::tempdir().unwrap();
-        settings::write_gui_section(dir.path(), &json!({ "theme": "dark" })).unwrap();
+        let popouts = json!({ "a": { "width": 800, "reopen": true }, "b": { "reopen": true } });
+        settings::write_gui_section(dir.path(), &json!({ "theme": "dark", "consolePopouts": popouts })).unwrap();
         let closed = std::net::TcpListener::bind("127.0.0.1:0")
             .unwrap()
             .local_addr()
@@ -807,6 +871,12 @@ mod tests {
         let saved = state.settings();
         assert_eq!(saved["theme"], "dark");
         assert_eq!(saved["language"], "ja");
+        // PIP 하나의 한 칸만 바꿔도 그 PIP의 다른 칸과 다른 PIP는 남는다
+        assert!(save_settings(&state, &json!({ "consolePopouts": { "a": { "reopen": false } } })).await);
+        assert_eq!(
+            state.settings()["consolePopouts"],
+            json!({ "a": { "width": 800, "reopen": false }, "b": { "reopen": true } })
+        );
     }
 
     #[test]

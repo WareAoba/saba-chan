@@ -1,8 +1,10 @@
+import type { TFunction } from 'i18next';
 import { useEffect } from 'react';
 import { create } from 'zustand';
 import type { Server } from '../stores/useServerStore';
 import type { ApiBody } from '../types/daemon';
 import { eventsLive, subscribeDaemonEvents } from '../utils/daemonEvents';
+import { applyServerUpdate } from '../utils/serverUpdateNotice';
 
 const PROVISION_POLL_MS = 1200;
 /** 데몬의 `provision.progress` 이벤트를 받는 동안 놓친 것을 메우는 간격 */
@@ -119,18 +121,15 @@ function updateStateOf(check: ApiBody | null): Pick<Maintenance, 'updateInfo' | 
     return { updateInfo: check?.update_available ? check : null, updateCheckError: null };
 }
 
-/** 게임 서버 업데이트 적용 (설치 방식 익스텐션; 지원 안 하면 데몬이 update_unsupported) */
-export async function applyInstanceUpdate(server: Server, setServers: SetServers) {
+/** 게임 서버 업데이트 적용 (설치 방식 익스텐션; 지원 안 하면 데몬이 update_unsupported). 결과 알림은 `applyServerUpdate`가 한다 */
+export async function applyInstanceUpdate(server: Server, setServers: SetServers, t: TFunction) {
     const { patch } = useMaintenanceStore.getState();
     patch(server.id, { updatingServer: true });
     try {
-        const result = await window.api.instanceApplyUpdate(server.id);
-        if (result?.success) {
+        if (await applyServerUpdate(server.id, server.name, t)) {
             patch(server.id, { updateInfo: null });
             setServers((prev) => prev.map((s) => (s.id === server.id ? { ...s, provisioning: true } : s)));
         }
-    } catch {
-        // 무시 — 다음 확인 때 다시 표시된다
     } finally {
         patch(server.id, { updatingServer: false });
     }

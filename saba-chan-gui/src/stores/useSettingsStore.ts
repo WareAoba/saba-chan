@@ -32,6 +32,9 @@ const dirtyKeys = new Set<SettingKey>();
 // 데몬에서 읽은 값을 넣는 중: 바꾼 칸으로 치지 않는다
 let applyingLoad = false;
 
+/** 설정을 저장하면 바꾸는 localStorage 표식. 다른 창(콘솔 PIP)이 `storage` 이벤트로 받아 다시 읽는다 */
+export const SETTINGS_SAVED_KEY = 'saba-settings-saved';
+
 export const DEFAULT_IPC_PORT = 57474; // updater/src/constants.rs DEFAULT_IPC_PORT와 같다
 
 // 효과음 스위치 — 데몬 GuiSettings.sounds와 같은 모양. 전체(enabled)와 종류가 모두 켜져야 울린다
@@ -297,6 +300,11 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
         try {
             const saved = await window.api.settingsSave(Object.fromEntries(keys.map((k) => [k, state[k]])));
             if (saved === false) throw new Error('settings not saved');
+            try {
+                localStorage.setItem(SETTINGS_SAVED_KEY, String(Date.now()));
+            } catch {
+                // 알리지 못하면 다른 창은 다시 열 때 읽는다
+            }
             return true;
         } catch (error) {
             // 저장하지 못한 칸은 다음 저장에 다시 싣는다

@@ -6,6 +6,12 @@
  * 릴레이를 아직 연결하지 않았으면 실패한 것이 없으니 데몬만으로 낸다.
  */
 export const RELAY_WAIT_MS = 4000;
+/**
+ * 창이 뜰 때 데몬이 이미 응답하면 셸의 ready(opening)가 올 때까지 오프닝 여부를 정하지 않는다.
+ * 셸은 늘 ready를 보내지만(다시 연 창·새로고침에는 opening:false로 다시) 셸이 없는 환경에서 로딩에 묶이지 않게
+ * 이만큼 지나도 오지 않으면 오프닝 없이 연다
+ */
+export const READY_WAIT_MS = 4000;
 
 export interface OpeningInput {
     /** 데몬에 붙어서 연 것인가 (데몬 없이 '그대로 열기'는 false) */

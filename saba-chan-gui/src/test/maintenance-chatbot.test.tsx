@@ -4,9 +4,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ChatbotGuildTab } from '../components/discord/ChatbotGuildTab';
 import { ChatbotView, guildDraft, guildPatch, relayErrorLines } from '../components/discord/ChatbotView';
 import { formatBytes } from '../components/monitor/systemMetrics';
-import { draftProblems, fromDraft, MaintenanceTab, toDraft } from '../components/servers/MaintenanceTab';
+import { MaintenanceTab } from '../components/servers/MaintenanceTab';
 import { ContextMenuProvider } from '../components/ui/ContextMenu';
 import type { Server } from '../stores/useServerStore';
+import { draftProblems, fromDraft, toDraft } from '../utils/schedule';
 import { pickOption } from './dropdown';
 
 const t = ((k: string) => k) as unknown as TFunction;

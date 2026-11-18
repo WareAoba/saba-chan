@@ -348,17 +348,30 @@ export function usePalette(onClose: () => void, busyRef: MutableRefObject<boolea
         setBusyText(tr('palette.sending', { name }));
         setMode('busy');
         setError(null);
+        // 명령 탭 실행 기록에도 남긴다 (데몬 이벤트는 앱에서 보낸 명령을 거른다: daemonEvents.historyEntryOf)
+        const remember = (status: 'success' | 'failure', message: string) =>
+            useUIStore.getState().pushCommandHistory(picked.serverId, {
+                id: Date.now(),
+                command: line,
+                status,
+                message,
+                via: tr('palette.title'),
+                time: new Date().toLocaleTimeString(),
+            });
         try {
             const res = await window.api.executeCommand(picked.serverId, {
                 command: picked.command.name,
                 args: commandArgs(picked.command.inputs, argValues()),
             });
             if (failed(res) || res?.error) {
-                setError(commandErrorText(res, t as never) ?? errorText(res, tr));
+                const text = commandErrorText(res, t as never) ?? errorText(res, tr);
+                remember('failure', text);
+                setError(text);
                 setArmed(false);
                 setMode('confirm');
                 return;
             }
+            remember('success', replyText(res) || line);
             setDone({ title: tr('palette.sent'), line: replyText(res) || line });
             setMode('done');
             setTimeout(() => {
@@ -366,6 +379,7 @@ export function usePalette(onClose: () => void, busyRef: MutableRefObject<boolea
                 safeShowToast(tr('palette.sent_toast', { name, command: picked.command.label }), 'success', 3000);
             }, 900);
         } catch (e) {
+            remember('failure', (e as Error).message);
             setError((e as Error).message);
             setArmed(false);
             setMode('confirm');

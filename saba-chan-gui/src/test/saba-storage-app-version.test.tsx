@@ -278,9 +278,17 @@ describe('직전 버전으로 되돌리기', () => {
 
 describe('자동 업데이트로 돌아가기', () => {
     it('고정된 줄의 단추로 확인받고 가장 새 버전으로 다시 시작한다', async () => {
+        const updaterVersions = vi.fn().mockResolvedValue(HELD);
         fakeApi({
-            updaterVersions: vi.fn().mockResolvedValue(HELD),
-            updaterRestart: vi.fn().mockResolvedValue({ ok: true, gui_restart: true }),
+            updaterVersions,
+            // 셸 결과(native.rs launch_result): 데몬이 내려가 업데이터가 바꾼다
+            updaterRestart: vi.fn().mockResolvedValue({
+                ok: true,
+                gui_restart: true,
+                updater_launched: true,
+                daemon_stopping: true,
+                errors: [],
+            }),
         });
         await openTab();
         await act(async () => fireEvent.click(await screen.findByRole('button', { name: ss('version_unpin') })));
@@ -292,6 +300,8 @@ describe('자동 업데이트로 돌아가기', () => {
         await act(async () => fireEvent.click(screen.getByRole('button', { name: ss('version_unpin_go') })));
         expect(window.api.updaterRestart).toHaveBeenCalled();
         expect(window.api.updaterRollback).not.toHaveBeenCalled();
+        // 데몬이 내려가는 중에는 줄을 다시 읽지 않는다
+        expect(updaterVersions).toHaveBeenCalledTimes(1);
     });
 
     it('받을 새 버전이 없으면 바꾼다고 하지 않고, 고정을 푼 뒤 줄을 다시 읽는다', async () => {
@@ -301,7 +311,13 @@ describe('자동 업데이트로 돌아가기', () => {
             .mockResolvedValue({ ...HELD, latest: null, held_until_newer_than: null });
         fakeApi({
             updaterVersions,
-            updaterRestart: vi.fn().mockResolvedValue({ ok: true, updater_launched: false, daemon_stopping: false }),
+            updaterRestart: vi.fn().mockResolvedValue({
+                ok: true,
+                gui_restart: false,
+                updater_launched: false,
+                daemon_stopping: false,
+                errors: [],
+            }),
         });
         await openTab();
         await act(async () => fireEvent.click(await screen.findByRole('button', { name: ss('version_unpin') })));

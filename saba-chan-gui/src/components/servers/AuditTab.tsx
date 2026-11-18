@@ -27,9 +27,6 @@ import { Segmented, StatusChip } from '../ui/StatusChip';
 import { UpcomingSchedules } from './UpcomingSchedules';
 import { failed } from '../../utils/apiResult';
 
-export { auditRange, auditResult, auditWhat, auditWho };
-
-
 /** 감사 로그 한 줄: 서버를 가리키는 칸은 데몬 버전에 따라 instance 또는 instanceId */
 interface AuditRow extends AuditEntry {
     ts: number;

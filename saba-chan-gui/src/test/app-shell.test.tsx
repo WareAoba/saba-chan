@@ -50,7 +50,8 @@ function createApiMock(overrides = {}) {
         moduleGetLocales: vi.fn().mockResolvedValue({}),
         moduleGetMetadata: vi.fn().mockResolvedValue({ metadata: { module_aliases: [], commands: { fields: [] } } }),
         serverList: vi.fn().mockResolvedValue({ servers: [] }),
-        onStatusUpdate: vi.fn(),
+        // 셸은 늦게 구독한 창에도 마지막 상태를 넘긴다: 데몬이 떠 있던 창은 지난 ready를 opening:false로 받는다
+        onStatusUpdate: vi.fn((cb) => cb({ step: 'ready', message: '준비', opening: false })),
         onUpdatesAvailable: vi.fn(),
         onUpdateCompleted: vi.fn(),
         onCloseRequest: vi.fn(),
@@ -77,7 +78,6 @@ beforeEach(() => {
     vi.clearAllMocks();
     vi.useRealTimers();
     window.showToast = vi.fn();
-    window.showStatus = vi.fn();
     useUIStore.getState()._resetForTest();
     useSettingsStore.getState()._resetForTest();
     useDiscordStore.getState()._resetForTest();

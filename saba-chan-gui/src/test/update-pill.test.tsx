@@ -146,6 +146,21 @@ describe('업데이트 알약', () => {
         expect(await screen.findByText('Applying update...')).toBeTruthy();
     });
 
+    it('데몬이 내려가지 않는 다시 시작(받을 것이 없음)은 적용 중으로 두지 않고 상태를 다시 읽는다', async () => {
+        status.mockResolvedValue(phase('ready'));
+        window.api.updaterRestart = vi
+            .fn()
+            .mockResolvedValue({ ok: true, gui_restart: false, updater_launched: false, daemon_stopping: false, errors: [] }) as never;
+        const { container } = render(<UpdatePill />);
+        fireEvent.click(await screen.findByText('Update ready'));
+        status.mockResolvedValue(phase('idle', { version: null }));
+        await act(async () => {
+            fireEvent.click(screen.getByRole('button', { name: 'Restart now' }));
+        });
+        expect(screen.queryByText('Applying update...')).toBeNull();
+        await waitFor(() => expect(container.querySelector('.appbar-pill')).toBeNull());
+    });
+
     it('다시 시작한 뒤 데몬이 새로 준비됨을 주면(되돌림·미룸) 적용 중에 멈추지 않고 다시 준비됨을 보인다', async () => {
         vi.useFakeTimers();
         status.mockResolvedValue(phase('ready', { since: new Date(Date.now() - 60000).toISOString() }));

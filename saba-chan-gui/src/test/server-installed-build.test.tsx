@@ -83,4 +83,21 @@ describe('설치된 빌드 표시', () => {
         await act(async () => fireEvent.click(notice.querySelector('button') as HTMLElement));
         expect(instanceApplyUpdate).toHaveBeenCalledWith('pal-1');
     });
+
+    // 리뷰 11-18: 안내 줄의 업데이트도 알림함과 같이 거절 이유를 알린다
+    it('안내 줄의 업데이트를 데몬이 거절하면 이유를 토스트로 알리고 안내 줄을 남긴다', async () => {
+        window.api = {
+            ...window.api,
+            instanceApplyUpdate: vi.fn().mockResolvedValue({ success: false, error: 'already updating' }),
+        } as never;
+        window.showToast = vi.fn() as never;
+        useMaintenanceStore.getState().patch('pal-1', {
+            updateInfo: { update_available: true, local_buildid: '1', remote_buildid: '2' },
+        });
+        const { container } = show(vi.fn(async () => {}));
+        const notice = container.querySelector('.update-notice') as HTMLElement;
+        await act(async () => fireEvent.click(notice.querySelector('button') as HTMLElement));
+        expect(window.showToast).toHaveBeenCalledWith(expect.stringContaining('already updating'), 'error', 5000, undefined);
+        expect(container.querySelector('.update-notice')).toBeTruthy();
+    });
 });

@@ -10,7 +10,7 @@ import { gameNameOf, initials, isTransitional, STATUS_TONE, primaryAction } from
 import { AgreementDialog } from '../AgreementList';
 import { Icon } from '../Icon';
 import { QuestionModal } from '../Modals/Modals';
-import { remoteErrorText } from '../Modals/RemoteDaemonSection';
+import { remoteErrorText } from '../../utils/remoteError';
 import { StatusChip } from '../ui/StatusChip';
 import { startPoll } from '../../utils/poll';
 import { reloadWindow } from './DaemonSwitcher';

@@ -82,7 +82,8 @@
     "daemon_stopped": "常駐程式已停止",
     "stop_daemon": "停止常駐程式",
     "start_daemon": "啟動常駐程式",
-    "quit_all": "完全結束"
+    "quit_all": "完全結束",
+    "switch_cli_failed": "CLI 開啟失敗。{{reason}}"
   },
   "updates": {
     "notification_title": "Saba醬 更新通知",

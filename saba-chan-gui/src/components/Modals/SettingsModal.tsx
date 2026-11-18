@@ -1,6 +1,7 @@
 import clsx from 'clsx';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useShallow } from 'zustand/react/shallow';
 import './Modals.css';
 import { useDevMode } from '../../hooks/useDevMode';
 import { usePageActive } from '../../hooks/usePageActive';
@@ -8,10 +9,9 @@ import { useSettingsStore, DEFAULT_IPC_PORT } from '../../stores/useSettingsStor
 import type { ModalConfig, ProgressBarConfig } from '../../stores/useUIStore';
 import type { ApiBody } from '../../types/daemon';
 import {
-    getTheme,
     setTheme as saveTheme,
-    getCustomTheme,
     setCustomTheme,
+    themeConfigOf,
     resetCustomTheme,
     applyCustomTheme,
     applyWindowBackdrop,
@@ -81,8 +81,9 @@ function SettingsModal({
     // 사바 스토리지를 열 때 처음 보일 탭 (설정을 '익스텐션'으로 열면 익스텐션 탭)
     const [storageTab, setStorageTab] = useState('components');
     const [selectedLanguage, setSelectedLanguage] = useState(i18n.language);
-    const [selectedTheme, setSelectedTheme] = useState(getTheme());
-    const [customTheme, setCustomThemeState] = useState(getCustomTheme());
+    // 테마 값은 설정 스토어 하나에서 읽는다 (초기화·다시 읽기가 바로 반영된다)
+    const selectedTheme = useSettingsStore((s) => s.theme) as ThemeMode;
+    const customTheme = useSettingsStore(useShallow(themeConfigOf));
     const [slideDirection, setSlideDirection] = useState('');
     const [guiTestOpen, setGuiTestOpen] = useState(false);
     const ipcPort = useSettingsStore((s) => s.ipcPort) || DEFAULT_IPC_PORT;
@@ -185,17 +186,15 @@ function SettingsModal({
 
     // 테마 변경 핸들러
     const handleThemeChange = (theme: ThemeMode) => {
-        setSelectedTheme(theme);
         saveTheme(theme);
         useSettingsStore.getState().update({ theme });
         // Re-apply custom theme after base theme change (accent colors adapt to light/dark)
-        setTimeout(() => applyCustomTheme(customTheme), 50);
+        setTimeout(() => applyCustomTheme(themeConfigOf(useSettingsStore.getState())), 50);
     };
 
     // 커스텀 테마 속성 변경 핸들러
     const handleCustomThemeChange = (partial: Partial<ThemeConfig>) => {
-        const merged = setCustomTheme(partial);
-        setCustomThemeState(merged);
+        setCustomTheme(partial);
         // Sync to settings store for persistence via gui.json
         useSettingsStore.getState().update(partial);
     };
@@ -203,7 +202,6 @@ function SettingsModal({
     // 테마 초기화 핸들러
     const handleResetTheme = () => {
         const defaults = resetCustomTheme();
-        setCustomThemeState(defaults);
         useSettingsStore.getState().update({
             accentColor: defaults.accentColor,
             accentSecondary: defaults.accentSecondary,

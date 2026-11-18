@@ -133,13 +133,13 @@ export function ComponentsTab({ devMode }: { devMode?: boolean }) {
             if (res?.success) {
                 setComponents(parseComponents(res.components));
             } else {
-                setError(res?.error || 'Unknown error');
+                setError(res?.error || t('saba_storage.check_failed'));
             }
         } catch (e) {
             setError((e as Error).message);
         }
         setChecking(false);
-    }, []);
+    }, [t]);
 
     // 업데이트: 받을 것을 모두 받고 모두 적용한다(빈 목록 = 전부). 데몬·GUI가 바뀌면 데몬이 설치기를 띄운다
     const runUpdate = useCallback(async () => {

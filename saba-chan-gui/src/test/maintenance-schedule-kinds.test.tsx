@@ -6,9 +6,10 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import type { TFunction } from 'i18next';
 import i18n from 'i18next';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { draftProblems, fromDraft, MaintenanceTab, toDraft } from '../components/servers/MaintenanceTab';
+import { MaintenanceTab } from '../components/servers/MaintenanceTab';
 import type { Server } from '../stores/useServerStore';
 import type { CommandField } from '../types/daemon';
+import { draftProblems, fromDraft, toDraft } from '../utils/schedule';
 import { pickTime } from './picker';
 
 const t = ((k: string) => i18n.t(`gui:${k}`)) as unknown as TFunction;

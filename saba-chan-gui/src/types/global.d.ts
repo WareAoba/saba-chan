@@ -39,7 +39,6 @@ declare global {
         /** Toast가 그려진 뒤에 생긴다. 토스트 id를 돌려준다 */
         showToast?: (message: string, type?: ToastType, duration?: number, options?: ToastOptions) => number;
         updateToast?: (id: number, message: string, type: ToastType, duration?: number) => void;
-        showStatus?: (step: string, message: string, duration?: number) => void;
         __sabaReadyReceived?: boolean;
         /** 익스텐션 UMD 번들이 쓰는 전역 (index) */
         React: typeof ReactNamespace;

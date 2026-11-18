@@ -607,6 +607,27 @@ describe('권한 화면', () => {
         expect(screen.queryByRole('listitem', { name: 'Lv -1 · Banned' })).toBeNull();
     });
 
+    // 리뷰 11-18: 즉시 저장(되묻기 단계)이 계단을 다시 읽어도 저장하지 않은 옮김이 남는다
+    it('명령 계단: 옮겨 둔 칩은 되묻기 단계를 바꿔도 남고, 저장해 같아지면 사라진다', async () => {
+        await openCommands();
+        fireEvent.click(within(step('Lv 0 · Guest')).getByRole('button', { name: /^Say$/ }));
+        dragTo(within(step('Lv 0 · Guest')).getByRole('button', { name: /^Say$/ }), step('Lv 2 · Admin'));
+        fireEvent.click(within(screen.getByRole('region', { name: 'Say' })).getByRole('tab', { name: 'Danger' }));
+        await flush();
+        expect(window.api.discordSettingsSet).toHaveBeenCalled();
+        expect(window.api.permissionsCommands).toHaveBeenCalledTimes(2);
+        expect(within(step('Lv 2 · Admin')).getByRole('button', { name: /^Say$/ })).toHaveClass('is-changed');
+        expect(document.querySelector('.saba-savebar.dirty')).not.toBeNull();
+        window.api.permissionsUpdate = vi.fn(async () => {
+            board.items = board.items.map((i) => (i.name === 'say' ? { ...i, level: 2 } : i));
+            return { success: true };
+        });
+        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+        await flush();
+        expect(within(step('Lv 2 · Admin')).getByRole('button', { name: /^Say$/ })).not.toHaveClass('is-changed');
+        expect(document.querySelector('.saba-savebar.dirty')).toBeNull();
+    });
+
     it('명령 계단: 옮긴 칩은 옛 계단 자리에서 새 계단으로 미끄러진다', async () => {
         const steps = ['Lv -1 · Banned', 'Lv 0 · Guest', 'Lv 1 · User', 'Lv 2 · Admin', 'Lv 3 · Owner'];
         const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (

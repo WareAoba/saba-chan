@@ -107,7 +107,8 @@ function createApiMock(overrides: Record<string, unknown> = {}): typeof window.a
                 },
             ],
         }),
-        onStatusUpdate: vi.fn(),
+        // 셸은 늦게 구독한 창에도 마지막 상태를 넘긴다: 데몬이 떠 있던 창은 지난 ready를 opening:false로 받는다
+        onStatusUpdate: vi.fn((cb) => cb({ step: 'ready', message: '준비', opening: false })),
         onUpdatesAvailable: vi.fn(),
         onUpdateCompleted: vi.fn(),
         onCloseRequest: vi.fn(),
@@ -129,7 +130,7 @@ function createApiMock(overrides: Record<string, unknown> = {}): typeof window.a
 
 import { useDiscordStore } from '../stores/useDiscordStore';
 import { useServerStore } from '../stores/useServerStore';
-import { useSettingsStore } from '../stores/useSettingsStore';
+import { SETTINGS_SAVED_KEY, useSettingsStore } from '../stores/useSettingsStore';
 import { useUIStore } from '../stores/useUIStore';
 
 // ── lifecycle helpers ──
@@ -158,7 +159,6 @@ beforeEach(() => {
     vi.useRealTimers();
     statusCallback = null;
     window.showToast = vi.fn();
-    window.showStatus = vi.fn();
     // Reset all Zustand stores to prevent state leaking between tests
     useUIStore.getState()._resetForTest();
     useSettingsStore.getState()._resetForTest();
@@ -502,6 +502,21 @@ describe('로딩 스크린 상태 머신', () => {
         );
     });
 
+    // 셸이 없는 환경(시험·mock 브리지)에서 ready가 오지 않아도 로딩에 묶이지 않는다
+    it('데몬이 응답했는데 ready가 끝내 오지 않으면 잠시 뒤 오프닝 없이 연다', async () => {
+        const playSound = vi.fn();
+        window.api = createApiMock({
+            daemonStatus: vi.fn().mockResolvedValue({ running: true }),
+            onStatusUpdate: vi.fn(),
+            playSound,
+        });
+        const { container } = await act(async () => render(<App />));
+        await waitFor(() => expect(container.querySelector('.loading-screen')).not.toBeInTheDocument(), {
+            timeout: 15000,
+        });
+        expect(playSound).not.toHaveBeenCalled();
+    }, 20000);
+
     it('로딩이 끝나면 메인 화면을 로딩 화면 아래에 먼저 그리고, 오프닝을 재생한 뒤 로딩 화면을 걷는다', async () => {
         const playSound = vi.fn();
         const { container } = await coldBoot({ playSound });
@@ -518,6 +533,16 @@ describe('로딩 스크린 상태 머신', () => {
         });
         // 릴레이를 아직 안 붙였으면 실패한 것이 없으니 기동음과 함께 터뜨리는 쪽이다
         expect(playSound).toHaveBeenCalledWith('startup');
+    }, 20000);
+
+    // 리뷰 11-18: 봇 설정을 끝내 읽지 못했으면 릴레이를 모르는 것이다 (설정 안 함으로 보고 정상 기동음을 내지 않는다)
+    it('봇 설정을 읽지 못한 기동은 기동음 없이 연다', async () => {
+        const playSound = vi.fn();
+        const { container } = await coldBoot({ botConfigLoad: vi.fn().mockResolvedValue(null), playSound });
+        await waitFor(() => expect(container.querySelector('.loading-screen')).not.toBeInTheDocument(), {
+            timeout: 15000,
+        });
+        expect(playSound).not.toHaveBeenCalledWith('startup');
     }, 20000);
 
     it('메인 화면이 처음 그려질 때 열린 화면이 소리를 맡기면, 기동음 대신 그 소리 하나만 오프닝과 함께 낸다', async () => {
@@ -576,6 +601,29 @@ describe('로딩 스크린 상태 머신', () => {
         expect(playSound).toHaveBeenCalledWith('startup');
     }, 20000);
 
+    // 리뷰 11-18: 이미 떠 있던 데몬에 새 GUI 프로세스가 붙으면 셸의 ready는 등록 등을 마친 뒤에 온다. 그 전에 오프닝을 정하지 않는다
+    it('창이 뜰 때 데몬이 이미 응답해도 셸의 ready가 오기 전에는 로딩 화면을 걷지 않는다', async () => {
+        const playSound = vi.fn();
+        window.api = createApiMock({
+            daemonStatus: vi.fn().mockResolvedValue({ running: true }),
+            onStatusUpdate: vi.fn((cb) => {
+                statusCallback = cb;
+            }),
+            playSound,
+        });
+        const { container } = await act(async () => render(<App />));
+        await act(async () => new Promise((r) => setTimeout(r, 1500)));
+        expect(container.querySelector('.loading-screen')).toBeInTheDocument();
+        expect(container.querySelector('.loading-screen.opening')).not.toBeInTheDocument();
+        await act(async () => {
+            (statusCallback as unknown as (s: object) => void)({ step: 'ready', message: '준비', opening: false });
+        });
+        await waitFor(() => expect(container.querySelector('.loading-screen')).not.toBeInTheDocument(), {
+            timeout: 15000,
+        });
+        expect(playSound).not.toHaveBeenCalled();
+    }, 20000);
+
     it('셸이 데몬을 띄우지 않고 이미 떠 있던 데몬에 붙었으면(ready opening:false) 오프닝·기동음 없이 연다', async () => {
         const playSound = vi.fn();
         // 오프닝 대신 로딩 화면이 잠깐 사라지기만 한다 (움직임을 줄였을 때와 같은 길)
@@ -599,6 +647,44 @@ describe('로딩 스크린 상태 머신', () => {
             const { container } = render(<App />);
             expect(container.querySelector('.loading-screen')).not.toBeInTheDocument();
             expect(container.querySelector('.console-popout-app')).toBeInTheDocument();
+        } finally {
+            window.history.replaceState(null, '', before);
+        }
+    });
+});
+
+// 리뷰 11-18: PIP 창은 콘솔에 쓰는 것(설정·서버 목록·콘솔)만 읽고 메인 창 전용 기동 작업을 되풀이하지 않는다
+describe('콘솔 PIP 창의 기동 작업', () => {
+    it('디스코드 상태·알림함·업데이트 결과·익스텐션 초기화 조회를 돌리지 않는다', async () => {
+        const before = window.location.href;
+        window.history.replaceState(null, '', '/?console-popout=srv-1&name=PW-Main');
+        try {
+            window.api = createApiMock({ daemonStatus: vi.fn().mockResolvedValue({ running: true }) });
+            await act(async () => render(<App />));
+            await act(async () => new Promise((r) => setTimeout(r, 50)));
+            expect(window.api.settingsLoad).toHaveBeenCalled();
+            expect(window.api.serverList).toHaveBeenCalled();
+            expect(window.api.botConfigLoad).not.toHaveBeenCalled();
+            expect(window.api.discordBotStatus).not.toHaveBeenCalled();
+            expect(window.api.noticesList).not.toHaveBeenCalled();
+            expect(window.api.updaterLastResult).not.toHaveBeenCalled();
+            expect(window.api.extensionInitStatus).not.toHaveBeenCalled();
+        } finally {
+            window.history.replaceState(null, '', before);
+        }
+    });
+
+    it('메인 창이 설정을 저장하면 PIP 창도 설정을 다시 읽는다', async () => {
+        const before = window.location.href;
+        window.history.replaceState(null, '', '/?console-popout=srv-1&name=PW-Main');
+        try {
+            window.api = createApiMock({ daemonStatus: vi.fn().mockResolvedValue({ running: true }) });
+            await act(async () => render(<App />));
+            expect(window.api.settingsLoad).toHaveBeenCalledTimes(1);
+            await act(async () => {
+                window.dispatchEvent(new StorageEvent('storage', { key: SETTINGS_SAVED_KEY, newValue: '1' }));
+            });
+            expect(window.api.settingsLoad).toHaveBeenCalledTimes(2);
         } finally {
             window.history.replaceState(null, '', before);
         }

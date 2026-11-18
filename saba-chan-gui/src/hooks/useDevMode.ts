@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import i18n from '../i18n';
 
 /**
  * 히든 키보드 시퀀스로 개발자 모드를 토글하는 훅.
@@ -51,11 +52,11 @@ export function useDevMode() {
                     resetBuffer();
                     setDevMode((prev) => {
                         const next = !prev;
-                        if (next) {
-                            window.showToast?.('Developer Mode ON', 'info', 2000);
-                        } else {
-                            window.showToast?.('Developer Mode OFF', 'info', 2000);
-                        }
+                        window.showToast?.(
+                            i18n.t(next ? 'gui:settings_modal.dev_mode_on' : 'gui:settings_modal.dev_mode_off'),
+                            'info',
+                            2000,
+                        );
                         return next;
                     });
                 }

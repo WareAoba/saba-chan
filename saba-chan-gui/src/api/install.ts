@@ -11,8 +11,9 @@ import { tauriBindings } from './tauri';
 export async function installTauriBridge(target = typeof window !== 'undefined' ? window : undefined) {
     if (!target?.__TAURI__ || target.api) return false;
     const { invoke, listen } = tauriBindings(target.__TAURI__);
-    const hub = createEventHub();
     const search = new URLSearchParams(target.location?.search || '');
+    // 콘솔 팝아웃은 events:live를 받지 않는다: 받는 것으로 보면 서버 목록을 이벤트에 맡기고 드물게 읽는다
+    const hub = createEventHub({ live: !search.has('console-popout') });
     // 포트 충돌 정지 알림은 메인 창만 받아 띄운다 (새로 연 팝아웃·팝업 창이 지난 알림을 다시 띄우지 않게)
     const mainWindow = !['console-popout', 'tray-popup', 'overlay-menu', 'desktop-overlay'].some((k) => search.has(k));
     target.api = createApi({ invoke, hub, mainWindow }).api;
@@ -24,6 +25,11 @@ export async function installTauriBridge(target = typeof window !== 'undefined' 
         return true;
     }
     if (search.has('tray-popup') || search.has('overlay-menu')) return true;
+    // 바탕화면 펫은 셸이 이 창에 보내는 이벤트(overlay::emit)만 받는다. app_ready는 메인 창의 초기화라 부르지 않는다
+    if (search.has('desktop-overlay')) {
+        await hub.start(listen).catch((e) => console.error('[Bridge] Failed to subscribe events:', e));
+        return true;
+    }
 
     try {
         await hub.start(listen);

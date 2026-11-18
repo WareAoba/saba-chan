@@ -105,16 +105,9 @@ fn saved(settings: &Value) -> Saved {
     }
 }
 
-/// `desktopOverlay`의 몇 칸만 바꾸는 설정 저장 본문. GUI 설정 저장은 맨 위 키를 통째로 바꾸므로 나머지 칸을 함께 싣는다
-fn patch(settings: &Value, change: Value) -> Value {
-    let mut overlay = match &settings["desktopOverlay"] {
-        Value::Object(o) => o.clone(),
-        _ => serde_json::Map::new(),
-    };
-    if let Value::Object(change) = change {
-        overlay.extend(change);
-    }
-    json!({ "desktopOverlay": overlay })
+/// `desktopOverlay`의 몇 칸만 바꾸는 설정 저장 본문 (설정 저장은 칸 단위로 합친다)
+fn patch(change: Value) -> Value {
+    json!({ "desktopOverlay": change })
 }
 
 /// 펫 크기 (%): 10% 칸, 50~200%
@@ -509,7 +502,7 @@ fn remember_moved(app: &AppHandle) {
         *ANCHOR.lock().unwrap() = Some(anchor);
         *PLACED.lock().unwrap() = Some(anchor);
         let state = app.state::<AppState>();
-        let body = patch(&state.settings(), json!({ "x": anchor.0.round() as i64, "y": anchor.1.round() as i64 }));
+        let body = patch(json!({ "x": anchor.0.round() as i64, "y": anchor.1.round() as i64 }));
         crate::native::save_settings(&state, &body).await;
     });
 }
@@ -517,7 +510,7 @@ fn remember_moved(app: &AppHandle) {
 /// 설정의 켜기 스위치를 바꾸고 창을 맞춘다
 pub async fn set_enabled(app: &AppHandle, enabled: bool) -> bool {
     let state = app.state::<AppState>();
-    let ok = crate::native::save_settings(&state, &patch(&state.settings(), json!({ "enabled": enabled }))).await;
+    let ok = crate::native::save_settings(&state, &patch(json!({ "enabled": enabled }))).await;
     sync(app).await;
     ok
 }
@@ -632,7 +625,7 @@ pub fn set_scale(app: &AppHandle, value: f64) -> u32 {
             return;
         }
         let state = app.state::<AppState>();
-        crate::native::save_settings(&state, &patch(&state.settings(), json!({ "scale": scale }))).await;
+        crate::native::save_settings(&state, &patch(json!({ "scale": scale }))).await;
     });
     scale
 }
@@ -790,17 +783,6 @@ mod tests {
         assert_eq!(wayland(None, true), cfg!(target_os = "linux"));
         assert!(!wayland(Some("x11"), false));
         assert!(!wayland(None, false));
-    }
-
-    /// 자리를 저장해도 켜기·펫 크기는 남는다 (GUI 설정 저장은 `desktopOverlay`를 통째로 바꾼다)
-    #[test]
-    fn saving_one_overlay_setting_keeps_the_others() {
-        let settings = json!({ "desktopOverlay": { "enabled": true, "x": 1, "y": 2, "scale": 150 } });
-        assert_eq!(
-            patch(&settings, json!({ "x": 5, "y": 6 })),
-            json!({ "desktopOverlay": { "enabled": true, "x": 5, "y": 6, "scale": 150 } })
-        );
-        assert_eq!(patch(&json!({}), json!({ "enabled": false })), json!({ "desktopOverlay": { "enabled": false } }));
     }
 
     /// 펫 크기는 10% 칸으로 50~200%

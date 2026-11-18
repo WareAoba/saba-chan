@@ -49,6 +49,13 @@ export const THEME_DEFAULTS: ThemeConfig = {
     sidebarCompact: false,
 };
 
+/** 설정 값 묶음(설정 스토어 등)에서 사용자 지정 테마 칸만 뽑는다 */
+export function themeConfigOf(values: ThemeConfig): ThemeConfig {
+    return Object.fromEntries(
+        (Object.keys(THEME_DEFAULTS) as (keyof ThemeConfig)[]).map((k) => [k, values[k]]),
+    ) as unknown as ThemeConfig;
+}
+
 // ── Preset accent palettes ──
 export const ACCENT_PRESETS = [
     { name: 'purple', primary: '#667eea', secondary: '#764ba2' },

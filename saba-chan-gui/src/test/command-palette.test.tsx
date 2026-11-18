@@ -117,6 +117,11 @@ describe('명령 팔레트', () => {
         await flush();
         expect(window.api.executeCommand).toHaveBeenCalledWith('mc-1', { command: 'say', args: { message: 'hello' } });
         expect(screen.getByText('Sent')).toBeInTheDocument();
+        // 리뷰 11-18: 팔레트로 보낸 명령도 명령 탭 실행 기록에 남는다 (데몬 이벤트는 앱이 보낸 명령을 거른다)
+        expect(useUIStore.getState().commandHistoryMap['mc-1']?.at(-1)).toMatchObject({
+            command: 'say hello',
+            status: 'success',
+        });
     });
 
     it('위험한 명령은 한 번 더 눌러야 보낸다', async () => {
