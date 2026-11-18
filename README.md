@@ -14,6 +14,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-7c3aed?style=flat-square)](LICENSE)
 ![Windows](https://img.shields.io/badge/Windows-x64-3b82f6?style=flat-square)
 ![Linux](https://img.shields.io/badge/Linux-x64%20%7C%20ARM64-3b82f6?style=flat-square)
+![macOS](https://img.shields.io/badge/macOS-Apple%20silicon-3b82f6?style=flat-square)
 
 </div>
 
@@ -72,10 +73,8 @@ ARM에서 안 되는 게임은 서버 실행 파일이나 SteamCMD가 x86용뿐�
 |---|:-:|:-:|:-:|
 | Windows 10/11 x64 | O | O | O |
 | Linux x64 | O | O | O |
-| Linux ARM64 | - | O | O |
-| macOS | 준비 중 | 준비 중 | - |
-
-리눅스 데스크톱 앱과 ARM64는 0.1.12부터 들어갑니다. macOS는 다른 PC의 사바쨩을 다루는 앱부터 준비하고 있어요.
+| Linux ARM64 | O | O | O |
+| macOS (Apple 실리콘) | O | O | O |
 
 **Windows**
 
@@ -87,12 +86,16 @@ ARM에서 안 되는 게임은 서버 실행 파일이나 SteamCMD가 x86용뿐�
 curl -fsSL https://raw.githubusercontent.com/WareAoba/saba-chan/main/install.sh | sh
 ```
 
-`curl`, `unzip`, `sha256sum`, `python3`가 있으면 됩니다. 화면이 있는 데스크톱이면 앱까지 설치해서 앱 메뉴에 넣고, 화면 없는 서버면 데몬과 CLI만 깔고 데몬을 systemd 사용자 서비스로 켜요. 앱을 쓰려면 WebKitGTK가 필요하고, SteamCMD로 까는 게임(팰월드, 좀보이드)은 32비트 라이브러리(`lib32gcc-s1` 등)가 필요해요. 없으면 설치 명령을 알려 줍니다. 화면 없는 서버는 다른 PC의 앱에서 [원격 데몬](https://saba-chan.online/ko/guide/remote-daemon)으로 다루면 편해요.
+`curl`, `sha256sum`, `python3`가 있으면 됩니다. 화면이 있는 데스크톱이면 앱까지 설치해서 앱 메뉴에 넣고, 화면 없는 서버면 데몬과 CLI만 깔고 데몬을 systemd 사용자 서비스로 켜요. 앱을 쓰려면 WebKitGTK가 필요하고, SteamCMD로 까는 게임(팰월드, 좀보이드)은 32비트 라이브러리(`lib32gcc-s1` 등)가 필요해요. 없으면 설치 명령을 알려 줍니다. 화면 없는 서버는 다른 PC의 앱에서 [원격 데몬](https://saba-chan.online/ko/guide/remote-daemon)으로 다루면 편해요.
+
+**macOS**
+
+[웹사이트](https://saba-chan.online/ko)나 [릴리스](https://github.com/WareAoba/saba-chan/releases)에서 `.dmg`를 받아 `Saba-chan.app`을 응용 프로그램으로 옮겨 실행하세요. 위의 설치 명령으로도 깔 수 있고, 이때는 `~/Applications`에 설치합니다. Apple 실리콘 맥만 지원해요.
 
 **설치한 다음**
 
-- 설정과, 따로 고르지 않은 서버 파일, 월드, 백업은 `%APPDATA%\saba-chan`(리눅스는 `~/.config/saba-chan`)에 있어요. 프로그램 폴더를 지워도 서버는 남습니다.
-- 새 버전이 나오면 앱이 알려 주고 설정 화면에서 바로 업데이트합니다. 공식 서명이 확인된 파일만 받아요.
+- 설정과, 따로 고르지 않은 서버 파일, 월드, 백업은 `%APPDATA%\saba-chan`(리눅스·맥은 `~/.config/saba-chan`)에 있어요. 프로그램 폴더를 지워도 서버는 남습니다.
+- 새 버전이 나오면 앱 본체는 묻지 않고 받아 적용합니다. 공식 서명이 확인된 파일만 받아요.
 - 지울 때 "게임 서버 남기기"와 "설정 남기기"를 고르면 다시 설치했을 때 그대로 이어집니다. 둘은 따로 고를 수 있어요.
 
 ## 구조
@@ -165,7 +168,7 @@ cargo build --release -p saba-chan-cli
 cd saba-chan-gui; npm install; npm start
 ```
 
-배포 파일은 GitHub Actions가 이 저장소의 소스로 빌드합니다. Windows·리눅스 x64·ARM64 모두 [publish.yml](.github/workflows/publish.yml) 하나로 빌드하고 발행해요. 테스트는 `cargo test --workspace`와 `cd saba-chan-gui && npx vitest run`으로 돌립니다.
+배포 파일은 GitHub Actions가 이 저장소의 소스로 빌드합니다. Windows·리눅스 x64·ARM64·맥 모두 [publish.yml](.github/workflows/publish.yml) 하나로 빌드하고 발행해요. 테스트는 `cargo test --workspace`와 `cd saba-chan-gui && npx vitest run`으로 돌립니다.
 
 ## 코드 서명 정책 (Code signing policy)
 

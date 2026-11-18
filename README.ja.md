@@ -14,6 +14,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-7c3aed?style=flat-square)](LICENSE)
 ![Windows](https://img.shields.io/badge/Windows-x64-3b82f6?style=flat-square)
 ![Linux](https://img.shields.io/badge/Linux-x64%20%7C%20ARM64-3b82f6?style=flat-square)
+![macOS](https://img.shields.io/badge/macOS-Apple%20silicon-3b82f6?style=flat-square)
 
 </div>
 
@@ -72,10 +73,8 @@ ARM で × のゲームは、サーバーの実行ファイルや SteamCMD が x
 |---|:-:|:-:|:-:|
 | Windows 10/11 x64 | ○ | ○ | ○ |
 | Linux x64 | ○ | ○ | ○ |
-| Linux ARM64 | - | ○ | ○ |
-| macOS | 準備中 | 準備中 | - |
-
-Linux のデスクトップアプリと ARM64 は 0.1.12 からです。macOS は、別の PC のサバちゃんを操作するアプリから準備しています。
+| Linux ARM64 | ○ | ○ | ○ |
+| macOS (Apple シリコン) | ○ | ○ | ○ |
 
 **Windows**
 
@@ -87,12 +86,16 @@ Linux のデスクトップアプリと ARM64 は 0.1.12 からです。macOS �
 curl -fsSL https://raw.githubusercontent.com/WareAoba/saba-chan/main/install.sh | sh
 ```
 
-`curl`、`unzip`、`sha256sum`、`python3` があれば大丈夫です。画面のあるデスクトップならアプリまで入れてアプリメニューに追加し、画面のないサーバーならデーモンと CLI だけを入れてデーモンを systemd のユーザーサービスとして起動します。アプリには WebKitGTK が、SteamCMD で入れるゲーム(パルワールド、Zomboid)には `lib32gcc-s1` などの 32 ビットライブラリが必要で、入っていなければインストールコマンドを教えてくれます。画面のないサーバーは、別の PC のアプリから[リモートデーモン](https://saba-chan.online/ja/guide/remote-daemon)として操作するのが楽です。
+`curl`、`sha256sum`、`python3` があれば大丈夫です。画面のあるデスクトップならアプリまで入れてアプリメニューに追加し、画面のないサーバーならデーモンと CLI だけを入れてデーモンを systemd のユーザーサービスとして起動します。アプリには WebKitGTK が、SteamCMD で入れるゲーム(パルワールド、Zomboid)には `lib32gcc-s1` などの 32 ビットライブラリが必要で、入っていなければインストールコマンドを教えてくれます。画面のないサーバーは、別の PC のアプリから[リモートデーモン](https://saba-chan.online/ja/guide/remote-daemon)として操作するのが楽です。
+
+**macOS**
+
+[ウェブサイト](https://saba-chan.online/ja)か[リリース](https://github.com/WareAoba/saba-chan/releases)から `.dmg` を落とし、`Saba-chan.app` をアプリケーションに移して開きます。上のインストールコマンドでも入れられ、その場合は `~/Applications` に入ります。対応は Apple シリコンの Mac だけです。
 
 **インストールしたあと**
 
-- 設定と、場所を別に選ばなかったサーバーファイル、ワールド、バックアップは `%APPDATA%\saba-chan`(Linux は `~/.config/saba-chan`)にあります。プログラムのフォルダを消してもサーバーは残ります。
-- 新しいバージョンが出るとアプリが知らせてくれて、設定画面からそのまま更新できます。公式の署名が確認できたファイルだけを受け取ります。
+- 設定と、場所を別に選ばなかったサーバーファイル、ワールド、バックアップは `%APPDATA%\saba-chan`(Linux と macOS は `~/.config/saba-chan`)にあります。プログラムのフォルダを消してもサーバーは残ります。
+- 新しいバージョンが出ると、アプリ本体は確認なしで受け取って適用されます。公式の署名が確認できたファイルだけを受け取ります。
 - アンインストールのときに「ゲームサーバーを残す」と「設定を残す」を選べば、入れ直したときにそのまま続きから使えます。どちらか片方だけも選べます。
 
 ## しくみ
@@ -165,7 +168,7 @@ cargo build --release -p saba-chan-cli
 cd saba-chan-gui; npm install; npm start
 ```
 
-配布ファイルは GitHub Actions がこのリポジトリのソースからビルドします。Windows・Linux x64・ARM64 はすべて [publish.yml](.github/workflows/publish.yml) ひとつでビルドして発行します。テストは `cargo test --workspace` と `cd saba-chan-gui && npx vitest run` で回します。
+配布ファイルは GitHub Actions がこのリポジトリのソースからビルドします。Windows・Linux x64・ARM64・macOS はすべて [publish.yml](.github/workflows/publish.yml) ひとつでビルドして発行します。テストは `cargo test --workspace` と `cd saba-chan-gui && npx vitest run` で回します。
 
 ## コード署名ポリシー (Code signing policy)
 

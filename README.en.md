@@ -14,6 +14,7 @@ A server manager that starts, watches over, and fixes your game servers for you
 [![License: MIT](https://img.shields.io/badge/license-MIT-7c3aed?style=flat-square)](LICENSE)
 ![Windows](https://img.shields.io/badge/Windows-x64-3b82f6?style=flat-square)
 ![Linux](https://img.shields.io/badge/Linux-x64%20%7C%20ARM64-3b82f6?style=flat-square)
+![macOS](https://img.shields.io/badge/macOS-Apple%20silicon-3b82f6?style=flat-square)
 
 </div>
 
@@ -72,10 +73,8 @@ The games marked "No" on ARM only ship x86 server binaries, or need SteamCMD, wh
 |---|:-:|:-:|:-:|
 | Windows 10/11 x64 | Yes | Yes | Yes |
 | Linux x64 | Yes | Yes | Yes |
-| Linux ARM64 | - | Yes | Yes |
-| macOS | Planned | Planned | - |
-
-The Linux desktop app and ARM64 builds arrive in 0.1.12. For macOS, the first step is an app that controls Saba-chan running on another machine.
+| Linux ARM64 | Yes | Yes | Yes |
+| macOS (Apple silicon) | Yes | Yes | Yes |
 
 **Windows**
 
@@ -87,12 +86,16 @@ Download `saba-chan-installer.exe` from the [website](https://saba-chan.online) 
 curl -fsSL https://raw.githubusercontent.com/WareAoba/saba-chan/main/install.sh | sh
 ```
 
-You need `curl`, `unzip`, `sha256sum`, and `python3`. On a desktop with a display it installs the app too and adds it to your app menu. On a headless server it installs just the daemon and CLI and runs the daemon as a systemd user service. The app needs WebKitGTK, and games installed through SteamCMD (Palworld, Zomboid) need 32-bit libraries such as `lib32gcc-s1`; if they're missing, the script tells you what to install. A headless server is easiest to manage from the app on another PC as a [remote daemon](https://saba-chan.online/guide/remote-daemon).
+You need `curl`, `sha256sum`, and `python3`. On a desktop with a display it installs the app too and adds it to your app menu. On a headless server it installs just the daemon and CLI and runs the daemon as a systemd user service. The app needs WebKitGTK, and games installed through SteamCMD (Palworld, Zomboid) need 32-bit libraries such as `lib32gcc-s1`; if they're missing, the script tells you what to install. A headless server is easiest to manage from the app on another PC as a [remote daemon](https://saba-chan.online/guide/remote-daemon).
+
+**macOS**
+
+Download the `.dmg` from the [website](https://saba-chan.online) or [Releases](https://github.com/WareAoba/saba-chan/releases), then move `Saba-chan.app` to Applications and open it. The install command above also works and installs to `~/Applications`. Only Apple silicon Macs are supported.
 
 **After installing**
 
-- Settings, plus server files, worlds, and backups unless you picked another location, live in `%APPDATA%\saba-chan` (`~/.config/saba-chan` on Linux). Deleting the program folder leaves your servers alone.
-- The app tells you when an update is out and installs it from the settings screen. Only officially signed files are accepted.
+- Settings, plus server files, worlds, and backups unless you picked another location, live in `%APPDATA%\saba-chan` (`~/.config/saba-chan` on Linux and macOS). Deleting the program folder leaves your servers alone.
+- When an update is out, the app itself is downloaded and applied without asking. Only officially signed files are accepted.
 - When uninstalling, tick "Keep game servers" and "Keep settings" and a reinstall picks up right where you left off. You can choose each one separately.
 
 ## How it fits together
@@ -165,7 +168,7 @@ cargo build --release -p saba-chan-cli
 cd saba-chan-gui; npm install; npm start
 ```
 
-Release files are built from this repository by GitHub Actions: [publish.yml](.github/workflows/publish.yml) builds and publishes Windows, Linux x64 and ARM64 in one run. Run tests with `cargo test --workspace` and `cd saba-chan-gui && npx vitest run`.
+Release files are built from this repository by GitHub Actions: [publish.yml](.github/workflows/publish.yml) builds and publishes Windows, Linux x64, Linux ARM64 and macOS in one run. Run tests with `cargo test --workspace` and `cd saba-chan-gui && npx vitest run`.
 
 ## Code signing policy
 
