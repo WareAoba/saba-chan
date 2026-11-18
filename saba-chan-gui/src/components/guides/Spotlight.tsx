@@ -29,6 +29,13 @@ function findSpot(spot: string): Element | null {
     );
 }
 
+/** 스크롤과 상관없는 내용 안의 세로 자리: 화면 위치에 조상들의 스크롤 양을 더한다 */
+function contentTop(el: Element): number {
+    let top = el.getBoundingClientRect().top;
+    for (let p = el.parentElement; p; p = p.parentElement) top += p.scrollTop;
+    return top;
+}
+
 /**
  * `[data-spot]` 요소를 찾아 그 자리를 따라간다. 없으면 null (기다리는 동안은 'wait').
  * `a|b`면 앞의 것을 먼저 찾고, 뒤의 것을 짚는 동안(`alt`)에도 앞의 것이 생기면 그리로 옮긴다
@@ -48,6 +55,7 @@ function useSpotBox(spot: string | undefined, key: string): { box: Box | null | 
         const started = performance.now();
         let el: Element | null = null;
         let at = -1;
+        let laidOut = Number.NaN;
         let frame = 0;
         const tick = () => {
             if (!el?.isConnected || el.closest('[hidden]') || at > 0) {
@@ -56,11 +64,17 @@ function useSpotBox(spot: string | undefined, key: string): { box: Box | null | 
                 if (found[i] !== el) {
                     el = found[i] ?? null;
                     at = i;
-                    el?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+                    laidOut = Number.NaN;
                     setAlt(i > 0);
                 }
             }
             if (el) {
+                // 찾았을 때, 그리고 위 내용이 늦게 그려져 자리가 밀렸을 때 보이게 한다. 사용자의 스크롤은 내용 안의 자리를 바꾸지 않는다
+                const top = contentTop(el);
+                if (!(Math.abs(top - laidOut) <= 1)) {
+                    el.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+                    laidOut = contentTop(el);
+                }
                 const r = el.getBoundingClientRect();
                 const next = { left: r.left - PAD, top: r.top - PAD, width: r.width + PAD * 2, height: r.height + PAD * 2 };
                 setBox((prev) => (prev !== 'wait' && same(prev, next) ? prev : next));
