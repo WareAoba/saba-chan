@@ -114,6 +114,22 @@ describe('화면 강조', () => {
         target.remove();
     });
 
+    it('자리가 화면보다 길어 위아래에 자리가 없어도 말풍선은 화면 안에 둔다', async () => {
+        const target = document.createElement('div');
+        target.dataset.spot = 'here';
+        // 위로 스크롤돼 윗부분이 화면 밖, 아래도 화면 끝까지 차는 긴 목록
+        target.getBoundingClientRect = () =>
+            ({ left: 100, top: -400, width: 400, height: window.innerHeight + 800 }) as DOMRect;
+        document.body.appendChild(target);
+        render(<Spotlight />);
+        act(() => startGuide('b'));
+        await act(async () => {});
+        const bubble = document.querySelector<HTMLElement>('.spotlight-bubble');
+        expect(bubble?.style.bottom).toBe('12px');
+        expect(bubble?.style.top).toBe('');
+        target.remove();
+    });
+
     it('숨겨 둔 탭 안의 자리는 짚지 않는다', async () => {
         const page = document.createElement('div');
         page.hidden = true;

@@ -168,15 +168,14 @@ export function Spotlight() {
     const vh = window.innerHeight;
     const hole = box && box !== 'wait' ? box : null;
 
-    // 말풍선 자리: 자리 아래(모자라면 위), 없으면 가운데
+    // 말풍선 자리: 자리 아래, 모자라면 위, 둘 다 모자라면(화면보다 긴 자리) 화면 아래 끝, 자리가 없으면 가운데
     const width = Math.min(BUBBLE_W, vw - 24);
     let bubbleStyle: CSSProperties;
     if (hole) {
         const left = Math.min(Math.max(12, hole.left + hole.width / 2 - width / 2), vw - width - 12);
-        const below = hole.top + hole.height + GAP + 180 < vh;
-        bubbleStyle = below
-            ? { left, top: hole.top + hole.height + GAP, width }
-            : { left, bottom: vh - hole.top + GAP, width };
+        if (hole.top + hole.height + GAP + 180 < vh) bubbleStyle = { left, top: hole.top + hole.height + GAP, width };
+        else if (hole.top - GAP - 180 > 0) bubbleStyle = { left, bottom: vh - hole.top + GAP, width };
+        else bubbleStyle = { left, bottom: 12, width };
     } else {
         bubbleStyle = { left: '50%', top: '50%', width, transform: 'translate(-50%, -50%)' };
     }
