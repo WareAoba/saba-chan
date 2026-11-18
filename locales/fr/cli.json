@@ -539,6 +539,7 @@
     "pair_expected": "Format KEY=VALUE attendu : « {{got}} »",
     "timeout": "Délai de réponse du daemon dépassé ({{path}})",
     "body_read": "Échec de réception de la réponse de {{path}} : {{error}}",
+    "connection_lost": "Connexion au daemon perdue pendant {{path}} : {{error}}",
     "daemon_identity": "Échec de la vérification d'identité du démon",
     "unknown_command": "Commande inconnue : {{path}}. Liste des commandes : `saba-chan-cli help`.",
     "not_supported": "Module {{module}} : fonction non prise en charge"
@@ -1713,6 +1714,7 @@
       "used_by": "Utilisé par"
     },
     "no_servers": "Aucun serveur. Appuyez sur n pour en créer un.",
+    "servers_failed": "Impossible de charger la liste des serveurs : {{error}}",
     "empty": "(aucun)",
     "detail": "Détails",
     "console_empty": "Aucune sortie",
@@ -2068,6 +2070,8 @@
     "no_servers": "Aucun serveur",
     "via_relay": "Via le relais",
     "removed": "{{host}} retiré",
+    "confirm_remove": "Retirer le PC {{host}} ?",
+    "confirm_uninstall": "Désinstaller Saba-chan sur {{host}} et retirer le PC ? {{kept}}.",
     "auto_update_on": "Mises à jour automatiques activées pour {{host}}",
     "auto_update_off": "Mises à jour automatiques désactivées pour {{host}}",
     "update_started": "Mise à jour de {{host}} lancée. Son daemon redémarre à la fin.",

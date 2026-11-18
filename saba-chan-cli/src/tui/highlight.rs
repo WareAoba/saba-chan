@@ -29,30 +29,7 @@ pub fn token_style(token: &str) -> Style {
 
 /// 글을 토큰 구간(UTF-16 오프셋)대로 나눠 칠한다. 구간 밖은 `base`. 어긋난 구간은 버린다
 pub fn painted(text: &str, spans: Option<&Value>, base: Style) -> Vec<Span<'static>> {
-    let mut ranges: Vec<(usize, usize, Style)> = Vec::new();
-    if let Some(spans) = spans.and_then(Value::as_array) {
-        // UTF-16 오프셋 → 바이트 오프셋 표 (마지막 원소는 끝)
-        let mut bytes = Vec::with_capacity(text.len() + 1);
-        for (b, ch) in text.char_indices() {
-            for _ in 0..ch.len_utf16() {
-                bytes.push(b);
-            }
-        }
-        bytes.push(text.len());
-        let byte_at = |u: u64| bytes.get(usize::try_from(u).ok()?).copied();
-        for sp in spans {
-            let (Some(st), Some(en), Some(tok)) = (
-                sp.get(0).and_then(Value::as_u64).and_then(byte_at),
-                sp.get(1).and_then(Value::as_u64).and_then(byte_at),
-                sp.get(2).and_then(Value::as_str),
-            ) else {
-                continue;
-            };
-            if st < en && ranges.last().is_none_or(|last| last.1 <= st) {
-                ranges.push((st, en, base.patch(token_style(tok))));
-            }
-        }
-    }
+    let ranges = crate::cmd::console::span_ranges(text, spans).into_iter().map(|(st, en, tok)| (st, en, base.patch(token_style(tok))));
     let mut out = Vec::new();
     let mut at = 0;
     for (st, en, style) in ranges {

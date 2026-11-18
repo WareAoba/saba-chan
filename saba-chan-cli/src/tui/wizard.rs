@@ -48,7 +48,7 @@ pub struct Wizard {
     pub cursor: usize,
 }
 
-use super::form::quote as q;
+use crate::shell::quote as q;
 
 impl Wizard {
     pub fn new() -> Self {

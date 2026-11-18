@@ -539,6 +539,7 @@
     "pair_expected": "KEY=VALUE 형식이어야 함: \"{{got}}\"",
     "timeout": "데몬 응답 시간 초과 ({{path}})",
     "body_read": "{{path}} 응답 수신 실패: {{error}}",
+    "connection_lost": "{{path}} 요청 중 데몬 연결 끊김: {{error}}",
     "daemon_identity": "데몬 신원 확인 실패",
     "unknown_command": "없는 명령: {{path}}. `saba-chan-cli help`로 명령 목록을 확인해 주세요.",
     "not_supported": "{{module}} 모듈은 이 기능을 지원하지 않음"
@@ -1759,6 +1760,7 @@
       "used_by": "사용 서버"
     },
     "no_servers": "아직 서버 없음. n을 눌러 새 서버를 만들어 주세요.",
+    "servers_failed": "서버 목록을 읽지 못함: {{error}}",
     "empty": "(없음)",
     "detail": "자세히",
     "console_empty": "아직 출력 없음",
@@ -2068,6 +2070,8 @@
     "no_servers": "서버 없음",
     "via_relay": "서버쨩 거침",
     "removed": "{{host}} 삭제됨",
+    "confirm_remove": "내 PC {{host}}을(를) 지울까요?",
+    "confirm_uninstall": "내 PC {{host}}에서 사바쨩을 제거하고 지울까요? {{kept}}.",
     "auto_update_on": "{{host}} 자동 업데이트 켜짐",
     "auto_update_off": "{{host}} 자동 업데이트 꺼짐",
     "update_started": "{{host}} 업데이트 시작됨. 끝나면 데몬이 다시 시작됩니다.",

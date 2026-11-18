@@ -539,6 +539,7 @@
     "pair_expected": "必須為 KEY=VALUE 格式：「{{got}}」",
     "timeout": "常駐程式回應逾時（{{path}}）",
     "body_read": "{{path}} 回應接收失敗：{{error}}",
+    "connection_lost": "{{path}} 請求期間與常駐程式的連線中斷：{{error}}",
     "daemon_identity": "守護程序身分驗證失敗",
     "unknown_command": "沒有這個命令：{{path}}。用 `saba-chan-cli help` 查看命令列表。",
     "not_supported": "{{module}} 模組不支援此功能"
@@ -1714,6 +1715,7 @@
       "used_by": "使用的伺服器"
     },
     "no_servers": "還沒有伺服器。按 n 建立新伺服器。",
+    "servers_failed": "無法讀取伺服器列表：{{error}}",
     "empty": "（無）",
     "detail": "詳細資料",
     "console_empty": "尚無輸出",
@@ -2068,6 +2070,8 @@
     "no_servers": "沒有伺服器",
     "via_relay": "透過中繼",
     "removed": "{{host}} 已刪除",
+    "confirm_remove": "要刪除電腦 {{host}} 嗎？",
+    "confirm_uninstall": "要解除安裝 {{host}} 上的 Saba-chan 並刪除該電腦嗎？{{kept}}。",
     "auto_update_on": "{{host}} 自動更新已開啟",
     "auto_update_off": "{{host}} 自動更新已關閉",
     "update_started": "{{host}} 更新已開始。完成後常駐程式會重新啟動。",

@@ -199,16 +199,24 @@ pub async fn server_exact(ctx: &Ctx, query: Option<&str>) -> Result<Server> {
 
 type Finder<T> = fn(&[T], &str, fn(&T) -> Vec<String>, fn(&T) -> String) -> Found<T>;
 
+/// 이름이나 id로 서버를 찾는다. `exact`: 지우기·초기화 대상 (`find_exact`)
+fn find_server(all: &[Server], q: &str, exact: bool) -> Found<Server> {
+    // id(UUID)는 정확히 맞을 때만: 짧은 16진 입력이 앞부분·포함 단계에서 거의 모든 id에 맞지 않게
+    if let Some(sv) = all.iter().find(|s| s.id.eq_ignore_ascii_case(q.trim())) {
+        return Found::One(sv.clone());
+    }
+    let finder: Finder<Server> = if exact { find_exact } else { find };
+    finder(all, q, |s| vec![s.name.clone()], |s| s.name.clone())
+}
+
 /// `exact`: 지우기·초기화 대상 (`find_exact`, 이름 없이 물을 수 없으면 고르지 않는다)
 async fn server_by(ctx: &Ctx, query: Option<&str>, exact: bool) -> Result<Server> {
-    let finder: Finder<Server> = if exact { find_exact } else { find };
     let all = servers(ctx).await?;
     let what = t!("noun.server");
     match query.filter(|q| !q.trim().is_empty()) {
         None => choose_in(&ctx.ask, &what, all, Server::label, exact),
         Some(q) => {
-            let found = finder(&all, q, |s| vec![s.name.clone(), s.id.clone()], |s| s.name.clone());
-            settle(ctx, &what, q, found, Server::label)
+            settle(ctx, &what, q, find_server(&all, q, exact), Server::label)
         }
     }
 }
@@ -404,6 +412,23 @@ pub async fn member(ctx: &Ctx, guild: &str, query: &str) -> Result<String> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// 서버 id(UUID)는 정확히 맞을 때만 고른다: `3`·`e` 같은 짧은 입력이 id의 앞부분·포함으로 서버를 고르지 않는다
+    #[test]
+    fn a_server_id_matches_only_in_full() {
+        let sv = |id: &str, name: &str| Server { id: id.into(), name: name.into(), module: "minecraft".into(), raw: Value::Null };
+        let all = [sv("3e0f9a12-7c4b-4d2e-9a1f-0b5c6d7e8f90", "survival"), sv("a3b4c5d6-1e2f-4a5b-8c9d-0e1f2a3b4c5d", "creative")];
+        let picked = |q: &str, exact: bool| match find_server(&all, q, exact) {
+            Found::One(s) => Some(s.name),
+            _ => None,
+        };
+        assert_eq!(picked("3", false), None);
+        assert_eq!(picked("3e0f", false), None);
+        assert_eq!(picked("3E0F9A12-7C4B-4D2E-9A1F-0B5C6D7E8F90", false).as_deref(), Some("survival"));
+        assert_eq!(picked("a3b4c5d6-1e2f-4a5b-8c9d-0e1f2a3b4c5d", true).as_deref(), Some("creative"));
+        assert_eq!(picked("surv", false).as_deref(), Some("survival"));
+        assert_eq!(picked("eat", false).as_deref(), Some("creative"));
+    }
 
     #[test]
     fn discord_ids_are_used_as_given_and_names_are_looked_up() {

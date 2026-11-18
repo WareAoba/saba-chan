@@ -306,7 +306,7 @@ pub async fn run(ctx: &Ctx, server: Option<&str>) -> Result<()> {
                     refreshing = refresh(&ctx, &app, tx.clone(), refreshing);
                 }
                 viewing = refresh_view(&ctx, &app, tx.clone(), viewing);
-                // 상세 탭은 아직 못 읽었을 때만. 접속자도 열 때와 r을 누를 때만 읽는다
+                // 상세 탭은 아직 못 읽었을 때만. 접속자도 열 때와 F5를 누를 때만 읽는다
                 // (모듈이 게임 콘솔에 사람 수를 물으므로 주기적으로 묻지 않는다)
                 refresh_pane(&ctx, &mut app, &tx, &mut pane_loading, &mut seq, &mut task, false);
             }
@@ -320,9 +320,14 @@ pub async fn run(ctx: &Ctx, server: Option<&str>) -> Result<()> {
                 if f.guilds.is_some() {
                     app.guilds_at = Some(std::time::Instant::now());
                 }
+                let listed = app.snap.servers_error.is_none();
                 // 업데이터가 번역을 바꿨으면 cli.json을 다시 읽는다 (다음 그리기부터 새 문구)
                 if app.snap.apply(*f) {
                     crate::i18n::reload();
+                }
+                // 서버 목록을 읽지 못하게 된 때 한 번 알린다 (목록은 있던 것을 둔다)
+                if let Some(e) = app.snap.servers_error.clone().filter(|_| listed) {
+                    app.notify(&t!("tui.servers_failed", error = e));
                 }
                 app.apply_open_server();
                 refresh_pane(&ctx, &mut app, &tx, &mut pane_loading, &mut seq, &mut task, false);
@@ -523,7 +528,7 @@ fn refresh_pane(
             let (ctx, id) = (ctx.clone(), *seq);
             *task = Some(spawn_job(id, tx.clone(), async move {
                 for line in lines {
-                    let Some(words) = shlex::split(&line) else { continue };
+                    let Some(words) = crate::shell::split(&line) else { continue };
                     if let Err(e) = one(&ctx, &words).await {
                         ctx.out.error(&classify(&e));
                     }
@@ -549,7 +554,7 @@ fn start_all(ctx: &Ctx, app: &mut App, lines: Vec<String>, id: u64, tx: Unbounde
     let ctx = ctx.clone();
     Some(spawn_job(id, tx, async move {
         for line in lines {
-            let Some(words) = shlex::split(&line) else { continue };
+            let Some(words) = crate::shell::split(&line) else { continue };
             if let Err(e) = one(&ctx, &words).await {
                 ctx.out.error(&classify(&e));
             }
@@ -599,7 +604,7 @@ fn start(ctx: &Ctx, app: &mut App, line: &str, id: u64, tx: UnboundedSender<Msg>
         app.notify(&t!("tui.busy"));
         return None;
     }
-    let Some(words) = shlex::split(line) else {
+    let Some(words) = crate::shell::split(line) else {
         app.notify(&t!("shell.bad_quotes"));
         return None;
     };
@@ -611,7 +616,7 @@ fn start(ctx: &Ctx, app: &mut App, line: &str, id: u64, tx: UnboundedSender<Msg>
         return None;
     }
     let words = app::adapt(words);
-    let shown = app.masked(&words.iter().map(|w| form::quote(w)).collect::<Vec<_>>().join(" "));
+    let shown = app.masked(&words.iter().map(|w| crate::shell::quote(w)).collect::<Vec<_>>().join(" "));
     app.begin_command(&shown);
     let ctx = ctx.clone();
     Some(spawn_job(id, tx, async move {

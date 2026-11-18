@@ -78,7 +78,6 @@ pub async fn run(ctx: &Ctx, cmd: AgentCmd) -> Result<()> {
         };
         rows.push(json!({ "agent": agent.key(), "state": state }));
     }
-    let failures = rows.iter().filter(|r| s(r, "state") == "failed").count();
     // 링크하려 했는데 한 곳에도 넣지 못했으면(에이전트가 없음) 실패다
     let none_linked = link && !rows.iter().any(|r| s(r, "state") == "linked");
     let v = json!({ "agents": rows, "command": [exe.to_string_lossy(), "mcp"] });
@@ -101,13 +100,25 @@ pub async fn run(ctx: &Ctx, cmd: AgentCmd) -> Result<()> {
             say!("{}", output::dim(&t!("agent.restart_hint")));
         }
     });
-    if failures > 0 {
-        return Err(failed(t!("agent.some_failed")));
-    }
-    if none_linked {
-        return Err(failed(t!("agent.none_linked")));
-    }
-    Ok(())
+    outcome(link, v)
+}
+
+/// 하나라도 실패했거나 링크할 곳이 없으면 실패다. `--json`의 오류 문서에도 에이전트마다의 상태를 싣는다
+fn outcome(link: bool, v: serde_json::Value) -> Result<()> {
+    let states: Vec<&str> = v["agents"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|r| s(r, "state"))
+        .collect();
+    let message = if states.contains(&"failed") {
+        t!("agent.some_failed")
+    } else if link && !states.contains(&"linked") {
+        t!("agent.none_linked")
+    } else {
+        return Ok(());
+    };
+    Err(crate::error::CliError::Partial { message, data: v }.into())
 }
 
 fn status(ctx: &Ctx) -> Result<()> {
@@ -297,6 +308,27 @@ mod tests {
             codex_config_from(Some("".into()), Some("/home/a".into())).unwrap(),
             Path::new("/home/a/.codex/config.toml")
         );
+    }
+
+    /// 실패해도 `--json` 오류 문서에 어느 에이전트가 어떤 상태인지 남는다
+    #[test]
+    fn a_failed_link_keeps_each_agents_state() {
+        crate::i18n::init("en");
+        let v = |states: &[&str]| json!({ "agents": states.iter().map(|st| json!({ "agent": "claude", "state": st })).collect::<Vec<_>>() });
+        assert!(outcome(true, v(&["linked", "not_installed"])).is_ok());
+        assert!(outcome(false, v(&["not_installed", "unlinked"])).is_ok());
+        for (link, states) in [
+            (true, ["linked", "failed"]),
+            (true, ["not_installed", "not_installed"]),
+            (false, ["unlinked", "failed"]),
+        ] {
+            let err = outcome(link, v(&states))
+                .unwrap_err()
+                .downcast::<crate::error::CliError>()
+                .unwrap();
+            assert_eq!(err.exit_code(), 1);
+            assert_eq!(err.to_json()["agents"], v(&states)["agents"], "{states:?}");
+        }
     }
 
     /// 고르지 않으면 둘 다, 하나만 고르면 그것만

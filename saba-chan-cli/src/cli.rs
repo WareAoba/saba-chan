@@ -852,7 +852,7 @@ pub struct AddArgs {
     #[arg(long = "accept", value_name = "ID")]
     pub accept: Vec<String>,
     /// Make a branch of this server: same game and a one-time copy of its settings, with its own folder, world and port
-    #[arg(long = "branch-of", value_name = "SERVER", conflicts_with_all = ["module", "from", "game_version", "dir", "unmanaged", "preset", "accept"])]
+    #[arg(long = "branch-of", value_name = "SERVER", conflicts_with_all = ["module", "from", "game_version", "dir", "unmanaged", "preset", "accept", "set"])]
     pub branch_of: Option<String>,
 }
 
@@ -1888,6 +1888,14 @@ mod tests {
         assert!(p(&["do", "--steps", steps]).is_ok());
         assert!(p(&["do", "--steps", steps, "--server", "survival"]).is_err());
         assert!(p(&["do", "--steps", steps, "-s", "survival"]).is_err());
+    }
+
+    /// 브랜치 서버는 상위 서버의 설정을 옮겨 만든다: 저장하지 않을 `--set`은 버리지 않고 거절한다
+    #[test]
+    fn a_branch_refuses_settings_it_would_drop() {
+        let p = |args: &[&str]| Cli::try_parse_from(std::iter::once("saba-chan-cli").chain(args.iter().copied()));
+        assert!(p(&["server", "add", "test", "--branch-of", "survival"]).is_ok());
+        assert!(p(&["server", "add", "test", "--branch-of", "survival", "--set", "max_players=4"]).is_err());
     }
 
     /// AI가 명령을 추측하지 않게 명령 트리·인자·종료 코드를 JSON으로 낸다
