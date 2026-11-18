@@ -456,30 +456,41 @@ async fn an_instance_needs_the_module_requirements_and_its_own() {
     assert_eq!(supervisor.effective_required_extensions(&inst), vec!["steamcmd".to_string(), "docker".to_string()]);
 }
 
+/// 서버로 띄울 Python 한 줄이 크래시로 끝나는 꼴: unix는 SIGSEGV, Windows는 접근 위반 종료 코드(0xC0000005)
+const CRASH_PY: &str = "import os, signal, sys; os._exit(-1073741819) if sys.platform == 'win32' else os.kill(os.getpid(), signal.SIGSEGV)";
+
+/// `get_launch_command`가 모듈을 돌리는 Python으로 `code`를 서버로 띄우는 모듈 (OS와 상관없이 같은 시험을 돌린다)
+fn python_server_module(modules: &std::path::Path, name: &str, extra: &str, code: &str) {
+    let dir = modules.join(name);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("module.toml"), format!("[module]\nschema_version = 1\nname = \"{name}\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n{extra}")).unwrap();
+    std::fs::write(dir.join("lifecycle.py"), format!(
+        "import json, sys\n\
+             if sys.argv[1] == 'get_launch_command':\n    \
+             print(json.dumps({{'success': True, 'program': sys.executable, 'args': ['-c', {code:?}], 'working_dir': '.'}}))\n\
+             else:\n    print(json.dumps({{'success': True}}))\n"
+    )).unwrap();
+    crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
+}
+
 /// 시작·정지마다 누가 시켰는지 `instance.started`·`instance.stopped`에 싣는다 (출처는 요청의 `audit::Origin`).
 /// 예기치 않은 것은 사바쨩이 띄우지 않은 프로세스의 시작(`unexpected`)과 크래시·강제 종료(`instance.exit`)뿐이다
-#[cfg(unix)]
 #[tokio::test]
 async fn starts_and_stops_say_who_asked() {
     use crate::audit::{with_origin, Origin};
     let tmp = tempfile::tempdir().unwrap();
     let modules = tmp.path().join("modules");
     let games = [
-        ("long", "", "sleep 30"),
-        ("quits", "[detection]\ngraceful_exit_patterns = [\"Stopping the server\"]\n", "sleep 0.3; echo Stopping the server; exit 0"),
-        ("boom", "", "sleep 0.3; kill -SEGV $$"),
+        ("long", "", "import time; time.sleep(30)".to_string()),
+        (
+            "quits",
+            "[detection]\ngraceful_exit_patterns = [\"Stopping the server\"]\n",
+            "import time; time.sleep(0.3); print('Stopping the server', flush=True)".to_string(),
+        ),
+        ("boom", "", format!("import time; time.sleep(0.3); {CRASH_PY}")),
     ];
-    for (name, extra, sh) in games {
-        let dir = modules.join(name);
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("module.toml"), format!("[module]\nschema_version = 1\nname = \"{name}\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n{extra}")).unwrap();
-        std::fs::write(dir.join("lifecycle.py"), format!(
-            "import json, sys\n\
-                 if sys.argv[1] == 'get_launch_command':\n    \
-                 print(json.dumps({{'success': True, 'program': '/bin/sh', 'args': ['-c', {sh:?}], 'working_dir': '.'}}))\n\
-                 else:\n    print(json.dumps({{'success': True}}))\n"
-        )).unwrap();
-        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
+    for (name, extra, code) in games {
+        python_server_module(&modules, name, extra, &code);
     }
     let mut sup = Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
     sup.initialize().await.unwrap();
@@ -590,23 +601,13 @@ async fn starts_and_stops_say_who_asked() {
 
 /// 관리형 시작을 끈 서버(데몬이 직접 띄운 non-managed)도 종료 코드로 가른다: 서버 창·게임 안에서 정상으로 끄면(코드 0)
 /// 알림함에 넣지 않는다 (사용자 규칙: 평범한 시작·정지는 알림함에 넣지 않는다). 크래시는 크래시다
-#[cfg(unix)]
 #[tokio::test]
 async fn a_non_managed_server_ended_in_game_is_a_plain_stop() {
     use crate::audit::{with_origin, Origin};
     let tmp = tempfile::tempdir().unwrap();
     let modules = tmp.path().join("modules");
-    for (name, sh) in [("quits", "sleep 0.5; exit 0"), ("boom", "sleep 0.5; kill -SEGV $$")] {
-        let dir = modules.join(name);
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("module.toml"), format!("[module]\nschema_version = 1\nname = \"{name}\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n")).unwrap();
-        std::fs::write(dir.join("lifecycle.py"), format!(
-            "import json, sys\n\
-                 if sys.argv[1] == 'get_launch_command':\n    \
-                 print(json.dumps({{'success': True, 'program': '/bin/sh', 'args': ['-c', {sh:?}], 'working_dir': '.'}}))\n\
-                 else:\n    print(json.dumps({{'success': True}}))\n"
-        )).unwrap();
-        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
+    for (name, code) in [("quits", "import time; time.sleep(0.5)".to_string()), ("boom", format!("import time; time.sleep(0.5); {CRASH_PY}"))] {
+        python_server_module(&modules, name, "", &code);
     }
     let mut sup = Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
     sup.initialize().await.unwrap();
