@@ -281,7 +281,8 @@
     "updated": "Extension mise à jour",
     "in_use": "Extension utilisée par un serveur en marche. Arrêtez le serveur, puis réessayez.",
     "needs_app_update": "Mise à jour de l'app nécessaire",
-    "settings_pc_only": "Les paramètres d'extension peuvent contenir des secrets : modifiables uniquement dans l'app Saba-chan sur le PC."
+    "settings_pc_only": "Les paramètres d'extension peuvent contenir des secrets : modifiables uniquement dans l'app Saba-chan sur le PC.",
+    "load_failed": "Échec du chargement de la liste des extensions."
   },
   "more": {
     "metrics": "État du PC",
@@ -311,7 +312,8 @@
     "remote_timeout": "Non terminé en 2 minutes : considéré comme un échec. Vérifiez le résultat sur le PC.",
     "still_working": "Non terminé en 2 minutes. Le PC est peut-être encore en train de traiter ; revérifiez dans un instant.",
     "remote_host_gone": "Connexion au PC perdue : échec de la requête",
-    "remote_busy": "Trop de requêtes. Réessayez dans un instant."
+    "remote_busy": "Trop de requêtes. Réessayez dans un instant.",
+    "connection_lost": "Connexion perdue : impossible de vérifier le résultat. Revérifiez dans un instant."
   },
   "port_check": {
     "button": "Vérifier la redirection de ports",

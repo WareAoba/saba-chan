@@ -448,6 +448,8 @@ function useGuildPermissions(api: WebApi, guildId: string) {
     const locale = i18n.language;
     const toast = useApp((s) => s.toast);
     const [perm, setPerm] = useState<PermData | null>(null);
+    // 권한을 읽지 못했다: 보일 것이 없으므로 로딩 대신 다시 읽기를 보인다
+    const [loadFailed, setLoadFailed] = useState(false);
     const [board, setBoard] = useState<CommandBoard | null>(null);
     const [members, setMembers] = useState<DiscordMember[] | null>(null);
     const [busy, setBusy] = useState(false);
@@ -458,6 +460,7 @@ function useGuildPermissions(api: WebApi, guildId: string) {
         const mine = ++seq.current;
         const [p, b] = await Promise.all([api.permissionsGet(guildId), api.permissionsCommands(guildId, locale)]);
         if (mine !== seq.current) return;
+        setLoadFailed(failed(p));
         if (failed(p)) toast(errorText(t, p), 'error');
         else setPerm(p);
         setBoard(failed(b) ? null : b);
@@ -465,6 +468,7 @@ function useGuildPermissions(api: WebApi, guildId: string) {
 
     useEffect(() => {
         setPerm(null);
+        setLoadFailed(false);
         setBoard(null);
         load();
     }, [load]);
@@ -482,6 +486,7 @@ function useGuildPermissions(api: WebApi, guildId: string) {
     }, [api, guildId, membersGen]);
     /** 권한과 멤버 목록을 다시 읽는다 (멤버 탭 새로고침) */
     const reload = () => {
+        setLoadFailed(false);
         load();
         setMembersGen((n) => n + 1);
     };
@@ -494,7 +499,7 @@ function useGuildPermissions(api: WebApi, guildId: string) {
         await load();
         setBusy(false);
     };
-    return { perm, board, members, busy, write, reload };
+    return { perm, loadFailed, board, members, busy, write, reload };
 }
 
 /** 멤버별 레벨 (앱 `PeopleView`와 같다): 레벨 칸마다 사람 칩. 윗줄은 기본 레벨 · 멤버 찾기 · 새로고침.
@@ -842,6 +847,13 @@ export function GuildPermissions({
         };
     }, [api, siblingKey]);
 
+    if (!data.perm && data.loadFailed)
+        return (
+            <div className="empty">
+                <p>{t('relay.load_failed')}</p>
+                <Button onClick={data.reload}>{t('relay.retry')}</Button>
+            </div>
+        );
     if (!data.perm || !data.members) return <Loading />;
     if (instance)
         return (

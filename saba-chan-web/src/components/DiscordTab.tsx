@@ -40,7 +40,8 @@ import type {
 type Relay = ReturnType<typeof createRelay>;
 
 /** 설정 화면이 읽는 서버 설정: 릴레이 값에, 이 PC 의 데몬이 더하는 asleep */
-type GuildSettings = Partial<RelayGuildSettings> & { asleep?: boolean };
+// loaded: 데몬만 싣는다. 처음 보는 서버를 릴레이에서 못 읽으면 false (기본값이라 그대로 저장하면 릴레이 값을 덮는다)
+type GuildSettings = Partial<RelayGuildSettings> & { asleep?: boolean; loaded?: boolean };
 
 /** 데몬을 거친 쓰기가 실패했을 때: 릴레이 답과 같은 자리에 데몬 본문을 싣는다 */
 interface DaemonFailure {
@@ -1348,22 +1349,26 @@ function RelayGuild({ relay, guild, here = false }: { relay: GuildStore; guild: 
     const manage = !!guild.can?.manage;
     // 연결이 끊겼거나 릴레이가 답하지 못했다 — 숨기지 않고 알리고 다시 읽게 한다
     const broken = [data.settings, data.chatbot, data.channels, data.moderation].some((x) => isFailed(x));
-    if (broken)
-        return (
-            <div className="empty">
-                <p>{t('relay.load_failed')}</p>
-                <Button onClick={reload}>{t('relay.retry')}</Button>
-            </div>
-        );
+    const failure = (
+        <div className="empty">
+            <p>{t('relay.load_failed')}</p>
+            <Button onClick={reload}>{t('relay.retry')}</Button>
+        </div>
+    );
+    if (broken) return failure;
     if (manage && !data.settings) return <Loading />;
+    // 릴레이에서 못 읽어 기본값만 받았다: 보이되 잠근다 (앱 봇 설정과 같다)
+    const unloaded = ready(data.settings) && data.settings.loaded === false;
+    const settingsProps = { ...props, busy: busy || unloaded };
     return (
         <div className="set-card-grid">
+            {unloaded && failure}
             {manage && ready(data.settings) && (
                 <>
-                    <BasicsSection {...props} settings={data.settings} />
-                    <SleepSection {...props} settings={data.settings} />
-                    <MusicSection {...props} settings={data.settings} />
-                    <ReadingSection {...props} settings={data.settings} />
+                    <BasicsSection {...settingsProps} settings={data.settings} />
+                    <SleepSection {...settingsProps} settings={data.settings} />
+                    <MusicSection {...settingsProps} settings={data.settings} />
+                    <ReadingSection {...settingsProps} settings={data.settings} />
                 </>
             )}
             {manage && ready(data.chatbot) && <TalkingSection {...props} chatbot={data.chatbot} />}
@@ -1378,14 +1383,17 @@ function RelayGuild({ relay, guild, here = false }: { relay: GuildStore; guild: 
     );
 }
 
+/** unsure: 이 PC 의 서버 목록을 못 받아, PC 가 붙은 서버가 이 PC 것인지 다른 PC 것인지 모른다 */
 function GuildChips({
     guilds,
     value,
     onChange,
+    unsure,
 }: {
     guilds: GuildEntry[];
     value: string | null;
     onChange: (id: string) => void;
+    unsure: boolean;
 }) {
     const { t } = useTranslation();
     return (
@@ -1404,7 +1412,15 @@ function GuildChips({
                         <span className="guild-chip-name">{g.name}</span>
                         {/* 넓은 화면 왼쪽 목록에서만 보이는 줄: 이 서버가 어디에 붙어 있는지 */}
                         <span className="guild-chip-sub">
-                            {t(g.here ? 'relay.guild_here' : g.hasPc ? 'relay.guild_other_pc' : 'relay.guild_no_pc')}
+                            {t(
+                                g.here
+                                    ? 'relay.guild_here'
+                                    : g.hasPc
+                                      ? unsure
+                                          ? 'relay.pc'
+                                          : 'relay.guild_other_pc'
+                                      : 'relay.guild_no_pc',
+                            )}
                         </span>
                     </span>
                     {(g.here || g.hasPc) && <span className="pill">{t('relay.pc')}</span>}
@@ -1421,6 +1437,8 @@ export function DiscordTab({ api, relay }: { api: WebApi; relay: Relay | null })
     const [guildId, setGuildId] = useState<string | null>(null);
     // 릴레이가 서버 목록을 주지 못했다 (끊김·5xx)
     const [relayFailed, setRelayFailed] = useState(false);
+    // 이 PC 의 서버 목록을 데몬에서 못 받았다: 어느 서버가 이 PC 것인지 모른다
+    const [nodesFailed, setNodesFailed] = useState(false);
     const [round, setRound] = useState(0);
 
     // biome-ignore lint/correctness/useExhaustiveDependencies: round 는 다시 읽기 신호다
@@ -1428,7 +1446,7 @@ export function DiscordTab({ api, relay }: { api: WebApi; relay: Relay | null })
         let alive = true;
         // 릴레이 세션이 없으면 이 PC 의 서버만 보인다
         Promise.all([
-            hostId ? api.relayListHostNodes(hostId, '').catch(() => []) : [],
+            hostId ? api.relayListHostNodes(hostId, '').catch(() => null) : [],
             relay ? relay.guilds() : null,
         ]).then(([nodes, res]) => {
             if (!alive) return;
@@ -1437,6 +1455,7 @@ export function DiscordTab({ api, relay }: { api: WebApi; relay: Relay | null })
                 res?.ok && Array.isArray(res.data) ? res.data : [],
             );
             setRelayFailed(!!res && !res.ok);
+            setNodesFailed(!Array.isArray(nodes));
             setGuilds(list);
             setGuildId((g) => (list.some((x) => x.id === g) ? g : (list[0]?.id ?? null)));
         });
@@ -1447,28 +1466,31 @@ export function DiscordTab({ api, relay }: { api: WebApi; relay: Relay | null })
 
     const guild = guilds?.find((g) => g.id === guildId);
     const here = useMemo(() => relay && hereStore(api, relay), [api, relay]);
+    const failure = (text: string) => (
+        <div className="empty">
+            <p>{text}</p>
+            <Button
+                onClick={() => {
+                    setGuilds(null);
+                    setRound((r) => r + 1);
+                }}
+            >
+                {t('relay.retry')}
+            </Button>
+        </div>
+    );
     return (
         <Section title={t('tabs.discord')}>
-            {relayFailed && (
-                <div className="empty">
-                    <p>{t('relay.guilds_failed')}</p>
-                    <Button
-                        onClick={() => {
-                            setGuilds(null);
-                            setRound((r) => r + 1);
-                        }}
-                    >
-                        {t('relay.retry')}
-                    </Button>
-                </div>
-            )}
+            {relayFailed && failure(t('relay.guilds_failed'))}
             {guilds === null ? (
                 <Loading />
             ) : guilds.length === 0 ? (
-                !relayFailed && <Empty>{t('relay.no_guilds')}</Empty>
+                !relayFailed && (nodesFailed ? failure(t('relay.load_failed')) : <Empty>{t('relay.no_guilds')}</Empty>)
             ) : (
                 <div className={guilds.length > 1 ? 'side-layout' : undefined}>
-                    {guilds.length > 1 && <GuildChips guilds={guilds} value={guildId} onChange={setGuildId} />}
+                    {guilds.length > 1 && (
+                        <GuildChips guilds={guilds} value={guildId} onChange={setGuildId} unsure={nodesFailed} />
+                    )}
                     <div className="side-main">
                         {guild?.here && relay && (guild.can?.manage || modAllowed(guild.can)) && (
                             <RelayGuild key={`here-${guild.id}`} relay={here as GuildStore} guild={guild} here />
@@ -1481,7 +1503,10 @@ export function DiscordTab({ api, relay }: { api: WebApi; relay: Relay | null })
                                 siblings={guilds.filter((x) => x.here && x.id !== guild.id).map((x) => x.id)}
                             />
                         )}
-                        {guild && !guild.here && guild.hasPc && <Empty>{t('relay.other_pc')}</Empty>}
+                        {guild &&
+                            !guild.here &&
+                            guild.hasPc &&
+                            (nodesFailed ? failure(t('relay.load_failed')) : <Empty>{t('relay.other_pc')}</Empty>)}
                         {guild && !guild.here && !guild.hasPc && <RelayGuild key={guild.id} relay={relay as GuildStore} guild={guild} />}
                     </div>
                 </div>

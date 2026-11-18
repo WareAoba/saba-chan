@@ -7,6 +7,7 @@ import { useData } from '../store';
 import type { PcEvent, WebApi } from '../types';
 import { Icon } from './icons';
 import { webScreen } from './ScreenLink';
+import { failed } from './ui';
 
 /** 이 이벤트가 오면 알림함이 바뀌었을 수 있다 (`notices.changed`, 그것을 보내지 않는 예전 데몬은 알림함에 넣는 계기 중 웹 세션에 오는 것, 01 §2.2 `/api/notices`) */
 const MAY_ADD = new Set([
@@ -73,11 +74,12 @@ export function NoticeBell({ api }: { api: WebApi }) {
         const list = (await load()) ?? notices;
         if (!list.some((n) => !n.read)) return;
         setNotices(list.map((n) => ({ ...n, read: true })));
-        api.noticesRead().catch(() => load());
+        // 브리지는 실패해도 던지지 않고 실패 본문을 돌려준다: 데몬 목록으로 되돌린다
+        if (failed(await api.noticesRead().catch(() => null))) load();
     };
-    const clear = () => {
+    const clear = async () => {
         setNotices([]);
-        api.noticesClear().catch(() => load());
+        if (failed(await api.noticesClear().catch(() => null))) load();
     };
     const groups = groupNotices(notices, (id) => servers.find((s) => s.id === id)?.name);
     const title = tg('notice_modal.title');

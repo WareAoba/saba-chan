@@ -32,4 +32,24 @@ describe('웹 모듈 목록', () => {
         expect(moduleList).toHaveBeenCalledTimes(2);
         unmount();
     });
+
+    it('다시 읽기 신호(resync)가 오면 모듈 목록도 다시 받는다', async () => {
+        let emit: (e: { type: string; data: object }) => void = () => {};
+        const moduleList = vi.fn().mockResolvedValue({ modules: [{ name: 'game' }] });
+        const api = mockApi({
+            serverList: vi.fn().mockResolvedValue({ servers: [] }),
+            moduleList,
+            moduleGetLocales: vi.fn().mockResolvedValue({}),
+            onDaemonEvent: (cb: typeof emit) => {
+                emit = cb;
+                return () => {};
+            },
+        });
+        const { unmount } = renderHook(() => useLiveData(api, true));
+        await act(async () => {});
+        expect(moduleList).toHaveBeenCalledTimes(1);
+        await act(async () => emit({ type: 'resync', data: {} }));
+        expect(moduleList).toHaveBeenCalledTimes(2);
+        unmount();
+    });
 });

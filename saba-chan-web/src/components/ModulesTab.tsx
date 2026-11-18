@@ -253,7 +253,8 @@ function PluginIcon({ api, ext }: { api: WebApi; ext: ExtensionListItem }) {
 function Plugins({ api }: { api: WebApi }) {
     const { t, i18n } = useTranslation();
     const toast = useApp((s) => s.toast);
-    const [list, setList] = useState<ExtensionListItem[] | null>(null);
+    // false: 설치된 목록을 읽지 못했다 (빈 목록으로 보이면 지워진 것으로 오해한다)
+    const [list, setList] = useState<ExtensionListItem[] | false | null>(null);
     const [catalog, setCatalog] = useState<CatalogExtension[] | CatalogFailure | null>(null);
     const [updates, setUpdates] = useState<ExtensionUpdate[]>([]);
     const [busy, setBusy] = useState<string | null>(null);
@@ -264,7 +265,7 @@ function Plugins({ api }: { api: WebApi }) {
             api.extensionFetchManifest(),
             api.extensionCheckUpdates(),
         ]);
-        setList(Array.isArray(mine?.extensions) ? mine.extensions : []);
+        setList(Array.isArray(mine?.extensions) ? mine.extensions : false);
         setCatalog(Array.isArray(store?.extensions) ? store.extensions : { error: t('modules.catalog_failed') });
         setUpdates(Array.isArray(news?.updates) ? news.updates : []);
     }, [api, t]);
@@ -294,6 +295,20 @@ function Plugins({ api }: { api: WebApi }) {
     };
 
     if (list === null) return <Loading />;
+    if (list === false)
+        return (
+            <div className="empty">
+                <p>{t('plugins.load_failed')}</p>
+                <Button
+                    onClick={() => {
+                        setList(null);
+                        load();
+                    }}
+                >
+                    {t('relay.retry')}
+                </Button>
+            </div>
+        );
     const installed = new Set(list.map((e) => e.id));
     const available = Array.isArray(catalog) ? catalog.filter((e) => !installed.has(e.id)) : [];
     const updateOf = new Map(updates.map((u) => [u.id, u]));

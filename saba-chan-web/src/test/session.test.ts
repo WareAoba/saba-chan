@@ -142,6 +142,17 @@ describe('web session', () => {
         expect(latest().last('resume')).toEqual({ t: 'resume', sid: 's1', key: 'k2' });
     });
 
+    it('coming back after a drop asks the screens to read again once', () => {
+        const { events } = open();
+        ready(latest());
+        expect(events).toEqual([]);
+        latest().drop();
+        vi.advanceTimersByTime(1000);
+        latest().open();
+        ready(latest());
+        expect(events).toEqual([{ type: 'resync', data: {} }]);
+    });
+
     it('stops trying after the reconnect window', () => {
         const { state } = open();
         ready(latest());

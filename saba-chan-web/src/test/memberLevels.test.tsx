@@ -13,15 +13,12 @@ const many = Array.from({ length: 14 }, (_, i) => ({
     displayName: `Bot ${String(i).padStart(2, '0')}`,
 }));
 
-function setup() {
+const PERM = { guildId: 'g1', defaultLevel: 1, ownerDiscordId: '1', members: { 3: 2 } };
+
+function setup(permissionsGet = vi.fn().mockResolvedValue(PERM)) {
     const api = new Proxy(
         {
-            permissionsGet: vi.fn().mockResolvedValue({
-                guildId: 'g1',
-                defaultLevel: 1,
-                ownerDiscordId: '1',
-                members: { 3: 2 },
-            }),
+            permissionsGet,
             permissionsCommands: vi.fn().mockResolvedValue({ instances: [], items: [] }),
             relayListNodeMembers: vi.fn().mockResolvedValue({
                 members: [
@@ -109,5 +106,21 @@ describe('웹 멤버 탭', () => {
         fireEvent.click(screen.getByRole('option', { name: 'Cedar' }));
         await flush();
         expect(api.permissionsSetMember).toHaveBeenCalledWith('g1', '3', 0);
+    });
+
+    it('권한을 못 읽으면 로딩에 멈추지 않고 읽기 실패와 다시 시도를 보인다', async () => {
+        const permissionsGet = vi
+            .fn()
+            .mockResolvedValueOnce({ error: 'timeout', error_code: 'ETIMEDOUT' })
+            .mockResolvedValue(PERM);
+        setup(permissionsGet);
+        await flush();
+        await flush();
+        expect(screen.getByText('Failed to load settings. Check the connection and reload.')).toBeTruthy();
+        fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+        await flush();
+        await flush();
+        expect(permissionsGet).toHaveBeenCalledTimes(2);
+        expect(screen.getByRole('tab', { name: 'Member levels' })).toBeTruthy();
     });
 });

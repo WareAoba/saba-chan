@@ -2,7 +2,7 @@ import { formatBytes } from '@gui/components/monitor/systemMetrics';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { type ToastTone, useApp } from '../store';
-import { Button, Empty, failed, Loading, maintenanceError, Section, timedOut } from './ui';
+import { Button, Empty, failed, Loading, maintenanceError, Section, unsureText } from './ui';
 import type { ApiBody, Server, WebApi } from '../types';
 
 /** 백업 한 개 (GET /api/instance/:id/backups) */
@@ -39,8 +39,9 @@ export function BackupsPanel({ api, server, running }: { api: WebApi; server: Pi
         setBusy(true);
         const res = await fn();
         setBusy(false);
-        if (timedOut(res)) {
-            toast(t('errors.still_working'), 'info');
+        const unsure = unsureText(t, res);
+        if (unsure) {
+            toast(unsure, 'info');
             return load();
         }
         if (failed(res)) return toast(maintenanceError(t, tg, res), 'error');

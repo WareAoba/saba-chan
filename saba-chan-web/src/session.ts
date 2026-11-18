@@ -109,13 +109,17 @@ export function createSession({
                 return;
             }
             switch (frame.t) {
-                case 'ready':
+                case 'ready': {
+                    // 끊긴 동안 릴레이는 이 세션의 이벤트를 버린다: 다시 붙으면 화면이 한 번 다시 읽게 한다
+                    const resumed = lostAt > 0;
                     sid = frame.sid;
                     key = frame.key;
                     lostAt = 0;
                     canStream = Array.isArray(frame.features) && frame.features.includes('stream');
                     set({ phase: 'ready', expiresAt: frame.expiresAt, hostId: frame.hostId ?? state.hostId });
+                    if (resumed) onEvent?.({ type: 'resync', data: {} });
                     break;
+                }
                 case 'chunk':
                     // 빈 조각은 PC가 스트림을 붙잡고 있다는 keep-alive다
                     if (frame.body != null) streams.get(frame.id)?.onChunk(frame.body);

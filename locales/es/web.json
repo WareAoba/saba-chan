@@ -281,7 +281,8 @@
     "updated": "Extensión actualizada",
     "in_use": "Un servidor en ejecución usa esta extensión. Detén el servidor y vuelve a intentarlo.",
     "needs_app_update": "Hay que actualizar la app",
-    "settings_pc_only": "Los ajustes de la extensión pueden contener secretos, así que solo se cambian en la app Saba-chan del PC."
+    "settings_pc_only": "Los ajustes de la extensión pueden contener secretos, así que solo se cambian en la app Saba-chan del PC.",
+    "load_failed": "Error al cargar la lista de extensiones."
   },
   "more": {
     "metrics": "Estado del PC",
@@ -311,7 +312,8 @@
     "remote_timeout": "No terminó en 2 minutos; tratada como fallida. Comprueba el resultado en el PC.",
     "still_working": "No terminó en 2 minutos. Puede que el PC siga trabajando; vuelve a comprobarlo en un momento.",
     "remote_host_gone": "Solicitud fallida: conexión con el PC perdida",
-    "remote_busy": "Demasiadas solicitudes. Inténtalo de nuevo en un momento."
+    "remote_busy": "Demasiadas solicitudes. Inténtalo de nuevo en un momento.",
+    "connection_lost": "Se perdió la conexión; no se pudo confirmar el resultado. Vuelve a comprobarlo en un momento."
   },
   "port_check": {
     "button": "Comprobar reenvío de puertos",

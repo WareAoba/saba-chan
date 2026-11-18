@@ -281,7 +281,8 @@
     "updated": "Erweiterung aktualisiert",
     "in_use": "Ein laufender Server nutzt diese Erweiterung. Server stoppen und erneut versuchen.",
     "needs_app_update": "App-Update nötig",
-    "settings_pc_only": "Erweiterungseinstellungen können Geheimnisse enthalten und sind nur in der Saba-chan-App auf dem PC änderbar."
+    "settings_pc_only": "Erweiterungseinstellungen können Geheimnisse enthalten und sind nur in der Saba-chan-App auf dem PC änderbar.",
+    "load_failed": "Erweiterungsliste nicht ladbar."
   },
   "more": {
     "metrics": "PC-Status",
@@ -311,7 +312,8 @@
     "remote_timeout": "Nach 2 Minuten nicht abgeschlossen, als fehlgeschlagen gewertet. Ergebnis am PC prüfen.",
     "still_working": "Nach 2 Minuten nicht abgeschlossen. Der PC arbeitet evtl. noch daran, gleich erneut prüfen.",
     "remote_host_gone": "PC-Verbindung getrennt, Anfrage fehlgeschlagen",
-    "remote_busy": "Zu viele Anfragen. Gleich erneut versuchen."
+    "remote_busy": "Zu viele Anfragen. Gleich erneut versuchen.",
+    "connection_lost": "Verbindung getrennt, Ergebnis unbekannt. Gleich erneut prüfen."
   },
   "port_check": {
     "button": "Portweiterleitung prüfen",

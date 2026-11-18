@@ -2,7 +2,7 @@ import { controlOutcome } from '@gui/utils/serverControl';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useApp } from '../store';
-import { errorText, failed, refusalText, timedOut } from './ui';
+import { errorText, failed, refusalText, unsureText } from './ui';
 import type { ApiBody, Server, WebApi } from '../types';
 
 /** 켜기·끄기·다시 켜기·지우기. 확인 창과 약관 동의는 GUI 와 같다 */
@@ -58,7 +58,8 @@ export function useServerControl(api: WebApi) {
                 return toast(t('servers.already_running', { name: server.name }), 'info');
             }
             if (outcome.kind === 'cancelled') return toast(t('errors.start_cancelled'), 'info');
-            if (timedOut(res)) return toast(t('errors.still_working'), 'info');
+            const unsure = unsureText(t, res);
+            if (unsure) return toast(unsure, 'info');
             if (failed(res)) return toast(refusalText(t, res), 'error');
             toast(t('servers.started', { name: server.name }), 'ok');
         });
@@ -73,7 +74,8 @@ export function useServerControl(api: WebApi) {
             });
             if (!ok) return;
             const res = await api.instanceStop(server.id);
-            if (timedOut(res)) return toast(t('errors.still_working'), 'info');
+            const unsure = unsureText(t, res);
+            if (unsure) return toast(unsure, 'info');
             if (failed(res)) return toast(errorText(t, res), 'error');
             toast(t('servers.stopped', { name: server.name }), 'ok');
         });
@@ -88,7 +90,8 @@ export function useServerControl(api: WebApi) {
             });
             if (!ok) return;
             const res = await api.instanceRestart(server.id);
-            if (timedOut(res)) return toast(t('errors.still_working'), 'info');
+            const unsure = unsureText(t, res);
+            if (unsure) return toast(unsure, 'info');
             tellMovedPorts(server, res);
             const outcome = controlOutcome(res);
             // 그사이 다른 곳에서 정지·시작·삭제했다: 실패가 아니라 그만둔 것 (문구는 앱 errors.restart_cancelled)
@@ -109,7 +112,8 @@ export function useServerControl(api: WebApi) {
             if (!ok) return false;
             const res = await api.instanceDelete(server.id);
             if (failed(res)) {
-                toast(timedOut(res) ? t('errors.still_working') : errorText(t, res), timedOut(res) ? 'info' : 'error');
+                const unsure = unsureText(t, res);
+                toast(unsure ?? errorText(t, res), unsure ? 'info' : 'error');
                 return false;
             }
             toast(t('servers.deleted', { name: server.name }), 'ok');
