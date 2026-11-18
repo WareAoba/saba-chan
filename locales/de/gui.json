@@ -2850,6 +2850,8 @@
     "finish": "Fertig",
     "pick_guild": "Wähle den Discord-Server für diese Anleitung.",
     "pick_wait": "Geht nach der Auswahl weiter",
+    "pick_server": "Wähle den Spielserver für diese Anleitung.",
+    "wait_action": "Geht weiter, sobald du es tust",
     "go": "Öffnen"
   },
   "public_address": {

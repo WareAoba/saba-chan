@@ -4,6 +4,7 @@ import { GuideCard } from '../components/guides/GuideCard';
 import { type GuideItem, pendingGuides, startGuide, useGuideStore } from '../components/guides/guides';
 import { Spotlight } from '../components/guides/Spotlight';
 import { useDiscordStore } from '../stores/useDiscordStore';
+import { useServerStore } from '../stores/useServerStore';
 import { useUIStore } from '../stores/useUIStore';
 
 const guide = (id: string, over: Partial<GuideItem> = {}): GuideItem => ({
@@ -110,6 +111,22 @@ describe('화면 강조', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Done' }));
         expect(useGuideStore.getState().active).toBeNull();
         expect(window.api.guideUpdate).toHaveBeenCalledWith('b', { finished: true, step: 0 });
+        target.remove();
+    });
+
+    it('자리가 화면보다 길어 위아래에 자리가 없어도 말풍선은 화면 안에 둔다', async () => {
+        const target = document.createElement('div');
+        target.dataset.spot = 'here';
+        // 위로 스크롤돼 윗부분이 화면 밖, 아래도 화면 끝까지 차는 긴 목록
+        target.getBoundingClientRect = () =>
+            ({ left: 100, top: -400, width: 400, height: window.innerHeight + 800 }) as DOMRect;
+        document.body.appendChild(target);
+        render(<Spotlight />);
+        act(() => startGuide('b'));
+        await act(async () => {});
+        const bubble = document.querySelector<HTMLElement>('.spotlight-bubble');
+        expect(bubble?.style.bottom).toBe('12px');
+        expect(bubble?.style.top).toBe('');
         target.remove();
     });
 
@@ -268,5 +285,154 @@ describe('디스코드 서버가 여럿일 때 화면 강조', () => {
         });
         await act(async () => {});
         expect(screen.getByText('members tab')).toBeInTheDocument();
+    });
+});
+
+describe('게임 서버가 여럿일 때 화면 강조', () => {
+    const srv = (id: string) => ({ id, name: id, module: 'minecraft', status: 'stopped' }) as never;
+    let list: HTMLElement;
+    beforeEach(() => {
+        window.api = {
+            guideUpdate: vi.fn().mockResolvedValue({ ok: true }),
+            guides: vi.fn().mockResolvedValue({ guides: [] }),
+        } as unknown as typeof window.api;
+        useUIStore.getState()._resetForTest();
+        useServerStore.setState({ servers: [srv('s1'), srv('s2')] });
+        useUIStore.getState().setActiveServerId('s1');
+        useGuideStore.setState({
+            guides: [
+                guide('bk', {
+                    steps: [
+                        { go: 'server/:first/maintenance', text: 'backup tab' },
+                        { go: 'server/:first/console', text: 'console tab' },
+                    ],
+                }),
+            ],
+            active: null,
+        });
+        list = document.createElement('div');
+        list.dataset.spot = 'servers.list';
+        document.body.appendChild(list);
+    });
+    afterEach(() => {
+        list.remove();
+        useServerStore.setState({ servers: [] });
+    });
+
+    it('서버 목록을 짚고 고를 때까지 기다린다 (지금 고른 서버로 몰래 가지 않는다)', async () => {
+        render(<Spotlight />);
+        act(() => startGuide('bk'));
+        await act(async () => {});
+        expect(useUIStore.getState().activeTab).toBe('servers');
+        expect(useUIStore.getState().activeServerId).toBeNull();
+        expect(screen.getByText('Pick the game server to follow this guide in.')).toBeInTheDocument();
+        expect(document.querySelector('.spotlight-hole')).not.toBeNull();
+        expect(screen.queryByRole('button', { name: 'Next' })).toBeNull();
+    });
+
+    it('고른 서버를 그 가이드 끝까지 쓴다', async () => {
+        render(<Spotlight />);
+        act(() => startGuide('bk'));
+        await act(async () => {});
+        act(() => useUIStore.getState().setActiveServerId('s2'));
+        await act(async () => {});
+        expect(useUIStore.getState()).toMatchObject({ activeServerId: 's2', requestedServerTab: 'maintenance' });
+        // 가이드 밖에서 다른 서버를 봐도 다음 단계는 고른 서버로
+        act(() => useUIStore.getState().setActiveServerId('s1'));
+        await act(async () => {});
+        fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+        await act(async () => {});
+        expect(screen.getByText('console tab')).toBeInTheDocument();
+        expect(useUIStore.getState()).toMatchObject({ activeServerId: 's2', requestedServerTab: 'console' });
+    });
+
+    it('서버가 하나면 고르기 없이 바로 그 서버', async () => {
+        useServerStore.setState({ servers: [srv('s1')] });
+        render(<Spotlight />);
+        act(() => startGuide('bk'));
+        await act(async () => {});
+        expect(useUIStore.getState()).toMatchObject({ activeServerId: 's1', requestedServerTab: 'maintenance' });
+    });
+});
+
+describe('해야 다음 자리가 생기는 단계', () => {
+    const els: HTMLElement[] = [];
+    const add = (spot: string) => {
+        const el = document.createElement('button');
+        el.dataset.spot = spot;
+        document.body.appendChild(el);
+        els.push(el);
+        return el;
+    };
+    beforeEach(() => {
+        window.api = {
+            guideUpdate: vi.fn().mockResolvedValue({ ok: true }),
+            guides: vi.fn().mockResolvedValue({ guides: [] }),
+        } as unknown as typeof window.api;
+        useUIStore.getState()._resetForTest();
+        useGuideStore.setState({
+            guides: [
+                guide('sc', {
+                    steps: [
+                        { spot: 'add', wait: true, text: 'press add' },
+                        { spot: 'task', text: 'the task' },
+                    ],
+                }),
+                guide('cl', { steps: [{ spot: 'cli|form', text: 'change something' }, { text: 'end' }] }),
+            ],
+            active: null,
+        });
+    });
+    afterEach(() => {
+        for (const el of els.splice(0)) el.remove();
+    });
+
+    it('wait 단계는 다음 단계 자리가 아직 없으면 "다음" 대신 안내를 보이고, 생기면 저절로 넘어간다', async () => {
+        add('add');
+        render(<Spotlight />);
+        act(() => startGuide('sc'));
+        await act(async () => {});
+        expect(screen.getByText('press add')).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Next' })).toBeNull();
+        expect(screen.getByText('Continues once you do it')).toBeInTheDocument();
+        act(() => {
+            add('task');
+        });
+        await waitFor(() => expect(screen.getByText('the task')).toBeInTheDocument());
+        expect(useGuideStore.getState().active).toMatchObject({ id: 'sc', step: 1 });
+    });
+
+    it('wait가 없는 단계는 다음 자리가 없어도 "다음" (없을 수도 있는 자리에서 막히지 않게)', async () => {
+        add('add');
+        useGuideStore.setState((s) => ({
+            guides: s.guides?.map((g) => (g.id === 'sc' ? { ...g, steps: g.steps.map(({ wait, ...st }) => st) } : g)) ?? null,
+        }));
+        render(<Spotlight />);
+        act(() => startGuide('sc'));
+        await act(async () => {});
+        expect(screen.getByRole('button', { name: 'Next' })).toBeInTheDocument();
+    });
+
+    it('다음 단계 자리가 이미 있으면 지금처럼 "다음"', async () => {
+        add('add');
+        add('task');
+        render(<Spotlight />);
+        act(() => startGuide('sc'));
+        await act(async () => {});
+        expect(screen.getByRole('button', { name: 'Next' })).toBeInTheDocument();
+    });
+
+    it('짚을 자리를 a|b로 주면 a가 생길 때까지 b를 짚고 기다린다', async () => {
+        const form = add('form');
+        render(<Spotlight />);
+        act(() => startGuide('cl'));
+        await act(async () => {});
+        expect(document.querySelector('.spotlight-hole')).not.toBeNull();
+        expect(screen.queryByRole('button', { name: 'Next' })).toBeNull();
+        act(() => {
+            add('cli');
+            form.remove();
+        });
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Next' })).toBeInTheDocument());
     });
 });

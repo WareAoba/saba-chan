@@ -10,6 +10,7 @@ spot = "server.tab.maintenance"
 
 [[steps]]
 spot = "backup.create"
+wait = true
 
 [[steps]]
 spot = "backup.restore"

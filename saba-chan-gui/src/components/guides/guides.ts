@@ -33,6 +33,8 @@ export interface GuideStepView {
     action?: string;
     /** 짚을 자리: 화면 요소의 `data-spot` */
     spot?: string;
+    /** 사용자가 해야 다음 단계 자리가 생기는 단계: 생길 때까지 기다렸다가 넘어간다 */
+    wait?: boolean;
     text: string;
 }
 export interface GuideItem {
@@ -73,7 +75,9 @@ interface GuideState {
     /** 데몬 가이드 목록 (못 받았으면 null) */
     guides: GuideItem[] | null;
     /** 화면 강조 중인 가이드와 단계. pick이면 그 단계를 보이기 전에 사용자가 고를 것 */
-    active: { id: string; step: number; pick?: 'guild' } | null;
+    active: { id: string; step: number; pick?: 'guild' | 'server' } | null;
+    /** 이번에 연 가이드에서 고른 게임 서버 (`:first`가 끝까지 이 서버를 쓴다) */
+    pickedServer: string | null;
     setStep: (step: GuideStep | null, after?: AddServerMode | null) => void;
     takeAddServerMode: () => AddServerMode | null;
     refreshOnboarding: () => Promise<void>;
@@ -88,6 +92,7 @@ export const useGuideStore = create<GuideState>()((set, get) => ({
     coachDismissed: false,
     guides: null,
     active: null,
+    pickedServer: null,
     setStep: (step, after = null) => set({ step, after }),
     takeAddServerMode: () => {
         const mode = get().addServerMode;
@@ -160,12 +165,13 @@ export const GUIDE_ACTIONS: Record<string, { run: () => void; handoff?: boolean 
     'page.activity': { run: () => useUIStore.getState().setActiveTab('activity') },
 };
 
-/** 단계의 화면 주소에서 `:first`를 고른 서버(없으면 첫 서버)로 바꾼다. 서버가 없으면 null */
+/** 단계의 화면 주소에서 `:first`를 가이드에서 고른 서버(없으면 연 서버, 그것도 없으면 첫 서버)로 바꾼다. 서버가 없으면 null */
 export function resolveAddress(go: string): string | null {
     if (!go.includes(':first')) return go;
     const servers = useServerStore.getState().servers;
-    const picked = useUIStore.getState().activeServerId;
-    const id = servers.find((s) => s.id === picked)?.id ?? servers[0]?.id;
+    const has = (id: string | null) => servers.find((s) => s.id === id)?.id;
+    const id =
+        has(useGuideStore.getState().pickedServer) ?? has(useUIStore.getState().activeServerId) ?? servers[0]?.id;
     return id ? go.replace(':first', id) : null;
 }
 
@@ -177,6 +183,7 @@ function report(id: string, body: { opened?: boolean; step?: number; finished?: 
 export function startGuide(id: string) {
     const guide = useGuideStore.getState().guides?.find((g) => g.id === id);
     if (!guide) return;
+    useGuideStore.setState({ pickedServer: null });
     if (guide.new) {
         useGuideStore.setState((s) => ({ guides: s.guides?.map((g) => (g.id === id ? { ...g, new: false } : g)) ?? null }));
         report(id, { opened: true });
@@ -189,8 +196,8 @@ export function guideAction(name: string | undefined) {
     return name && Object.hasOwn(GUIDE_ACTIONS, name) ? GUIDE_ACTIONS[name] : undefined;
 }
 
-/** 고르기 단계에서 짚는 디스코드 서버 목록 (DiscordPage) */
-export const PICK_GUILD_SPOT = 'discord.nodes';
+/** 고르기 단계에서 짚는 목록: 디스코드 서버(DiscordPage), 게임 서버(ServersPage) */
+export const PICK_SPOTS = { guild: 'discord.nodes', server: 'servers.list' } as const;
 
 /** `discord/*` 화면인데 연 디스코드 서버가 없고 연결된 서버가 여럿이면, 어느 서버인지 사용자가 먼저 고른다 */
 function needsGuildPick(go: string): boolean {
@@ -201,15 +208,30 @@ function needsGuildPick(go: string): boolean {
     return nodes.length > 1 && !nodes.some((n) => n.guildId === open);
 }
 
+/** `:first` 화면인데 게임 서버가 여럿이고 이번 가이드에서 아직 고르지 않았으면, 사용자가 먼저 고른다 */
+function needsServerPick(go: string): boolean {
+    if (!go.includes(':first')) return false;
+    const servers = useServerStore.getState().servers;
+    const picked = useGuideStore.getState().pickedServer;
+    return servers.length > 1 && !servers.some((s) => s.id === picked);
+}
+
 /** 단계로 간다: 화면을 열고 앱이 할 일을 한다 (화면을 넘겨받는 일은 advanceGuide에서) */
 export function goToStep(id: string, step: number) {
     const guide = useGuideStore.getState().guides?.find((g) => g.id === id);
     const s = guide?.steps[step];
     if (!guide || !s) return;
+    // 고르면(openDiscordNodeId·activeServerId) Spotlight가 이 단계를 다시 부른다
     if (s.go && needsGuildPick(s.go)) {
-        // 고르면(openDiscordNodeId) Spotlight가 이 단계를 다시 부른다
         useUIStore.getState().setActiveTab('discord');
         useGuideStore.setState({ active: { id, step, pick: 'guild' } });
+        return;
+    }
+    if (s.go && needsServerPick(s.go)) {
+        // 비워 둬야 지금 연 서버를 다시 눌러도 고른 것으로 안다 (ServersPage는 고르는 동안 첫 서버로 채우지 않는다)
+        useUIStore.getState().setActiveTab('servers');
+        useUIStore.getState().setActiveServerId(null);
+        useGuideStore.setState({ active: { id, step, pick: 'server' } });
         return;
     }
     const address = s.go ? resolveAddress(s.go) : null;

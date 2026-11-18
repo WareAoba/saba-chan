@@ -2850,6 +2850,8 @@
     "finish": "Done",
     "pick_guild": "Pick the Discord server to follow this guide in.",
     "pick_wait": "Continues once you pick",
+    "pick_server": "Pick the game server to follow this guide in.",
+    "wait_action": "Continues once you do it",
     "go": "Open"
   },
   "public_address": {

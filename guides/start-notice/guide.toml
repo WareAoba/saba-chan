@@ -9,3 +9,4 @@ spot = "discord.start_notice"
 
 [[steps]]
 go = "discord/*/moderation/channels"
+spot = "mod.split"

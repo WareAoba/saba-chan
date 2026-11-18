@@ -102,3 +102,27 @@ describe('처음 시작하기 가이드', () => {
         expect(screen.queryByRole('button', { name: 'Later' })).toBeNull();
     });
 });
+
+describe('가이드가 게임 서버를 고르게 할 때', () => {
+    it('검색어를 비워 모든 서버를 고를 수 있게 하고, 빈 선택을 첫 서버로 채우지 않는다', async () => {
+        window.api = {
+            onboarding: vi.fn().mockResolvedValue({ steps: [], next: null }),
+            guides: vi.fn().mockResolvedValue({ guides: [] }),
+        } as unknown as typeof window.api;
+        useUIStore.getState()._resetForTest();
+        useSettingsStore.setState({ settingsReady: true, closedGuides: [] });
+        const servers = Array.from({ length: 6 }, (_, i) => ({ id: `s${i}`, name: `srv${i}`, module: 'minecraft', status: 'stopped' }));
+        await act(async () =>
+            render(<ServersPage servers={servers} modules={[]} onAddServer={vi.fn()} drag={{ cardRefs: { current: {} } }} />),
+        );
+        fireEvent.change(screen.getByPlaceholderText('Find a server'), { target: { value: 'srv5' } });
+        expect(screen.getAllByRole('option')).toHaveLength(1);
+        await act(async () => {
+            useUIStore.getState().setActiveServerId(null);
+            useGuideStore.setState({ active: { id: 'g', step: 0, pick: 'server' } });
+        });
+        expect(screen.getAllByRole('option')).toHaveLength(6);
+        expect(useUIStore.getState().activeServerId).toBeNull();
+        useGuideStore.setState({ active: null });
+    });
+});
