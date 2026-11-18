@@ -16,10 +16,10 @@ _spec.loader.exec_module(versions)
 class ReleaseChannel(unittest.TestCase):
     """정식(stable)·미리보기(rc)·베타(beta)만 발행하고, 정식에는 프리릴리스 번호를 쓰지 않는다"""
 
-    def load(self, version, channel):
+    def load(self, version, channel, components=""):
         with tempfile.TemporaryDirectory() as d:
             src = Path(d) / "versions.toml"
-            src.write_text(f'[release]\nversion = "{version}"\nchannel = "{channel}"\n', encoding="utf-8")
+            src.write_text(f'[release]\nversion = "{version}"\nchannel = "{channel}"\n{components}', encoding="utf-8")
             old, versions.SOURCE = versions.SOURCE, src
             try:
                 return versions.load()
@@ -38,6 +38,13 @@ class ReleaseChannel(unittest.TestCase):
     def test_a_prerelease_number_on_stable_is_refused(self):
         with self.assertRaises(SystemExit):
             self.load("0.1.11-beta.1", "stable")
+
+    def test_a_stable_release_carries_no_prerelease_component(self):
+        # 컴포넌트 하나를 베타 번호로 남기면 정식 manifest에 그 파일이 실린다
+        with self.assertRaises(SystemExit):
+            self.load("0.1.14", "stable", '[components.cli]\nversion = "0.1.14-beta.4"\n')
+        self.load("0.1.14", "stable", '[components.cli]\nversion = "0.1.13"\n')
+        self.load("0.1.14-beta.4", "beta", '[components.cli]\nversion = "0.1.14-beta.4"\n')
 
 
 if __name__ == "__main__":

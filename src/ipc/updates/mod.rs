@@ -59,7 +59,7 @@ mod repair;
 mod tests;
 
 pub use addons::spawn_deferred_apply;
-pub(crate) use addons::hand_modified;
+pub(crate) use addons::{hand_modified, servers_using};
 use addons::{get_addon_versions, is_addon, pin_addon, spawn_addon_replace, unpin_addon};
 use apply::{
     RELEASE_RECHECK, apply_updates, download_components, get_daemon_update, install_updates, put_daemon_update,

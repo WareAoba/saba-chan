@@ -226,7 +226,8 @@ fn server_rows(v: &Value) -> Vec<[String; 4]> {
         };
         let servers = d.get("servers").and_then(Value::as_array).cloned().unwrap_or_default();
         if d.get("ok").and_then(Value::as_bool) != Some(true) {
-            let why = t!(&format!("remote.connect_error.{}", s(d, "error_code")));
+            let code = s(d, "error_code");
+            let why = crate::error::api_hint(code, d).unwrap_or_else(|| t!("remote.connect_error.other", code = code));
             rows.push([daemon, "-".into(), String::new(), why]);
         } else if servers.is_empty() {
             rows.push([daemon, "-".into(), String::new(), t!("remote.no_servers")]);
@@ -353,11 +354,19 @@ mod tests {
             { "hostId": null, "name": "", "ok": true, "servers": [{ "id": "a", "name": "test-pal", "module": "palworld", "status": "running" }] },
             { "hostId": "host-b", "name": "게임 PC", "label": "김마무(게임 PC)", "ok": true, "servers": [] },
             { "hostId": "host-c", "name": "", "ok": false, "error_code": "remote_unreachable", "servers": [] },
+            { "hostId": "host-d", "name": "", "ok": false, "error_code": "remote_busy", "servers": [] },
+            { "hostId": "host-e", "name": "", "ok": false, "error_code": "remote_new_reason", "servers": [] },
+            { "hostId": "host-f", "name": "", "ok": false, "error_code": "remote_too_old", "min_version": "0.1.14", "servers": [] },
         ] });
         let rows = server_rows(&v);
         assert_eq!(rows[0], [t!("remote.this_pc"), "test-pal".into(), "palworld".into(), state_label("running")]);
         assert_eq!(rows[1], ["김마무(게임 PC)".to_string(), "-".into(), String::new(), t!("remote.no_servers")]);
         assert_eq!(rows[2], ["host-c".to_string(), "-".into(), String::new(), t!("remote.connect_error.remote_unreachable")]);
+        // 원격 데몬이 준 다른 코드도 번역 키 대신 문구로: 아는 코드는 그 안내, 모르는 코드는 코드를 붙인 연결 실패
+        assert_eq!(rows[3][3], t!("remote.connect_error.remote_busy"));
+        assert_eq!(rows[4][3], t!("remote.connect_error.other", code = "remote_new_reason"));
+        assert!(rows[5][3].contains("0.1.14"), "{:?}", rows[5]);
+        assert!(rows.iter().all(|r| !r[3].contains("connect_error")), "{rows:?}");
     }
 
     #[test]

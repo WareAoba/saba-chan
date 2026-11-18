@@ -34,6 +34,8 @@ pub struct Lifecycle {
     init_started: AtomicBool,
     /// 초기화를 아직 마치지 않았는가. 데몬 단계에서 실패하거나 끊기면 daemon_restart가 성공한 뒤 나머지를 마친다
     init_pending_daemon: AtomicBool,
+    /// 처음 데몬 확인이 실패로 끝났다 (`daemon_failed`). 그 뒤 데몬이 뜬 것을 보면 나머지 초기화를 잇는다
+    init_stalled: AtomicBool,
     ready_sent: AtomicBool,
     /// 이 GUI는 그대로 두고 데몬만 업데이트하러 내려간 때: 다시 뜬 데몬에 붙으면 한 번 완료를 알린다.
     /// 그동안 이 GUI는 데몬을 띄우지 않고 트레이만 든 채로도 끝나지 않는다. `DAEMON_UPDATE_LIMIT`가 지나면 없는 것으로 본다
@@ -181,6 +183,7 @@ async fn run_background_init(app: &AppHandle) {
     let up = ensure_daemon(app).await;
     tray::update_menu(app);
     if !up {
+        app.state::<AppState>().life.init_stalled.store(true, Ordering::SeqCst);
         // ready를 보내지 않는다: 렌더러가 다시 시도 / 그대로 열기를 고른다
         status_t(app, "daemon_failed", "daemon.failed_to_start");
         return;
@@ -216,6 +219,29 @@ async fn finish_background_init(app: &AppHandle) {
             "updates:completed",
             json!({ "message": state.t("updates.completed", &[]), "timestamp": chrono::Utc::now().to_rfc3339() }),
         );
+    }
+}
+
+/// 나머지 초기화를 백그라운드에서 마친다. 겹쳐 불러도 한 번만 한다 (`claim_init_finish`)
+fn spawn_init_finish(app: &AppHandle) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move { finish_background_init(&app).await });
+}
+
+/// 데몬이 떠 있는 것을 확인했다 (`daemon_status`, 트레이에서 켠 데몬): 데몬을 못 띄워 멈춘 초기화가 있으면 나머지를 잇는다.
+/// 처음 확인이 아직 도는 동안에는 잇지 않는다 (그 확인이 스스로 마친다)
+pub fn resume_init(app: &AppHandle) {
+    if app.state::<AppState>().life.init_stalled() {
+        tracing::info!("[Init] The daemon is up after a failed start; finishing initialization");
+        spawn_init_finish(app);
+        tray::update_menu(app);
+    }
+}
+
+/// 트레이에서 켠 데몬이 뜨기를 기다려 멈춘 초기화를 잇는다. 멈춘 초기화가 없으면 기다리지 않는다
+pub async fn resume_init_when_up(app: &AppHandle) {
+    if app.state::<AppState>().life.init_stalled() && wait_for_new_daemon(app).await {
+        resume_init(app);
     }
 }
 
@@ -292,6 +318,11 @@ impl Lifecycle {
 
     fn init_unfinished(&self) -> bool {
         self.init_pending_daemon.load(Ordering::SeqCst)
+    }
+
+    /// 데몬을 못 띄워 멈춘 초기화가 남아 있는가 (처음 확인이 실패로 끝났고, 아직 아무도 나머지를 맡지 않았다)
+    fn init_stalled(&self) -> bool {
+        self.init_stalled.load(Ordering::SeqCst) && self.init_unfinished()
     }
 
     /// 나머지 초기화를 맡는다. 원래 초기화와 다시 시도가 겹쳐도 한 번만 true
@@ -1171,8 +1202,7 @@ pub async fn daemon_restart(app: &AppHandle) -> Value {
     // 기동 실패로 멈춘 초기화가 있으면 이어서 끝낸다 (렌더러는 ready를 받고 메인 화면으로 간다)
     if state.life.init_unfinished() {
         tray::update_menu(app);
-        let app2 = app.clone();
-        tauri::async_runtime::spawn(async move { finish_background_init(&app2).await });
+        spawn_init_finish(app);
     }
     tray::update_menu(app);
     json!({ "success": true, "message": "Daemon restarted successfully" })
@@ -1493,6 +1523,19 @@ mod tests {
             !life.claim_init_finish(),
             "다시 시도와 원래 초기화가 겹쳐도 두 번 마치지 않는다"
         );
+    }
+
+    /// 데몬을 못 띄워 멈춘 초기화는 나중에 데몬이 뜬 것을 볼 때 잇는다. 처음 확인이 도는 동안과 마친 뒤에는 잇지 않는다
+    #[test]
+    fn a_daemon_seen_up_resumes_only_an_init_that_stalled() {
+        let life = Lifecycle::default();
+        assert!(!life.init_stalled(), "초기화를 시작하기 전");
+        life.begin_init();
+        assert!(!life.init_stalled(), "처음 데몬 확인이 도는 중: 그 확인이 스스로 마친다");
+        life.init_stalled.store(true, Ordering::SeqCst);
+        assert!(life.init_stalled());
+        assert!(life.claim_init_finish());
+        assert!(!life.init_stalled(), "이미 이었다: 데몬 상태를 다시 물어도 두 번 잇지 않는다");
     }
 
     #[test]

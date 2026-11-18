@@ -163,7 +163,7 @@ pub fn kill_pid(pid: u64) -> Result<()> {
     };
     match status {
         Ok(s) if s.success() => Ok(()),
-        Ok(s) => Err(failed(format!("kill {} exited with {}", pid, s))),
+        Ok(s) => Err(failed(t!("daemon.kill_failed", pid = pid, code = s.code().map_or_else(|| "?".to_string(), |c| c.to_string())))),
         Err(e) => Err(failed(e.to_string())),
     }
 }

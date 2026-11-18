@@ -803,7 +803,7 @@
     "update_done": "Processamento de atualização concluído",
     "restart_required_title": "Reinicialização necessária",
     "module_busy": "Outra instalação ou remoção deste módulo em andamento. Tente novamente depois.",
-    "module_in_use": "Um servidor em execução usa este módulo. Pare o servidor e remova depois.",
+    "module_in_use": "Um servidor em execução usa este módulo. Pare o servidor e tente novamente.",
     "extensions_enabled": "Extensões usadas por este módulo ativadas: {{ids}}",
     "extension_failed": "Falha ao preparar a extensão {{id}}: {{error}}",
     "remove_failed": "Falha ao remover o módulo: {{error}}",

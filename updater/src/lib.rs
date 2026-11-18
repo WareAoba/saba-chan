@@ -23,6 +23,7 @@ pub mod constants;
 pub mod download;
 pub mod python_pin;
 pub mod launch_ticket;
+pub mod log_file;
 pub mod live_apply;
 pub mod integrity;
 pub mod marker;

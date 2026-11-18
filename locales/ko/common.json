@@ -108,7 +108,7 @@
     "http": "오류 (HTTP {{status}})",
     "command_failed": "명령 실행 실패: {{error}}",
     "url_missing": "주소 없음",
-    "url_not_web": "http(s) 주소만 열 수 있음",
+    "url_not_web": "http(s) 주소만 열기 가능",
     "path_missing": "경로 없음",
     "path_not_folder": "폴더가 아님",
     "no_log_folder": "로그 폴더 없음",

@@ -803,7 +803,7 @@
     "update_done": "更新处理完成",
     "restart_required_title": "需要重启",
     "module_busy": "此模块有其他安装或移除正在进行。完成后重试。",
-    "module_in_use": "运行中的服务器正在使用此模块。请先停止服务器再移除。",
+    "module_in_use": "运行中的服务器正在使用此模块。请先停止服务器再重试。",
     "extensions_enabled": "已启用此模块使用的扩展：{{ids}}",
     "extension_failed": "扩展 {{id}} 准备失败：{{error}}",
     "remove_failed": "模块移除失败：{{error}}",

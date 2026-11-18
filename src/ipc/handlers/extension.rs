@@ -344,7 +344,7 @@ fn manifest_unavailable(e: &anyhow::Error, empty: serde_json::Value) -> Response
 /// POST /api/extensions/:id/install — 익스텐션 설치·업데이트 (`{download_url?, sha256?}`, `install_source` 참고)
 ///
 /// 받기·검사·압축 해제는 락 없이 하고, 폴더 교체만 write 락 안에서 한다.
-/// 실행 중인 인스턴스가 쓰는 익스텐션은 교체하지 않는다. 의존 익스텐션이 없으면 원격 목록에서 같이 설치한다.
+/// 켜진 서버가 쓰거나 손으로 고친 익스텐션은 교체하지 않는다. 의존 익스텐션이 없으면 원격 목록에서 같이 설치한다.
 pub async fn install_extension(
     State(state): State<IPCServer>,
     Path(ext_id): Path<String>,

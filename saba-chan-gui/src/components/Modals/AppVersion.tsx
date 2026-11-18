@@ -6,7 +6,7 @@ import type { ApiBody, AppVersionsResponse, RevertResult } from '../../types/dae
 import { failed } from '../../utils/apiResult';
 import { Icon } from '../Icon';
 import { useDaemonTarget } from '../shell/DaemonSwitcher';
-import { RestartDialog } from '../shell/UpdatePill';
+import { RestartDialog, restartError } from '../shell/UpdatePill';
 import { Dialog } from '../ui/Dialog';
 import { SabaSpinner } from '../ui/SabaUI';
 import { StatusChip } from '../ui/StatusChip';
@@ -236,7 +236,7 @@ export function useAppVersion(nameOf: (key: string) => string, core?: string) {
             res = { ok: false, error: (e as Error)?.message };
         }
         if (res?.ok === false)
-            setBanner({ tone: 'error', text: t('update_pill.restart_failed', { error: res.error || '-' }) });
+            setBanner({ tone: 'error', text: t('update_pill.restart_failed', { error: restartError(res) }) });
         // 데몬은 적용하기 전에 고정부터 푼다: 실패했거나 받을 것이 없어 데몬이 그대로면 줄을 다시 읽는다
         if (res?.daemon_stopping !== true) await load();
     };

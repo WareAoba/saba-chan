@@ -598,12 +598,33 @@ impl Proc {
             Proc::Pty { mut child, master } => {
                 let status = child.wait().map_err(|e| e.to_string())?;
                 drop(master);
+                // portable-pty는 시그널 종료를 코드 1과 시그널 이름으로 준다: 번호로 되돌려 파이프 방식과 같게 적는다
+                if let Some(signal) = status.signal().and_then(signal_number) {
+                    return Ok(ExitInfo { code: None, success: false, ended_at: now(), signal: Some(signal), memory_limit_mb: None });
+                }
                 // Windows 예외 코드(0xC0000005 등)는 i32로 바꿔도 비트가 같다 (데몬이 u32로 다시 읽는다)
                 let code = status.exit_code() as i32;
                 Ok(ExitInfo { code: Some(code), success: status.success(), ended_at: now(), signal: None, memory_limit_mb: None })
             }
         }
     }
+}
+
+/// portable-pty가 준 시그널 이름(`strsignal` 글 또는 "Signal N")을 번호로 되돌린다
+#[cfg(unix)]
+fn signal_number(name: &str) -> Option<i32> {
+    if let Some(n) = name.strip_prefix("Signal ").and_then(|n| n.parse().ok()) {
+        return Some(n);
+    }
+    (1..65).find(|&n| {
+        let described = unsafe { libc::strsignal(n) };
+        !described.is_null() && unsafe { std::ffi::CStr::from_ptr(described) }.to_string_lossy() == name
+    })
+}
+
+#[cfg(not(unix))]
+fn signal_number(_: &str) -> Option<i32> {
+    None
 }
 
 fn start(args: &Args) -> Result<Started, String> {
@@ -820,6 +841,29 @@ mod tests {
         assert!(!super::follows_leftovers(false, 1, quick), "a crash at start is a failed start, not a launcher");
         assert!(!super::follows_leftovers(true, 0, quick));
         assert!(!super::follows_leftovers(true, 1, Duration::from_secs(60)));
+    }
+
+    // 의사 콘솔로 띄운 서버가 시그널로 죽으면 코드 대신 시그널 번호를 남긴다: 데몬이 크래시로 판정해 다시 켠다
+    #[cfg(unix)]
+    #[test]
+    fn a_pty_server_killed_by_a_signal_reports_the_signal() {
+        let args = super::Args {
+            run_dir: std::env::temp_dir(),
+            log: std::env::temp_dir().join("unused.log"),
+            cwd: None,
+            console: super::Console::Pty,
+            tails: Vec::new(),
+            memory_limit: None,
+            line_start: None,
+            progress: Vec::new(),
+            program: "/bin/sh".into(),
+            program_args: vec!["-c".into(), "kill -SEGV $$".into()],
+        };
+        let started = super::start(&args).unwrap();
+        let exit = started.proc.wait().unwrap();
+        assert_eq!(exit.signal, Some(libc::SIGSEGV), "{exit:?}");
+        assert_eq!(exit.code, None);
+        assert!(!exit.success);
     }
 
     /// 쓴 바이트를 모아 두는 가짜 stdin

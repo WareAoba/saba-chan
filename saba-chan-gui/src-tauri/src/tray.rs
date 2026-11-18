@@ -141,6 +141,7 @@ pub fn action(app: &AppHandle, id: &str) -> bool {
             tauri::async_runtime::spawn(async move {
                 tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                 update_menu(&app);
+                lifecycle::resume_init_when_up(&app).await;
             });
         }
         "quit_all" => {

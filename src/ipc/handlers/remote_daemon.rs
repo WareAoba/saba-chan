@@ -513,6 +513,10 @@ async fn all_servers_with(file: &ConfigFile, state: &IPCServer, timeout: std::ti
                 entry["servers"] = Value::Array(body["servers"].as_array().cloned().unwrap_or_default());
             } else {
                 entry["error_code"] = body.get("error_code").cloned().unwrap_or_else(|| json!("remote_unreachable"));
+                // 판이 낮은 원격 데몬(`remote_too_old`)이면 요구하는 판도 싣는다
+                if let Some(min) = body.get("min_version") {
+                    entry["min_version"] = min.clone();
+                }
             }
             entry
         }
