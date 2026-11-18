@@ -117,7 +117,9 @@ impl RemoteDaemon {
         for d in config::daemons_in(file) {
             let Some(ep) = peers.iter().find(|p| p.host_id == d.host_id).and_then(|p| p.endpoint.as_ref()) else { continue };
             if (ep.address.as_str(), ep.port, ep.cert_sha256.as_str()) != (d.address.as_str(), d.port, d.cert_sha256.as_str()) {
-                let _ = config::update_endpoint_in(file, &d.host_id, &ep.address, ep.port, &ep.cert_sha256);
+                if let Err(e) = config::update_endpoint_in(file, &d.host_id, &ep.address, ep.port, &ep.cert_sha256) {
+                    tracing::warn!("Failed to save the new address of remote PC {}: {}", d.host_id, e);
+                }
             }
         }
         // 원격 포트가 들고 있는 짝 맺은 PC도 (새 이름, 푼 짝)

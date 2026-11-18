@@ -565,8 +565,10 @@ impl Session {
     }
 }
 
+/// poll·이벤트 재시도 대기. 릴레이가 다시 켜지면 모든 PC가 함께 끊기므로, 다시 붙는 순간이 겹치지 않게 절반까지 흔든다
 fn backoff(failures: u32) -> Duration {
-    crate::utils::exp_backoff(RETRY_BASE, RETRY_MAX, failures)
+    let wait = crate::utils::exp_backoff(RETRY_BASE, RETRY_MAX, failures);
+    wait + crate::utils::jitter(wait / 2)
 }
 
 /// a < b (x.y.z, 빠진 자리는 0). 프리릴리스(0.1.11-beta.1)는 업데이터와 같은 SemVer 순서로 비교한다

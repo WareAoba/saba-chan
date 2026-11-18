@@ -385,7 +385,7 @@ pub(super) async fn unpin_addon(State(state): State<UpdateState>, Path(key): Pat
 
 /// 판 고르기가 거절하는 사용자 폴더: 자동 교체처럼 카탈로그 그대로가 아닌 폴더는 덮어쓰지 않는다. 오류 코드는 신뢰 표시의 것
 /// (`module_modified`·`module_unverified`, 익스텐션은 `extension_…`)
-fn hand_modified(key: &str) -> Option<String> {
+pub(crate) fn hand_modified(key: &str) -> Option<String> {
     use saba_chan_updater_lib::integrity::{self, Trust};
     if replaceable_without_asking(key) {
         return None;

@@ -353,6 +353,12 @@ pub fn dir_size(path: &std::path::Path) -> u64 {
     total
 }
 
+/// 0부터 `max`까지의 흔들림. 여러 PC가 같은 순간에 같은 곳에 묻지 않게 지금 시각의 밀리초로 고른다
+pub fn jitter(max: std::time::Duration) -> std::time::Duration {
+    let millis = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.subsec_millis());
+    max.mul_f64(f64::from(millis) / 1000.0)
+}
+
 /// 실패할 때마다 두 배로 늘리는 대기 (`failures`가 1이면 `base`), `max`까지
 pub fn exp_backoff(base: std::time::Duration, max: std::time::Duration, failures: u32) -> std::time::Duration {
     base.saturating_mul(1u32 << failures.saturating_sub(1).min(16)).min(max)

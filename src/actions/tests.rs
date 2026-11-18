@@ -1312,6 +1312,28 @@ async fn a_failed_remote_action_carries_a_short_reason() {
     assert!(local.get("reason").is_none(), "{local}");
 }
 
+/// 서버가 거절한 명령(`rejected`, 모듈의 실패 모양)은 액션으로 보내도 실패다: 문장 명령과 같은 이유를 준다
+#[tokio::test]
+async fn a_command_the_server_rejected_fails_as_an_action() {
+    let module = format!("{MODULE}\n[commands]\nfailure_patterns = ['^No player']\n\n[[commands.fields]]\nname = \"kick\"\nmethod = \"module\"\ninputs = [{{ name = \"player\", type = \"text\" }}]\n");
+    let lifecycle = "import json, sys\njson.load(sys.stdin)\nprint(json.dumps({'success': True, 'message': 'No player was found'}))\n";
+    let (state, id, _tmp) = server_running(&module, lifecycle).await;
+    set_node(&state, json!({ "ownerDiscordId": "owner" })).await;
+    state.supervisor.read().await.tracker.track(&id, std::process::id());
+    let out = run(&state, "server.command:kick", Some(&id), &json!({ "player": "steve" }), None, &relay("owner", false)).await.unwrap();
+    // 여러 단계 실행도 그 단계에서 멈춘다
+    let steps = json!([{ "id": "server.command:kick", "instance": id, "input": { "player": "steve" } }, { "id": "server.status", "instance": id, "input": {} }]);
+    // 여러 단계 자리는 출처마다 하나다: 다른 시험과 겹치지 않는 출처로
+    let local = Caller::local(crate::audit::Origin::new("api"), "en".into());
+    let planned = plan_steps(&state, &steps, &local).await.unwrap();
+    let done = finished(run(&state, "", None, &Value::Null, planned["planId"].as_str(), &local).await.unwrap(), &local).await;
+    let _ = state.supervisor.read().await.tracker.untrack(&id);
+    assert_eq!(out["success"], false, "{out}");
+    assert_eq!(shown(&out["reason"]), "[reasons.rejected file=]", "{out}");
+    assert_eq!((done["steps"][0]["status"].as_str(), done["steps"][0]["code"].as_str()), (Some("failed"), Some("command_failed")), "{done}");
+    assert_eq!(done["steps"][1]["status"], "skipped", "{done}");
+}
+
 /// `remote = false` 명령은 디스코드·챗봇 액션으로도 부를 수 없다 (GUI·CLI에서만)
 #[test]
 fn a_command_kept_off_remote_surfaces_is_not_a_remote_action() {

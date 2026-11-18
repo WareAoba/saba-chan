@@ -59,6 +59,7 @@ mod repair;
 mod tests;
 
 pub use addons::spawn_deferred_apply;
+pub(crate) use addons::hand_modified;
 use addons::{get_addon_versions, is_addon, pin_addon, spawn_addon_replace, unpin_addon};
 use apply::{
     RELEASE_RECHECK, apply_updates, download_components, get_daemon_update, install_updates, put_daemon_update,
@@ -659,10 +660,10 @@ pub fn on_update_hint(state: &UpdateState, hint: &Value, shutdown: tokio_util::s
     let hint = hint.clone();
     let state = state.clone();
     tokio::spawn(async move {
-        let jitter = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.subsec_millis()) as u64 * 60;
+        let jitter = crate::utils::jitter(std::time::Duration::from_secs(60));
         tokio::select! {
             _ = shutdown.cancelled() => return,
-            _ = tokio::time::sleep(std::time::Duration::from_millis(jitter)) => {}
+            _ = tokio::time::sleep(jitter) => {}
         }
         // 기다리는 사이 설정을 바꿨을 수 있다 — 기다린 뒤의 설정으로 대조한다
         let cfg = state.manager.read().await.get_config();
@@ -686,11 +687,11 @@ pub fn on_latest_releases(state: &UpdateState, ids: &Value, shutdown: tokio_util
         let Some(checking) = state.release_ids_to_check(watched) else {
             return;
         };
-        let jitter = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.subsec_millis()) as u64 * 60;
+        let jitter = crate::utils::jitter(std::time::Duration::from_secs(60));
         let checked = async {
             tokio::select! {
                 _ = shutdown.cancelled() => return None,
-                _ = tokio::time::sleep(std::time::Duration::from_millis(jitter)) => {}
+                _ = tokio::time::sleep(jitter) => {}
             }
             if !state.manager.read().await.get_config().enabled {
                 return None;
@@ -727,11 +728,11 @@ pub fn on_latest_addons(state: &UpdateState, revs: &Value, shutdown: tokio_util:
         let Some(rev) = state.addon_revision_to_check(&revs, &cfg.channel) else {
             return;
         };
-        let jitter = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.subsec_millis()) as u64 * 60;
+        let jitter = crate::utils::jitter(std::time::Duration::from_secs(60));
         let checked = tokio::select! {
             _ = shutdown.cancelled() => false,
             checked = async {
-                tokio::time::sleep(std::time::Duration::from_millis(jitter)).await;
+                tokio::time::sleep(jitter).await;
                 check_and_follow_up(&state).await.map_err(|e| tracing::warn!("[Updates] Check after a new addon publish failed: {}", e)).is_ok()
             } => checked,
         };

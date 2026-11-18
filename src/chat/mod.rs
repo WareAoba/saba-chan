@@ -292,7 +292,7 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
         let servers = match self.servers().await {
             Ok(s) => s,
             Err(e) => {
-                tracing::warn!("[Chat] 서버 목록 조회 실패: {}", e);
+                tracing::warn!("[Chat] Failed to list servers: {}", e);
                 return reply(Text::seq(["❌ ".into(), self.t("messages.command_error", &[])]).into());
             }
         };
@@ -422,7 +422,7 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
     }
 
     fn permission_denied(&self, denied: Denied) -> Reply {
-        tracing::info!("[Chat] 권한 거부: user={:?} need={} level={}", self.req.user_id, denied.need, denied.level);
+        tracing::info!("[Chat] Permission denied: user={:?} need={} level={}", self.req.user_id, denied.need, denied.level);
         // 전용 멤버 서버의 명단 밖 사람이면 그 안내를 한다
         let key = if denied.members_only { "errors.members_only" } else { "errors.permission_denied" };
         Reply::unrecognized("PERMISSION_DENIED", self.t(key, &[]), json!(denied))
@@ -451,7 +451,7 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
     async fn help(&self) -> Text {
         let prefix = &self.prefix();
         let servers = self.servers().await.unwrap_or_else(|e| {
-            tracing::warn!("[Chat] 도움말용 서버 목록 실패: {}", e);
+            tracing::warn!("[Chat] Failed to list servers for help: {}", e);
             Vec::new()
         });
 
@@ -484,7 +484,7 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
         let servers = match self.servers().await {
             Ok(s) => s,
             Err(e) => {
-                tracing::warn!("[Chat] 목록 조회 실패: {}", e);
+                tracing::warn!("[Chat] Failed to list servers: {}", e);
                 return Text::seq(["❌ ".into(), self.t("messages.command_error", &[])]);
             }
         };
@@ -722,7 +722,7 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
         let refused = resp.str_field("error_code").and_then(crate::service::lifecycle::refused_status).is_some();
         if !resp.is_success() && !refused {
             let detail = resp.str_field("error").unwrap_or_default();
-            tracing::warn!("[Chat] 시작 실패 {}: {}", server.name, detail);
+            tracing::warn!("[Chat] Failed to start {}: {}", server.name, detail);
             // 켜기 전 점검(preflight_failed)의 문제 문구에는 경로가 들어 있을 수 있어 PC 밖으로 내지 않는다.
             // 점검 코드와 모듈이 준 해결 방법(경로 없는 문구)만 보인다
             if resp.str_field("error_code") == Some("preflight_failed") {
@@ -751,7 +751,7 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
         let failed = !resp.is_success() || resp.body.get("success").and_then(|v| v.as_bool()) == Some(false);
         if failed {
             let detail = resp.str_field("error").or(resp.str_field("message")).unwrap_or_default();
-            tracing::warn!("[Chat] 정지 실패 {}: {}", server.name, detail);
+            tracing::warn!("[Chat] Failed to stop {}: {}", server.name, detail);
             return Done::new(self.error_line(detail), false);
         }
         Done::new(self.t("server.stop_complete", &[("name", &server.name)]), true)
@@ -951,7 +951,7 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
             .map(str::to_string)
             .or_else(|| module.errors.get(&code).cloned());
         if let Some(detail) = resp.str_field("error") {
-            tracing::warn!("[Chat] {} {} 실패 ({}): {}", server.name, field.name, resp.status, detail);
+            tracing::warn!("[Chat] {} {} failed ({}): {}", server.name, field.name, resp.status, detail);
         }
 
         match code.as_str() {

@@ -79,7 +79,7 @@ fn load_bundle(language: &str) -> Value {
         if let Ok(text) = std::fs::read_to_string(&path) {
             match serde_json::from_str(&text) {
                 Ok(v) => return v,
-                Err(e) => tracing::warn!("[i18n] {} 파싱 실패, 내장 사본 사용: {}", path.display(), e),
+                Err(e) => tracing::warn!("[i18n] Failed to parse {}, using the built-in copy: {}", path.display(), e),
             }
         }
     }

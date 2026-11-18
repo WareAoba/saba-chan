@@ -242,7 +242,7 @@ pub fn run_status(run_id: &str, caller: &Caller) -> Result<Value, ActionError> {
 /// 새 서버 설치가 끝나기를 기다린다 (설치 진행이 없으면 바로)
 async fn wait_installed(server: &IPCServer, instance: &str) -> Result<(), ActionError> {
     if server.supervisor.read().await.instance_store.get(instance).is_none() {
-        return Err(ActionError::new(404, "not_found", "The new server is gone"));
+        return Err(ActionError::new(404, "instance_not_found", "The new server is gone"));
     }
     let started = Instant::now();
     loop {
@@ -324,7 +324,12 @@ async fn execute_steps(server: &IPCServer, steps: Vec<Step>, caller: &Caller, re
                 true
             } else {
                 let result = &out["result"];
-                let code = result.get("error_code").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| format!("HTTP {}", out["status"]));
+                // 서버가 거절한 명령은 예약 실행기와 같은 `command_failed`
+                let code = match result.get("error_code").and_then(Value::as_str) {
+                    Some(code) => code.to_string(),
+                    None if result.get("rejected").is_some() => "command_failed".to_string(),
+                    None => format!("HTTP {}", out["status"]),
+                };
                 let message = result.get("error").or_else(|| result.get("message")).and_then(Value::as_str);
                 failed_row(row, &code, message, caller);
                 false

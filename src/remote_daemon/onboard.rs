@@ -266,6 +266,8 @@ struct Inner {
     error: Option<String>,
     daemon: Option<(String, String)>,
     code_seen: bool,
+    /// 끝난 때. 지우지 않고 떠난 클라이언트의 세션을 치우는 데 쓴다 (`clear_finished`)
+    finished_at: Option<std::time::Instant>,
 }
 
 pub struct Install {
@@ -274,6 +276,9 @@ pub struct Install {
     child: Mutex<Option<Box<dyn portable_pty::ChildKiller + Send + Sync>>>,
     cancel: CancellationToken,
 }
+
+/// 끝난 설치를 표에 남겨 두는 시간 (그동안 클라이언트가 마지막 출력을 읽는다)
+const FINISHED_KEPT: std::time::Duration = std::time::Duration::from_secs(10 * 60);
 
 static INSTALLS: LazyLock<Mutex<HashMap<String, Arc<Install>>>> = LazyLock::new(Default::default);
 
@@ -284,7 +289,7 @@ fn installs() -> std::sync::MutexGuard<'static, HashMap<String, Arc<Install>>> {
 impl Install {
     fn new(cancel: CancellationToken) -> Self {
         Self {
-            inner: Mutex::new(Inner { phase: Phase::Connecting, output: String::new(), dropped: 0, prompt: None, error: None, daemon: None, code_seen: false }),
+            inner: Mutex::new(Inner { phase: Phase::Connecting, output: String::new(), dropped: 0, prompt: None, error: None, daemon: None, code_seen: false, finished_at: None }),
             writer: Mutex::new(None),
             child: Mutex::new(None),
             cancel,
@@ -331,13 +336,18 @@ impl Install {
     }
 
     fn finish(&self, phase: Phase, error: Option<&str>) {
-        let mut inner = self.lock();
-        if matches!(inner.phase, Phase::Done | Phase::Failed | Phase::Cancelled) {
-            return;
+        {
+            let mut inner = self.lock();
+            if matches!(inner.phase, Phase::Done | Phase::Failed | Phase::Cancelled) {
+                return;
+            }
+            inner.phase = phase;
+            inner.error = error.map(str::to_string);
+            inner.prompt = None;
+            inner.finished_at = Some(std::time::Instant::now());
         }
-        inner.phase = phase;
-        inner.error = error.map(str::to_string);
-        inner.prompt = None;
+        // 끝난 설치에는 답을 넘기지 않는다 (`answer`가 false → 409 `install_finished`). `answer`와 같은 순서로 잡도록 상태 잠금을 놓은 뒤에
+        self.writer.lock().unwrap_or_else(|e| e.into_inner()).take();
     }
 
     /// `since`(지금까지 받은 출력 길이) 뒤의 출력과 지금 상태
@@ -387,6 +397,11 @@ pub fn remove_install(id: &str) -> Option<Arc<Install>> {
     installs().remove(id)
 }
 
+/// 끝난 지 오래된 설치를 표에서 뺀다: 클라이언트가 지우지 않고 떠나도 출력과 pty가 데몬 수명 내내 남지 않게
+fn clear_finished() {
+    installs().retain(|_, s| !s.lock().finished_at.is_some_and(|at| at.elapsed() > FINISHED_KEPT));
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StartError {
     SshMissing,
@@ -408,6 +423,7 @@ pub fn start_install(peers: peer::Pool, file: ConfigFile, relay: Option<Target>,
     let mut reader = pair.master.try_clone_reader().map_err(|_| StartError::SpawnFailed)?;
     let writer = pair.master.take_writer().map_err(|_| StartError::SpawnFailed)?;
 
+    clear_finished();
     let id = uuid::Uuid::new_v4().simple().to_string();
     let session = Arc::new(Install::new(stop.child_token()));
     *session.writer.lock().unwrap_or_else(|e| e.into_inner()) = Some(writer);
@@ -521,6 +537,24 @@ mod tests {
         let offset = v["offset"].as_u64().unwrap() as usize;
         s.push("more\n");
         assert_eq!(s.view(offset)["output"], "more\n");
+    }
+
+    /// 끝난 설치에는 답을 넘기지 않고(`install_finished`), 오래 남은 끝난 설치는 새 설치를 시작할 때 치운다
+    #[test]
+    fn a_finished_install_takes_no_answers_and_is_cleared_later() {
+        let s = Arc::new(Install::new(CancellationToken::new()));
+        *s.writer.lock().unwrap() = Some(Box::new(std::io::sink()));
+        assert!(s.answer("yes"));
+        s.finish(Phase::Failed, Some("install_failed"));
+        assert!(!s.answer("yes"), "the session is over");
+
+        let (old, live) = ("finished-long-ago", "still-running");
+        installs().insert(old.into(), s.clone());
+        installs().insert(live.into(), Arc::new(Install::new(CancellationToken::new())));
+        s.lock().finished_at = Some(std::time::Instant::now() - FINISHED_KEPT - std::time::Duration::from_secs(1));
+        clear_finished();
+        assert!(install(old).is_none());
+        assert!(remove_install(live).is_some());
     }
 
     #[test]
