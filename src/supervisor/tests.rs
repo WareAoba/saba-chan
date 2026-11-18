@@ -837,3 +837,18 @@ async fn removing_a_starting_instance_closes_its_ready_wait_and_chat_links() {
     assert_eq!(link_seen, Some((json!(false), json!("stopped"))));
     assert!(chat_link::list(&id).is_empty());
 }
+
+/// 켜져 있는가: 추적표에 없어도 managed 저장소에 살아 있는 프로세스가 있으면 켜진 것이다 (재부착 때 추적표 등록이 실패한 경우).
+/// 다른 서버의 managed 프로세스는 이 서버를 켜진 것으로 만들지 않는다
+#[tokio::test]
+async fn a_server_alive_only_in_the_managed_store_is_running() {
+    let tmp = tempfile::tempdir().unwrap();
+    let sup = Supervisor::new_with_instances_dir(tmp.path().join("modules").to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+    let dir = tmp.path().join("instances").join("alive");
+    std::fs::create_dir_all(dir.join("logs")).unwrap();
+    let stub = managed_process::ManagedProcess::create_reattached_stub(std::process::id(), &dir).await;
+    sup.managed_store.insert("alive", stub).await;
+    assert!(sup.tracker.get_pid("alive").is_none());
+    assert!(sup.is_running("alive").await);
+    assert!(!sup.is_running("other").await);
+}

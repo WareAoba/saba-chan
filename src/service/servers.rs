@@ -124,6 +124,35 @@ fn snapshot(
 
 /// `notices_after`: 이 번호 뒤의 포트 충돌 강제 정지 알림만 싣는다
 pub(crate) async fn list(state: &IPCServer, notices_after: u64) -> Outcome {
+    let (mut servers, all_instances, module_protocols) = collect(state, true).await?;
+
+    // ── 포트 충돌 계산: 시작 시 검사(check_port_conflicts)와 같은 기준 ──
+    // 모듈이 지원하지 않는 프로토콜의 포트는 제외한다. 목록은 "켜면 부딪힐" 서버를
+    // 미리 보여주는 용도라 정지된 서버끼리도 비교한다(시작 시에는 실행 중인 것만).
+    let every_id: std::collections::HashSet<String> = all_instances.iter().map(|i| i.id.clone()).collect();
+    for srv in servers.iter_mut() {
+        if let Some(target) = all_instances.iter().find(|i| i.id == srv.id) {
+            srv.port_conflicts = port_conflicts(target, &all_instances, &every_id, &module_protocols);
+        }
+    }
+
+    // 포트 충돌 강제 정지 이벤트 (짧은 read lock)
+    let port_conflict_stops = state.supervisor.read().await.port_conflict_stops_after(notices_after);
+
+    Ok(json!(ServerListResponse { servers, port_conflict_stops }))
+}
+
+/// 릴레이 하트비트의 서버 목록: 릴레이가 읽는 값(`relay_agent::metadata::relay_server_entry`)만 채운다.
+/// 가져온 폴더·복원 가능 판정, slot, 응답 없음, 포트 충돌은 화면에만 쓰므로 계산하지 않는다
+pub(crate) async fn relay_list(state: &IPCServer) -> Vec<ServerInfo> {
+    collect(state, false).await.map(|(servers, ..)| servers).unwrap_or_default()
+}
+
+/// 서버 목록과 그 계산에 쓴 인스턴스·프로토콜 설정. `full`이 아니면 화면에만 쓰는 값은 비워 둔다
+async fn collect(
+    state: &IPCServer,
+    full: bool,
+) -> Result<(Vec<ServerInfo>, Vec<crate::instance::ServerInstance>, std::collections::HashMap<String, String>), Failure> {
     let state = state.clone();
     // ── Phase 1: supervisor lock을 최소 시간만 잡고 필요한 데이터 복사 ──
     let (snapshots, all_instances, module_protocols): (Vec<InstanceSnapshot>, Vec<_>, _) = {
@@ -146,21 +175,25 @@ pub(crate) async fn list(state: &IPCServer, notices_after: u64) -> Outcome {
     // 다른 API 핸들러가 supervisor write lock을 획득할 수 있음
 
     // 가져온 서버 폴더 판정은 실제 경로를 찾는 막는 호출이라(꺼진 네트워크 드라이브면 오래 걸린다) 데몬 락 밖, 런타임 밖에서
-    let snapshots = match tokio::task::spawn_blocking(move || {
-        let mut snapshots = snapshots;
-        for s in &mut snapshots {
-            let instance_dir = std::path::Path::new(&s.instance_dir);
-            s.info.linked_folder = crate::instance::migration::linked_folder(s.info.working_dir.as_deref(), instance_dir);
-            s.info.restorable_settings = crate::instance::migration::saved(instance_dir);
+    let snapshots = if full {
+        let resolved = tokio::task::spawn_blocking(move || {
+            let mut snapshots = snapshots;
+            for s in &mut snapshots {
+                let instance_dir = std::path::Path::new(&s.instance_dir);
+                s.info.linked_folder = crate::instance::migration::linked_folder(s.info.working_dir.as_deref(), instance_dir);
+                s.info.restorable_settings = crate::instance::migration::saved(instance_dir);
+            }
+            snapshots
+        })
+        .await;
+        match resolved {
+            Ok(snapshots) => snapshots,
+            Err(e) => {
+                return Err(Failure::coded(StatusCode::INTERNAL_SERVER_ERROR, "internal_server_error", format!("Could not read the server folders: {}", e)));
+            }
         }
+    } else {
         snapshots
-    })
-    .await
-    {
-        Ok(snapshots) => snapshots,
-        Err(e) => {
-            return Err(Failure::coded(StatusCode::INTERNAL_SERVER_ERROR, "internal_server_error", format!("Could not read the server folders: {}", e)));
-        }
     };
 
     // ── Phase 2: Extension hooks (lock 없이 실행) ──
@@ -202,7 +235,7 @@ pub(crate) async fn list(state: &IPCServer, notices_after: u64) -> Outcome {
         servers.push(server);
     }
     // ── 데이터 slot: 조건 판정과 값 찾기는 여기서 한 번만 ──
-    {
+    if full {
         let ext_mgr = state.extension_manager.read().await;
         for srv in servers.iter_mut() {
             srv.slots = ext_mgr.server_slots(&srv.extension_data, &srv.extension_status);
@@ -210,32 +243,19 @@ pub(crate) async fn list(state: &IPCServer, notices_after: u64) -> Outcome {
     }
 
     // ── 접속자 수: 모듈이 알려 준 마지막 값, 켜진 서버만 ──
-    let catalog = crate::chat::i18n::Catalog::for_language(&state.config_store.ui_language().await);
+    let catalog = if full { Some(crate::chat::i18n::Catalog::for_language(&state.config_store.ui_language().await)) } else { None };
     let runtime = state.supervisor.read().await.runtime.clone();
     for srv in servers.iter_mut().filter(|s| s.status == "running") {
         srv.players = crate::supervisor::players::get(&runtime, &srv.id);
+        let Some(catalog) = &catalog else { continue };
         // 응답 없음은 인스턴스 설정의 시간(`watchdog::rule_of`)이 지난 뒤에 알린다
         let after = all_instances.iter().find(|i| i.id == srv.id).map(|i| crate::supervisor::watchdog::rule_of(i).after).unwrap_or_default();
         if let Some((silent, reason)) = crate::supervisor::players::silent_for(&runtime, &srv.id, srv.pid, std::time::Instant::now()).filter(|(silent, _)| *silent >= after) {
-            srv.unresponsive = Some(crate::supervisor::players::reason_text(&reason, &catalog));
+            srv.unresponsive = Some(crate::supervisor::players::reason_text(&reason, catalog));
             srv.unresponsive_minutes = Some(silent.as_secs() / 60);
         }
     }
-
-    // ── 포트 충돌 계산: 시작 시 검사(check_port_conflicts)와 같은 기준 ──
-    // 모듈이 지원하지 않는 프로토콜의 포트는 제외한다. 목록은 "켜면 부딪힐" 서버를
-    // 미리 보여주는 용도라 정지된 서버끼리도 비교한다(시작 시에는 실행 중인 것만).
-    let every_id: std::collections::HashSet<String> = all_instances.iter().map(|i| i.id.clone()).collect();
-    for srv in servers.iter_mut() {
-        if let Some(target) = all_instances.iter().find(|i| i.id == srv.id) {
-            srv.port_conflicts = port_conflicts(target, &all_instances, &every_id, &module_protocols);
-        }
-    }
-
-    // 포트 충돌 강제 정지 이벤트 (짧은 read lock)
-    let port_conflict_stops = state.supervisor.read().await.port_conflict_stops_after(notices_after);
-
-    Ok(json!(ServerListResponse { servers, port_conflict_stops }))
+    Ok((servers, all_instances, module_protocols))
 }
 
 /// `server.list_enrich` 답: handled: true인 경우만 Extension이 서버 정보를 제공한다 (상태·PID·시작 시간·extension_status만 바꾼다)
@@ -381,6 +401,41 @@ mod tests {
         assert_eq!(check(&b_id, json!({})).await.unwrap()["port_conflicts"], json!([]));
         assert_eq!(state.supervisor.read().await.instance_store.get(&b_id).unwrap().port, Some(25570), "nothing is saved");
         assert_eq!(check("missing", json!({})).await.unwrap_err().status, StatusCode::NOT_FOUND);
+    }
+
+    /// 하트비트용 목록은 릴레이가 읽는 값(상태·이름 등)만 채운다: 가져온 폴더 판정(꺼진 네트워크 드라이브면 오래 걸린다)과
+    /// 포트 충돌 계산은 하지 않는다. 화면용 목록은 그대로 다 채운다
+    #[tokio::test]
+    async fn relay_list_skips_folder_checks_and_port_conflicts() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        );
+        sup.initialize().await.unwrap();
+        let outside = tmp.path().join("my-server");
+        std::fs::create_dir_all(&outside).unwrap();
+        let mut a = crate::instance::ServerInstance::new("a", "plain");
+        a.port = Some(25565);
+        a.working_dir = Some(outside.to_string_lossy().to_string());
+        let mut b = crate::instance::ServerInstance::new("b", "plain");
+        b.port = Some(25565);
+        let a_id = a.id.clone();
+        sup.instance_store.add(a).unwrap();
+        sup.instance_store.add(b).unwrap();
+        let state = IPCServer::new(std::sync::Arc::new(tokio::sync::RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+
+        let full = list(&state, 0).await.unwrap();
+        let full_a = full["servers"].as_array().unwrap().iter().find(|s| s["id"] == a_id.as_str()).unwrap().clone();
+        assert!(full_a["linked_folder"].is_string(), "the screen list marks the linked folder: {full_a}");
+        assert_eq!(full_a["port_conflicts"].as_array().unwrap().len(), 1);
+
+        let relay = relay_list(&state).await;
+        let relay_a = relay.iter().find(|s| s.id == a_id).unwrap();
+        assert_eq!((relay_a.name.as_str(), relay_a.status.as_str()), ("a", "stopped"));
+        assert_eq!(relay_a.linked_folder, None, "the heartbeat does not resolve folders");
+        assert!(relay_a.port_conflicts.is_empty());
+        assert_eq!(relay.len(), 2);
     }
 
     /// 캐시에 답이 없는 서버들의 `server.list_enrich`는 함께 돈다 (차례로 돌면 목록이 서버 수만큼 늦는다).

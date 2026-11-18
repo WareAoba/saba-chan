@@ -233,13 +233,12 @@ impl Session {
         let monitor = self.server.system_monitor.clone();
         let snapshot = tokio::task::spawn_blocking(move || monitor.sample(&roots, &[], false, false)).await.ok();
         let usage = snapshot.as_ref().map(|s| s.instances.as_slice()).unwrap_or_default();
-        let servers: Vec<Value> = match crate::ipc::internal::InternalResponse::from(crate::service::servers::list(&self.server, 0).await).body.get("servers") {
-            Some(Value::Array(list)) => list
-                .iter()
-                .map(|s| relay_server_entry(s, usage.iter().find(|u| s.get("id").and_then(|v| v.as_str()) == Some(u.id.as_str()))))
-                .collect(),
-            _ => Vec::new(),
-        };
+        let servers: Vec<Value> = crate::service::servers::relay_list(&self.server)
+            .await
+            .iter()
+            .filter_map(|s| serde_json::to_value(s).ok())
+            .map(|s| relay_server_entry(&s, usage.iter().find(|u| s.get("id").and_then(|v| v.as_str()) == Some(u.id.as_str()))))
+            .collect();
         let schedules = {
             let supervisor = self.server.supervisor.read().await;
             crate::scheduler::runner::upcoming_runs(supervisor.instance_store.list(), SCHEDULES_MAX)
