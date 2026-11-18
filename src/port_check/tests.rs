@@ -442,3 +442,13 @@ async fn a_start_during_a_check_waits_and_then_the_server_can_open_the_ports() {
     assert_eq!(statuses(&reports[0]), vec![PortStatus::Closed, PortStatus::Closed]);
     drop(starting);
 }
+
+// 릴레이 주소가 https(루프백만 http)가 아니면 포트 확인도 노드 토큰을 보내지 않는다 (릴레이 연결과 같은 기준)
+#[test]
+fn a_relay_address_the_relay_link_refuses_is_not_used_for_port_checks() {
+    let refused = relay_base("http://relay.example.com").unwrap_err();
+    assert_eq!(refused.code(), "relay_unreachable");
+    assert_eq!(relay_base("https://relay.example.com/").unwrap(), "https://relay.example.com");
+    assert_eq!(relay_base("http://127.0.0.1:9").unwrap(), "http://127.0.0.1:9");
+}
+

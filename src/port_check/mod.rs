@@ -732,9 +732,17 @@ pub async fn targets(state: &crate::ipc::IPCServer, ids: &[String]) -> Vec<Targe
 
 async fn relay_target(state: &crate::ipc::IPCServer) -> Result<Relay, CheckError> {
     let token = crate::relay_client::load_node_token().ok_or(CheckError::NotPaired)?;
-    let configured = state.config_store.get_bot_config().await.cloud.relay_url;
+    let base = relay_base(&state.config_store.get_bot_config().await.cloud.relay_url)?;
     let host = crate::remote_daemon::configured_address(&crate::remote_daemon::config::settings_in(&saba_chan_updater_lib::config_file::ConfigFile::default_location()));
-    Ok(Relay { base: crate::relay_client::signed_relay_url(&configured, None), token, host })
+    Ok(Relay { base, token, host })
+}
+
+/// 노드 토큰을 실어 보낼 릴레이 주소. 릴레이 연결과 같이 https(루프백만 http)가 아니면 보내지 않는다
+fn relay_base(configured: &str) -> Result<String, CheckError> {
+    match crate::config_store::relay_url_problem(configured) {
+        Some(problem) => Err(CheckError::Relay(problem)),
+        None => Ok(crate::relay_client::signed_relay_url(configured, None)),
+    }
 }
 
 fn bind_ip() -> IpAddr {
