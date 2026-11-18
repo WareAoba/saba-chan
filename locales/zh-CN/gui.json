@@ -1624,7 +1624,7 @@
     "backup_unreadable": "无法打开",
     "backup_unreadable_hint": "备份无法打开，不能恢复。删除前，其中未使用的备份内容不会被清理，请删除它。",
     "err_backup_file_locked": "服务器正在使用文件（{{file}}），备份失败。请停止服务器后重试。",
-    "err_backup_disk_full": "备份失败：磁盘空间不足。请释放空间后重试。",
+    "err_backup_disk_full": "磁盘空间不足。请释放空间后重试。",
     "err_autosave_not_resumed": "备份已创建，但服务器自动保存恢复失败。请重启服务器。",
     "err_backup_failed_autosave_off": "备份失败，服务器自动保存也恢复失败。请重启服务器。",
     "err_backup_save_rejected": "服务器不接受保存命令，未备份。请停止服务器后再备份。",

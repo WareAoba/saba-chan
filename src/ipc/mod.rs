@@ -844,14 +844,25 @@ impl IPCServer {
 
     /// 데몬 HTTP 라우터 전체 (인증·감사 미들웨어 포함). 액션 카탈로그도 이것을 안에서 부른다
     pub fn router(&self) -> Router {
-        self.routes()
-            // 고른 원격 데몬으로 중계 (`X-Saba-Target`). 로컬 IPC에만: 원격 포트는 `routes`를 따로 씌운다
-            .layer(axum::middleware::from_fn_with_state(self.clone(), crate::remote_daemon::target::layer))
-            .layer(axum::middleware::from_fn(auth::auth_middleware))
+        use tower::Layer;
+        let routes = self.routes();
+        // 고른 원격 데몬으로 중계 (`X-Saba-Target`). 로컬 IPC에만: 원격 포트는 `routes`를 따로 씌운다
+        let relayed = axum::middleware::from_fn_with_state(self.clone(), crate::remote_daemon::target::layer).layer(routes);
+        Router::new().fallback_service(axum::middleware::from_fn(auth::auth_middleware).layer(relayed))
     }
 
-    /// 인증층을 씌우기 전의 라우트 (감사 출처 포함). 로컬 IPC는 IPC 토큰, 원격 포트(`remote_daemon`)는 짝 맺은 PC 토큰을 씌운다
+    /// 인증층을 씌우기 전의 라우트 (감사 출처 포함). 로컬 IPC는 IPC 토큰, 원격 포트(`remote_daemon`)는 짝 맺은 PC 토큰을 씌운다.
+    /// 라우트 표는 한 번만 만들고 부를 때마다 이 서버를 상태로 붙인다. 서버를 품는 층은 표 밖에서 씌운다:
+    /// 표가 서버를 품으면 서버를 놓아도 감독자·관리 프로세스가 놓이지 않는다
     pub(crate) fn routes(&self) -> Router {
+        use tower::Layer;
+        static TABLE: std::sync::OnceLock<Router<IPCServer>> = std::sync::OnceLock::new();
+        let table = TABLE.get_or_init(Self::route_table).clone().with_state(self.clone());
+        // 짝 맺은 PC(출처 `remote`)의 PC 전용 경로·칸. 원격 포트와 안에서 다시 부르는 라우터(`actions::call_as`)가 모두 지난다
+        Router::new().fallback_service(axum::middleware::from_fn_with_state(self.clone(), crate::remote_daemon::server::rules).layer(table))
+    }
+
+    fn route_table() -> Router<IPCServer> {
         Router::new()
             // ── 경량 ping (lock / 디스크 I/O 없음) ──
             .route("/health", get(handlers::server::health_check))
@@ -1101,14 +1112,11 @@ impl IPCServer {
             .route("/api/remote/install/{id}/input", post(handlers::remote_daemon::install_input))
             .route("/api/remote/servers", get(handlers::remote_daemon::list_all_servers))
             .route("/api/remote/daemons/{host_id}/proxy/{*rest}", get(handlers::remote_daemon::proxy).post(handlers::remote_daemon::proxy).put(handlers::remote_daemon::proxy).patch(handlers::remote_daemon::proxy).delete(handlers::remote_daemon::proxy))
-            .with_state(self.clone())
-            .merge(updates::updates_router(self.update_state.clone()))
+            .merge(updates::updates_router())
             // 디스코드 탭의 릴레이 읽기를 잠깐 기억하고, 쓰는 요청이 끝나면 잊는다 (`relay_cache.rs`)
             .layer(axum::middleware::from_fn(handlers::relay_cache::layer))
             // 감사 로그 출처: 요청마다 X-Saba-Client로 정한다. 인증층은 이 바깥에 씌운다 (업데이트 라우터까지)
             .layer(axum::middleware::from_fn(crate::audit::layer))
-            // 짝 맺은 PC(출처 `remote`)의 PC 전용 경로·칸. 원격 포트와 안에서 다시 부르는 라우터(`actions::call_as`)가 모두 지난다
-            .layer(axum::middleware::from_fn_with_state(self.clone(), crate::remote_daemon::server::rules))
     }
 
     pub async fn start(self) -> Result<()> {
@@ -1234,6 +1242,30 @@ mod tests {
             }
         };
         tokio::time::timeout(std::time::Duration::from_secs(5), attached).await.expect("the host channel must be attached once the lock is free");
+    }
+
+    /// 라우터로 요청을 받은 서버도 놓으면 감독자까지 놓인다: 라우터가 서버를 붙잡아 관리 프로세스·작업자가 남지 않게
+    #[tokio::test]
+    async fn a_server_that_served_requests_lets_go_of_the_supervisor() {
+        use tower::ServiceExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let supervisor = Arc::new(RwLock::new(crate::supervisor::Supervisor::new_with_instances_dir(
+            tmp.path().join("modules").to_str().unwrap(),
+            tmp.path().join("instances").to_str().unwrap(),
+        )));
+        let weak = Arc::downgrade(&supervisor);
+        let server = IPCServer::new(supervisor, "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        for _ in 0..2 {
+            let res = server.router().oneshot(axum::http::Request::get("/health").header("host", "127.0.0.1").body(axum::body::Body::empty()).unwrap()).await.unwrap();
+            assert_eq!(res.status(), 200);
+        }
+        drop(server);
+        let released = async {
+            while weak.upgrade().is_some() {
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        };
+        tokio::time::timeout(std::time::Duration::from_secs(5), released).await.expect("nothing keeps the supervisor alive after the server is gone");
     }
 
     /// 콘솔 스트림(SSE): 지금 있는 줄을 먼저 보내고, 새 줄이 생기면 그 줄만 이어서 보낸다 (데몬 로그로 확인)

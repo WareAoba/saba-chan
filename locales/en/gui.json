@@ -1624,7 +1624,7 @@
     "backup_unreadable": "cannot be opened",
     "backup_unreadable_hint": "Backup cannot be opened and cannot be restored. Unused backup content is not cleaned up until it is deleted, so delete it.",
     "err_backup_file_locked": "Backup failed: the server is using a file ({{file}}). Stop the server and try again.",
-    "err_backup_disk_full": "Backup failed: not enough disk space. Free up space and try again.",
+    "err_backup_disk_full": "Not enough disk space. Free up space and try again.",
     "err_autosave_not_resumed": "Backup made, but resuming the server's autosave failed. Restart the server.",
     "err_backup_failed_autosave_off": "Backup failed, and resuming the server's autosave failed. Restart the server.",
     "err_backup_save_rejected": "No backup: the server refused the save command. Stop the server and back up again.",

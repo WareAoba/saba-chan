@@ -7,7 +7,7 @@ const CODE_TEXT: Record<string, string> = {
     backup_busy: 'maintenance.err_backup_busy',
     // 켜진 서버가 쥐고 있는 파일 (`file`: 그 이름)
     backup_file_locked: 'maintenance.err_backup_file_locked',
-    // 디스크(또는 할당량)가 차서 백업을 쓰지 못했다
+    // 디스크(또는 할당량)가 차서 백업·복원·가져오기·내보내기가 쓰지 못했다
     backup_disk_full: 'maintenance.err_backup_disk_full',
     // 백업은 만들었지만 자동 저장을 되돌리지 못했다 ([backup] resume_command)
     autosave_not_resumed: 'maintenance.err_autosave_not_resumed',

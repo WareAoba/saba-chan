@@ -55,16 +55,21 @@ pub(super) async fn core_apply(state: &UpdateState) {
             return;
         }
         let cfg = state.manager.read().await.get_config();
+        // 사용자가 고른 설치(`/api/updates/install`)가 끊길 작업을 기다리는 중이면 자동 적용 설정과 상관없이 이어서 설치한다
+        let requested = state.install_requested.load(std::sync::atomic::Ordering::SeqCst);
         // 처음 차례와, 기다리는 사이 확인이 더 새 판을 찾았을 때 받는다. '확인만'(받기·적용 모두 끔)이면 받지 않는다
-        if state.take_apply_recheck() && (cfg.auto_apply || cfg.auto_download) {
+        if state.take_apply_recheck() && (cfg.auto_apply || cfg.auto_download || requested) {
             download_app_updates(state).await;
         }
         // 자동 적용을 껐다: 사용자가 다시 시작을 누를 때 적용한다 (받아 두지 않았으면 그때 받는다)
-        if !cfg.auto_apply {
+        if !cfg.auto_apply && !requested {
             hold_for_restart(state).await;
             return;
         }
-        let (decision, version, notes) = plan_core_apply(state).await;
+        let (decision, version, notes) = plan_core_apply(state, requested).await;
+        if !matches!(decision, Decision::Wait(_)) {
+            state.install_requested.store(false, std::sync::atomic::Ordering::SeqCst);
+        }
         match decision {
             Decision::Nothing => {
                 // 기다리던 것이 사라졌으면(받아 둔 것을 적용했거나 지웠다) 걷는다. 되돌림·실패한 판의 준비됨은 사용자가 고를 때까지 둔다
@@ -146,8 +151,9 @@ async fn hold_for_restart(state: &UpdateState) {
     }
 }
 
-/// 받아 둔 앱 업데이트를 지금 적용할 수 있는가 (`update_phase::decide`)와 그 판·패치노트
-async fn plan_core_apply(state: &UpdateState) -> (Decision, Option<String>, Option<std::collections::HashMap<String, String>>) {
+/// 받아 둔 앱 업데이트를 지금 적용할 수 있는가 (`update_phase::decide`)와 그 판·패치노트.
+/// `requested`: 사용자가 고른 설치라 되돌린·고정한·미룬 판도 적용한다 (끊길 작업만 기다린다)
+async fn plan_core_apply(state: &UpdateState, requested: bool) -> (Decision, Option<String>, Option<std::collections::HashMap<String, String>>) {
     let (pending, release, core_version, failed, user_held, reads) = {
         let mut mgr = state.manager.write().await;
         restore_pending(&mut mgr);
@@ -188,9 +194,9 @@ async fn plan_core_apply(state: &UpdateState) -> (Decision, Option<String>, Opti
         pending: &pending,
         version: version.as_deref(),
         core_version: core_version.as_deref(),
-        failed_release: failed.as_deref(),
-        user_held,
-        deferred_release: deferred.as_deref(),
+        failed_release: failed.as_deref().filter(|_| !requested),
+        user_held: user_held && !requested,
+        deferred_release: deferred.as_deref().filter(|_| !requested),
         cli_running,
         blockers,
     });
@@ -534,18 +540,36 @@ pub(super) fn restore_pending(mgr: &mut saba_chan_updater_lib::UpdateManager) {
 
 /// POST /api/updates/install — 확인 → 받을 것 전부 받기 → 적용. 데몬·GUI처럼 재시작이 필요한 것이 있으면 업데이터를 띄운다
 /// (그 뒤 데몬은 꺼지고 업데이터가 GUI나 데몬을 다시 띄운다). GUI가 없는 원격(디스코드)에서도 끝까지 가게 하는 경로다.
-/// 답: apply의 답(`ok, applied, requires_updater, errors`)에 `downloaded`, 받지 못한 것 `download_errors`, 업데이터를 띄웠으면 `updater_launched: true`
+/// 재시작이 필요한데 끊길 작업(`core_blockers`)이 있으면 띄우지 않고 `waiting`으로 답한다: 적용 반복이 그 작업이 끝나면
+/// 자동 적용 설정과 상관없이 이어서 설치한다.
+/// 답: apply의 답(`ok, applied, requires_updater, errors`)에 `downloaded`, 받지 못한 것 `download_errors`, 업데이터를 띄웠으면
+/// `updater_launched: true`, 기다리면 `waiting: [{kind, instance_id, name}]`(상태의 `phase.waiting_for`와 같은 모양)
 pub(super) async fn install_updates(State(state): State<UpdateState>) -> axum::response::Response {
-    use crate::ipc::internal::into_internal;
     if let Err(e) = check_and_follow_up(&state).await {
         return crate::ipc::handlers::error(axum::http::StatusCode::BAD_GATEWAY, "update_check_failed", format!("Update check failed: {}", e));
     }
+    install_checked(state).await
+}
+
+/// 확인을 마친 뒤의 설치 (`install_updates`)
+pub(super) async fn install_checked(state: UpdateState) -> axum::response::Response {
+    use crate::ipc::internal::into_internal;
     let downloaded = into_internal(download_components_with(state.clone(), DownloadRequest::default()).await).await;
     if !downloaded.status.is_success() {
         return (downloaded.status, Json(downloaded.body)).into_response();
     }
     let downloaded = downloaded.body;
-    let mut applied = into_internal(apply_updates_with(state.clone(), ApplyRequest::default()).await).await.body;
+    let (decision, version, notes) = plan_core_apply(&state, true).await;
+    let mut applied = match decision {
+        Decision::Wait(blockers) => {
+            state.install_requested.store(true, std::sync::atomic::Ordering::SeqCst);
+            state.set_phase(Phase { waiting_for: blockers.clone(), ..Phase::new(PhaseState::Waiting, version, notes) });
+            spawn_core_apply(state.clone());
+            // 업데이터는 적용 반복이 띄운다 (`requires_updater`를 싣지 않는다)
+            json!({ "success": true, "applied": [], "errors": [], "waiting": blockers })
+        }
+        _ => into_internal(apply_updates_with(state.clone(), ApplyRequest::default()).await).await.body,
+    };
     applied["downloaded"] = downloaded.get("downloaded").cloned().unwrap_or(Value::Null);
     // 일부만 받았으면 받은 것은 적용하고 받지 못한 것을 함께 알린다
     if let Some(failed) = downloaded.get("errors").and_then(Value::as_array).filter(|e| !e.is_empty()) {

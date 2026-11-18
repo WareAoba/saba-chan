@@ -75,7 +75,7 @@ use addons::{
     replace_addons_once, replace_addons_until_done, split_by_busy,
 };
 #[cfg(test)]
-use apply::{ApplyRequest, DownloadRequest, body_or_default, core_apply, restore_pending};
+use apply::{ApplyRequest, DownloadRequest, body_or_default, core_apply, install_checked, restore_pending};
 #[cfg(test)]
 use config::{adopt_config, apply_config_patch, load_updater_config_from, save_updater_config_to};
 #[cfg(test)]
@@ -128,6 +128,8 @@ pub struct UpdateState {
     announced: Arc<std::sync::Mutex<Option<Value>>>,
     /// 적용 반복이 새로 받아 볼 확인이 있었다: 반복이 다음 차례에 받고, 끝난 뒤에 왔으면 반복을 다시 띄운다
     apply_recheck: Arc<std::sync::atomic::AtomicBool>,
+    /// 사용자가 고른 설치(`/api/updates/install`)가 끊길 작업을 기다린다: 적용 반복이 자동 적용 설정과 상관없이 이어서 설치한다
+    install_requested: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl UpdateState {
@@ -180,6 +182,7 @@ impl UpdateState {
             addon_check: Arc::default(),
             core_applying: Arc::default(),
             apply_recheck: Arc::default(),
+            install_requested: Arc::default(),
             status_changed: Arc::default(),
             announced: Arc::default(),
         }
@@ -383,8 +386,15 @@ impl Default for UpdateState {
 
 // ── 라우터 ──
 
+/// 데몬 라우터의 상태에서 업데이트 상태를 꺼낸다 (`updates_router`의 핸들러)
+impl axum::extract::FromRef<crate::ipc::IPCServer> for UpdateState {
+    fn from_ref(server: &crate::ipc::IPCServer) -> Self {
+        server.update_state.clone()
+    }
+}
+
 /// `/api/updates/*` 라우트를 포함하는 axum Router 생성
-pub fn updates_router(state: UpdateState) -> Router {
+pub fn updates_router() -> Router<crate::ipc::IPCServer> {
     Router::new()
         .route("/api/updates/status", get(get_status))
         .route("/api/updates/check", post(check_updates))
@@ -405,7 +415,6 @@ pub fn updates_router(state: UpdateState) -> Router {
         .route("/api/updates/addons/{key}/versions", get(get_addon_versions))
         .route("/api/updates/addons/{key}/pin", post(pin_addon).delete(unpin_addon))
         .route("/api/daemon/update", get(get_daemon_update).post(install_updates).put(put_daemon_update))
-        .with_state(state)
 }
 
 // ── 핸들러 ──

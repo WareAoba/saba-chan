@@ -490,7 +490,8 @@ fn backup_error(e: &anyhow::Error) -> (StatusCode, Value) {
         let file = locked.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         (StatusCode::CONFLICT, json!({ "success": false, "error": e.to_string(), "error_code": "backup_file_locked", "file": file }))
     } else if disk_full(e) {
-        (StatusCode::INSUFFICIENT_STORAGE, json!({ "success": false, "error": format!("{e:#}"), "error_code": "backup_disk_full" }))
+        let full = full_disk(e);
+        (full.status, full.body)
     } else {
         (StatusCode::INTERNAL_SERVER_ERROR, json!({ "success": false, "error": e.to_string(), "error_code": "backup_failed" }))
     }
@@ -500,6 +501,11 @@ fn backup_error(e: &anyhow::Error) -> (StatusCode, Value) {
 fn disk_full(e: &anyhow::Error) -> bool {
     use std::io::ErrorKind::{QuotaExceeded, StorageFull};
     e.chain().filter_map(|c| c.downcast_ref::<std::io::Error>()).any(|io| matches!(io.kind(), StorageFull | QuotaExceeded))
+}
+
+/// 디스크가 차서 실패했다: 백업·복원·가져오기·내보내기가 같은 코드로 알린다
+fn full_disk(e: &anyhow::Error) -> Failure {
+    Failure::coded(StatusCode::INSUFFICIENT_STORAGE, "backup_disk_full", format!("{e:#}"))
 }
 
 pub(crate) async fn backups_dir(state: &IPCServer, id: &str) -> Result<PathBuf, Failure> {
@@ -688,7 +694,7 @@ async fn keep_snapshot_locked(state: &IPCServer, id: &str, snapshot: GameSnapsho
     match made {
         Ok(Ok(made)) => Ok(made),
         Ok(Err(e)) if e.downcast_ref::<backup::LockedFile>().is_some() => Err(Failure::coded(StatusCode::CONFLICT, "backup_file_locked", e.to_string())),
-        Ok(Err(e)) if disk_full(&e) => Err(Failure::coded(StatusCode::INSUFFICIENT_STORAGE, "backup_disk_full", format!("{e:#}"))),
+        Ok(Err(e)) if disk_full(&e) => Err(full_disk(&e)),
         Ok(Err(e)) => Err(Failure::coded(StatusCode::INTERNAL_SERVER_ERROR, "backup_failed", e.to_string())),
         Err(e) => Err(Failure::coded(StatusCode::INTERNAL_SERVER_ERROR, "backup_failed", e.to_string())),
     }
@@ -807,13 +813,14 @@ async fn transfer(state: &IPCServer, id: &str) -> Result<Transfer, Failure> {
     })
 }
 
-/// 내보내기·가져오기 실패: 사바쨩 백업이 아니거나 망가진 파일은 400, 그 밖(권한·입출력)은 500
+/// 내보내기·가져오기 실패: 사바쨩 백업이 아니거나 망가진 파일은 400, 디스크가 차면 507, 그 밖(권한·입출력)은 500
 fn transfer_failed(e: anyhow::Error, code: &str) -> Failure {
     match e.downcast_ref::<backup::BadExport>() {
         Some(backup::BadExport::NotBackup) => Failure::coded(StatusCode::BAD_REQUEST, "import_not_backup", e.to_string()),
         Some(backup::BadExport::Damaged) => Failure::coded(StatusCode::BAD_REQUEST, "import_damaged", e.to_string()),
         Some(backup::BadExport::OldFormat) => Failure::coded(StatusCode::BAD_REQUEST, "export_old_backup", e.to_string()),
         None if e.downcast_ref::<backup::BadName>().is_some() => delete_failed(e),
+        None if disk_full(&e) => full_disk(&e),
         None => Failure::coded(StatusCode::INTERNAL_SERVER_ERROR, code, format!("{:#}", e)),
     }
 }
@@ -935,7 +942,7 @@ pub(crate) async fn restore_held(state: &IPCServer, id: &str, name: &str, _guard
     }
     let targets = match backup::backed_up_paths(&dir, name) {
         Ok(t) => t,
-        Err(e) => return Err(Failure::coded(StatusCode::BAD_REQUEST, "restore_failed", format!("{:#}", e))),
+        Err(e) => return Err(restore_failed(e)),
     };
     if targets.iter().any(|t| boundary.resolve(t).is_none() || !crate::module_paths::is_inside(t, &roots)) {
         return Err(Failure::coded(
@@ -967,9 +974,17 @@ pub(crate) async fn restore_held(state: &IPCServer, id: &str, name: &str, _guard
                 "settings_refreshed": refreshed,
             }))
         }
-        Ok(Err(e)) => Err(Failure::coded(StatusCode::BAD_REQUEST, "restore_failed", format!("{:#}", e))),
+        Ok(Err(e)) => Err(restore_failed(e)),
         Err(e) => Err(Failure::coded(StatusCode::INTERNAL_SERVER_ERROR, "restore_failed", e.to_string())),
     }
+}
+
+/// 복원 실패: 백업을 읽거나 되돌리지 못했다
+fn restore_failed(e: anyhow::Error) -> Failure {
+    if disk_full(&e) {
+        return full_disk(&e);
+    }
+    Failure::coded(StatusCode::BAD_REQUEST, "restore_failed", format!("{:#}", e))
 }
 
 fn backup_limit() -> Failure {
@@ -1027,6 +1042,17 @@ pub(crate) mod tests {
         assert_eq!((status, body["error_code"].as_str()), (StatusCode::INSUFFICIENT_STORAGE, Some("backup_disk_full")), "{body}");
         let other = anyhow::Error::from(std::io::Error::from(std::io::ErrorKind::PermissionDenied));
         assert_eq!(backup_error(&other).1["error_code"], "backup_failed");
+    }
+
+    #[test]
+    fn restore_import_and_export_report_a_full_disk_like_a_backup() {
+        let full = || anyhow::Error::from(std::io::Error::from(std::io::ErrorKind::StorageFull)).context("writing files");
+        for failed in [restore_failed(full()), transfer_failed(full(), "import_failed"), transfer_failed(full(), "export_failed")] {
+            assert_eq!((failed.status, failed.body["error_code"].as_str()), (StatusCode::INSUFFICIENT_STORAGE, Some("backup_disk_full")), "{}", failed.body);
+        }
+        let other = || anyhow::Error::from(std::io::Error::from(std::io::ErrorKind::PermissionDenied));
+        assert_eq!(restore_failed(other()).body["error_code"], "restore_failed");
+        assert_eq!(transfer_failed(other(), "export_failed").body["error_code"], "export_failed");
     }
 
     pub(crate) const NO_BACKUP: &str = "[module]\nschema_version = 1\nname = \"plain\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n";

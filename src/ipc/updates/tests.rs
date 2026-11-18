@@ -103,6 +103,66 @@ async fn with_auto_apply_off_the_update_waits_for_a_restart() {
     assert_eq!(state.phase(), Phase::default(), "nothing left to apply");
 }
 
+/// 사용자가 고른 설치(`/api/updates/install`)는 코어를 바꾸면 끊길 작업이 있으면 업데이터를 띄우지 않고 기다리는 것을 답한다.
+/// 그 작업이 끝나면 적용 반복이 이어서 설치한다 (자동 적용을 꺼 두었어도)
+#[cfg(unix)]
+#[tokio::test]
+async fn a_requested_install_waits_for_running_work_and_then_installs() {
+    use crate::instance::lock::{InstanceLock, Purpose};
+    let _staging = STAGING.lock().await;
+    let staging = saba_chan_updater_lib::constants::resolve_staging_dir();
+    std::fs::create_dir_all(&staging).unwrap();
+    let staged = staging.join("saba-chan-gui-linux-x64.zip");
+    std::fs::write(&staged, b"zip").unwrap();
+    let pending = json!([{
+        "component": "gui", "current_version": "0.1.0", "latest_version": "0.2.0",
+        "update_available": true, "download_url": null, "asset_name": "saba-chan-gui-linux-x64.zip",
+        "release_notes": null, "published_at": null, "downloaded": true,
+        "downloaded_path": staged.to_string_lossy(), "installed": true
+    }]);
+    std::fs::write(staging.join("pending.json"), pending.to_string()).unwrap();
+    let fake = staging.join("fake-updater.sh");
+    std::fs::write(&fake, "#!/bin/sh\nsleep 5\n").unwrap();
+    std::fs::set_permissions(&fake, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    // edition 2024: 환경 변수 쓰기는 unsafe다. 테스트 준비에서만 쓴다
+    unsafe { std::env::set_var("SABA_UPDATER_PATH", &fake) };
+
+    let tmp = tempfile::tempdir().unwrap();
+    let stop = tokio_util::sync::CancellationToken::new();
+    let mut state = state_in(tmp.path());
+    state.stop_requested = Some(stop.clone());
+    {
+        let mut mgr = state.manager.write().await;
+        super::restore_pending(&mut mgr);
+        let mut cfg = mgr.get_config();
+        cfg.auto_apply = false;
+        mgr.update_config(cfg);
+    }
+    let id = format!("requested-install-{}", std::process::id());
+    let backup = InstanceLock::take(&id).unwrap().purpose(Purpose::Backup);
+
+    let resp = super::install_checked(state.clone()).await;
+    let body: Value = serde_json::from_slice(&axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let waiting = body["waiting"].as_array().expect("the answer names what the install waits for");
+    assert!(waiting.iter().any(|w| w["kind"] == "backup" && w["instance_id"] == id.as_str()), "{body}");
+    assert!(body.get("updater_launched").is_none(), "{body}");
+    assert!(!state.updater_launched(), "the running backup is not cut off");
+    assert_eq!(state.phase().state, PhaseState::Waiting);
+
+    // 기다리는 반복은 여기서 세우고, 그 반복의 다음 차례를 직접 돌린다 (30초를 기다리지 않게)
+    stop.cancel();
+    while state.core_applying.load(std::sync::atomic::Ordering::SeqCst) {
+        tokio::task::yield_now().await;
+    }
+    drop(backup);
+    let next_round = UpdateState { stop_requested: None, ..state.clone() };
+    super::core_apply(&next_round).await;
+    assert!(state.updater_launched(), "the install goes on once the backup is done, with auto-apply off");
+
+    std::fs::remove_file(staging.join("pending.json")).ok();
+    std::fs::remove_file(&staged).ok();
+}
+
 #[test]
 fn auto_apply_is_kept_with_the_update_settings() {
     let mut cfg = saba_chan_updater_lib::UpdateConfig::default();
