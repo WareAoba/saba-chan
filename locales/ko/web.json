@@ -260,7 +260,7 @@
     "install": "설치",
     "installed": "모듈 설치됨",
     "busy": "같은 모듈의 다른 작업 진행 중. 잠시 뒤 다시 눌러 주세요.",
-    "official_only": "웹에서는 공식 경로로 공개된 배포판만 설치할 수 있습니다.",
+    "official_only": "웹에서는 공식 경로로 공개된 버전만 설치할 수 있습니다.",
     "catalog_failed": "공개 목록 받기 실패. 잠시 뒤 다시 열어 주세요.",
     "updates_count": "업데이트 {{count}}개",
     "update_all": "모두 업데이트",
