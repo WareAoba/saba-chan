@@ -154,7 +154,7 @@ PC 주인이 디스코드에서 받은 일회용 링크로 브라우저(사바�
   remote-cert.der, remote-key.der   원격 데몬 포트의 자체 서명 인증서와 키(키는 주인만 읽는다)    remote_daemon/tls.rs
   daemon.lock (+ .owner)    단일 인스턴스 잠금과 실행 중 데몬 pid·주소    instance_lock.rs
   daemon.log                CLI 부트 모드에서만 생성
-  logs/daemon.log (+ .1)    그 밖의 모드의 데몬 로그·패닉 (GUI 로그 saba-chan-<시각>.log와 같은 폴더)    daemon_log.rs
+  logs/daemon.log (+ .1)    그 밖의 모드의 데몬 로그·패닉 (GUI 로그 saba-chan.log와 같은 폴더)    updater log_file.rs
   python-guard/sitecustomize.py   활성 익스텐션만 import하게 하는 가드    plugin/mod.rs
   installed-manifest.json, updater-state.json, update-complete.json (updater)
   addon-pins.json           사용자가 고른 모듈·익스텐션 버전(고정·기다리는 버전)    updater/src/addon_pins.rs (05 §1.7)
