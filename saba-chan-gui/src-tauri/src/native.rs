@@ -647,7 +647,14 @@ fn opened<E: std::fmt::Display>(res: Result<(), E>, failed: String) -> Value {
 }
 
 fn is_folder(path: &str) -> bool {
-    std::path::Path::new(path).is_dir()
+    let path = std::path::Path::new(path);
+    // macOS는 앱 묶음(.app 등)도 폴더지만 `open`이 그 앱을 실행한다
+    path.is_dir() && !(cfg!(target_os = "macos") && is_bundle(path))
+}
+
+/// macOS 묶음: `.app` 폴더이거나 `Contents/Info.plist`가 있는 폴더
+fn is_bundle(path: &std::path::Path) -> bool {
+    path.extension().is_some_and(|e| e.eq_ignore_ascii_case("app")) || path.join("Contents").join("Info.plist").is_file()
 }
 
 #[tauri::command]
@@ -894,5 +901,16 @@ mod tests {
         assert!(is_folder(dir.path().to_str().unwrap()));
         assert!(!is_folder(file.to_str().unwrap()));
         assert!(!is_folder(dir.path().join("missing").to_str().unwrap()));
+        // macOS에서는 앱 묶음을 열면 앱이 실행되므로 폴더로 보지 않는다
+        let app = dir.path().join("X.app");
+        let plain = dir.path().join("server");
+        std::fs::create_dir_all(plain.join("Contents")).unwrap();
+        std::fs::create_dir_all(&app).unwrap();
+        let framework = dir.path().join("Lib.bundle");
+        std::fs::create_dir_all(framework.join("Contents")).unwrap();
+        std::fs::write(framework.join("Contents/Info.plist"), "").unwrap();
+        assert!(is_bundle(&app) && is_bundle(&framework) && !is_bundle(&plain));
+        assert_eq!(is_folder(app.to_str().unwrap()), !cfg!(target_os = "macos"));
+        assert!(is_folder(plain.to_str().unwrap()));
     }
 }
