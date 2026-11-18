@@ -334,29 +334,26 @@ fn apply(cfg: &mut ChatbotConfig, patch: ChatbotPatch) -> Result<(), String> {
 }
 
 /// 이 호스트가 들어 있는 길드: 릴레이의 호스트 노드 목록 + 길드별 설정이 있는 길드.
-/// 둘째 값은 릴레이 목록을 받았는지 (호스트가 없으면 받을 것도 없으니 true)
-async fn guild_ids(state: &IPCServer, base: &str, cfg: &ChatbotConfig) -> (BTreeSet<String>, bool) {
+/// 둘째 값은 받은 릴레이 목록 (못 받았으면 None, 호스트가 없으면 받을 것도 없으니 빈 목록)
+async fn guild_ids(state: &IPCServer, base: &str, cfg: &ChatbotConfig) -> (BTreeSet<String>, Option<BTreeSet<String>>) {
     let mut ids: BTreeSet<String> = cfg.guilds.keys().cloned().collect();
-    match host_guilds(state, base).await {
-        Some(hosted) => {
-            ids.extend(hosted);
-            (ids, true)
-        }
-        None => (ids, false),
-    }
+    let hosted: Option<BTreeSet<String>> = host_guilds(state, base).await.map(BTreeSet::from_iter);
+    ids.extend(hosted.iter().flatten().cloned());
+    (ids, hosted)
 }
 
 /// 길드 하나에 보낸 결과: (릴레이 상태, 본문) 또는 연결 실패
 type PushOutcome = Result<(StatusCode, Value), String>;
 
 /// 설정 전체를 길드마다 PUT. 노드 토큰이 없으면 아무것도 하지 않는다.
-/// `previous`가 있으면 거절(400)된 길드에서 멈추고 이미 받은 길드를 그 값으로 되돌린다
-pub async fn push_all(state: &IPCServer, cfg: &ChatbotConfig, previous: Option<&ChatbotConfig>) -> Vec<(String, PushOutcome)> {
+/// `previous`가 있으면 거절(400)된 길드에서 멈추고 이미 받은 길드를 그 값으로 되돌린다.
+/// 둘째 값은 이 PC 설정에만 남은 옛 길드 (`gone_guilds`): 부른 쪽이 설정에서 지운다
+pub async fn push_all(state: &IPCServer, cfg: &ChatbotConfig, previous: Option<&ChatbotConfig>) -> (Vec<(String, PushOutcome)>, Vec<String>) {
     if crate::relay_client::load_node_token().is_none() {
-        return Vec::new();
+        return (Vec::new(), Vec::new());
     }
     let base = relay_base(state).await;
-    let guilds = guild_ids(state, &base, cfg).await.0;
+    let (guilds, hosted) = guild_ids(state, &base, cfg).await;
     let put = |guild: String, body: Map<String, Value>| {
         let base = base.clone();
         async move {
@@ -364,7 +361,7 @@ pub async fn push_all(state: &IPCServer, cfg: &ChatbotConfig, previous: Option<&
             call(&base, reqwest::Method::PUT, &path, Some(Value::Object(body).to_string())).await
         }
     };
-    match previous {
+    let pushed = match previous {
         Some(old) => push_or_restore(guilds, cfg, old, put).await,
         None => {
             let mut out = Vec::new();
@@ -374,7 +371,28 @@ pub async fn push_all(state: &IPCServer, cfg: &ChatbotConfig, previous: Option<&
             }
             out
         }
-    }
+    };
+    gone_guilds(pushed, hosted.as_ref())
+}
+
+/// 릴레이 목록에 없고 릴레이가 없는 노드(404)라고 답한 길드를 따로 뺀다: PC 없는 서버가 됐거나 주인이 떠난 서버라
+/// 이 PC 설정에만 남은 옛 항목이다 (다시 묶이면 `adopt_linked_guild`가 릴레이 값을 받는다).
+/// 목록을 못 받았으면 아무것도 빼지 않는다
+fn gone_guilds(pushed: Vec<(String, PushOutcome)>, hosted: Option<&BTreeSet<String>>) -> (Vec<(String, PushOutcome)>, Vec<String>) {
+    let Some(hosted) = hosted else {
+        return (pushed, Vec::new());
+    };
+    let (gone, kept): (Vec<_>, Vec<_>) = pushed
+        .into_iter()
+        .partition(|(guild, outcome)| !hosted.contains(guild) && matches!(outcome, Ok((c, _)) if *c == StatusCode::NOT_FOUND));
+    (kept, gone.into_iter().map(|(guild, _)| guild).collect())
+}
+
+/// 옛 길드의 설정을 지운다. 지운 것이 있으면 true
+fn forget_guilds(cfg: &mut ChatbotConfig, gone: &[String]) -> bool {
+    let before = cfg.guilds.len();
+    cfg.guilds.retain(|guild, _| !gone.contains(guild));
+    cfg.guilds.len() != before
 }
 
 /// 길드마다 `new`를 보낸다. 한 길드가 값을 거절(400)하면 거기서 멈추고, 이미 받은 길드에 `old`를 다시 보낸다.
@@ -410,7 +428,8 @@ async fn delete_remote(state: &IPCServer, cfg: &ChatbotConfig) -> (bool, Vec<Val
         return (true, Vec::new());
     }
     let base = relay_base(state).await;
-    let (guilds, listed) = guild_ids(state, &base, cfg).await;
+    let (guilds, hosted) = guild_ids(state, &base, cfg).await;
+    let listed = hosted.is_some();
     let mut rows = Vec::new();
     for guild in guilds {
         let path = format!("/api/nodes/{}/chatbot", encode_path_segment(&guild));
@@ -445,10 +464,17 @@ pub async fn sync_on_connect(state: &IPCServer) {
     if cfg == ChatbotConfig::default() {
         return;
     }
-    let cfg = settled(state, cfg).await;
-    for (guild, outcome) in push_all(state, &cfg, None).await {
+    let mut cfg = settled(state, cfg).await;
+    let (pushed, gone) = push_all(state, &cfg, None).await;
+    for (guild, outcome) in pushed {
         if !matches!(&outcome, Ok((c, _)) if c.is_success()) {
             tracing::warn!("[Chatbot] sync to guild {} failed: {}", guild, result_row(&guild, &outcome));
+        }
+    }
+    if forget_guilds(&mut cfg, &gone) {
+        tracing::info!("[Chatbot] forgot settings of guilds no longer on this PC: {:?}", gone);
+        if let Err(e) = state.config_store.set_chatbot(&cfg) {
+            tracing::warn!("[Chatbot] could not save after forgetting old guilds: {}", e);
         }
     }
 }
@@ -512,8 +538,8 @@ async fn settled(state: &IPCServer, mut cfg: ChatbotConfig) -> ChatbotConfig {
         return cfg;
     }
     let base = relay_base(state).await;
-    let (guilds, listed) = guild_ids(state, &base, &cfg).await;
-    if listed && settle_legacy(&mut cfg, guilds) {
+    let (guilds, hosted) = guild_ids(state, &base, &cfg).await;
+    if hosted.is_some() && settle_legacy(&mut cfg, guilds) {
         if let Err(e) = state.config_store.set_chatbot(&cfg) {
             tracing::warn!("[Chatbot] could not save the per-server settings: {}", e);
         }
@@ -529,11 +555,12 @@ pub(crate) async fn put(state: &IPCServer, patch: ChatbotPatch) -> Outcome {
     if let Err(e) = apply(&mut cfg, patch) {
         return Err(Failure::coded(StatusCode::BAD_REQUEST, "validation_failed", e));
     }
-    let pushed = push_all(state, &cfg, Some(&previous)).await;
+    let (pushed, gone) = push_all(state, &cfg, Some(&previous)).await;
     // 릴레이가 값을 거절했으면 저장하지 않는다(받은 길드는 push_all이 되돌렸다). 연결 실패는 저장하고 다음 연결 때 맞춘다
     if let Some((guild, outcome)) = pushed.iter().find(|(_, o)| matches!(o, Ok((c, _)) if *c == StatusCode::BAD_REQUEST)) {
         return Err(Failure::new(StatusCode::BAD_REQUEST, refused_row(guild, outcome, "validation_failed")));
     }
+    forget_guilds(&mut cfg, &gone);
     if let Err(e) = state.config_store.set_chatbot(&cfg) {
         return Err(Failure::coded(StatusCode::INTERNAL_SERVER_ERROR, "save_failed", e.to_string()));
     }
@@ -635,7 +662,10 @@ pub(crate) async fn delete_memory(state: &IPCServer, guild_id: Option<String>) -
     let base = relay_base(state).await;
     let (guilds, listed) = match guild_id.filter(|g| !g.is_empty()) {
         Some(g) => (BTreeSet::from([g]), true),
-        None => guild_ids(state, &base, &cfg).await,
+        None => {
+            let (ids, hosted) = guild_ids(state, &base, &cfg).await;
+            (ids, hosted.is_some())
+        }
     };
     let (ok, rows) = clear_memory(guilds, listed, |guild| {
         let base = base.clone();
@@ -672,6 +702,34 @@ mod tests {
 
     fn patch(v: Value) -> ChatbotPatch {
         serde_json::from_value(v).unwrap()
+    }
+
+    /// 이 PC에서 빠진 서버(릴레이 목록에 없고 없는 노드 404)는 매번 실패로 남기지 않고 설정에서 지운다.
+    /// 목록에 있는 서버의 404, 다른 실패, 목록을 못 받았을 때는 그대로 둔다 (사용자 11-18)
+    #[test]
+    fn guilds_gone_from_this_pc_are_forgotten_not_warned_every_sync() {
+        let gone = || Ok((StatusCode::NOT_FOUND, json!({"error": "NODE_NOT_FOUND"})));
+        let pushed = || {
+            vec![
+                ("old".to_string(), gone()),
+                ("hosted".to_string(), gone()),
+                ("other".to_string(), Ok((StatusCode::FORBIDDEN, Value::Null))),
+                ("ok".to_string(), Ok((StatusCode::OK, Value::Null))),
+            ]
+        };
+        let hosted = BTreeSet::from(["hosted".to_string(), "ok".to_string()]);
+        let (kept, forgotten) = gone_guilds(pushed(), Some(&hosted));
+        assert_eq!(forgotten, vec!["old".to_string()]);
+        assert_eq!(kept.iter().map(|(g, _)| g.as_str()).collect::<Vec<_>>(), vec!["hosted", "other", "ok"]);
+        let (kept, forgotten) = gone_guilds(pushed(), None);
+        assert!(forgotten.is_empty() && kept.len() == 4, "without the relay list nothing is forgotten");
+
+        let mut cfg = ChatbotConfig::default();
+        cfg.guilds.insert("old".into(), Map::new());
+        cfg.guilds.insert("other".into(), Map::new());
+        assert!(forget_guilds(&mut cfg, &["old".to_string()]));
+        assert_eq!(cfg.guilds.keys().collect::<Vec<_>>(), vec!["other"]);
+        assert!(!forget_guilds(&mut cfg, &["old".to_string()]));
     }
 
     /// 길드 목록을 받지 못했으면 지울 길드를 몰라도 성공이라 하지 않는다 (아무것도 지우지 않았을 수 있다)
