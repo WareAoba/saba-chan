@@ -21,7 +21,7 @@ const SETTINGS = {
     tts: { volume: 100, speed: 100, pitch: 0, names: 'multi' },
 };
 
-function setup(can: Record<string, boolean> = { manage: true }) {
+function setup(can: Record<string, boolean> = { manage: true }, daemon: Record<string, unknown> = {}) {
     useApp.setState((s) => ({ session: { ...s.session, hostId: 'h1' } }));
     const api = new Proxy(
         {
@@ -33,6 +33,7 @@ function setup(can: Record<string, boolean> = { manage: true }) {
                 .mockResolvedValue({ success: true, settings: { enabled: false }, hasApiKey: false }),
             chatbotGuildSave: vi.fn(async (_g, patch) => ({ success: true, settings: patch, hasApiKey: false })),
             chatbotSave: vi.fn().mockResolvedValue({ success: true, hasApiKey: true }),
+            ...daemon,
         },
         { get: (t, k) => t[k as keyof typeof t] ?? vi.fn().mockResolvedValue({}) },
     );
@@ -145,5 +146,41 @@ describe('이 PC 의 디스코드 서버 설정', () => {
             expect(card.querySelector('.set-card-icon svg')).toBeTruthy();
             expect(card.closest('.set-card-grid')).toBeTruthy();
         }
+    });
+
+    it('이 PC 의 서버 목록을 못 읽으면 다른 PC 로 판정하지 않고 읽기 실패와 다시 시도를 보인다', async () => {
+        const relayListHostNodes = vi
+            .fn()
+            .mockResolvedValueOnce({ error: 'timeout', error_code: 'ETIMEDOUT' })
+            .mockResolvedValue([{ guildId: G, guildName: 'Gather Craft' }]);
+        const { api } = setup({ manage: true }, { relayListHostNodes });
+        await flush();
+        await flush();
+        expect(screen.queryByText(/connected to another PC/)).toBeNull();
+        expect(screen.getByText('Failed to load settings. Check the connection and reload.')).toBeTruthy();
+        fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+        await flush();
+        await flush();
+        expect(relayListHostNodes).toHaveBeenCalledTimes(2);
+        expect(api.discordSettingsGet).toHaveBeenCalledWith(G);
+        expect(screen.queryByText('Failed to load settings. Check the connection and reload.')).toBeNull();
+    });
+
+    it('릴레이에서 설정을 못 읽은 서버(loaded:false)는 기본값 칸을 잠그고 읽기 실패와 다시 시도를 보인다', async () => {
+        const discordSettingsGet = vi
+            .fn()
+            .mockResolvedValueOnce({ ...SETTINGS, loaded: false })
+            .mockResolvedValue(SETTINGS);
+        setup({ manage: true }, { discordSettingsGet });
+        await flush();
+        await flush();
+        expect(screen.getByText('Failed to load settings. Check the connection and reload.')).toBeTruthy();
+        const emoji = screen.getByRole('checkbox', { name: /^Emoji upscale/ }) as HTMLInputElement;
+        expect(emoji.disabled).toBe(true);
+        fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+        await flush();
+        await flush();
+        expect(discordSettingsGet).toHaveBeenCalledTimes(2);
+        expect((screen.getByRole('checkbox', { name: /^Emoji upscale/ }) as HTMLInputElement).disabled).toBe(false);
     });
 });

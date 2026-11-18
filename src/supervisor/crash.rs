@@ -121,6 +121,18 @@ pub fn classify(f: &ExitFacts) -> ExitVerdict {
     }
 }
 
+/// 데몬이 띄운 non-managed 서버의 판정. 서버는 사용자가 보는 콘솔 창에서 돌고 데몬은 Ctrl+C를 보내지 않으므로,
+/// Ctrl+C·창 닫기 코드는 사용자가 서버 창에서 끈 정상 정지다
+pub fn classify_unmanaged(f: &ExitFacts) -> ExitVerdict {
+    let verdict = classify(f);
+    match verdict.exit_code {
+        Some(code) if verdict.kind == ExitKind::UnknownExit && code as u32 == STATUS_CONTROL_C_EXIT => {
+            ExitVerdict { kind: ExitKind::InGameStop, evidence: format!("exit code 0x{:08X}", STATUS_CONTROL_C_EXIT), ..verdict }
+        }
+        _ => verdict,
+    }
+}
+
 /// `crash_artifacts` 패턴(작업 폴더 기준)에 맞고 `since`(unix 초) 이후에 바뀐 파일
 pub fn new_crash_files(working_dir: &Path, patterns: &[String], since: u64) -> Vec<PathBuf> {
     let since = std::time::UNIX_EPOCH + Duration::from_secs(since);
@@ -221,6 +233,19 @@ mod tests {
 
     fn code(c: i32) -> Option<ProcessExit> {
         Some(ProcessExit { code: Some(c), ..Default::default() })
+    }
+
+    /// 데몬이 띄운 non-managed 서버는 사용자가 서버 창에서 본다: 창을 닫거나 Ctrl+C로 끈 것은 정상 정지다.
+    /// 창이 없는 관리형은 그대로 원인 모를 종료다
+    #[test]
+    fn closing_a_non_managed_server_window_is_a_plain_stop() {
+        let none: [String; 0] = [];
+        let no_files: [PathBuf; 0] = [];
+        let closed = facts(code(0xC000_013Au32 as i32), &none, &no_files);
+        assert_eq!(classify_unmanaged(&closed).kind, ExitKind::InGameStop);
+        assert_eq!(classify(&closed).kind, ExitKind::UnknownExit);
+        assert_eq!(classify_unmanaged(&facts(code(1), &none, &no_files)).kind, ExitKind::UnknownExit);
+        assert_eq!(classify_unmanaged(&facts(code(0xC000_0005u32 as i32), &none, &no_files)).kind, ExitKind::Crash);
     }
 
     #[test]

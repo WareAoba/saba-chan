@@ -131,7 +131,7 @@ pub async fn rename_instance(
     }
     let previous = std::mem::replace(&mut instance.name, new_name.to_string());
     if let Err(e) = supervisor.instance_store.update(&id, instance) {
-        return fail(StatusCode::INTERNAL_SERVER_ERROR, e.to_string(), "internal");
+        return fail(StatusCode::INTERNAL_SERVER_ERROR, e.to_string(), "save_failed");
     }
     Json(json!({ "success": true, "id": id, "name": new_name, "previous": previous })).into_response()
 }

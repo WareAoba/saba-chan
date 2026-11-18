@@ -228,7 +228,7 @@ impl DaemonApi for IPCServer {
         let modules = match listed {
             Ok(m) => m,
             Err(e) => {
-                tracing::warn!("[Chat] 모듈 목록 조회 실패: {}", e);
+                tracing::warn!("[Chat] Failed to list modules: {}", e);
                 return Vec::new();
             }
         };

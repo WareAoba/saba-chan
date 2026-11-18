@@ -55,8 +55,16 @@ const IN_FLIGHT: usize = 8;
 const QUEUED: usize = 32;
 /// 한 메시지 상한: 로그 내보내기(본문 8 MiB 남짓)가 들어간다
 const MAX_MESSAGE: usize = 16 << 20;
-/// 세션이 남은 채 끊기면 다시 붙어 보는 횟수 (1·2·4초 뒤)
-const RECONNECTS: u32 = 3;
+/// 세션이 남은 채 끊기면 다시 붙어 보는 시간: 릴레이가 끊긴 PC의 웹 세션을 쥐고 기다리는 시간(`WEB_GRACE_MS`)과 같다
+const RECONNECT_FOR: Duration = Duration::from_secs(30);
+/// 다시 붙기 간격 (1초부터 두 배씩, 이만큼까지)
+const RECONNECT_MAX_WAIT: Duration = Duration::from_secs(8);
+
+/// `failures`번째 다시 붙기 전 대기. 끊긴 지 `RECONNECT_FOR`가 지났으면 None (릴레이가 세션을 끝냈다)
+fn reconnect_wait(failures: u32, dropped_for: Duration) -> Option<Duration> {
+    let left = RECONNECT_FOR.checked_sub(dropped_for).filter(|left| !left.is_zero())?;
+    Some(crate::utils::exp_backoff(Duration::from_secs(1), RECONNECT_MAX_WAIT, failures).min(left))
+}
 
 static RUNNING: Mutex<Option<CancellationToken>> = Mutex::new(None);
 
@@ -76,18 +84,23 @@ pub fn ensure(server: IPCServer, relay_base: &str, token: &str) {
     let token = token.to_string();
     tokio::spawn(async move {
         let mut failures = 0;
+        let mut dropped_at = std::time::Instant::now();
         while !cancel.is_cancelled() {
             match connect_once(&server, &url, &token, &cancel, &mut failures).await {
                 Ok(Ended::Idle) | Ok(Ended::Cancelled) => break,
-                Ok(Ended::Dropped) | Err(_) if failures < RECONNECTS => {
+                Ok(Ended::Dropped) | Err(_) => {
+                    // 붙었다가 끊겼으면(`connect_once`가 실패 수를 0으로 되돌렸다) 그때부터 다시 잰다
+                    if failures == 0 {
+                        dropped_at = std::time::Instant::now();
+                    }
+                    let Some(wait) = reconnect_wait(failures + 1, dropped_at.elapsed()) else { break };
                     failures += 1;
                     // 기다리는 중에 멈추면 다시 붙지 않는다
                     tokio::select! {
                         _ = cancel.cancelled() => break,
-                        _ = tokio::time::sleep(crate::utils::exp_backoff(Duration::from_secs(1), Duration::MAX, failures)) => {}
+                        _ = tokio::time::sleep(wait) => {}
                     }
                 }
-                Ok(Ended::Dropped) | Err(_) => break,
             }
         }
         cancel.cancel();
@@ -358,6 +371,20 @@ mod tests {
             web_event(&event("notices.changed", json!({ "unread": 2 }))),
             Some(json!({ "t": "event", "id": 9, "kind": "notices.changed", "data": {} }))
         );
+    }
+
+    /// 세션이 남은 채 끊기면 릴레이가 세션을 쥐고 기다리는 동안(30초) 계속 다시 붙어 보고, 그 뒤에는 그만둔다
+    #[test]
+    fn reconnects_keep_trying_for_the_relay_grace() {
+        assert_eq!(reconnect_wait(1, Duration::ZERO), Some(Duration::from_secs(1)));
+        let mut waited = Duration::ZERO;
+        let mut failures = 0;
+        while let Some(wait) = reconnect_wait(failures + 1, waited) {
+            failures += 1;
+            waited += wait;
+        }
+        assert!(waited >= Duration::from_secs(30) && failures > 3, "{failures} tries over {waited:?}");
+        assert_eq!(reconnect_wait(failures + 1, Duration::from_secs(31)), None);
     }
 
     #[test]

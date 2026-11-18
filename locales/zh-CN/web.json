@@ -281,7 +281,8 @@
     "updated": "扩展已更新",
     "in_use": "运行中的服务器正在使用此扩展。请停止服务器后重试。",
     "needs_app_update": "需要更新应用",
-    "settings_pc_only": "扩展设置可能包含密钥，只能在电脑的 Saba-chan 应用中更改。"
+    "settings_pc_only": "扩展设置可能包含密钥，只能在电脑的 Saba-chan 应用中更改。",
+    "load_failed": "扩展列表读取失败。"
   },
   "more": {
     "metrics": "电脑状态",
@@ -311,7 +312,8 @@
     "remote_timeout": "2 分钟内未完成，已按失败处理。请在电脑上确认结果。",
     "still_working": "2 分钟内未完成。电脑上可能仍在进行，请稍后再确认。",
     "remote_host_gone": "电脑连接中断，请求失败",
-    "remote_busy": "请求过多。请稍后重试。"
+    "remote_busy": "请求过多。请稍后重试。",
+    "connection_lost": "连接中断，无法确认结果。请稍后再确认。"
   },
   "port_check": {
     "button": "检查端口转发",

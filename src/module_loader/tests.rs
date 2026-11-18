@@ -1357,3 +1357,16 @@ fn setting_groups_are_the_shared_categories() {
     assert_eq!(odd.settings.unwrap().fields[0].group.as_deref(), Some("guild"));
     assert!(odd.warnings.iter().any(|w| w.contains("'ff'") && w.contains("guild")), "{:?}", odd.warnings);
 }
+
+/// 앱이 카드로 그리는 카테고리(GUI `SETTING_GROUPS`)는 데몬이 아는 카테고리와 같다: 한쪽에만 더하면 경고와 화면이 어긋난다.
+/// 기본·사바쨩 설정은 GUI가 따로 그린다
+#[test]
+fn the_gui_draws_the_same_setting_groups() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("saba-chan-gui/src/components/ServerSettingsParts.tsx");
+    let text = std::fs::read_to_string(path).unwrap();
+    let start = text.find("export const SETTING_GROUPS").expect("SETTING_GROUPS");
+    let body = &text[start..start + text[start..].find("];").unwrap()];
+    let gui: Vec<&str> = body.split("id: '").skip(1).map(|s| &s[..s.find('\'').unwrap()]).collect();
+    let daemon: Vec<&str> = SETTING_GROUPS.iter().copied().filter(|g| !["basic", SABA_SETTINGS_GROUP].contains(g)).collect();
+    assert_eq!(gui, daemon);
+}

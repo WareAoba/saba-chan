@@ -281,7 +281,8 @@
     "updated": "Extension updated",
     "in_use": "A running server uses this extension. Stop the server and try again.",
     "needs_app_update": "App update needed",
-    "settings_pc_only": "Extension settings may hold secrets, so they can only be changed in the Saba-chan app on the PC."
+    "settings_pc_only": "Extension settings may hold secrets, so they can only be changed in the Saba-chan app on the PC.",
+    "load_failed": "Failed to load the extension list."
   },
   "more": {
     "metrics": "PC status",
@@ -311,7 +312,8 @@
     "remote_timeout": "Treated as failed after not finishing within 2 minutes. Check the result on the PC.",
     "still_working": "Not finished within 2 minutes. The PC may still be working on it; check again shortly.",
     "remote_host_gone": "PC connection lost; request failed",
-    "remote_busy": "Too many requests. Try again shortly."
+    "remote_busy": "Too many requests. Try again shortly.",
+    "connection_lost": "The connection was lost, so the result is unknown. Check again shortly."
   },
   "port_check": {
     "button": "Check port forwarding",

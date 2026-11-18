@@ -61,11 +61,15 @@ fn skipped(code: &str) -> Option<TaskOutcome> {
     Some((crate::scheduler::RunResult::Skipped, Some(code.to_string())))
 }
 
-/// 서비스 함수의 결과 → 작업 결과. 실패면 그 `error_code`를 이유로 남긴다
+/// 서비스 함수의 결과 → 작업 결과. 실패면 그 `error_code`를 이유로 남긴다.
+/// 사용자의 정지·시작이 끊은 것은 실패가 아니라 건너뜀이다 (직접 한 조작이 알림함 실패 카드가 되지 않게)
 fn outcome_of(result: &crate::service::Outcome) -> Option<TaskOutcome> {
     match result {
         Ok(_) => done(),
-        Err(failure) => failed(failure.code()),
+        Err(failure) => match failure.code() {
+            Some(code) if matches!(code.as_str(), "restart_cancelled" | "start_cancelled") => skipped(&code),
+            code => failed(code),
+        },
     }
 }
 
@@ -444,6 +448,11 @@ async fn run_task_now(state: &IPCServer, id: &str, task: &ScheduledTask, fire: c
                 match take_backup(state, id, BackupKind::Scheduled).await {
                     Ok(Some(_)) => (200, None, done()),
                     Ok(None) => (204, None, skipped("backup_unsupported")),
+                    // 다른 백업·복원·설치가 잠금을 쥐었다: 사용자가 직접 한 작업이니 실패로 알리지 않는다
+                    Err(failure) if failure.code().as_deref() == Some("backup_busy") => {
+                        tracing::info!("Scheduled backup of '{}' skipped: another task holds the instance", id);
+                        (failure.status.as_u16(), failure.code(), skipped("backup_busy"))
+                    }
                     Err(failure) => {
                         tracing::warn!("Scheduled backup of '{}' failed: {}", id, failure.body["error"]);
                         let code = failure.code();
@@ -525,12 +534,14 @@ async fn run_task_now(state: &IPCServer, id: &str, task: &ScheduledTask, fire: c
                 }
             }
         }
-        // 익스텐션 명령은 서버가 꺼져 있어도 돈다: 켜짐 여부는 명령 실행이 판단하고, 결과는 감사 로그에 남는다
+        // 익스텐션 명령은 서버가 꺼져 있어도 돈다: 켜짐 여부는 명령 실행이 판단하고, 결과는 감사 로그에 남는다.
+        // 꺼져 있어 못 한 것은 예약 저장처럼 건너뜀이다
         TaskAction::Command => {
             let name = task.command.as_deref().unwrap_or_default();
             let args = task.args.clone().map(Value::Object).unwrap_or(Value::Null);
             match run_command(state, id, name, args).await {
                 Ok(()) => done(),
+                Err(code) if code == "server_not_running" => skipped("not_running"),
                 Err(code) => {
                     tracing::warn!("Scheduled command '{}' on '{}' failed: {}", name, id, code);
                     failed(Some(code))
@@ -621,6 +632,67 @@ mod tests {
         assert_eq!(failed.len(), 1, "only the failed restart is announced as failed");
         assert_eq!(failed[0].data["action"], "restart");
         assert_eq!(failed[0].data["code"], "not_running");
+    }
+
+    // 꺼 둔 서버의 예약 명령은 예약 저장처럼 건너뛴다: 직접 끈 것이 알림함의 실패 카드가 되지 않게
+    #[tokio::test]
+    async fn a_scheduled_command_on_a_stopped_server_is_skipped_not_failed() {
+        let (state, id, _tmp) = server_with(NO_BACKUP, None).await;
+        let task: ScheduledTask = serde_json::from_value(json!({"action": "command", "command": "save-all", "every_minutes": 60})).unwrap();
+        {
+            let mut sup = state.supervisor.write().await;
+            let mut instance = sup.instance_store.get(&id).unwrap().clone();
+            instance.schedule = vec![task.clone()];
+            sup.instance_store.update(&id, instance).unwrap();
+        }
+        let mut events = crate::events::bus().subscribe(None);
+        let fire = chrono::Local::now().naive_local() - chrono::Duration::seconds(5);
+        run_task(&state, &id, &task, fire, &crate::scheduler::task_key(&id, &task)).await;
+
+        let body = crate::ipc::internal::into_internal(get_schedule(Path(id.clone()), State(state.clone())).await).await.body;
+        assert_eq!(body["history"][0][0]["result"], "skipped", "{}", body);
+        assert_eq!(body["history"][0][0]["code"], "not_running", "{}", body);
+        let seen: Vec<_> = std::iter::from_fn(|| events.rx.try_recv().ok()).collect();
+        assert!(!seen.iter().any(|e| e.kind == "schedule.failed" && e.data["instanceId"] == id.as_str()), "{seen:?}");
+    }
+
+    // 예약 재시작·시작을 사용자가 정지·시작으로 끊은 것은 실패가 아니다 (알림함의 실패 카드가 되지 않게 건너뜀으로)
+    #[test]
+    fn a_scheduled_run_cut_short_by_the_user_is_skipped() {
+        for code in ["restart_cancelled", "start_cancelled"] {
+            let cut: crate::service::Outcome = Err(crate::service::Failure::coded(axum::http::StatusCode::CONFLICT, code, "x"));
+            assert_eq!(outcome_of(&cut), skipped(code), "{code}");
+        }
+        let broken: crate::service::Outcome = Err(crate::service::Failure::coded(axum::http::StatusCode::INTERNAL_SERVER_ERROR, "start_failed", "x"));
+        assert_eq!(outcome_of(&broken), failed(Some("start_failed".into())));
+    }
+
+    // 다른 백업·복원과 겹친 예약 백업은 그 작업이 같은 내용을 담으니 건너뛴다: 실패로 알리지 않는다
+    #[tokio::test]
+    async fn a_scheduled_backup_that_meets_a_running_backup_is_skipped_without_a_failure_notice() {
+        let (state, id, tmp) = server_with(&live_module(None), None).await;
+        std::fs::create_dir_all(tmp.path().join("server/world")).unwrap();
+        let instance_dir = state.supervisor.read().await.instance_store.instance_dir(&id);
+        let sessions = crate::supervisor::managed_process::sessions_dir(&instance_dir);
+        std::fs::create_dir_all(&sessions).unwrap();
+        std::fs::write(sessions.join("20260101-000000.log"), "Server stopped\n").unwrap();
+        let task: ScheduledTask = serde_json::from_value(json!({"action": "backup", "every_minutes": 60})).unwrap();
+        {
+            let mut sup = state.supervisor.write().await;
+            let mut instance = sup.instance_store.get(&id).unwrap().clone();
+            instance.schedule = vec![task.clone()];
+            sup.instance_store.update(&id, instance).unwrap();
+        }
+        let _busy = crate::instance::lock::InstanceLock::take(&id).expect("free");
+        let mut events = crate::events::bus().subscribe(None);
+        let fire = chrono::Local::now().naive_local() - chrono::Duration::seconds(5);
+        run_task(&state, &id, &task, fire, &crate::scheduler::task_key(&id, &task)).await;
+
+        let body = crate::ipc::internal::into_internal(get_schedule(Path(id.clone()), State(state.clone())).await).await.body;
+        assert_eq!(body["history"][0][0]["result"], "skipped", "{}", body);
+        assert_eq!(body["history"][0][0]["code"], "backup_busy", "{}", body);
+        let seen: Vec<_> = std::iter::from_fn(|| events.rx.try_recv().ok()).filter(|e| e.data["instanceId"] == id.as_str()).collect();
+        assert!(!seen.iter().any(|e| e.kind == "backup.done" || e.kind == "schedule.failed"), "{seen:?}");
     }
 
     // 작업을 꺼 두어도 같은 작업이다: 이력이 그대로 보이고, 그사이 다른 작업이 돌아도 지워지지 않는다

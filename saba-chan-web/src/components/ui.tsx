@@ -16,6 +16,7 @@ export function errorText(t: TFn, res: ApiBody | null | undefined) {
     // 서버가 거절한 명령: 모듈의 실패 모양이 뽑은 까닭 (없으면 기본 문구)
     const rejected = res?.rejected as { reason?: string | null } | undefined;
     if (rejected) return rejected.reason || t('errors.command_rejected');
+    if (connectionLost(res)) return t('errors.connection_lost');
     const code = res?.error_code;
     if (typeof code === 'string' && code.startsWith('remote_')) {
         const fields = Array.isArray(res?.fields) ? res.fields.join(', ') : '';
@@ -35,9 +36,17 @@ export function refusalText(t: TFn, res: ApiBody | null | undefined) {
     return typeof code === 'string' ? t(`errors.${code}`, { ns: ['web', 'gui'], defaultValue: fallback }) : fallback;
 }
 
-/** 답을 기다리다 끊겼다 (릴레이는 2분에 504를 낸다): PC는 그 작업을 계속하고 있을 수 있다 */
-export const timedOut = (res: ApiBody | null | undefined) =>
-    res?.error_code === 'remote_timeout' || res?.error_code === 'ETIMEDOUT';
+/** 웹소켓이 끊겨 답을 못 받았다 (session.ts: 기다리던 요청은 ECONNRESET, 다시 붙는 동안 보낸 요청은 ECONNREFUSED) */
+const connectionLost = (res: ApiBody | null | undefined) =>
+    res?.error_code === 'ECONNRESET' || res?.error_code === 'ECONNREFUSED';
+
+/** 상태를 바꾸는 요청의 결과를 모를 때(시간 초과·연결 끊김) 정보로 알릴 문구. PC에는 이미 닿았을 수 있다. 아니면 null */
+export function unsureText(t: TFn, res: ApiBody | null | undefined) {
+    // 답을 기다리다 끊겼다 (릴레이는 2분에 504를 낸다): PC는 그 작업을 계속하고 있을 수 있다
+    if (res?.error_code === 'remote_timeout' || res?.error_code === 'ETIMEDOUT') return t('errors.still_working');
+    if (connectionLost(res)) return t('errors.connection_lost');
+    return null;
+}
 
 /** 기다리는 동안(`busy`)은 `disabled`를 무엇으로 넘겨도 누를 수 없다 (같은 요청을 두 번 보내지 않게) */
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {

@@ -2,8 +2,9 @@ import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-li
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BackupsPanel } from '../components/BackupsPanel';
 import { createWebApi } from '../api';
+import { errorText } from '../components/ui';
 import { useServerControl } from '../components/useServerControl';
-import { initI18n } from '../i18n';
+import i18n, { initI18n } from '../i18n';
 import { useApp } from '../store';
 import { asServer, mockApi } from './mocks';
 
@@ -44,5 +45,25 @@ describe('웹에서 2분 넘게 걸리는 작업', () => {
         await act(async () => fireEvent.click(screen.getByRole('button', { name: /Back up now/ })));
         expect(lastToast()).toMatchObject({ message: expect.stringMatching(/still be working/i), tone: 'info' });
         expect(instanceBackups).toHaveBeenCalledTimes(2);
+    });
+
+    it('정지 중에 연결이 끊기면 실패가 아니라 결과를 확인할 수 없다고 알린다 (원문 코드를 보이지 않는다)', async () => {
+        const lost = { error: 'ECONNRESET', error_code: 'ECONNRESET' };
+        const { result } = renderHook(() => useServerControl(mockApi({ instanceStop: vi.fn().mockResolvedValue(lost) })));
+        let stopping: Promise<unknown> = Promise.resolve();
+        act(() => {
+            stopping = result.current.stop(asServer({ id: 'a', name: 'A' }));
+        });
+        await act(async () => {
+            useApp.getState().confirm?.done(true);
+            await stopping;
+        });
+        expect(lastToast()).toMatchObject({ message: expect.stringMatching(/connection was lost/i), tone: 'info' });
+    });
+
+    it('연결이 없을 때 누른 요청의 오류 문구에 원문 코드를 보이지 않는다', () => {
+        const text = errorText(i18n.t, { error: 'not connected', error_code: 'ECONNREFUSED' });
+        expect(text).toMatch(/connection was lost/i);
+        expect(text).not.toMatch(/not connected/);
     });
 });

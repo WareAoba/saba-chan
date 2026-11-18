@@ -803,6 +803,7 @@ data_roots = ["{cache_dir}", "{data_home}", "{home}/Zomboid"]
 - **`POST /api/modules/manifest/:id/install`** (`server.rs`):
   1. `id`에 `..`, `/`, `\`가 있으면 거부한다.
   2. manifest의 `module-<id>`가 없으면 실패한다.
+  - 이미 설치된 모듈을 바꾸는 것은 판 고르기(05 §확인)와 같은 규칙이다: 켜진 서버가 쓰면 409 `module_in_use`, 손으로 고쳤거나 직접 넣은 모듈이면 409 `module_modified`·`module_unverified`로 받기 전에 거절한다. 받은 뒤에는 바꿀 때까지 서버 시작을 막고(`AddonSwapGate::try_hold_starts`, 시작·설치 중이면 `module_in_use`) 켜진 서버를 다시 본다.
   - 설치된 모듈 버전이 manifest 버전보다 높으면 받지 않는다(`version::is_downgrade`). 릴레이가 예전 서명 manifest를 다시 보내 옛 버전을 깔게 하는 것을 막는다.
   3. R2 URL에서 `<modules>/.tmp-module-<id>.zip`로 받으며 SHA-256을 확인한다(`download_verified`).
   4. `.staging-<id>`에 풀고 데몬과 같은 규칙(`load_module_dir`: `module.toml` 파싱, 진입 파일, `saba-core` 요구 버전)으로 읽힐 때만 기존 `<modules>/<id>`와 바꾼다(`install_staged_module`). 기존 폴더는 `.old-<id>`로 옮겨 두었다가 새 폴더가 자리를 잡으면 지우고, 옮기다 실패하면 되돌린다. 모듈 탐색은 점으로 시작하는 항목을 건너뛰고, 데몬은 기동할 때 모듈·익스텐션 폴더의 `.staging-*`·`.old-*`·`.tmp-*`를 지운다(`utils::remove_install_leftovers`, 설치 도중 끝났을 때 남은 것). 단일 실행 잠금을 못 잡고 계속 가는 경우에는 정리하지 않는다. 또 `.old-<id>`가 있는데 `<id>`가 없으면(옛 폴더를 옮긴 뒤 새 폴더를 두기 전에 끝났다) 지우지 않고 `<id>`로 되돌린다. 그래서 업데이트해도 지워진 파일이 남지 않는다. 묻지 않는 자동 교체(05 §확인, `swap_dir_untouched`)가 남긴 것도 같이 본다: `.<id>.saba-new`는 지우고, `.<id>.saba-old`는 `<id>`가 없으면 되돌리며(지문은 새 판을 넣은 뒤에 적으므로, 지문이 있으면 교체를 마친 뒤 사용자가 지운 것이라 되돌리지 않는다) 있으면 남기고 옮기지 못한 맨 위 점 항목(.env·.git)만 `<id>`로 옮긴다(지문이 없으면 그때 내용으로 적는다)(다음 교체가 지문으로 정리).

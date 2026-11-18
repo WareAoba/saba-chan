@@ -381,7 +381,30 @@ fn unmet_requires_body(module_id: &str, unmet: &[saba_chan_updater_lib::Dependen
     body
 }
 
+/// 켜진 서버가 쓰는 모듈이면 409 `module_in_use`: 그 서버를 정지·상태 확인할 모듈을 바꾸거나 지우지 않는다.
+/// Windows 경로는 대소문자를 가리지 않는다
+async fn refuse_in_use(supervisor: &crate::supervisor::Supervisor, module_id: &str) -> Option<axum::response::Response> {
+    for instance in supervisor.instance_store.list() {
+        if instance.module_name.eq_ignore_ascii_case(module_id) && supervisor.is_running(&instance.id).await {
+            let error = format!("Module '{}' is used by a running server; stop it first", module_id);
+            return Some(super::error(StatusCode::CONFLICT, "module_in_use", error));
+        }
+    }
+    None
+}
+
 async fn install_module_locked(state: IPCServer, module_id: String) -> axum::response::Response {
+    let key = format!("{}{}", saba_chan_updater_lib::relay::MODULE_PREFIX, module_id);
+    // 이미 설치된 모듈을 바꾸는 것은 판 고르기와 같은 규칙: 켜진 서버가 쓰거나 손으로 고친 모듈은 바꾸지 않는다
+    let replacing = state.supervisor.read().await.module_loader.get_module(&module_id).is_ok();
+    if replacing {
+        if let Some(refused) = refuse_in_use(&*state.supervisor.read().await, &module_id).await {
+            return refused;
+        }
+        if let Some(code) = crate::ipc::updates::hand_modified(&key) {
+            return super::error(StatusCode::CONFLICT, &code, format!("{} was changed by hand; it is not replaced", key));
+        }
+    }
     let catalog = match saba_chan_updater_lib::relay::latest_catalog(None, &crate::ipc::updates::load_updater_config().channel).await {
         Ok(Some(m)) => m,
         Ok(None) => return super::error(StatusCode::NOT_FOUND, "not_in_manifest", "No release is published"),
@@ -389,7 +412,7 @@ async fn install_module_locked(state: IPCServer, module_id: String) -> axum::res
     };
     let Some(comp) = catalog
         .components
-        .get(&format!("{}{}", saba_chan_updater_lib::relay::MODULE_PREFIX, module_id))
+        .get(&key)
         .cloned()
     else {
         return super::error(StatusCode::NOT_FOUND, "not_in_manifest", format!("Module '{}' is not in the latest release", module_id));
@@ -404,7 +427,6 @@ async fn install_module_locked(state: IPCServer, module_id: String) -> axum::res
     // 새 코어를 요구하는 판은 받지 않는다 (업데이터 적용과 같은 검사)
     if let Some(requires) = &comp.requires {
         let installed: std::collections::HashMap<String, String> = component_versions(&state).await.into_iter().collect();
-        let key = format!("{}{}", saba_chan_updater_lib::relay::MODULE_PREFIX, module_id);
         let unmet = saba_chan_updater_lib::unmet_requires(&key, requires, &installed);
         if !unmet.is_empty() {
             return (StatusCode::UNPROCESSABLE_ENTITY, Json(unmet_requires_body(&module_id, &unmet))).into_response();
@@ -427,9 +449,17 @@ async fn install_module_locked(state: IPCServer, module_id: String) -> axum::res
         saba_chan_updater_lib::download::download_verified(&http, &comp.url, &zip_path, Some(&comp.sha256), max_bytes, None).await?;
         let _ = std::fs::remove_dir_all(&staging);
         saba_chan_updater_lib::extract_zip(&zip_path, &staging, |_| Ok(()))?;
+        // 바꿀 때까지 서버 시작을 막고 다시 본다 (받는 사이 켜졌을 수 있다). 시작·설치 중이면 그 서버가 쓰는 중이다
+        let gate = state.supervisor.read().await.addon_gate();
+        let _starts = match replacing {
+            true => Some(gate.try_hold_starts().ok_or(InUse)?),
+            false => None,
+        };
+        if replacing && refuse_in_use(&*state.supervisor.read().await, &module_id).await.is_some() {
+            return Err(InUse.into());
+        }
         install_staged_module(&staging, &target_dir)?;
         // 서명된 카탈로그에서 받은 것: 신뢰 표시가 "verified"가 된다 (파일이 그대로인 동안)
-        let key = format!("{}{}", saba_chan_updater_lib::relay::MODULE_PREFIX, module_id);
         if let Err(e) = saba_chan_updater_lib::integrity::record_dir(&key, &target_dir)
             .and_then(|_| saba_chan_updater_lib::integrity::set_official(&key, true))
         {
@@ -441,6 +471,10 @@ async fn install_module_locked(state: IPCServer, module_id: String) -> axum::res
     let _ = std::fs::remove_file(&zip_path);
     let _ = std::fs::remove_dir_all(&staging);
     if let Err(e) = result {
+        if e.is::<InUse>() {
+            let error = format!("Module '{}' is used by a running or starting server; stop it first", module_id);
+            return super::error(StatusCode::CONFLICT, "module_in_use", error);
+        }
         return super::error(StatusCode::INTERNAL_SERVER_ERROR, "module_install_failed", format!("{:#}", e));
     }
     let required = {
@@ -454,6 +488,18 @@ async fn install_module_locked(state: IPCServer, module_id: String) -> axum::res
     (StatusCode::OK, Json(json!({ "success": true, "module_id": module_id, "version": comp.version, "extensions": extensions })))
         .into_response()
 }
+
+/// 받은 판으로 바꾸려는데 켜진(또는 켜지는) 서버가 그 모듈을 쓴다
+#[derive(Debug)]
+struct InUse;
+
+impl std::fmt::Display for InUse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("the module is in use")
+    }
+}
+
+impl std::error::Error for InUse {}
 
 /// 모듈 하나의 설치·제거는 한 번에 하나만 (같은 모듈을 GUI·CLI가 동시에 설치하면 서로의 파일을 지운다).
 /// 키는 소문자로: Windows에서는 대소문자만 다른 id가 같은 폴더다
@@ -497,12 +543,8 @@ pub async fn remove_module(
     let _dirs = crate::component_lock::in_use().await;
     let modules_dir = {
         let supervisor = state.supervisor.read().await;
-        // 켜진 서버가 쓰는 모듈을 지우면 그 서버를 정지할 수 없다. Windows 경로는 대소문자를 가리지 않는다
-        for instance in supervisor.instance_store.list() {
-            if instance.module_name.eq_ignore_ascii_case(&module_id) && supervisor.is_running(&instance.id).await {
-                let error = format!("Module '{}' is used by a running server; stop it first", module_id);
-                return super::error(StatusCode::CONFLICT, "module_in_use", error);
-            }
+        if let Some(refused) = refuse_in_use(&supervisor, &module_id).await {
+            return refused;
         }
         let modules_dir = std::path::PathBuf::from(supervisor.module_loader.modules_dir());
         // `<modules>/<id>` 폴더가 아니면 찾은 모듈의 원본(modules 폴더에 놓은 ZIP)을 지운다
@@ -1113,6 +1155,30 @@ mod tests {
         assert!(!zip_path.exists());
         assert!(!modules.join(".extracted/zip-mod").exists());
         assert!(state.supervisor.read().await.module_loader.get_module("zip-mod").is_err());
+    }
+
+    /// 켜진 서버가 쓰는 모듈은 카탈로그 설치로도 바꿔 끼우지 않는다 (판 고르기·제거와 같은 `module_in_use`)
+    #[tokio::test]
+    async fn installing_over_a_module_a_running_server_uses_is_refused() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        // 설치 문은 프로세스에 하나다: 다른 시험과 겹치지 않는 모듈 id를 쓴다
+        let dir = modules.join("inuse-mod");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("module.toml"), "[module]\nschema_version = 1\nname = \"inuse-mod\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n").unwrap();
+        std::fs::write(dir.join("lifecycle.py"), "").unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let inst = crate::instance::ServerInstance::new("srv", "inuse-mod");
+        let id = inst.id.clone();
+        sup.instance_store.add(inst).unwrap();
+        sup.tracker.track(&id, std::process::id());
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+
+        let installed = crate::ipc::internal::into_internal(install_module_from_manifest(Path("inuse-mod".into()), State(state.clone())).await.into_response()).await;
+        let _ = state.supervisor.read().await.tracker.untrack(&id);
+        assert_eq!((installed.status, installed.body["error_code"].as_str()), (StatusCode::CONFLICT, Some("module_in_use")), "{}", installed.body);
+        assert!(dir.join("module.toml").exists());
     }
 
     /// 같은 모듈을 동시에 두 번 설치하지 않고, 설치마다 다른 임시 경로를 쓴다

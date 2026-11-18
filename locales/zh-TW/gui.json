@@ -1624,7 +1624,7 @@
     "backup_unreadable": "無法開啟",
     "backup_unreadable_hint": "無法開啟的備份。無法還原。刪除前未使用的備份內容也不會清理，請刪除。",
     "err_backup_file_locked": "伺服器正在使用檔案（{{file}}），備份失敗。請停止伺服器後再試。",
-    "err_backup_disk_full": "備份失敗：磁碟空間不足。請釋放空間後再試一次。",
+    "err_backup_disk_full": "磁碟空間不足。請釋放空間後再試一次。",
     "err_autosave_not_resumed": "備份已建立，但伺服器自動儲存未能恢復。請重新啟動伺服器。",
     "err_backup_failed_autosave_off": "備份失敗，伺服器自動儲存也未能恢復。請重新啟動伺服器。",
     "err_backup_save_rejected": "伺服器未接受儲存命令，未備份。請停止伺服器後再備份。",

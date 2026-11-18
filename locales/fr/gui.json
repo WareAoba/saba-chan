@@ -1624,7 +1624,7 @@
     "backup_unreadable": "impossible à ouvrir",
     "backup_unreadable_hint": "Sauvegarde illisible, restauration impossible. Son contenu inutilisé n'est nettoyé qu'une fois la sauvegarde supprimée : supprimez-la.",
     "err_backup_file_locked": "Sauvegarde impossible : fichier ({{file}}) utilisé par le serveur. Arrêtez le serveur et réessayez.",
-    "err_backup_disk_full": "Échec de la sauvegarde : espace disque insuffisant. Libérez de l'espace et réessayez.",
+    "err_backup_disk_full": "Espace disque insuffisant. Libérez de l'espace et réessayez.",
     "err_autosave_not_resumed": "Sauvegarde créée, mais échec de la reprise de la sauvegarde auto du serveur. Redémarrez le serveur.",
     "err_backup_failed_autosave_off": "Échec de la sauvegarde et de la reprise de la sauvegarde auto du serveur. Redémarrez le serveur.",
     "err_backup_save_rejected": "Sauvegarde non faite : commande de sauvegarde refusée par le serveur. Arrêtez le serveur puis réessayez.",

@@ -181,7 +181,7 @@ async fn a_relay_that_needs_a_newer_agent_is_reported_and_asked_slowly() {
     let polled = session.poll_once().await.unwrap_err();
     reported("poll");
     assert_eq!(poll_retry(&polled, 1), HEARTBEAT_INTERVAL);
-    assert_eq!(poll_retry("poll 502 Bad Gateway: ", 1), backoff(1), "other failures keep the short backoff");
+    assert!(poll_retry("poll 502 Bad Gateway: ", 1) < RETRY_BASE * 2, "other failures keep the short backoff");
 }
 
 /// 릴레이가 상태 보고(heartbeat)를 검증에서 거절하면 어느 값 때문인지(칸·상한·보낸 크기)를 상태에 남겨
@@ -1644,11 +1644,22 @@ fn prerelease_agent_is_not_older_than_previous_release() {
     assert!(!semver_lt("0.1.11-rc.1", "0.1.11-beta.2"));
 }
 
+/// 실패할 때마다 두 배(상한까지)에 그 절반까지의 흔들림을 더한다: 릴레이가 다시 켜질 때 모든 PC가 같은 순간에 다시 묻지 않게
 #[test]
-fn backoff_doubles_up_to_cap() {
-    assert_eq!(backoff(1), Duration::from_secs(3));
-    assert_eq!(backoff(2), Duration::from_secs(6));
-    assert_eq!(backoff(10), RETRY_MAX);
-    assert_eq!(backoff(100), RETRY_MAX);
+fn backoff_doubles_up_to_cap_with_jitter() {
+    let within = |failures: u32, base: Duration| {
+        let wait = backoff(failures);
+        assert!(wait >= base && wait <= base + base / 2, "{failures}: {wait:?}");
+    };
+    within(1, Duration::from_secs(3));
+    within(2, Duration::from_secs(6));
+    within(10, RETRY_MAX);
+    within(100, RETRY_MAX);
+    let mut seen = std::collections::HashSet::new();
+    for _ in 0..20 {
+        seen.insert(backoff(1));
+        std::thread::sleep(Duration::from_millis(3));
+    }
+    assert!(seen.len() > 1, "retries are spread out: {seen:?}");
 }
 

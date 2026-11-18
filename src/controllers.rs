@@ -227,7 +227,7 @@ async fn kick_plan(state: &IPCServer, id: &str, player: &str) -> Option<(String,
     }
     let module = supervisor.module_loader.get_module(&instance.module_name).ok()?;
     let Some(name) = module.metadata.kick_command.clone() else {
-        tracing::warn!("[Controllers] {} 모듈에 kick_command가 없어 '{}'을(를) 내보내지 못했다", instance.module_name, player);
+        tracing::warn!("[Controllers] Module {} has no kick_command; could not kick '{}'", instance.module_name, player);
         return None;
     };
     let inputs = module.metadata.commands.iter().flat_map(|c| &c.fields).find(|f| f.name == name).map(|c| c.inputs.iter().map(|i| i.name.clone()).collect())?;
@@ -251,7 +251,7 @@ async fn gate(state: &IPCServer, id: &str, player: &str) {
     let language = state.config_store.ui_language().await;
     let reason = crate::chat::i18n::Catalog::for_language(&language).t("controllers.kick_reason", &[]);
     let ok = crate::service::backup::run_command(state, id, &command, kick_args(&inputs, player, &reason)).await.is_ok();
-    tracing::info!("[Controllers] 자동 강퇴 '{}': instance={} ok={}", player, id, ok);
+    tracing::info!("[Controllers] Auto kick '{}': instance={} ok={}", player, id, ok);
 }
 
 #[cfg(test)]

@@ -70,6 +70,22 @@ describe('웹 콘솔 알림 종', () => {
         expect(screen.getByText('No notifications')).toBeTruthy();
     });
 
+    it('모두 읽음·전체 삭제를 데몬이 거절하면 다시 읽어 데몬 목록으로 되돌린다', async () => {
+        const { api } = setup();
+        const lost = { error: 'not connected', error_code: 'ECONNREFUSED' };
+        (api.noticesRead as ReturnType<typeof vi.fn>).mockResolvedValue(lost);
+        (api.noticesClear as ReturnType<typeof vi.fn>).mockResolvedValue(lost);
+        await flush();
+        const bell = screen.getByRole('button', { name: 'Notifications' });
+        fireEvent.click(bell);
+        await flush();
+        expect(within(bell).getByText('2')).toBeTruthy();
+        fireEvent.click(screen.getByRole('button', { name: 'Clear All' }));
+        await flush();
+        expect(screen.queryByText('No notifications')).toBeNull();
+        expect(screen.getByText('exit code 1')).toBeTruthy();
+    });
+
     it('알림이 생길 만한 PC 이벤트가 오면 다시 읽는다 (정상 정지는 아니다)', async () => {
         const { list, emit } = setup();
         await flush();

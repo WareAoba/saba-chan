@@ -37,4 +37,31 @@ describe('플러그인 사진', () => {
         expect(rows[1].querySelector('img')).toBeNull();
         expect(rows[1].querySelector('.server-icon')?.textContent).toBe('P');
     });
+
+    it('설치된 플러그인 목록을 못 읽으면 "없음"이 아니라 읽기 실패와 다시 시도를 보인다', async () => {
+        const extensionList = vi
+            .fn()
+            .mockResolvedValueOnce({ error: 'not connected', error_code: 'ECONNREFUSED' })
+            .mockResolvedValue({ extensions: [{ id: 'plain', name: 'plain', has_icon: false, enabled: true }] });
+        const api = new Proxy(
+            {
+                extensionList,
+                extensionFetchManifest: vi.fn().mockResolvedValue({ extensions: [] }),
+                extensionCheckUpdates: vi.fn().mockResolvedValue({ updates: [] }),
+                moduleManifest: vi.fn().mockResolvedValue({}),
+            },
+            { get: (t, k) => t[k as keyof typeof t] ?? vi.fn().mockResolvedValue({}) },
+        );
+        render(<ModulesTab api={mockApi(api)} />);
+        fireEvent.click(screen.getByRole('tab', { name: 'Extensions' }));
+        await flush();
+        await flush();
+        expect(screen.queryByText('No extensions installed')).toBeNull();
+        expect(screen.getByText('Failed to load the extension list.')).toBeTruthy();
+        fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+        await flush();
+        await flush();
+        expect(extensionList).toHaveBeenCalledTimes(2);
+        expect(screen.getByText('plain')).toBeTruthy();
+    });
 });

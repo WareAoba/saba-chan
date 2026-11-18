@@ -2074,7 +2074,12 @@ async fn execute(server: &IPCServer, r: &Resolved, caller: &Caller) -> Value {
             retain_allowed(&mut result, &allowed);
         }
     }
-    let ok = resp.status.is_success() && result.get("success").and_then(Value::as_bool) != Some(false) && result.get("ok").and_then(Value::as_bool) != Some(false);
+    // 서버가 거절한 명령(`rejected`, 모듈의 실패 모양)도 실패다: 문장 명령(`chat`)과 같다
+    let rejected = result.get("rejected").map(|r| r.get("reason").and_then(Value::as_str).map(str::to_string));
+    let ok = resp.status.is_success()
+        && rejected.is_none()
+        && result.get("success").and_then(Value::as_bool) != Some(false)
+        && result.get("ok").and_then(Value::as_bool) != Some(false);
     // 관리 액션은 밑 라우트가 감사에 남기지 않으므로 액션 id로 한 줄 남긴다 (시작·명령·복원은 라우트가 남긴다)
     if r.kind == Kind::Admin && !ROUTE_AUDITED.contains(&r.id.as_str()) {
         let code = if ok { None } else { crate::audit::failure_code(&result) };
@@ -2107,8 +2112,14 @@ async fn execute(server: &IPCServer, r: &Resolved, caller: &Caller) -> Value {
         }
     }
     if let (false, Some(_)) = (ok, &caller.remote) {
-        let code = crate::commands::error_code(resp.status.as_u16(), &out["result"]);
-        out["reason"] = crate::chat::reason(&code, &out["result"]).to_json();
+        // 서버가 낸 까닭은 사람에게만 그대로 보인다. AI 에이전트에는 고정 문구를 준다 (원문은 `result.rejected`에 자료로 남는다)
+        let agent = caller.origin.via.as_deref() == Some(MCP_VIA);
+        let reason = match &rejected {
+            Some(Some(reason)) if !agent => crate::chat::Text::from(reason.as_str()),
+            Some(_) => crate::chat::reason("rejected", &out["result"]),
+            None => crate::chat::reason(&crate::commands::error_code(resp.status.as_u16(), &out["result"]), &out["result"]),
+        };
+        out["reason"] = reason.to_json();
     }
     if let (true, Some((instance, before))) = (ok, previous) {
         if let Some(undo) = undo_plan(server, &instance, before, caller).await {

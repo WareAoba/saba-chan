@@ -827,7 +827,9 @@ impl Pool {
             let peer = relay::peers(relay).await.ok().and_then(|peers| peers.into_iter().find(|p| p.host_id == host_id));
             let offline = peer.as_ref().is_some_and(|p| p.status == "offline");
             if let Some(fresh) = peer.and_then(|p| p.endpoint).filter(|e| !offline && *e != endpoint) {
-                let _ = config::update_endpoint_in(file, host_id, &fresh.address, fresh.port, &fresh.cert_sha256);
+                if let Err(e) = config::update_endpoint_in(file, host_id, &fresh.address, fresh.port, &fresh.cert_sha256) {
+                    tracing::warn!("Failed to save the new address of remote PC {}: {}", host_id, e);
+                }
                 res = self.send_to(Some(relay), host_id, &fresh, &request).await;
             }
             if matches!(res, Sent::NotConnected) {

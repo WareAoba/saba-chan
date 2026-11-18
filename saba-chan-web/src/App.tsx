@@ -63,7 +63,7 @@ export function useLiveData(api: WebApi | undefined, ready: boolean) {
         const stopPoll = startPoll(loadServers, 4000);
         const off = api.onDaemonEvent((e: PcEvent) => {
             if (['action.run', 'resync'].includes(e?.type) || String(e?.type).startsWith('instance.')) loadServers();
-            if (String(e?.type).startsWith('module.')) loadModules();
+            if (e?.type === 'resync' || String(e?.type).startsWith('module.')) loadModules();
         });
         return () => {
             stopPoll();
