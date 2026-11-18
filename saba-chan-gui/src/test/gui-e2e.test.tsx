@@ -549,13 +549,31 @@ describe('로딩 스크린 상태 머신', () => {
     // 오프닝은 데몬까지 모두 준비한 기동에서만 (사용자 11-15)
     it('데몬이 이미 떠 있던 창(인터페이스만 종료 뒤 다시 연 창)은 오프닝·기동음 없이 연다', async () => {
         const playSound = vi.fn();
-        window.api = createApiMock({ daemonStatus: vi.fn().mockResolvedValue({ running: true }), playSound });
+        // 셸은 다시 연 창에 지난 ready를 opening:false로 다시 보내고, 브리지는 구독하는 즉시 그 마지막 상태를 넘긴다
+        window.api = createApiMock({
+            daemonStatus: vi.fn().mockResolvedValue({ running: true }),
+            onStatusUpdate: vi.fn((cb) => cb({ step: 'ready', message: '준비', opening: false })),
+            playSound,
+        });
         const { container } = await act(async () => render(<App />));
         await waitFor(() => expect(container.querySelector('.loading-screen')).not.toBeInTheDocument(), {
             timeout: 15000,
         });
         expect(container.querySelector('.loading-screen.opening')).not.toBeInTheDocument();
         expect(playSound).not.toHaveBeenCalled();
+    }, 20000);
+
+    // 완전히 껐다 켠 기동: 셸이 띄운 데몬이 화면이 데몬을 묻기 전에 먼저 떠도 오프닝을 재생한다 (사용자 11-17)
+    it('창이 뜰 때 데몬이 이미 응답해도 셸이 데몬을 띄운 기동(ready opening:true)이면 오프닝·기동음과 함께 연다', async () => {
+        const playSound = vi.fn();
+        const { container } = await coldBoot({ daemonStatus: vi.fn().mockResolvedValue({ running: true }), playSound });
+        await waitFor(() => expect(container.querySelector('.loading-screen.opening')).toBeInTheDocument(), {
+            timeout: 15000,
+        });
+        await waitFor(() => expect(container.querySelector('.loading-screen')).not.toBeInTheDocument(), {
+            timeout: 15000,
+        });
+        expect(playSound).toHaveBeenCalledWith('startup');
     }, 20000);
 
     it('셸이 데몬을 띄우지 않고 이미 떠 있던 데몬에 붙었으면(ready opening:false) 오프닝·기동음 없이 연다', async () => {

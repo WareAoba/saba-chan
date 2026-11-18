@@ -261,8 +261,8 @@ function App() {
             .daemonStatus()
             .then((status) => {
                 if (status && status.running) {
-                    // 데몬이 이미 떠 있던 창(인터페이스만 종료 뒤 다시 연 창·새로고침)은 오프닝 없이 연다
-                    setQuickOpen(true);
+                    // 오프닝 여부는 셸의 ready(opening)로 정한다: 완전히 껐다 켠 기동에서도 셸이 띄운 데몬이 여기보다 먼저
+                    // 응답할 수 있다. 다시 연 창·새로고침에는 셸이 지난 ready를 opening:false로 다시 보낸다 (사용자 11-17)
                     window.__sabaReadyReceived = true;
                     setInitStatus(t('loading.step_done'));
                     setInitProgress(100);

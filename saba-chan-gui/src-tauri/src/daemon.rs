@@ -314,6 +314,20 @@ impl DaemonClient {
         req
     }
 
+    /// 데몬 포트가 열려 있는가 (연결만 맺어 본다). Windows는 닫힌 포트로의 연결 거절에도 SYN을 다시 보내
+    /// 1초 넘게 걸리므로, 기다림을 짧게 끊는다: 열린 루프백 포트는 데몬이 바빠도 커널이 바로 받는다 (사용자 11-17)
+    pub async fn listening(&self, timeout_ms: u64) -> bool {
+        let Ok(url) = reqwest::Url::parse(&self.base()) else {
+            return false;
+        };
+        let (Some(host), Some(port)) = (url.host_str(), url.port_or_known_default()) else {
+            return false;
+        };
+        let host = host.trim_start_matches('[').trim_end_matches(']').to_string();
+        let connect = tokio::net::TcpStream::connect((host.as_str(), port));
+        matches!(tokio::time::timeout(Duration::from_millis(timeout_ms), connect).await, Ok(Ok(_)))
+    }
+
     fn base_is_loopback(&self) -> bool {
         let Ok(url) = reqwest::Url::parse(&self.base()) else {
             return false;
@@ -569,6 +583,24 @@ mod tests {
             code: "ECONNREFUSED",
         };
         assert_eq!(e.error_body(Value::Null)["error"], "refused");
+    }
+
+    /// 데몬이 없을 때 기동이 연결 거절을 오래 기다리지 않는다 (Windows는 거절에도 1초 넘게 걸린다)
+    #[tokio::test]
+    async fn listening_answers_quickly_whether_the_port_is_open() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let open = format!("http://{}", listener.local_addr().unwrap());
+        let dir = tempfile::tempdir().unwrap();
+        let client = DaemonClient::new(open, dir.path().join(".ipc_token"));
+        assert!(client.listening(200).await);
+
+        let closed = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let closed_url = format!("http://{}", closed.local_addr().unwrap());
+        drop(closed);
+        let client = DaemonClient::new(closed_url, dir.path().join(".ipc_token"));
+        let start = std::time::Instant::now();
+        assert!(!client.listening(200).await);
+        assert!(start.elapsed() < Duration::from_millis(600), "{:?}", start.elapsed());
     }
 
     /// 토큰이 맞을 때만 200을 주는 작은 서버. 받은 토큰을 기록한다
