@@ -109,6 +109,11 @@ fn describe(code: &str) -> &str {
     }
 }
 
+fn too_old() -> Response {
+    let min = saba_chan_updater_lib::constants::MIN_REMOTE_DAEMON;
+    (StatusCode::UPGRADE_REQUIRED, Json(json!({ "success": false, "error": describe("remote_too_old"), "error_code": "remote_too_old", "min_version": min }))).into_response()
+}
+
 /// 원격 데몬이 답에 실은 판이 최소 판(`MIN_REMOTE_DAEMON`) 이상인가. 판이 없으면 그 머리를 싣기 전의 데몬이다
 fn remote_version_ok(version: Option<&str>) -> bool {
     use saba_chan_updater_lib::version::SemVer;
@@ -135,6 +140,8 @@ struct State {
     full_streak: Mutex<HashMap<IdleKey, u32>>,
     /// 닿지 않는 원격 PC: 릴레이·원격 PC마다 (같은 PC도 릴레이가 다르면 따로)
     unreachable: Mutex<HashMap<(String, String), Unreachable>>,
+    /// 지난 답의 판이 최소 판보다 낮았던 원격 PC: 쓰기를 보내지 않는다 (원격에서 실행되고 화면에는 실패로 보이지 않게)
+    too_old: Mutex<HashSet<String>>,
     tunnels: tunnel::Tunnels,
 }
 
@@ -820,6 +827,11 @@ impl Pool {
         if relay.as_ref().is_some_and(|r| self.resting(r, host_id)) {
             return error(StatusCode::BAD_GATEWAY, "remote_unreachable");
         }
+        // 판은 답을 받아야 보이므로, 낮다고 본 PC에는 읽기만 보내 판을 다시 본다
+        let read = matches!(parts.method, Method::GET | Method::HEAD | Method::OPTIONS);
+        if !read && lock(&self.0.too_old).contains(host_id) {
+            return too_old();
+        }
         let endpoint = endpoint_of(daemon);
         let mut res = self.send_to(relay.as_ref(), host_id, &endpoint, &request).await;
         if let (Sent::NotConnected, Some(relay)) = (&res, relay.as_ref()) {
@@ -846,9 +858,10 @@ impl Pool {
         };
         let version = res.headers().get(saba_chan_updater_lib::constants::VERSION_HEADER).and_then(|v| v.to_str().ok());
         if !remote_version_ok(version) {
-            let min = saba_chan_updater_lib::constants::MIN_REMOTE_DAEMON;
-            return (StatusCode::UPGRADE_REQUIRED, Json(json!({ "success": false, "error": describe("remote_too_old"), "error_code": "remote_too_old", "min_version": min }))).into_response();
+            lock(&self.0.too_old).insert(host_id.to_string());
+            return too_old();
         }
+        lock(&self.0.too_old).remove(host_id);
         let (mut head, body) = res.into_parts();
         for hop in [header::CONNECTION, header::TRANSFER_ENCODING, HeaderName::from_static("keep-alive")] {
             head.headers.remove(hop);
@@ -882,6 +895,9 @@ mod tests {
         /// PC 목록이 알리는 host-b 상태 (비면 online). online이 아니거나 `refuse`면 터널을 열자마자 닫는다 (릴레이가 명령을 넘기지 못함)
         status: Arc<Mutex<String>>,
         refuse: Arc<std::sync::atomic::AtomicBool>,
+        /// 켜 두면 원격 데몬이 판 머리 없이 답한다 (그 머리 전의 옛 데몬). `/api/write`가 받은 쓰기 수
+        old: Arc<std::sync::atomic::AtomicBool>,
+        writes: Arc<std::sync::atomic::AtomicUsize>,
     }
 
     impl Relay {
@@ -1027,6 +1043,16 @@ mod tests {
             )
             .route("/api/declined", axum::routing::post(|| async { Json(json!({ "success": false, "error_code": "not_found" })) }))
             .route(
+                "/api/write",
+                axum::routing::post({
+                    let writes = state.writes.clone();
+                    move || async move {
+                        writes.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                        Json(json!({ "success": true }))
+                    }
+                }),
+            )
+            .route(
                 "/api/slow",
                 get(|| async {
                     tokio::time::sleep(RESPONSE_TIMEOUT * 3).await;
@@ -1076,7 +1102,17 @@ mod tests {
         if let Some(alpn) = alpn {
             tls.alpn_protocols = alpn;
         }
-        tokio::spawn(server::serve(listener, Arc::new(tls), server::router(routes, ctx), cancel.clone()));
+        let old = state.old.clone();
+        let router = server::router(routes, ctx).layer(axum::middleware::map_response(move |mut res: Response| {
+            let old = old.load(std::sync::atomic::Ordering::SeqCst);
+            async move {
+                if old {
+                    res.headers_mut().remove(saba_chan_updater_lib::constants::VERSION_HEADER);
+                }
+                res
+            }
+        }));
+        tokio::spawn(server::serve(listener, Arc::new(tls), router, cancel.clone()));
         (dir, cancel)
     }
 
@@ -1120,6 +1156,35 @@ mod tests {
         assert!(remote_version_ok(Some("0.1.14-beta.2")));
         assert!(remote_version_ok(Some("0.1.14")));
         assert!(remote_version_ok(Some(crate::extension::APP_VERSION)));
+    }
+
+    /// 판이 낮다고 본 원격 데몬에는 쓰기를 보내지 않는다: 원격에서 실행되고 화면에는 실패로 보이지 않게.
+    /// 원격 데몬이 올라가 맞는 판으로 답하면 다시 보낸다
+    #[tokio::test]
+    async fn a_write_is_not_sent_to_a_remote_daemon_known_to_be_too_old() {
+        use std::sync::atomic::Ordering;
+        let state = Relay::default();
+        let relay = fake_relay(state.clone()).await;
+        let (_b, _stop) = remote_daemon(&relay, &state, None).await;
+        let dir = tempfile::tempdir().unwrap();
+        let file = ConfigFile::at(dir.path());
+        let peers = Pool::default();
+        peers.connect(&file, Some(relay.clone()), "host-b").await.unwrap();
+        let write = || Request::post("/ignored").body(Body::empty()).unwrap();
+
+        state.old.store(true, Ordering::SeqCst);
+        let (status, body) = json_of(peers.forward(&file, Some(relay.clone()), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
+        assert_eq!((status, body["error_code"].as_str()), (426, Some("remote_too_old")));
+        let (status, body) = json_of(peers.forward(&file, Some(relay.clone()), "host-b", "/api/write", write(), CancellationToken::new()).await).await;
+        assert_eq!((status, body["error_code"].as_str()), (426, Some("remote_too_old")));
+        assert_eq!(state.writes.load(Ordering::SeqCst), 0, "the write ran on the remote PC");
+
+        state.old.store(false, Ordering::SeqCst);
+        let (status, _) = json_of(peers.forward(&file, Some(relay.clone()), "host-b", "/api/echo", get_req(&[]), CancellationToken::new()).await).await;
+        assert_eq!(status, 200);
+        let (status, _) = json_of(peers.forward(&file, Some(relay), "host-b", "/api/write", write(), CancellationToken::new()).await).await;
+        assert_eq!(status, 200);
+        assert_eq!(state.writes.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]
