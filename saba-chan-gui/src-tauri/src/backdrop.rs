@@ -7,7 +7,7 @@
 use crate::AppState;
 use saba_chan_updater_lib::window_backdrop::{self as wb, Support, WindowBackdrop};
 use serde_json::{json, Value};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, OnceLock};
 use tauri::window::Color;
 use tauri::{AppHandle, Manager, WebviewWindow, WebviewWindowBuilder};
@@ -16,6 +16,10 @@ use tauri::{AppHandle, Manager, WebviewWindow, WebviewWindowBuilder};
 static CURRENT: Mutex<Option<WindowBackdrop>> = Mutex::new(None);
 /// 투명하게 만든 창 라벨
 static TRANSPARENT: Mutex<Option<HashSet<String>>> = Mutex::new(None);
+/// OS에 건 효과 이름 (None = 걷음)
+type Effects = Option<Vec<&'static str>>;
+/// 창마다 마지막으로 OS에 건 효과. 같은 효과를 다시 걸면 Windows가 재질을 새로 그려 깜빡인다
+static APPLIED: Mutex<Option<HashMap<String, Effects>>> = Mutex::new(None);
 
 /// 이 컴퓨터에서 쓸 수 있는 것. 처음 부르는 곳은 메인 스레드다 (창 만들기·동기 명령)
 pub fn support() -> &'static Support {
@@ -28,6 +32,24 @@ pub fn current(app: &AppHandle) -> WindowBackdrop {
         return v;
     }
     WindowBackdrop::from_gui(&app.state::<AppState>().settings())
+}
+
+/// 이 창에 건 효과를 기록한다. 처음이거나 바뀌었을 때만 true (그때만 OS에 건다)
+fn remember_effects(label: &str, effects: Effects) -> bool {
+    let mut applied = APPLIED.lock().unwrap();
+    let applied = applied.get_or_insert_with(HashMap::new);
+    if applied.get(label) == Some(&effects) {
+        return false;
+    }
+    applied.insert(label.to_string(), effects);
+    true
+}
+
+/// 새로 만드는 창은 효과가 없다
+fn forget_effects(label: &str) {
+    if let Some(applied) = APPLIED.lock().unwrap().as_mut() {
+        applied.remove(label);
+    }
 }
 
 fn is_transparent(label: &str) -> bool {
@@ -47,6 +69,7 @@ pub fn prepare<'a>(
     builder: WebviewWindowBuilder<'a, tauri::Wry, AppHandle>,
 ) -> WebviewWindowBuilder<'a, tauri::Wry, AppHandle> {
     let transparent = wants_transparent(app);
+    forget_effects(label);
     let mut set = TRANSPARENT.lock().unwrap();
     let set = set.get_or_insert_with(HashSet::new);
     if transparent {
@@ -73,7 +96,10 @@ pub fn apply(win: &WebviewWindow, config: &WindowBackdrop, theme_bg: Color) -> b
         .window()
         .set_background_color(if on { None } else { Some(theme_bg) });
     let _ = win.as_ref().set_background_color(Some(Color(0, 0, 0, 0)));
-    set_effects(win, s, config, on);
+    // 진하기·밝기는 화면(CSS)만 바꾼다: 켜고 끄기나 재질이 바뀔 때만 OS에 건다
+    if remember_effects(win.label(), on.then(|| wb::effect_names(s, config))) {
+        set_effects(win, s, config, on);
+    }
     on
 }
 
@@ -121,4 +147,27 @@ fn info(win: &WebviewWindow, active: bool) -> Value {
         m.insert("transparent".into(), json!(is_transparent(win.label())));
     }
     v
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 진하기·밝기 막대를 끌거나 테마 바탕색을 알릴 때마다 같은 재질을 다시 걸면 Windows가 재질을 새로 그려 깜빡인다.
+    /// 켜고 끄기나 재질이 바뀔 때만 OS에 건다
+    #[test]
+    fn effects_are_set_only_when_they_change() {
+        let label = "test-effects-change";
+        let tabbed = Some(vec!["tabbed"]);
+        assert!(remember_effects(label, tabbed.clone()), "first apply sets the effect");
+        assert!(!remember_effects(label, tabbed.clone()), "same effect again is skipped");
+        assert!(remember_effects(label, Some(vec!["mica"])), "material change applies");
+        assert!(remember_effects(label, None), "turning off clears");
+        assert!(!remember_effects(label, None));
+        assert!(remember_effects(label, tabbed.clone()), "turning on again applies");
+
+        // 창을 새로 만들면 효과가 없는 창이다: 같은 값이라도 다시 건다
+        forget_effects(label);
+        assert!(remember_effects(label, tabbed));
+    }
 }

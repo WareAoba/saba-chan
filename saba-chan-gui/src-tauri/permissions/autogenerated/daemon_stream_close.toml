@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-daemon-stream-close"
+description = "Enables the daemon_stream_close command without any pre-configured scope."
+commands.allow = ["daemon_stream_close"]
+
+[[permission]]
+identifier = "deny-daemon-stream-close"
+description = "Denies the daemon_stream_close command without any pre-configured scope."
+commands.deny = ["daemon_stream_close"]
