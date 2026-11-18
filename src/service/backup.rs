@@ -281,7 +281,10 @@ pub(crate) async fn backup_targets(state: &IPCServer, id: &str) -> Vec<PathBuf> 
 pub(crate) async fn take_backup(state: &IPCServer, id: &str, kind: BackupKind) -> Result<Option<BackupInfo>, Failure> {
     let Some(guard) = InstanceLock::take(id).map(|g| g.purpose(Purpose::Backup)) else {
         let busy = Err(Failure::coded(StatusCode::CONFLICT, "backup_busy", "A backup or restore is already running for this instance"));
-        announce_done(state, id, kind, &busy).await;
+        // 예약 백업은 겹친 작업이 같은 내용을 담으니 건너뛴다 (실패로 알리지 않는다)
+        if kind != BackupKind::Scheduled {
+            announce_done(state, id, kind, &busy).await;
+        }
         return busy;
     };
     let (state, id) = (state.clone(), id.to_string());

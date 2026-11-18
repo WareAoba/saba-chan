@@ -291,6 +291,11 @@ pub async fn auto_restart(state: IPCServer, instance_id: String, delay: std::tim
         return;
     };
     match result {
+        // 시작 단계에 들어간 뒤 사용자가 끈 것은 실패가 아니다
+        Err(failure) if failure.code().as_deref() == Some("start_cancelled") => {
+            tracing::info!("Auto restart of '{}' cancelled: stopped while starting", instance_id);
+            state.supervisor.read().await.record_restart_outcome(&instance_id, generation, false);
+        }
         Err(failure) => {
             let reason = failure.body.get("error").or_else(|| failure.body.get("message")).and_then(Value::as_str).unwrap_or("start failed").to_string();
             tracing::warn!("Auto restart of '{}' failed: {}", instance_id, reason);
@@ -953,6 +958,51 @@ mod tests {
         let s = state.supervisor.read().await;
         assert!(s.tracker.get_pid("stop-during-check").is_none(), "nothing is tracked");
         assert!(s.managed_store.get("stop-during-check").await.is_none(), "no server was left running");
+    }
+
+    /// 자동 재시작이 시작 단계에 들어간 뒤 사용자가 끄면 실패가 아니라 취소다: 알림함 크래시 카드가 "다시 켜지 못함"으로 바뀌지 않게
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_stop_during_an_auto_restart_cancels_it_instead_of_failing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let modules = tmp.path().join("modules");
+        let dir = modules.join("game");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("module.toml"),
+            "[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("lifecycle.py"),
+            "import json, sys, time\n\
+             if sys.argv[1] == 'validate':\n    time.sleep(2)\n    print(json.dumps({'success': True, 'issues': []}))\n\
+             elif sys.argv[1] == 'get_launch_command':\n    \
+             print(json.dumps({'success': True, 'program': '/bin/sh', 'args': ['-c', 'sleep 30'], 'working_dir': '.'}))\n\
+             else:\n    print(json.dumps({'success': True}))\n",
+        )
+        .unwrap();
+        crate::sandbox::consent_test_component(&dir.join("lifecycle.py"));
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(modules.to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let mut inst = crate::instance::ServerInstance::new("srv", "game");
+        inst.id = "stop-during-auto-restart".into();
+        sup.instance_store.add(inst).unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let mut events = crate::events::bus().subscribe(None);
+
+        let generation = state.supervisor.read().await.run_generation_of("stop-during-auto-restart");
+        let restarter = tokio::spawn(auto_restart(state.clone(), "stop-during-auto-restart".into(), std::time::Duration::ZERO, generation));
+        tokio::time::sleep(std::time::Duration::from_millis(700)).await;
+        let stopped = crate::supervisor::Supervisor::stop_server(&state.supervisor, "stop-during-auto-restart", "game", false).await.unwrap();
+        assert_ne!(stopped["success"], false, "{stopped}");
+        restarter.await.unwrap();
+
+        let kinds: Vec<_> = std::iter::from_fn(|| events.rx.try_recv().ok())
+            .filter(|e| e.data["instanceId"] == "stop-during-auto-restart" && e.kind.starts_with("instance.restart"))
+            .map(|e| e.kind.clone())
+            .collect();
+        assert_eq!(kinds, ["instance.restart_cancelled"]);
     }
 
     /// 재시작·자동 재시작은 세대를 확인한 뒤 시작한다. 확인과 시작 사이에 들어온 정지도 시작을 취소해야 한다:

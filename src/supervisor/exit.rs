@@ -96,7 +96,7 @@ impl Supervisor {
     }
 
     /// 정지 요청 없이 사라진 non-managed 서버를 판정한다. 데몬이 띄운 프로세스라 종료 상태(`exit`)를 알면 managed와 같은
-    /// `crash::classify`로 가른다(코드 0이면 서버 창·게임 안에서 끈 정상 정지). 콘솔이 없어 콘솔 문구는 보지 않는다.
+    /// `crash::classify_unmanaged`로 가른다(코드 0이나 창 닫기·Ctrl+C면 서버 창·게임 안에서 끈 정상 정지). 콘솔이 없어 콘솔 문구는 보지 않는다.
     /// 모르면(데몬을 다시 켠 뒤 붙었거나 자동 감지한 프로세스, 런처가 넘겨 준 PID) 원인 모를 종료다. 다시 띄우지 않는다
     pub(super) fn judge_unrequested_exit(&mut self, instance: &crate::instance::ServerInstance, exit: Option<managed_process::ProcessExit>, ran_secs: u64) {
         let verdict = match exit {
@@ -106,7 +106,7 @@ impl Supervisor {
                     Some(dir) => crash::new_crash_files(std::path::Path::new(dir), &artifacts, saba_runner::now().saturating_sub(ran_secs)),
                     None => Vec::new(),
                 };
-                crash::classify(&crash::ExitFacts {
+                crash::classify_unmanaged(&crash::ExitFacts {
                     stop_requested: false,
                     exit: Some(exit),
                     console_tail: &[],
