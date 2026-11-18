@@ -66,6 +66,9 @@ def load() -> dict:
     for key, comp in data.get("components", {}).items():
         if not SEMVER.match(comp.get("version", "")):
             errors.append(f"[components.{key}] version {comp.get('version')!r} is not semver")
+        elif channel == "stable" and "-" in comp["version"]:
+            # 정식 manifest에 베타 번호의 파일이 실리면 정식 PC가 베타 규칙으로 돈다
+            errors.append(f"[components.{key}] stable release cannot carry a prerelease component ({comp['version']})")
         for f in comp.get("files", []):
             if not (ROOT / f).is_file():
                 errors.append(f"[components.{key}] file {f} does not exist")
