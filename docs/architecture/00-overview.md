@@ -12,7 +12,7 @@
 
 | 파일 | 다루는 것 |
 |---|---|
-| [01-daemon-core.md](01-daemon-core.md) | 데몬 기동, **IPC HTTP API 전체 라우트 표(약 95개)**, 인증, 인스턴스 모델·영속화, 전역 설정(`config.json`), 명령 경로(stdin/REST), 내장 Python, plugin 실행기 |
+| [01-daemon-core.md](01-daemon-core.md) | 데몬 기동, **IPC HTTP API 전체 라우트 표**, 인증, 인스턴스 모델·영속화, 전역 설정(`config.json`), 명령 경로(stdin/REST), 내장 Python, plugin 실행기 |
 | [02-modules.md](02-modules.md) | `module.toml` 전체 스키마(Rust 역직렬화 기준), `lifecycle.py` 호출 프로토콜과 함수 매트릭스, managed process, 게임별 기능, 모듈 배포 |
 | [03-extensions.md](03-extensions.md) | 플러그인(코드상 extension) `manifest.json` 스키마, hook 전수 목록과 hook×익스텐션 매트릭스, 설치·활성화 수명주기, GUI 컴포넌트 주입(UMD/slot) 계약 |
 | [04-clients.md](04-clients.md) | GUI(Tauri 셸 + `window.api` 브리지) 전수표, CLI(하위 명령·대화형 셸·`--json`), 디스코드 연동(데몬 쪽), 공유 상수·로케일, **인터페이스가 데몬을 우회하는 지점 전수 목록(§7)** |
