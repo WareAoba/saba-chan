@@ -161,6 +161,27 @@ describe('업데이트 알약', () => {
         await waitFor(() => expect(container.querySelector('.appbar-pill')).toBeNull());
     });
 
+    it('데몬이 적용하다 실패하면 셸이 채운 기본 문구 대신 데몬이 준 실패 이유를 보인다', async () => {
+        status.mockResolvedValue(phase('ready'));
+        const toast = vi.fn();
+        window.showToast = toast as never;
+        // 셸 결과(native.rs): 데몬 답에 error가 없으면 셸이 기본 문구를 채우고 errors는 그대로 넘긴다
+        window.api.updaterRestart = vi.fn().mockResolvedValue({
+            ok: false,
+            error: 'Failed to launch updater',
+            errors: ['Minecraft: busy', { component: 'module-palworld', error: 'locked' }],
+        }) as never;
+        render(<UpdatePill />);
+        fireEvent.click(await screen.findByText('Update ready'));
+        await act(async () => {
+            fireEvent.click(screen.getByRole('button', { name: 'Restart now' }));
+        });
+        const message = toast.mock.calls[0]?.[0] as string;
+        expect(message).toContain('Minecraft: busy');
+        expect(message).toContain('module-palworld: locked');
+        expect(message).not.toContain('Failed to launch updater');
+    });
+
     it('다시 시작한 뒤 데몬이 새로 준비됨을 주면(되돌림·미룸) 적용 중에 멈추지 않고 다시 준비됨을 보인다', async () => {
         vi.useFakeTimers();
         status.mockResolvedValue(phase('ready', { since: new Date(Date.now() - 60000).toISOString() }));
