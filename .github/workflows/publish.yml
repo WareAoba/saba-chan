@@ -630,10 +630,20 @@ jobs:
     environment: release-signing
     timeout-minutes: 20
     steps:
+      # 키를 받는 서명 도구와 versions.py는 늘 main의 것이다 (release/<버전> 소스는 main의 리뷰를 거치지 않는다).
+      # 발행 소스에서는 릴리즈 노트만 읽는다
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.sha }}
+
+      - name: Checkout release notes of the source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
           ref: ${{ needs.prepare.outputs.sha }}
+          path: source
+          sparse-checkout: release-notes
+          persist-credentials: false
 
       - name: Setup Python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
@@ -664,6 +674,7 @@ jobs:
             sign release-manifest.unsigned.json saba-updater-v1 > release-manifest.signed.json
           # 베타·RC 번호는 그 채널에, 정식 번호는 베타에 먼저 건다. 정식은 promote-release.yml로 사용자가 올린다
           python scripts/versions.py registration --signed release-manifest.signed.json \
+            --notes "source/release-notes/${{ needs.prepare.outputs.version }}.json" \
             --channel ${{ needs.prepare.outputs.register }} --rollout "$ROLLOUT" --out release-registration.json
 
       - name: Keep manifest
@@ -686,10 +697,11 @@ jobs:
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
     steps:
+      # R2 키를 받는 versions.py는 main의 것이다 (서명과 같다). 올릴 파일은 산출물에서만 읽는다
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.prepare.outputs.sha }}
+          ref: ${{ github.sha }}
 
       - name: Setup Python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
