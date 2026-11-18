@@ -64,7 +64,7 @@ describe('웹 백업 복원', () => {
         fireEvent.click(screen.getByRole('button', { name: /Back up now/ }));
         await flush();
         expect(useApp.getState().toasts.at(-1)).toMatchObject({
-            message: 'Backup failed: not enough disk space. Free up space and try again.',
+            message: 'Not enough disk space. Free up space and try again.',
             tone: 'error',
         });
     });
