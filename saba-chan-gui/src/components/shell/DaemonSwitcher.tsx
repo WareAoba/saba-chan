@@ -4,6 +4,8 @@ import { useSettingsStore } from '../../stores/useSettingsStore';
 import { markDaemonSwitch } from '../../utils/opening';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { failed } from '../../utils/apiResult';
+import { safeShowToast } from '../../utils/helpers';
+import { remoteErrorText } from '../../utils/remoteError';
 
 const LOCAL = '';
 
@@ -119,7 +121,10 @@ export function DaemonSwitcher({ onSwitched = reloadWindow }: { onSwitched?: () 
         setBusy(true);
         try {
             const res = await window.api.daemonTargetSet(value || null);
-            if (failed(res)) return;
+            if (failed(res)) {
+                safeShowToast(remoteErrorText(res, t), 'error', 5000);
+                return;
+            }
             setTarget(value);
             onSwitched();
         } finally {

@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 import type { ApiBody } from '../../types/daemon';
@@ -14,54 +13,10 @@ import { PcSettingsDialog } from './PcSettingsDialog';
 import { PublicAddressRow } from './PublicAddress';
 import { InstallDialog, RemoveDialog } from './RemotePcDialogs';
 import { failed } from '../../utils/apiResult';
-
-
-// 데몬 원격 데몬 오류 코드 중 문구가 있는 것 (01 §1.4.2)
-const ERRORS = [
-    'certificate_failed',
-    'port_in_use',
-    'bind_failed',
-    'invalid_port',
-    'invalid_address',
-    'invalid_name',
-    'remote_not_found',
-    'remote_no_endpoint',
-    'remote_unreachable',
-    'remote_rejected',
-    'remote_unknown',
-    'relay_not_paired',
-    'relay_unreachable',
-    'remote_timeout',
-    'remote_ambiguous',
-    'remote_bad_path',
-    'remote_unauthorized',
-    'remote_local_only',
-    'pair_code_not_found',
-    'pair_code_used',
-    'pair_code_expired',
-    'remote_not_ready',
-    'ssh_missing',
-    'ssh_spawn_failed',
-    'ssh_failed',
-    'install_failed',
-    'pair_code_missing',
-    'unsupported',
-    'cli_missing',
-    'remote_uninstall_failed',
-    'invalid_host',
-    'invalid_user',
-    'invalid_code',
-];
+import { remoteErrorText } from '../../utils/remoteError';
 
 /** 화면에 보일 PC 이름: 데몬이 정한 `디스코드 이름(PC 이름)`. 둘 다 비었으면 hostId */
 export const pcName = (pc?: ApiBody | null) => pc?.label || pc?.hostId || '';
-
-/** 실패 → 한 줄 (아는 코드는 번역, 나머지는 데몬 문구) */
-export function remoteErrorText(res: ApiBody | null | undefined, t: TFunction) {
-    const code = String(res?.error_code || res?.error || '');
-    if (ERRORS.includes(code)) return t(`remote_daemon.err_${code}`);
-    return res?.error || t('remote_daemon.err_generic');
-}
 
 /** 판 비교: a가 b보다 옛 판인가 (`0.1.12` < `0.1.13`). 읽지 못하면 false */
 export function olderVersion(a?: string | null, b?: string | null) {

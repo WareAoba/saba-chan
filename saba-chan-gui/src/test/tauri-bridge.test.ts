@@ -88,6 +88,29 @@ describe('Tauri 브리지 설치', () => {
         tauri.emit('daemon:stream', { id, event: 'message', data: { lines: [] } });
         expect(got).toEqual([{ lines: [] }]);
     });
+
+    it('콘솔 팝아웃 창은 이벤트 스트림을 받지 않으므로 받는 것으로 보지 않는다 (목록을 사용자 주기로 읽게)', async () => {
+        const tauri = fakeTauri();
+        const target: Loose = { __TAURI__: tauri, location: { search: '?console-popout=a' } };
+        await installTauriBridge(target);
+        expect(target.api.daemonEventsLive()).toBe(false);
+        // 메인 창은 셸이 끊김을 알리기 전까지 받는 것으로 본다
+        const { api } = await install({});
+        expect(api.daemonEventsLive()).toBe(true);
+    });
+
+    it('바탕화면 펫 창은 자기 이벤트만 받고 초기화(app_ready)를 부르지 않는다', async () => {
+        const tauri = fakeTauri();
+        const target: Loose = { __TAURI__: tauri, location: { search: '?desktop-overlay=1&scale=100' } };
+        await installTauriBridge(target);
+        expect(tauri.invoke).not.toHaveBeenCalledWith('app_ready', undefined);
+        const got: unknown[] = [];
+        target.api.onOverlayScale((s: unknown) => got.push(s));
+        target.api.onDaemonEvent((e: unknown) => got.push(e));
+        tauri.emit('overlay:scale', 120);
+        tauri.emit('events:message', { type: 'x' });
+        expect(got).toEqual([120, { type: 'x' }]);
+    });
 });
 
 describe('데몬 응답 가공', () => {

@@ -354,7 +354,7 @@ pub(crate) fn strip_terminal_controls(input: &str) -> String {
 }
 
 /// 데몬 `spans`(UTF-16 오프셋) → 바이트 구간. 어긋난 구간은 버린다
-fn span_ranges<'a>(text: &str, spans: Option<&'a Value>) -> Vec<(usize, usize, &'a str)> {
+pub(crate) fn span_ranges<'a>(text: &str, spans: Option<&'a Value>) -> Vec<(usize, usize, &'a str)> {
     let Some(spans) = spans.and_then(Value::as_array) else {
         return Vec::new();
     };

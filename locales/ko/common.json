@@ -82,7 +82,8 @@
     "daemon_stopped": "데몬 종료됨",
     "stop_daemon": "데몬 종료",
     "start_daemon": "데몬 시작",
-    "quit_all": "완전히 종료"
+    "quit_all": "완전히 종료",
+    "switch_cli_failed": "CLI 열기 실패. {{reason}}"
   },
   "updates": {
     "notification_title": "사바쨩 업데이트 알림",

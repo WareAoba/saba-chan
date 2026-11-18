@@ -539,6 +539,7 @@
     "pair_expected": "必须是 KEY=VALUE 格式：“{{got}}”",
     "timeout": "守护进程响应超时（{{path}}）",
     "body_read": "{{path}} 响应接收失败：{{error}}",
+    "connection_lost": "{{path}} 请求期间与守护进程的连接中断：{{error}}",
     "daemon_identity": "守护进程身份验证失败",
     "unknown_command": "没有此命令：{{path}}。运行 `saba-chan-cli help` 查看命令列表。",
     "not_supported": "{{module}} 模块不支持此功能"
@@ -1759,6 +1760,7 @@
       "used_by": "使用的服务器"
     },
     "no_servers": "尚无服务器。按 n 新建服务器。",
+    "servers_failed": "无法读取服务器列表：{{error}}",
     "empty": "（无）",
     "detail": "详情",
     "console_empty": "尚无输出",
@@ -2068,6 +2070,8 @@
     "no_servers": "没有服务器",
     "via_relay": "通过中继",
     "removed": "{{host}} 已删除",
+    "confirm_remove": "删除电脑 {{host}} 吗？",
+    "confirm_uninstall": "卸载 {{host}} 上的 Saba-chan 并删除该电脑吗？{{kept}}。",
     "auto_update_on": "{{host}} 自动更新已开启",
     "auto_update_off": "{{host}} 自动更新已关闭",
     "update_started": "{{host}} 更新已开始。完成后守护进程会重新启动。",

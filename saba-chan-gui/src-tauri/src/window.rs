@@ -661,8 +661,6 @@ const POPOUTS_KEY: &str = "consolePopouts";
 
 /// 이동·크기 저장 디바운스: 창 라벨마다 세대 번호
 static POPOUT_GEN: Mutex<Option<HashMap<String, u64>>> = Mutex::new(None);
-/// 저장은 설정을 읽고 고쳐 쓰므로 한 번에 하나씩
-static POPOUT_SAVE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 fn popout_saved(settings: &Value, instance_id: &str) -> Value {
     settings[POPOUTS_KEY][instance_id].clone()
@@ -694,17 +692,6 @@ fn popout_size(saved: &Value) -> (f64, f64) {
     (width, height)
 }
 
-/// 한 PIP의 기억을 `change`로 고친 `consolePopouts` 전체 (데몬이 응답하지 않으면 셸이 맨 위 키를 통째로 바꾸므로 전체를 보낸다)
-fn popout_patch(settings: &Value, instance_id: &str, change: &Value) -> Value {
-    let mut all = settings[POPOUTS_KEY].as_object().cloned().unwrap_or_default();
-    let mut entry = all.get(instance_id).and_then(Value::as_object).cloned().unwrap_or_default();
-    if let Value::Object(c) = change {
-        entry.extend(c.clone());
-    }
-    all.insert(instance_id.to_string(), Value::Object(entry));
-    json!({ POPOUTS_KEY: all })
-}
-
 /// 다시 띄울 PIP의 instanceId (서버가 켜져 있으면 메인 창이 띄운다)
 pub fn popouts_to_reopen(settings: &Value) -> Vec<String> {
     settings[POPOUTS_KEY]
@@ -718,11 +705,10 @@ pub fn popouts_to_reopen(settings: &Value) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// 한 PIP의 기억에서 `change`의 칸만 바꾼다 (설정 저장은 칸 단위로 합친다)
 async fn save_popout_now(app: &AppHandle, instance_id: &str, change: Value) {
-    let _guard = POPOUT_SAVE.lock().await;
     let state = app.state::<AppState>();
-    let patch = popout_patch(&state.settings(), instance_id, &change);
-    crate::native::save_settings(&state, &patch).await;
+    crate::native::save_settings(&state, &json!({ POPOUTS_KEY: { instance_id: change } })).await;
 }
 
 fn save_popout(app: &AppHandle, instance_id: &str, change: Value) {
@@ -870,19 +856,6 @@ mod tests {
             assert_eq!(ex & WS_EX_APPWINDOW, 0);
             assert_eq!(style & WS_SYSMENU, 0);
         }
-    }
-
-    #[test]
-    fn a_popout_patch_keeps_other_servers_and_earlier_fields() {
-        let settings = json!({ "consolePopouts": {
-            "a": { "width": 800, "height": 500, "reopen": true },
-            "b": { "reopen": true },
-        }});
-        let patch = popout_patch(&settings, "a", &json!({ "reopen": false }));
-        assert_eq!(patch["consolePopouts"]["a"], json!({ "width": 800, "height": 500, "reopen": false }));
-        assert_eq!(patch["consolePopouts"]["b"], json!({ "reopen": true }));
-        let fresh = popout_patch(&json!({}), "c", &json!({ "maximized": true }));
-        assert_eq!(fresh, json!({ "consolePopouts": { "c": { "maximized": true } } }));
     }
 
     #[test]

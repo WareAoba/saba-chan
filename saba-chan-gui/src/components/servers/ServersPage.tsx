@@ -289,7 +289,9 @@ export function ServersPage({
                         </div>
                     )}
                     <div ref={detailRef} className="server-detail-host">
+                        {/* 서버마다 새로 만든다: 앞 서버의 탭·주소 확인 결과·늦은 응답이 새 서버에 이어지지 않게 */}
                         <ServerDetail
+                            key={selected.id}
                             server={selected}
                             moduleData={moduleOf(selected.module)}
                             modules={modules}

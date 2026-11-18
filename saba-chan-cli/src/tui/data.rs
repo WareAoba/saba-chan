@@ -13,7 +13,8 @@ pub const TAIL: usize = 300;
 #[derive(Default)]
 pub struct Fetched {
     pub health: Option<Value>,
-    pub servers: Vec<Value>,
+    /// 읽지 못했으면 그 이유
+    pub servers: Option<Result<Vec<Value>, String>>,
     pub metrics: Option<Value>,
     pub agent: Option<Value>,
     pub updates: Option<Value>,
@@ -54,6 +55,8 @@ pub struct Snapshot {
     /// `GET /health`. None이면 데몬 꺼짐
     pub health: Option<Value>,
     pub servers: Vec<Value>,
+    /// 서버 목록을 마지막에 읽지 못한 이유. 그동안 `servers`는 전에 읽은 목록이다
+    pub servers_error: Option<String>,
     pub metrics: Option<Value>,
     /// `GET /api/relay/agent`
     pub agent: Option<Value>,
@@ -79,8 +82,15 @@ impl Snapshot {
             _ => false,
         };
         self.health = f.health;
-        self.servers = f.servers;
+        match f.servers {
+            Some(Ok(list)) => (self.servers, self.servers_error) = (list, None),
+            // 원격 데몬 중계가 잠깐 끊기거나 시간이 넘으면 "서버 없음" 대신 있던 목록을 둔다
+            Some(Err(e)) => self.servers_error = Some(e),
+            None => {}
+        }
         if self.health.is_none() {
+            self.servers.clear();
+            self.servers_error = None;
             self.metrics = None;
             self.agent = None;
             self.launchable = None;
@@ -167,7 +177,11 @@ pub async fn fetch(ctx: &Ctx, want: &Want) -> Fetched {
     };
     Fetched {
         health: Some(health),
-        servers: servers.ok().and_then(|v| v.get("servers").and_then(Value::as_array).cloned()).unwrap_or_default(),
+        servers: Some(
+            servers
+                .map(|v| v.get("servers").and_then(Value::as_array).cloned().unwrap_or_default())
+                .map_err(|e| crate::error::classify(&e).headline()),
+        ),
         metrics: metrics.ok(),
         agent: agent.ok(),
         updates: updates.ok(),
@@ -432,6 +446,20 @@ mod tests {
         assert!(snap.launchable.is_some() && snap.modules.len() == 1);
         snap.apply(Fetched::default());
         assert!(snap.health.is_none() && snap.launchable.is_none() && snap.metrics.is_none());
+    }
+
+    /// 서버 목록을 읽지 못하면(원격 데몬 중계가 끊김, 시간 초과) 빈 목록 대신 있던 목록과 그 이유를 둔다. 데몬이 꺼지면 지운다
+    #[test]
+    fn a_server_list_that_failed_to_load_is_kept_with_the_reason() {
+        let mut snap = Snapshot::default();
+        let alive = |servers| Fetched { health: Some(json!({})), servers: Some(servers), ..Fetched::default() };
+        snap.apply(alive(Ok(vec![json!({ "id": "1", "name": "mc" })])));
+        snap.apply(alive(Err("relay unreachable".into())));
+        assert_eq!((snap.servers.len(), snap.servers_error.as_deref()), (1, Some("relay unreachable")));
+        snap.apply(alive(Ok(vec![json!({ "id": "1" }), json!({ "id": "2" })])));
+        assert_eq!((snap.servers.len(), snap.servers_error.as_deref()), (2, None));
+        snap.apply(Fetched::default());
+        assert!(snap.servers.is_empty() && snap.servers_error.is_none());
     }
 
     /// 권한 폼: 명령은 서버 이름으로 묶고 값은 `perm`이 받는 레벨 낱말, 멤버는 이름으로 (소유자는 고를 수 없다)

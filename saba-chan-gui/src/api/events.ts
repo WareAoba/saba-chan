@@ -26,12 +26,13 @@ export const EVENT_CHANNELS = [
 
 export type EventHub = ReturnType<typeof createEventHub>;
 
-export function createEventHub() {
+/** `live`: 이벤트 스트림을 받는 창인가. 받지 않는 창(콘솔 팝아웃)은 false로 만든다 */
+export function createEventHub({ live: receivesEvents = true } = {}) {
     const channels = new Map<string, Set<Listener>>(EVENT_CHANNELS.map((name) => [name, new Set<Listener>()]));
     // 늦게 붙는 onStatusUpdate도 놓치지 않게 마지막 초기화 상태를 기억한다
     let lastStatus: unknown = null;
-    // 셸이 이벤트 스트림에 붙어 있는가 (`events:live`). 셸이 알리기 전에는 붙은 것으로 본다
-    let live = true;
+    // 셸이 이벤트 스트림에 붙어 있는가 (`events:live`). 받는 창은 셸이 알리기 전에는 붙은 것으로 본다
+    let live = receivesEvents;
     // 구독자가 없을 때 온 닫기 요청 (로드 중 Alt+F4). 첫 구독자에게 넘겨야 셸이 받음 확인을 받는다
     let pendingClose = false;
     // 화면이 뜨기 전에 온 "이 서버를 열어라" (`--open-server`로 뜬 GUI). 첫 구독자에게 넘긴다

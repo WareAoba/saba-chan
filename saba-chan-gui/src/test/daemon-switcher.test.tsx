@@ -1,6 +1,7 @@
 import { act, cleanup, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DaemonSwitcher, REMOTE_DAEMONS_CHANGED } from '../components/shell/DaemonSwitcher';
+import i18n from '../i18n';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { openDropdown, pickOption } from './dropdown';
 
@@ -55,6 +56,17 @@ describe('상단 바: 다룰 데몬 고르기 (이 PC / 연결한 원격 데몬)
         await act(async () => {});
         expect(window.api.daemonTargetSet).toHaveBeenCalledWith('host-b');
         expect(reload).toHaveBeenCalled();
+    });
+
+    // 리뷰 11-18: 설정 › 연결의 같은 동작처럼 바꾸지 못한 이유를 알린다
+    it('대상을 바꾸지 못하면 이유를 토스트로 알리고 화면을 다시 읽지 않는다', async () => {
+        vi.mocked(window.api.daemonTargetSet).mockResolvedValue({ error_code: 'remote_unreachable', error: 'x' });
+        window.showToast = vi.fn() as never;
+        await act(async () => render(<DaemonSwitcher onSwitched={reload} />));
+        pickOption(screen.getByRole('combobox', { name: 'Daemon' }), '게임 PC');
+        await act(async () => {});
+        expect(window.showToast).toHaveBeenCalledWith(i18n.t('gui:remote_daemon.err_remote_unreachable'), 'error', 5000, undefined);
+        expect(reload).not.toHaveBeenCalled();
     });
 
     it('고른 원격 데몬을 보이고, 이 PC로 돌아갈 수 있다', async () => {

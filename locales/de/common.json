@@ -82,7 +82,8 @@
     "daemon_stopped": "Daemon gestoppt",
     "stop_daemon": "Daemon stoppen",
     "start_daemon": "Daemon starten",
-    "quit_all": "Vollständig beenden"
+    "quit_all": "Vollständig beenden",
+    "switch_cli_failed": "CLI konnte nicht geöffnet werden. {{reason}}"
   },
   "updates": {
     "notification_title": "Saba-chan Updates",

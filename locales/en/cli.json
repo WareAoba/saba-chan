@@ -539,6 +539,7 @@
     "pair_expected": "Expected KEY=VALUE: \"{{got}}\"",
     "timeout": "Daemon response timed out ({{path}})",
     "body_read": "Failed to receive response from {{path}}: {{error}}",
+    "connection_lost": "Lost the connection to the daemon during {{path}}: {{error}}",
     "daemon_identity": "Daemon identity check failed",
     "unknown_command": "No such command: {{path}}. Run `saba-chan-cli help` to see the commands.",
     "not_supported": "Module {{module}} does not support this"
@@ -1434,6 +1435,7 @@
       "used_by": "Used by"
     },
     "no_servers": "No servers yet. Press n to create one.",
+    "servers_failed": "Couldn't load the server list: {{error}}",
     "empty": "(none)",
     "detail": "Details",
     "console_empty": "No output yet",
@@ -1743,6 +1745,8 @@
     "no_servers": "No servers",
     "via_relay": "Through Server-chan",
     "removed": "{{host}} removed",
+    "confirm_remove": "Remove the PC {{host}}?",
+    "confirm_uninstall": "Uninstall Saba-chan on {{host}} and remove the PC? {{kept}}.",
     "auto_update_on": "Automatic updates on for {{host}}",
     "auto_update_off": "Automatic updates off for {{host}}",
     "update_started": "{{host}} update started. The daemon restarts when done.",

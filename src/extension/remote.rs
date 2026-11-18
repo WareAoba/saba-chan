@@ -156,9 +156,11 @@ impl ExtensionManager {
     }
 
     /// 설치된 익스텐션 중 원격 버전보다 낮은 것의 업데이트 정보를 반환합니다.
+    /// 사용자가 고정했거나 고른 판을 기다리는 것은 모듈과 같이 뺀다 (`choice`: `ext-<id>`와 깔린 판의 `AddonChoice`)
     pub fn check_updates_against(
         &self,
         remote: &[RemoteExtensionInfo],
+        choice: impl Fn(&str, &str) -> saba_chan_updater_lib::addon_pins::AddonChoice,
     ) -> Vec<ExtensionUpdateInfo> {
         let mut updates = Vec::new();
         for local in self.discovered.values() {
@@ -173,7 +175,9 @@ impl ExtensionManager {
                     _ => remote_ext.version > local.manifest.version,
                 };
 
-                if is_newer {
+                let installed = &local.manifest.version;
+                let key = format!("{}{}", saba_chan_updater_lib::relay::EXTENSION_PREFIX, local.manifest.id);
+                if is_newer && choice(&key, installed).update_version(Some(&remote_ext.version), installed).is_some() {
                     updates.push(ExtensionUpdateInfo {
                         id: local.manifest.id.clone(),
                         installed_version: local.manifest.version.clone(),

@@ -539,6 +539,7 @@
     "pair_expected": "KEY=VALUE erwartet: „{{got}}“",
     "timeout": "Zeitüberschreitung beim Daemon ({{path}})",
     "body_read": "Antwort von {{path}} nicht lesbar: {{error}}",
+    "connection_lost": "Verbindung zum Daemon während {{path}} verloren: {{error}}",
     "daemon_identity": "Identitätsprüfung des Daemons fehlgeschlagen",
     "unknown_command": "Unbekannter Befehl: {{path}}. Befehlsliste: `saba-chan-cli help`",
     "not_supported": "Modul {{module}} unterstützt diese Funktion nicht"
@@ -1713,6 +1714,7 @@
       "used_by": "Verwendet von"
     },
     "no_servers": "Noch keine Server. Mit n einen neuen Server erstellen.",
+    "servers_failed": "Serverliste konnte nicht geladen werden: {{error}}",
     "empty": "(keine)",
     "detail": "Details",
     "console_empty": "Noch keine Ausgabe",
@@ -2068,6 +2070,8 @@
     "no_servers": "Keine Server",
     "via_relay": "Über Server-chan",
     "removed": "{{host}} entfernt",
+    "confirm_remove": "PC {{host}} entfernen?",
+    "confirm_uninstall": "Saba-chan auf {{host}} deinstallieren und den PC entfernen? {{kept}}.",
     "auto_update_on": "Automatische Updates für {{host}} an",
     "auto_update_off": "Automatische Updates für {{host}} aus",
     "update_started": "Update von {{host}} gestartet. Danach startet der Daemon neu.",

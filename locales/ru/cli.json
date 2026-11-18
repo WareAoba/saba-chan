@@ -539,6 +539,7 @@
     "pair_expected": "Нужен формат KEY=VALUE: «{{got}}»",
     "timeout": "Демон не ответил вовремя ({{path}})",
     "body_read": "Не удалось получить ответ {{path}}: {{error}}",
+    "connection_lost": "Соединение с демоном потеряно во время {{path}}: {{error}}",
     "daemon_identity": "Не удалось проверить подлинность демона",
     "unknown_command": "Нет такой команды: {{path}}. Список команд: `saba-chan-cli help`.",
     "not_supported": "Модуль {{module}} не поддерживает эту функцию"
@@ -1714,6 +1715,7 @@
       "used_by": "Используют"
     },
     "no_servers": "Серверов пока нет. Нажмите n, чтобы создать сервер.",
+    "servers_failed": "Не удалось загрузить список серверов: {{error}}",
     "empty": "(нет)",
     "detail": "Подробности",
     "console_empty": "Вывода пока нет",
@@ -2068,6 +2070,8 @@
     "no_servers": "Нет серверов",
     "via_relay": "Через ретранслятор",
     "removed": "{{host}} удалён",
+    "confirm_remove": "Удалить ПК {{host}}?",
+    "confirm_uninstall": "Удалить Saba-chan на {{host}} и убрать ПК? {{kept}}.",
     "auto_update_on": "Автообновление {{host}} включено",
     "auto_update_off": "Автообновление {{host}} выключено",
     "update_started": "Обновление {{host}} запущено. После завершения демон перезапустится.",

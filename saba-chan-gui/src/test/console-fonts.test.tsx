@@ -11,6 +11,7 @@ import {
     consoleFontStack,
     normalizeConsoleFonts,
 } from '../utils/consoleFonts';
+import { setTheme } from '../utils/themeManager';
 import { openDropdown } from './dropdown';
 import type { ComponentProps, ComponentType } from 'react';
 
@@ -83,5 +84,21 @@ describe('설정 > 화면 > 콘솔 글꼴', () => {
         fireEvent.click(screen.getByRole('option', { name: '네오둥근모 코드' }));
         await act(async () => {});
         expect(useSettingsStore.getState().consoleFonts).toEqual({ ...CONSOLE_FONT_DEFAULTS, ko: 'neodgm-code' });
+    });
+});
+
+// 리뷰 11-18: GUI 설정 초기화(스토어 load) 뒤 설정 화면이 옛 테마·구문 색을 들고 있다가 다시 칠하고 저장하지 않는다
+describe('설정 > 화면: 테마 값의 원천은 설정 스토어 하나', () => {
+    beforeEach(() => useSettingsStore.getState()._resetForTest());
+
+    it('스토어가 기본값으로 다시 읽히면 테마 칸이 그 값을 따른다', async () => {
+        setTheme('dark');
+        useSettingsStore.setState({ theme: 'dark', consoleTokenColors: { keyword: '#112233' } });
+        render(<SettingsModal />);
+        // 초기화: 데몬 기본값을 다시 읽는다
+        await act(async () => useSettingsStore.setState({ theme: 'auto', consoleTokenColors: {} }));
+        fireEvent.click(screen.getByRole('tab', { name: i18n.t('gui:settings_modal.appearance') }));
+        const box = screen.getByText(i18n.t('gui:settings_modal.theme_label')).closest('.setting-item');
+        expect(within(box as HTMLElement).getByRole('combobox')).toHaveTextContent(i18n.t('gui:settings_modal.theme_auto'));
     });
 });

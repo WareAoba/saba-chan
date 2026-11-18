@@ -137,12 +137,8 @@ export function ServerDetail({ server, moduleData, modules, servers, onBack, con
         { id: 'info', label: t('shell.tab_info'), icon: <Icon name="info" size="sm" /> },
     ].filter(Boolean) as { id: string; label: string; icon: ReactNode }[];
 
-    // null = 아직 고르지 않음 → 아래 defaultTab
+    // null = 아직 고르지 않음 → 아래 defaultTab (서버가 바뀌면 ServersPage가 이 화면을 새로 만든다)
     const [tab, setTab] = useState<string | null>(null);
-    // biome-ignore lint/correctness/useExhaustiveDependencies: 서버가 바뀔 때만 초기화
-    useEffect(() => {
-        setTab(null);
-    }, [server.id]);
     // 우클릭 메뉴 등 바깥에서 특정 탭을 요청하면 그 탭으로
     const requestedTab = useUIStore((s) => s.requestedServerTab);
     // biome-ignore lint/correctness/useExhaustiveDependencies: 요청이 올 때만 그때의 탭 목록으로 판단한다
@@ -344,7 +340,7 @@ export function ServerDetail({ server, moduleData, modules, servers, onBack, con
                             type="button"
                             className="btn btn-primary btn-sm"
                             disabled={updatingServer}
-                            onClick={() => applyInstanceUpdate(server, setServers)}
+                            onClick={() => applyInstanceUpdate(server, setServers, t)}
                         >
                             {updatingServer ? t('shell.updating') : t('shell.update')}
                         </button>

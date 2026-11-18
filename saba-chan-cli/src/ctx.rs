@@ -81,23 +81,40 @@ impl Ctx {
             self.api.on_port(self.spawn_port)
         };
         let spin = crate::progress::spinner(&t!("daemon.starting"));
-        let deadline = Instant::now() + bootstrap::START_TIMEOUT;
-        while Instant::now() < deadline {
-            tokio::time::sleep(Duration::from_millis(300)).await;
-            if let Ok(h) = api.health().await {
-                spin.finish_and_clear();
-                return Ok(h);
-            }
-            // 곧바로 끝난 데몬(다른 데몬이 잠금을 쥔 경우 등)은 시간 초과까지 기다리지 않는다
-            if let Some(Ok(Some(status))) = child.as_mut().map(|c| c.try_wait()) {
-                spin.finish_and_clear();
-                let code = status.code().map(|c| c.to_string()).unwrap_or_else(|| "-".into());
+        let exited = || match child.as_mut().map(|c| c.try_wait()) {
+            Some(Ok(Some(status))) => Some(status.code()),
+            _ => None,
+        };
+        let up = wait_for_daemon(&api, Instant::now() + bootstrap::START_TIMEOUT, exited).await;
+        spin.finish_and_clear();
+        up
+    }
+}
+
+/// 데몬이 다른 데몬이 이미 잠금을 쥐었을 때 끝나는 코드 (데몬 `main.rs`의 단일 실행 잠금)
+const LOCK_HELD: i32 = 2;
+
+/// 띄운 데몬이 `/health`에 답할 때까지 `deadline`까지 기다린다. `exited`: 띄운 자식이 끝났으면 그 종료 코드.
+/// 곧바로 끝난 데몬은 시간 초과까지 기다리지 않는다. 다만 잠금에 진 것이면(서비스·GUI가 막 띄운 데몬이 아직 HTTP를 열기 전) 그 데몬을 기다린다
+async fn wait_for_daemon(
+    api: &Api,
+    deadline: Instant,
+    mut exited: impl FnMut() -> Option<Option<i32>>,
+) -> Result<serde_json::Value> {
+    while Instant::now() < deadline {
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        if let Ok(h) = api.health().await {
+            return Ok(h);
+        }
+        match exited() {
+            None | Some(Some(LOCK_HELD)) => {}
+            Some(code) => {
+                let code = code.map(|c| c.to_string()).unwrap_or_else(|| "-".into());
                 return Err(crate::error::failed(t!("daemon.exited_early", code = code)));
             }
         }
-        spin.finish_and_clear();
-        Err(crate::error::failed(t!("daemon.start_timeout")))
     }
+    Err(crate::error::failed(t!("daemon.start_timeout")))
 }
 
 #[cfg(test)]
@@ -121,5 +138,22 @@ mod tests {
         };
         let line = ctx.on_port(57495);
         assert_eq!((line.api.port, line.spawn_port, line.port_fixed), (57495, 57495, true));
+    }
+
+    /// 띄운 데몬이 잠금에 져서(다른 데몬이 막 뜨는 중) 끝나면 먼저 뜬 데몬을 기한까지 기다린다. 다른 이유로 끝나면 바로 실패한다
+    #[tokio::test]
+    async fn a_daemon_that_lost_the_lock_waits_for_the_other_one() {
+        crate::i18n::init("en");
+        let port = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let api = Api::new(port, None);
+        let soon = || Instant::now() + Duration::from_millis(900);
+        let lost = wait_for_daemon(&api, soon(), || Some(Some(2))).await.unwrap_err();
+        assert_eq!(lost.to_string(), t!("daemon.start_timeout"));
+        let crashed = wait_for_daemon(&api, soon(), || Some(Some(1))).await.unwrap_err();
+        assert_eq!(crashed.to_string(), t!("daemon.exited_early", code = "1"));
     }
 }

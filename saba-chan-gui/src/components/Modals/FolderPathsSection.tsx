@@ -28,19 +28,21 @@ export const PATH_ERRORS = [
 ];
 
 /**
- * 설정 > 저장 공간: 폴더 위치 (데몬 GET /api/system/paths). 옮기기는 파일 이동 창(`FileMoveDialog`)이 한다
+ * 설정 > 저장 공간: 폴더 위치 (데몬 GET /api/system/paths). 옮기기는 파일 이동 창(`FileMoveDialog`)이 한다.
+ * `revision`이 바뀌면(파일을 옮겼다) 다시 읽는다
  */
-export function FolderPathsSection({ defaultOpen = true }: { defaultOpen?: boolean }) {
+export function FolderPathsSection({ defaultOpen = true, revision = 0 }: { defaultOpen?: boolean; revision?: number }) {
     const { t } = useTranslation('gui');
     const [paths, setPaths] = useState<ApiBody | null>(null);
     const [error, setError] = useState<string | null>(null);
 
+    // biome-ignore lint/correctness/useExhaustiveDependencies: revision은 다시 읽을 때를 알리는 값이다
     useEffect(() => {
         window.api.systemPaths().then((res: ApiBody) => {
             if (failed(res)) setError(res?.error || t('folder_paths.err_generic'));
             else setPaths(res);
         });
-    }, [t]);
+    }, [t, revision]);
 
     const row = (key: string, value: string | undefined, note?: string) => (
         <div key={key} className="diagnostics-row">

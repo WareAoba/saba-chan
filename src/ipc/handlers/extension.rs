@@ -320,7 +320,7 @@ pub async fn fetch_manifest(
     match ExtensionManager::cached_remote(query.refresh).await {
         Ok(remote) => {
             // 설치된 익스텐션 중 업데이트 가능한 항목 계산
-            let updates = state.extension_manager.read().await.check_updates_against(&remote);
+            let updates = state.extension_manager.read().await.check_updates_against(&remote, super::server::addon_choice);
             Json(json!({
                 "success": true,
                 "extensions": remote,
@@ -364,7 +364,7 @@ pub async fn check_extension_updates(
 ) -> Response {
     match ExtensionManager::fetch_remote().await {
         Ok(remote) => {
-            let updates = state.extension_manager.read().await.check_updates_against(&remote);
+            let updates = state.extension_manager.read().await.check_updates_against(&remote, super::server::addon_choice);
             Json(json!({
                 "success": true,
                 "updates": updates,

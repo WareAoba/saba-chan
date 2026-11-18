@@ -1,9 +1,10 @@
 import clsx from 'clsx';
 import type { TFunction } from 'i18next';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ApiBody } from '../../types/daemon';
 import { failed } from '../../utils/apiResult';
+import { startPoll } from '../../utils/poll';
 import CustomDropdown from '../CustomDropdown/CustomDropdown';
 import { Icon } from '../Icon';
 import { formatBytes } from '../monitor/systemMetrics';
@@ -53,6 +54,8 @@ interface Props {
 }
 
 const POLL_MS = 500;
+/** 진행 읽기가 이만큼 연달아 실패하면 오류를 보이고 창을 닫을 수 있게 한다 */
+const POLL_MISSES = 3;
 const optionValue = (i: StorageItem) => (i.kind === 'server' ? `server:${i.id}` : i.kind);
 
 /**
@@ -68,13 +71,6 @@ export function FileMoveDialog({ volumes, items, onClose, onMoved }: Props) {
     const [error, setError] = useState<string | null>(null);
     const [asking, setAsking] = useState(false);
     const [job, setJob] = useState<ApiBody | null>(null);
-    const alive = useRef(true);
-    useEffect(() => {
-        alive.current = true;
-        return () => {
-            alive.current = false;
-        };
-    }, []);
 
     const item = movable.find((i) => optionValue(i) === what);
     const running = !!job && !['done', 'failed', 'canceled'].includes(job.phase);
@@ -106,18 +102,37 @@ export function FileMoveDialog({ volumes, items, onClose, onMoved }: Props) {
         if (target) await ask({ target });
     };
 
-    const poll = () => {
-        setTimeout(async () => {
-            if (!alive.current) return;
-            const res = await window.api.systemStorageMoveStatus();
-            const next = res?.job;
-            if (!next) return;
-            setJob(next);
-            if (next.phase === 'failed') setError(storageErrorText(next.error_code, next.error, next.kind, t));
-            if (next.phase === 'done') onMoved();
-            if (!['done', 'failed', 'canceled'].includes(next.phase)) poll();
-        }, POLL_MS);
-    };
+    // 옮기는 동안 진행을 읽는다. 읽기가 실패해도(데몬 재시작·연결 끊김) 다음 차례를 걸고, 연달아 실패하면 이유를 보이고 창을 닫을 수 있게 한다
+    const [lost, setLost] = useState(false);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: 작업이 도는 동안만 읽는다
+    useEffect(() => {
+        if (!running) return;
+        let misses = 0;
+        return startPoll(
+            async () => {
+                const res = await window.api.systemStorageMoveStatus();
+                const next = res?.job;
+                if (!next) {
+                    misses += 1;
+                    if (misses >= POLL_MISSES) {
+                        setLost(true);
+                        setError(storageErrorText(res?.error_code, res?.error, job.kind, t));
+                    }
+                    return;
+                }
+                if (misses >= POLL_MISSES) {
+                    setLost(false);
+                    setError(null);
+                }
+                misses = 0;
+                setJob(next);
+                if (next.phase === 'failed') setError(storageErrorText(next.error_code, next.error, next.kind, t));
+                if (next.phase === 'done') onMoved();
+            },
+            POLL_MS,
+            { immediate: false },
+        );
+    }, [running]);
 
     const start = async () => {
         if (!item || !pick) return;
@@ -128,7 +143,6 @@ export function FileMoveDialog({ volumes, items, onClose, onMoved }: Props) {
             return;
         }
         setJob(res.job);
-        poll();
     };
 
     const options = movable.map((i) => ({
@@ -162,10 +176,10 @@ export function FileMoveDialog({ volumes, items, onClose, onMoved }: Props) {
     return (
         <Dialog
             open
-            onOpenChange={(open) => !open && !running && onClose()}
+            onOpenChange={(open) => !open && (!running || lost) && onClose()}
             title={t('storage.move_files')}
             description={t('storage.move_desc')}
-            dismissible={!running}
+            dismissible={!running || lost}
             className="storage-move"
             footer={
                 running ? (

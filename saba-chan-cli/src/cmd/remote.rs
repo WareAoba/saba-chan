@@ -108,6 +108,14 @@ pub async fn run(ctx: &Ctx, cmd: RemoteCmd) -> Result<()> {
         }
         RemoteCmd::Install { target, ssh_port, linger, steam_libs } => install(ctx, &target, ssh_port, linger, steam_libs).await,
         RemoteCmd::Remove { host_id, uninstall, remove_settings, remove_instances, from_relay } => {
+            // 그 PC에서 지우는 사바쨩·설정·게임 서버는 되돌릴 수 없다: 이 PC 제거(`uninstall`)와 같이 남는 것을 적어 묻는다
+            let question = if uninstall {
+                let keep = saba_chan_installer_core::uninstall::Keep { settings: !remove_settings, instances: !remove_instances };
+                t!("remote.confirm_uninstall", host = host_id, kept = crate::cmd::uninstall::kept_text(keep))
+            } else {
+                t!("remote.confirm_remove", host = host_id)
+            };
+            ctx.ask.ensure(&question)?;
             let body = json!({ "uninstall": uninstall, "keepSettings": !remove_settings, "keepInstances": !remove_instances, "removePc": from_relay });
             let r = ctx.api.remove_remote_daemon(&host_id, body).await?;
             ctx.out.done(&t!("remote.removed", host = host_id), &r);
@@ -302,6 +310,34 @@ mod tests {
         assert_eq!(split_target("saba@nas.local"), Some(("saba", "nas.local")));
         assert_eq!(split_target("nas.local"), None);
         assert_eq!(split_target("@nas"), None);
+    }
+
+    /// 내 PC 지우기는 다른 지우기 명령처럼 먼저 묻는다: `--yes` 없이 물을 수 없으면 아무것도 보내지 않고,
+    /// 그 PC에서 지우는 것(사바쨩, 남기지 않는 설정·게임 서버)을 질문에 적는다
+    #[tokio::test]
+    async fn removing_a_pc_asks_first_and_says_what_goes() {
+        crate::i18n::init("en");
+        fn daemon(_: &str, _: &Value) -> (u16, Value) {
+            (200, json!({ "success": true }))
+        }
+        let (port, seen) = crate::cmd::server::tests::fake_daemon(daemon).await;
+        let ctx = crate::cmd::server::tests::quiet_ctx(port);
+        let remove = |uninstall, remove_instances| RemoteCmd::Remove {
+            host_id: "host-b".into(),
+            uninstall,
+            remove_settings: false,
+            remove_instances,
+            from_relay: false,
+        };
+        let question = |e: anyhow::Error| match e.downcast::<crate::error::CliError>().unwrap() {
+            crate::error::CliError::NeedsConfirm { question, .. } => question,
+            other => panic!("{other}"),
+        };
+        let plain = question(run(&ctx, remove(false, false)).await.unwrap_err());
+        assert!(plain.contains("host-b"), "{plain}");
+        let wipe = question(run(&ctx, remove(true, true)).await.unwrap_err());
+        assert!(wipe.contains("host-b") && wipe.contains(&t!("uninstall.kept_settings")), "{wipe}");
+        assert!(!seen.lock().unwrap().iter().any(|l| l.starts_with("POST")), "{:?}", seen.lock().unwrap());
     }
 
     #[test]

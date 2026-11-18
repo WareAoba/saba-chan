@@ -41,7 +41,7 @@ import { setDiscordI18n, useDiscordStore } from './stores/useDiscordStore';
 import { setServerConsole } from './stores/serverActionsState';
 import { setServerI18n } from './stores/serverI18n';
 import { useServerStore } from './stores/useServerStore';
-import { setSettingsI18n, useSettingsStore } from './stores/useSettingsStore';
+import { SETTINGS_SAVED_KEY, setSettingsI18n, useSettingsStore } from './stores/useSettingsStore';
 import { applyConsoleFonts } from './utils/consoleFonts';
 import { type ActiveTab, type ModalConfig, useUIStore } from './stores/useUIStore';
 import { eventsLive, serverListPollMs } from './utils/daemonEvents';
@@ -57,6 +57,7 @@ import {
     type OpeningSound,
     openingChordMs,
     openingGate,
+    READY_WAIT_MS,
     RELAY_WAIT_MS,
     takeDaemonSwitch,
     takeOpeningSound,
@@ -146,11 +147,15 @@ function App() {
     // 로딩 화면이 걷힐 때 읽는다: 로딩 중에 바뀌어도 로딩 효과를 다시 돌려 맡은 소리를 지우지 않게
     const quickOpenRef = useRef(quickOpen);
     quickOpenRef.current = quickOpen;
+    // 셸의 ready를 받았는가, 창이 뜰 때 데몬이 이미 응답했는가: 응답했으면 ready의 opening이 올 때까지 로딩을 걷지 않는다
+    const [readySeen, setReadySeen] = useState(false);
+    const [daemonAnswered, setDaemonAnswered] = useState(false);
     const daemonRunning = backgroundDaemonStatus === 'running';
 
-    // 데몬이 뜨면 알림함(데몬이 보관)과 마지막 업데이트 결과(되돌리기 표시)를 읽는다
+    // 데몬이 뜨면 알림함(데몬이 보관)과 마지막 업데이트 결과(되돌리기 표시)를 읽는다 (메인 창만: PIP는 그리지 않는다)
+    // biome-ignore lint/correctness/useExhaustiveDependencies: isPopoutMode는 창이 열릴 때 정해진다
     useEffect(() => {
-        if (!daemonRunning) return;
+        if (!daemonRunning || isPopoutMode) return;
         void refreshNotices();
         announceLastUpdateResult();
     }, [daemonRunning]);
@@ -173,7 +178,8 @@ function App() {
     const discordReconnecting = useDiscordStore((s) => s.discordReconnecting);
     const relayConnected = useDiscordStore((s) => s.relayConnected);
     const relayChecked = useDiscordStore((s) => s.relayChecked);
-    const discordConfigLoaded = useDiscordStore((s) => s._settingsReady);
+    // 오프닝의 "봇 설정을 읽었다"는 실제로 읽은 것 (읽기를 마친 시도가 아니라): 못 읽었으면 릴레이를 모른다
+    const discordConfigLoaded = useDiscordStore((s) => s._botConfigLoaded);
 
     // ── Custom Hooks ─────────────────────────────────────────
 
@@ -191,7 +197,9 @@ function App() {
     const { draggedId, cardRefs, skipNextClick, handleCardPointerDown } = useDragReorder(servers, setServers);
 
     // 익스텐션 초기화 상태 (daemon.startup hook 진행 중이면 스피너 표시)
-    const { initializing: extInitializing, inProgress: extInitInProgress } = useExtensionInitStatus(daemonRunning);
+    const { initializing: extInitializing, inProgress: extInitInProgress } = useExtensionInitStatus(
+        daemonRunning && !isPopoutMode,
+    );
 
     // 서버 동작은 스토어 액션이다 (stores/serverActions). 관리 모드로 켜면 여는 콘솔은 이 창의 콘솔 훅이 들고 있다
     useEffect(() => setServerConsole(openConsole), [openConsole]);
@@ -262,8 +270,10 @@ function App() {
             .then((status) => {
                 if (status && status.running) {
                     // 오프닝 여부는 셸의 ready(opening)로 정한다: 완전히 껐다 켠 기동에서도 셸이 띄운 데몬이 여기보다 먼저
-                    // 응답할 수 있다. 다시 연 창·새로고침에는 셸이 지난 ready를 opening:false로 다시 보낸다 (사용자 11-17)
+                    // 응답할 수 있다. 다시 연 창·새로고침에는 셸이 지난 ready를 opening:false로 다시 보내고,
+                    // 이미 떠 있던 데몬에 새로 붙은 기동은 셸이 등록 등을 마친 뒤에 보낸다 (사용자 11-17, 리뷰 11-18)
                     window.__sabaReadyReceived = true;
+                    setDaemonAnswered(true);
                     setInitStatus(t('loading.step_done'));
                     setInitProgress(100);
                     setDaemonReady(true);
@@ -301,6 +311,7 @@ function App() {
             if (data.step === 'ready') {
                 // 셸이 이번에 데몬을 띄운 기동에서만 오프닝을 재생한다 (이미 떠 있던 데몬에 붙었거나 다시 보낸 ready는 false)
                 if (data.opening === false) setQuickOpen(true);
+                setReadySeen(true);
                 window.__sabaReadyReceived = true;
                 setTimeout(() => setDaemonReady(true), 600);
                 setTimeout(() => setServersInitializing(false), 3500);
@@ -332,6 +343,8 @@ function App() {
 
         const loadSettings = async () => {
             await useSettingsStore.getState().load();
+            // 디스코드 설정·연결 상태는 메인 창만 읽는다 (PIP는 그리지 않고, 릴레이 확인을 창 수만큼 늘리지 않게)
+            if (isPopoutMode) return;
 
             await useDiscordStore.getState().loadConfig();
 
@@ -345,6 +358,17 @@ function App() {
             useDiscordStore.getState().stopStatusPolling();
             useServerStore.getState().stopUptimeClock();
         };
+    }, []);
+
+    // 콘솔 PIP: 메인 창이 설정(콘솔 글꼴·줄 수 한도·구문 강조 등)을 저장하면 다시 읽는다 (테마는 themeManager가 따른다)
+    // biome-ignore lint/correctness/useExhaustiveDependencies: isPopoutMode는 창이 열릴 때 정해진다
+    useEffect(() => {
+        if (!isPopoutMode) return undefined;
+        const onStorage = (e: StorageEvent) => {
+            if (e.key === SETTINGS_SAVED_KEY) void useSettingsStore.getState().load();
+        };
+        window.addEventListener('storage', onStorage);
+        return () => window.removeEventListener('storage', onStorage);
     }, []);
 
     // Sync i18n for Zustand stores when language changes
@@ -483,6 +507,16 @@ function App() {
         const timer = setTimeout(() => setRelayWaitOver(true), RELAY_WAIT_MS);
         return () => clearTimeout(timer);
     }, [daemonDone]);
+    // 셸의 ready를 기다리는 중 (오지 않으면 READY_WAIT_MS 뒤 오프닝 없이 연다)
+    const awaitingReady = daemonAnswered && !readySeen;
+    useEffect(() => {
+        if (!awaitingReady) return undefined;
+        const timer = setTimeout(() => {
+            setQuickOpen(true);
+            setReadySeen(true);
+        }, READY_WAIT_MS);
+        return () => clearTimeout(timer);
+    }, [awaitingReady]);
     const opening = openingGate({
         quick: quickOpen,
         daemonOk: !openedWithoutDaemon,
@@ -511,7 +545,7 @@ function App() {
     // 로딩이 끝나면 로딩 화면을 그대로 덮어 둔 채 메인 화면을 아래에 다 그리고(prepare),
     // 글꼴·그림까지 준비되면 기동음과 함께 오프닝을 재생한다(play). 움직임을 줄였으면 예전처럼 잠깐 사라지게만 둔다
     // 콘솔 PIP 창은 메인 창이 이미 데몬을 띄운 뒤에 열리므로 로딩 화면·오프닝 없이 바로 콘솔을 연다
-    const showLoading = !isPopoutMode && (!daemonDone || opening.hold);
+    const showLoading = !isPopoutMode && (!daemonDone || awaitingReady || opening.hold);
     // 처음부터 로딩할 것이 없으면(HMR로 데몬이 이미 떠 있으면) 오프닝 없이 바로 연다
     // 재생(play)은 로딩 화면 안에서만 바뀐다: App이 다시 그려지면 메인 화면 전체를 다시 그려 오프닝 첫머리가 끊긴다
     const [openingPhase, setOpeningPhase] = useState<'loading' | 'prepare' | 'done'>(() =>

@@ -443,6 +443,10 @@ impl DaemonClient {
         self.call(reqwest::Method::PUT, path, Some(body), timeout_ms).await
     }
 
+    pub async fn patch(&self, path: &str, body: &Value, timeout_ms: u64) -> Result<Value, CallError> {
+        self.call(reqwest::Method::PATCH, path, Some(body), timeout_ms).await
+    }
+
     pub async fn delete(&self, path: &str, timeout_ms: u64) -> Result<Value, CallError> {
         self.call(reqwest::Method::DELETE, path, None, timeout_ms).await
     }

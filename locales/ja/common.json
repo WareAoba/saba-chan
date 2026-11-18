@@ -82,7 +82,8 @@
     "daemon_stopped": "デーモン停止中",
     "stop_daemon": "デーモンを停止",
     "start_daemon": "デーモンを開始",
-    "quit_all": "完全に終了"
+    "quit_all": "完全に終了",
+    "switch_cli_failed": "CLI を開けませんでした。{{reason}}"
   },
   "updates": {
     "notification_title": "サバちゃん 更新のお知らせ",

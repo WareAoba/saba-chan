@@ -1,7 +1,6 @@
 //! 대화형 셸 — 인자 없이 터미널에서 실행하면 열린다
 //!
 //! 한 줄 = 명령 한 번 (`start pal`, `server ls`). 앞에 `saba-chan-cli`를 붙이지 않는다.
-//! 첫 단어가 명령이 아니면 디스코드와 같은 채팅 처리기로 보낸다 (`팰월드 시작`).
 //! Tab으로 명령·서버 이름을 채운다. 셸을 닫아도 데몬과 서버는 계속 돈다.
 
 use crate::cli::Cli;
@@ -122,7 +121,7 @@ async fn names(ctx: &Ctx) -> Vec<String> {
 pub async fn run(ctx: &Ctx) -> Result<()> {
     let mut ctx = ctx.clone();
     ctx.in_shell = true;
-    // 셸 안에서는 Ctrl+C가 셸을 죽이지 않게 한다 (명령마다 따로 받는다)
+    // 셸 안에서는 Ctrl+C가 셸을 죽이지 않게 한다 (실행 중인 명령은 `interruptible`이 멈춘다)
     tokio::spawn(async {
         loop {
             if tokio::signal::ctrl_c().await.is_err() {
@@ -169,7 +168,7 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
         if matches!(text, "exit" | "quit" | "q" | "종료" | "나가기") {
             break;
         }
-        let words = match shlex::split(text) {
+        let words = match split(text) {
             Some(w) => w,
             None => {
                 ctx.out.warn(&t!("shell.bad_quotes"));
@@ -185,7 +184,7 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
             continue;
         }
         ctx.follow_daemon_port();
-        if let Err(e) = one(&ctx, &words).await {
+        if let Err(e) = interruptible(one(&ctx, &words), tokio::signal::ctrl_c()).await {
             ctx.out.error(&classify(&e));
         }
         // 서버를 더하거나 지웠을 수 있으니 이름 목록을 새로
@@ -197,6 +196,81 @@ pub async fn run(ctx: &Ctx) -> Result<()> {
     }
     tell!("{}", crate::output::dim(&t!("shell.bye")));
     Ok(())
+}
+
+/// 명령 줄을 낱말로 나눈다 (셸·TUI 명령 줄). 따옴표가 맞지 않으면 None.
+/// 작은따옴표 안은 그대로, 큰따옴표는 묶기만 한다. 역슬래시는 Windows 명령 줄처럼 따옴표 바로 앞에서만 뜻이 있어
+/// (`\"` → 따옴표 글자, `\\"` → 역슬래시 하나와 닫는 따옴표) `C:\Servers\Pal` 같은 경로는 그대로 간다.
+/// 낱말 첫머리의 `#`부터는 주석이다
+pub fn split(line: &str) -> Option<Vec<String>> {
+    let mut words = Vec::new();
+    let mut word: Option<String> = None;
+    let mut double = false;
+    let mut chars = line.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' => {
+                let mut n = 1;
+                while chars.next_if_eq(&'\\').is_some() {
+                    n += 1;
+                }
+                let w = word.get_or_insert_with(String::new);
+                let before_quote = matches!(chars.peek(), Some('"')) || (!double && chars.peek() == Some(&'\''));
+                if before_quote {
+                    w.extend(std::iter::repeat_n('\\', n / 2));
+                    if n % 2 == 1 {
+                        w.extend(chars.next());
+                    }
+                } else {
+                    w.extend(std::iter::repeat_n('\\', n));
+                }
+            }
+            '"' => {
+                double = !double;
+                word.get_or_insert_with(String::new);
+            }
+            _ if double => word.get_or_insert_with(String::new).push(c),
+            '\'' => {
+                let w = word.get_or_insert_with(String::new);
+                loop {
+                    match chars.next()? {
+                        '\'' => break,
+                        c => w.push(c),
+                    }
+                }
+            }
+            '#' if word.is_none() => break,
+            c if c.is_whitespace() => words.extend(word.take()),
+            c => word.get_or_insert_with(String::new).push(c),
+        }
+    }
+    if double {
+        return None;
+    }
+    words.extend(word);
+    Some(words)
+}
+
+/// 명령 줄에 넣을 낱말 (`split`과 짝): 글자·숫자와 `-_./:=,@+`만이면 그대로, 아니면 작은따옴표로 (한글 이름도 그대로 보이게)
+pub fn quote(s: &str) -> String {
+    if !s.is_empty() && s.chars().all(|c| c.is_alphanumeric() || "-_./:=,@+".contains(c)) && !s.starts_with('-') {
+        return s.to_string();
+    }
+    // 작은따옴표 글자는 따옴표를 닫고 큰따옴표로 넣는다
+    format!("'{}'", s.replace('\'', "'\"'\"'"))
+}
+
+/// Ctrl+C를 받은 명령이 마무리할 틈 (따라가기 끝내기, 원격 설치 취소 요청)
+const WRAP_UP: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// 명령 하나를 Ctrl+C(`interrupt`)와 겨룬다: 눌리면 그 명령만 취소로 끝낸다 (셸은 남는다).
+/// 스스로 Ctrl+C를 받는 명령은 `WRAP_UP` 안에 끝내면 그 결과를 쓴다
+async fn interruptible<T>(run: impl Future<Output = Result<()>>, interrupt: impl Future<Output = T>) -> Result<()> {
+    tokio::pin!(run);
+    tokio::select! {
+        r = &mut run => r,
+        _ = interrupt => tokio::time::timeout(WRAP_UP, run).await.unwrap_or_else(|_| Err(crate::error::CliError::Cancelled.into())),
+    }
 }
 
 /// 셸 한 줄을 명령 하나로 실행
@@ -289,6 +363,46 @@ mod tests {
         let (start, list) = h.candidates("start pal");
         assert_eq!(start, 6);
         assert_eq!(list, vec!["palworld-1"]);
+    }
+
+    /// Windows 경로의 역슬래시는 그대로 간다. 따옴표로 묶은 공백 있는 인자, 주석뿐인 줄은 전과 같다
+    #[test]
+    fn backslashes_in_windows_paths_are_kept() {
+        let w = |line: &str| split(line).unwrap();
+        assert_eq!(w(r"server add pal --from C:\Servers\Palworld"), ["server", "add", "pal", "--from", r"C:\Servers\Palworld"]);
+        assert_eq!(w(r"backup import mc \\nas\backups\mc.zip"), ["backup", "import", "mc", r"\\nas\backups\mc.zip"]);
+        assert_eq!(w(r#"server add pal --dir "D:\My Games\pal""#), ["server", "add", "pal", "--dir", r"D:\My Games\pal"]);
+        // 닫는 따옴표 바로 앞의 역슬래시는 Windows 명령 줄처럼 두 개를 하나로 쓴다
+        assert_eq!(w(r#"--dir "C:\Games\\""#), ["--dir", r"C:\Games\"]);
+        assert_eq!(w(r#"server run mc 'say "hi there"' "it's" a\"b"#), ["server", "run", "mc", r#"say "hi there""#, "it's", r#"a"b"#]);
+        assert_eq!(w("set motd= x='' "), ["set", "motd=", "x="]);
+        assert_eq!(w("# 메모"), Vec::<String>::new());
+        assert_eq!(w("start pal # 메모"), ["start", "pal"]);
+        assert_eq!(split(r#"say "unclosed"#), None);
+        assert_eq!(split("say 'unclosed"), None);
+    }
+
+    /// 셸에서 Ctrl+C를 누르면 응답을 기다리던 명령은 취소로 끝나고(셸은 남는다), 스스로 Ctrl+C를 받아 마무리하는 명령은 그 결과를 쓴다
+    #[tokio::test]
+    async fn ctrl_c_ends_the_running_command_but_lets_it_wrap_up() {
+        let pressed = async {};
+        let err = interruptible(std::future::pending::<Result<()>>(), pressed).await.unwrap_err();
+        assert!(matches!(err.downcast::<crate::error::CliError>().unwrap(), crate::error::CliError::Cancelled));
+        let wraps_up = async {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            Ok(())
+        };
+        assert!(interruptible(wraps_up, async {}).await.is_ok());
+        assert!(interruptible(async { Ok(()) }, std::future::pending::<()>()).await.is_ok());
+    }
+
+    /// `quote`로 만든 낱말은 `split`이 그대로 되읽는다 (TUI 폼·마법사가 만드는 줄)
+    #[test]
+    fn quoted_words_split_back_unchanged() {
+        for word in ["mc", "팰월드 1", r"C:\Servers\Pal\", "it's", r#"say "hi""#, "", "-3", r#"a b'c\"d"#, "$HOME", r"\\nas\x", "#tag"] {
+            let line = format!("server set {} k={}", quote(word), quote(word));
+            assert_eq!(split(&line).unwrap(), ["server", "set", word, &format!("k={word}")], "{line}");
+        }
     }
 
     #[test]

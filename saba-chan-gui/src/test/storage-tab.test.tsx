@@ -150,6 +150,47 @@ describe('설정 > 저장 공간', () => {
         expect(within(dialog).getByText(/Moved to D:\\saba-chan\\servers\\Survival/)).toBeInTheDocument();
         expect(within(dialog).queryByRole('button', { name: /^Move$/ })).toBeNull();
         expect(window.api.systemStorage).toHaveBeenLastCalledWith(true);
+        // 같은 탭의 폴더 위치도 옮긴 뒤의 경로로 다시 읽는다
+        expect(window.api.systemPaths).toHaveBeenCalledTimes(2);
+    });
+
+    // 리뷰 11-18: 진행 읽기가 한 번 실패해도 조회를 멈추지 않고, 계속 실패하면 이유를 보이고 창을 닫을 수 있게 한다
+    it('옮기는 중 진행 읽기가 실패해도 계속 묻고, 연달아 실패하면 오류 줄과 닫기를 보인다', async () => {
+        const job = (phase: string) => ({
+            kind: 'server',
+            id: 'mc',
+            target: 'D:\\saba-chan\\servers\\Survival',
+            phase,
+            done_bytes: 0,
+            total_bytes: 38 * GB,
+        });
+        vi.mocked(window.api.systemStorageMove).mockImplementation(async (body) =>
+            body.dryRun
+                ? {
+                      success: true,
+                      target: 'D:\\saba-chan\\servers\\Survival',
+                      bytes: 38 * GB,
+                      available_bytes: 1700 * GB,
+                  }
+                : { success: true, job: job('moving') },
+        );
+        vi.mocked(window.api.systemStorageMoveStatus).mockResolvedValue({ error: 'connection refused' });
+        await act(async () => render(<StorageTab daemonTarget={null} />));
+        await act(async () => fireEvent.click(screen.getByRole('button', { name: /Move files/ })));
+        const dialog = screen.getByRole('dialog');
+        pickOption(within(dialog).getByRole('combobox'), /Survival/);
+        await act(async () => {});
+        await act(async () => fireEvent.click(within(dialog).getByRole('radio', { name: /\(D:\)/ })));
+        vi.useFakeTimers();
+        await act(async () => fireEvent.click(within(dialog).getByRole('button', { name: /^Move$/ })));
+        expect(within(dialog).queryByRole('button', { name: 'Close' })).toBeNull();
+        await act(async () => vi.advanceTimersByTimeAsync(2000));
+        expect(within(dialog).getByRole('alert')).toHaveTextContent('connection refused');
+        expect(within(dialog).getByRole('button', { name: 'Close' })).toBeInTheDocument();
+        vi.mocked(window.api.systemStorageMoveStatus).mockResolvedValue({ success: true, job: job('done') });
+        await act(async () => vi.advanceTimersByTimeAsync(600));
+        expect(within(dialog).getByText(/Moved to D:\\saba-chan\\servers\\Survival/)).toBeInTheDocument();
+        expect(within(dialog).queryByRole('alert')).toBeNull();
     });
 
     it('직접 고른 폴더로도 물어 보고, 데몬이 거절하면 이유를 보이며 옮기기를 막는다', async () => {

@@ -142,7 +142,7 @@ impl Api {
         } else if e.is_timeout() {
             CliError::Failed(t!("err.timeout", path = path)).into()
         } else {
-            anyhow::anyhow!(e)
+            connection_lost(e, path)
         }
     }
 
@@ -758,7 +758,7 @@ impl Api {
             if e.is_connect() {
                 CliError::DaemonDown { url: self.base.clone() }.into()
             } else {
-                anyhow::anyhow!(e)
+                connection_lost(e, "/api/events")
             }
         })
     }
@@ -1435,6 +1435,18 @@ pub fn check(status: u16, body: Value) -> Result<Value> {
     .into())
 }
 
+
+/// 보낸 요청에 답하기 전에 연결이 끊김 (데몬이 죽거나 다시 켜짐). 데몬이 이미 일을 했을 수 있어
+/// "데몬 꺼짐"(`DaemonDown`, 켜고 다시 하라는 뜻)이 아니라 실패로 낸다
+fn connection_lost(e: reqwest::Error, path: &str) -> anyhow::Error {
+    // 맨 안쪽 원인 (예: 응답 전에 연결이 닫힘). 겉 문장은 주소만 되풀이한다
+    let mut cause: &dyn std::error::Error = &e;
+    while let Some(inner) = cause.source() {
+        cause = inner;
+    }
+    let error = cause.to_string();
+    CliError::Failed(t!("err.connection_lost", path = path, error = error)).into()
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1510,6 +1522,25 @@ mod tests {
         *api.token.write().unwrap() = Some("leftover".into());
         let e = api.call(Method::GET, "/api/servers", None, QUICK).await.unwrap_err();
         assert!(matches!(e.downcast_ref::<CliError>(), Some(CliError::DaemonDown { .. })), "{e:#}");
+    }
+
+    /// 요청을 받은 뒤 데몬이 연결을 끊으면(죽거나 다시 켜짐) reqwest 영어 문장 대신 번역된 실패로 끝낸다
+    #[tokio::test]
+    async fn a_connection_dropped_mid_request_is_a_translated_failure() {
+        use tokio::io::AsyncReadExt;
+        crate::i18n::init("ko");
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            let (mut sock, _) = listener.accept().await.unwrap();
+            let _ = sock.read(&mut [0; 1024]).await;
+        });
+        let api = Api::new(port, None);
+        *api.token.write().unwrap() = None;
+        let e = api.call(Method::GET, "/api/servers", None, QUICK).await.unwrap_err();
+        let e = e.downcast::<CliError>().unwrap();
+        let ko = t!("err.connection_lost", path = "/api/servers", error = "");
+        assert!(matches!(e, CliError::Failed(_)) && e.to_string().starts_with(ko.trim_end()), "{e}");
     }
 
     /// 한 번 받은 요청의 본문 (JSON)

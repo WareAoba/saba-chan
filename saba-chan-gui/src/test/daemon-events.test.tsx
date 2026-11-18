@@ -182,6 +182,8 @@ describe('데몬 이벤트 스트림', () => {
         window.api.instanceApplyUpdate = vi.fn().mockResolvedValue({ success: false, error: 'already updating' }) as never;
         await applyServerUpdateFromNotice(notice, t);
         expect(window.showToast).toHaveBeenLastCalledWith('Pal: update start failed. already updating', 'error', 5000, undefined);
+        // 시작이 거절되면 다시 시도할 수 있게 알림을 남긴다
+        expect(window.api.noticeRemove).toHaveBeenCalledTimes(1);
         delete (window.api as Partial<typeof window.api>).noticeRemove;
     });
 

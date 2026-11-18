@@ -82,7 +82,8 @@
     "daemon_stopped": "守护进程已停止",
     "stop_daemon": "停止守护进程",
     "start_daemon": "启动守护进程",
-    "quit_all": "完全退出"
+    "quit_all": "完全退出",
+    "switch_cli_failed": "CLI 打开失败。{{reason}}"
   },
   "updates": {
     "notification_title": "Saba-chan 更新通知",

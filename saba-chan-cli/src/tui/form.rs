@@ -367,17 +367,9 @@ impl Form {
     }
 }
 
-/// 명령 줄에 넣을 낱말: 글자·숫자와 `-_./:=,@+`만이면 그대로, 아니면 따옴표로 (한글 이름도 그대로 보이게)
-pub fn quote(s: &str) -> String {
-    if !s.is_empty() && s.chars().all(|c| c.is_alphanumeric() || "-_./:=,@+".contains(c)) && !s.starts_with('-') {
-        return s.to_string();
-    }
-    shlex::try_quote(s).map(|c| c.into_owned()).unwrap_or_else(|_| s.to_string())
-}
-
 /// 바뀐 칸을 저장하는 명령 한 줄: `server set 이름 키=값 …` (값이 비면 그 설정을 지운다)
 pub fn save_line(server: &str, changes: &[(String, String)]) -> String {
-    let q = quote;
+    let q = crate::shell::quote;
     let mut line = format!("server set {}", q(server));
     for (k, v) in changes {
         line.push(' ');

@@ -25,7 +25,7 @@ export function FirstRunGuide({ step }: { step: GuideStep }) {
     useEffect(() => {
         // 앱을 막 연 참이면 오프닝이 이 소리를 맡아 기동음 대신 화음에 맞춰 낸다 (utils/opening.ts)
         if (!claimOpeningSound('guideOpen')) {
-            (window.api as { playSound?: (name: 'guideOpen') => unknown } | undefined)?.playSound?.('guideOpen');
+            window.api.playSound('guideOpen');
         }
     }, []);
     // 모듈 받기 화면의 ✕는 그 화면만 닫는다 (처음 시작하기 전체는 welcome·fork의 ✕)

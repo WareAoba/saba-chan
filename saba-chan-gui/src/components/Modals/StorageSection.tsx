@@ -98,7 +98,8 @@ function DiskRow({ volume, t }: { volume: StorageVolume; t: TFunction }) {
  * 설정 > 저장 공간: 내장 디스크와 사바쨩 파일(데몬 GET /api/system/storage), 파일 이동 창.
  * 크기는 데몬이 백그라운드에서 잰다: 재는 동안(`measuring`) 잠깐씩 다시 읽는다
  */
-export function StorageSection() {
+/** `onMoved`: 파일 이동을 마쳤다 (같은 탭의 폴더 위치도 다시 읽게) */
+export function StorageSection({ onMoved }: { onMoved?: () => void } = {}) {
     const { t, i18n } = useTranslation('gui');
     const [data, setData] = useState<ApiBody | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -233,7 +234,10 @@ export function StorageSection() {
                     volumes={volumes}
                     items={items}
                     onClose={() => setMoveOpen(false)}
-                    onMoved={() => load(true)}
+                    onMoved={() => {
+                        load(true);
+                        onMoved?.();
+                    }}
                 />
             )}
         </>

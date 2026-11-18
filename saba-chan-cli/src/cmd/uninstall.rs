@@ -56,7 +56,7 @@ fn warning_text(w: &uninstall::StopWarning) -> String {
 }
 
 /// 남기는 것을 한 줄로
-fn kept_text(keep: Keep) -> String {
+pub(crate) fn kept_text(keep: Keep) -> String {
     match (keep.settings, keep.instances) {
         (true, true) => t!("uninstall.kept_both"),
         (true, false) => t!("uninstall.kept_settings"),

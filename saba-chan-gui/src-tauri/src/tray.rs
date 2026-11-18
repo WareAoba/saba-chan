@@ -2,8 +2,9 @@
 //! 리눅스(앱인디케이터)는 아이콘 클릭을 알려 주지 않으므로 OS 메뉴를 단다.
 //! 메뉴와 팝업의 동작은 `action` 하나로 처리한다 (`tray_action` 명령)
 
+use crate::daemon::CallError;
 use crate::{lifecycle, window, AppState};
-use serde_json::json;
+use serde_json::{json, Value};
 use tauri::image::Image;
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, Theme};
@@ -84,6 +85,19 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
+/// CLI를 띄워 달라는 요청의 결과: 실패면 알릴 이유 (데몬의 `message`·`error`, 닿지 못했으면 그 문장)
+fn cli_launch_failure(res: Result<Value, CallError>) -> Option<String> {
+    let body = match res {
+        Ok(v) if v["success"].as_bool() == Some(true) => return None,
+        Ok(v) => v,
+        Err(e) => e.error_body(json!({})),
+    };
+    let reason = ["message", "error"]
+        .iter()
+        .find_map(|k| body[*k].as_str().filter(|s| !s.is_empty()));
+    Some(reason.unwrap_or("-").to_string())
+}
+
 /// 트레이 동작 (팝업 버튼·리눅스 메뉴). 모르는 것은 false
 pub fn action(app: &AppHandle, id: &str) -> bool {
     let app = app.clone();
@@ -99,14 +113,14 @@ pub fn action(app: &AppHandle, id: &str) -> bool {
                     None => json!({ "kind": "cli" }),
                 };
                 let res = state.client.post("/api/clients/launch", &body, 30000).await;
-                let ok = res.as_ref().is_ok_and(|v| v["success"].as_bool().unwrap_or(false));
-                if ok {
-                    lifecycle::interface_only_quit(&app).await;
-                } else {
-                    tracing::warn!(
-                        "[Tray] Could not switch to the CLI: {:?}",
-                        res.map_err(|e| e.error_body(json!({})))
-                    );
+                match cli_launch_failure(res) {
+                    None => lifecycle::interface_only_quit(&app).await,
+                    // 팝업은 이미 닫혔다: OS 알림으로 알린다 (창의 전환 버튼은 토스트로 알린다)
+                    Some(reason) => {
+                        tracing::warn!("[Tray] Could not switch to the CLI: {}", reason);
+                        let text = state.t("tray.switch_cli_failed", &[("reason", reason.as_str())]);
+                        lifecycle::show_notification(&app, &state.t("notify.title", &[]), &text, false);
+                    }
                 }
             });
         }
@@ -221,4 +235,34 @@ pub fn remove(app: &AppHandle) {
     let _ = app.run_on_main_thread(move || {
         handle.remove_tray_by_id(TRAY_ID);
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// "CLI로 전환"이 실패하면 알릴 이유가 있다: 데몬이 거절한 문장, 닿지 못했으면 연결 오류
+    #[test]
+    fn a_failed_cli_switch_has_a_reason_to_show() {
+        assert_eq!(cli_launch_failure(Ok(json!({ "success": true, "pid": 1 }))), None);
+        let refused = CallError {
+            status: Some(501),
+            body: Some(
+                json!({ "success": false, "error": "Not supported on this OS", "error_code": "unsupported_platform" }),
+            ),
+            message: "Request failed with status code 501".into(),
+            code: "ERR_BAD_RESPONSE",
+        };
+        assert_eq!(
+            cli_launch_failure(Err(refused)).as_deref(),
+            Some("Not supported on this OS")
+        );
+        let down = CallError {
+            status: None,
+            body: None,
+            message: "refused".into(),
+            code: "ECONNREFUSED",
+        };
+        assert_eq!(cli_launch_failure(Err(down)).as_deref(), Some("refused"));
+    }
 }

@@ -105,21 +105,9 @@ function Toast() {
             scheduleRemoval(id, duration, removeToast);
         };
 
-        // 상태 업데이트는 콘솔 로그로만 기록 (토스트 표시 안 함)
-        window.showStatus = (step, message, _duration = 3000) => {
-            // 초기화 상태 메시지는 로딩 화면에서 이미 표시되므로 토스트 불필요
-            console.log('[Status]', step, ':', message);
-        };
-
-        // StatusBar의 상태 업데이트 신호를 받아 로그만 출력
-        window.api.onStatusUpdate((data: { step: string; message: string }) => {
-            console.log('[Status Update]', data.step, ':', data.message);
-        });
-
         return () => {
             delete window.showToast;
             delete window.updateToast;
-            delete window.showStatus;
         };
     }, [removeToast, scheduleRemoval]);
 

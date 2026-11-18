@@ -7,6 +7,7 @@ import { SabaCheckbox, SabaNumberInput, SabaSpinner, SabaToggle } from '../ui/Sa
 import { SettingRow } from '../ServerSettingsParts';
 import { ConfirmIcon } from './Modals';
 import { failed } from '../../utils/apiResult';
+import { startPoll } from '../../utils/poll';
 
 /** 리눅스 한 줄 설치 (install.sh 맨 위와 같다). SSH가 안 될 때 그 PC에 붙여 넣는다 */
 export const INSTALL_ONE_LINER = 'curl -fsSL https://raw.githubusercontent.com/WareAoba/saba-chan/main/install.sh | sh -s -- --pair';
@@ -113,6 +114,8 @@ export function RemoveDialog({ name, saved, canUninstall, summary, busy, onCance
 }
 
 const POLL_MS = 700;
+/** 진행 읽기가 이만큼 연달아 실패하면 이유를 보인다 */
+const POLL_MISSES = 3;
 const PROMPT_LABELS: Record<string, string> = {
     password: 'remote_daemon.prompt_password',
     sudo: 'remote_daemon.prompt_sudo',
@@ -149,12 +152,20 @@ export function InstallDialog({ onClose, onPaired, errorText }: InstallDialogPro
     const phase = String(view?.phase || '');
     const running = Boolean(id) && !['done', 'failed', 'cancelled'].includes(phase);
 
+    // 진행을 읽는다. 읽기가 실패해도(데몬 재시작·연결 끊김) 다음 차례를 걸고, 연달아 실패하면 이유를 보인다
+    // biome-ignore lint/correctness/useExhaustiveDependencies: errorText·t는 문구만 만든다
     useEffect(() => {
-        if (!id) return;
-        let stop = false;
-        const tick = async () => {
+        if (!id || !running) return;
+        let misses = 0;
+        return startPoll(async () => {
             const res = await window.api.remoteInstall(id, offset.current);
-            if (stop || failed(res)) return;
+            if (failed(res)) {
+                misses += 1;
+                if (misses >= POLL_MISSES) setError(errorText(res));
+                return;
+            }
+            if (misses >= POLL_MISSES) setError(null);
+            misses = 0;
             offset.current = Number(res.offset ?? offset.current);
             if (res.output) setOutput((o) => o + res.output);
             setView(res);
@@ -162,15 +173,8 @@ export function InstallDialog({ onClose, onPaired, errorText }: InstallDialogPro
                 paired.current = true;
                 onPaired();
             }
-            if (['done', 'failed', 'cancelled'].includes(res.phase)) return;
-            timer = setTimeout(tick, POLL_MS);
-        };
-        let timer = setTimeout(tick, 0);
-        return () => {
-            stop = true;
-            clearTimeout(timer);
-        };
-    }, [id, onPaired]);
+        }, POLL_MS);
+    }, [id, running, onPaired]);
 
     useEffect(() => {
         const el = consoleRef.current;

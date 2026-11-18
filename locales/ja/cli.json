@@ -539,6 +539,7 @@
     "pair_expected": "KEY=VALUE の形式が必要です: 「{{got}}」",
     "timeout": "デーモンの応答タイムアウト ({{path}})",
     "body_read": "{{path}} の応答の受信に失敗: {{error}}",
+    "connection_lost": "{{path}} の要求中にデーモンとの接続が切れました: {{error}}",
     "daemon_identity": "デーモンの身元確認に失敗しました",
     "unknown_command": "存在しないコマンド: {{path}}。`saba-chan-cli help` でコマンド一覧を確認してください。",
     "not_supported": "{{module}} モジュールはこの機能に非対応"
@@ -1763,6 +1764,7 @@
       "used_by": "使っているサーバー"
     },
     "no_servers": "サーバーなし。n を押して新しいサーバーを作成してください。",
+    "servers_failed": "サーバー一覧を読み込めません: {{error}}",
     "empty": "(なし)",
     "detail": "詳細",
     "console_empty": "出力なし",
@@ -2068,6 +2070,8 @@
     "no_servers": "サーバーなし",
     "via_relay": "リレー経由",
     "removed": "{{host}} を削除済み",
+    "confirm_remove": "PC {{host}} を削除しますか？",
+    "confirm_uninstall": "{{host}} の サバちゃん をアンインストールして PC を削除しますか？ {{kept}}。",
     "auto_update_on": "{{host}} の自動アップデートをオンにしました",
     "auto_update_off": "{{host}} の自動アップデートをオフにしました",
     "update_started": "{{host}} のアップデートを開始。完了するとデーモンが再起動します。",

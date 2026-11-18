@@ -5,7 +5,7 @@
  * React 렌더링 없이 스토어만 직접 조작하여 빠른 피드백을 제공합니다.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useSettingsStore } from '../stores/useSettingsStore';
+import { SETTINGS_SAVED_KEY, useSettingsStore } from '../stores/useSettingsStore';
 import { useDiscordStore } from '../stores/useDiscordStore';
 import { useServerStore } from '../stores/useServerStore';
 import { useUIStore } from '../stores/useUIStore';
@@ -38,7 +38,6 @@ function mockApi(overrides = {}) {
         },
     ) as unknown as typeof window.api;
     window.showToast = vi.fn();
-    window.showStatus = vi.fn();
 }
 
 beforeEach(() => {
@@ -163,6 +162,15 @@ describe('useSettingsStore', () => {
         useSettingsStore.getState().update({ fontScale: 120 });
         await useSettingsStore.getState().save();
         expect(vi.mocked(window.api.settingsSave).mock.calls[1][0]).toEqual({ fontScale: 120 });
+    });
+
+    // 리뷰 11-18: 다른 창(콘솔 PIP)이 저장된 설정을 다시 읽을 수 있게 저장을 알린다
+    it('save() — 저장에 성공하면 다른 창에 알릴 표식을 남긴다', async () => {
+        localStorage.removeItem(SETTINGS_SAVED_KEY);
+        useSettingsStore.setState({ settingsPath: '/mock/settings.json' });
+        useSettingsStore.getState().update({ consoleSyntaxHighlight: false });
+        await useSettingsStore.getState().save();
+        expect(localStorage.getItem(SETTINGS_SAVED_KEY)).toBeTruthy();
     });
 
     it('save() — 저장이 실패한 칸은 다음 저장에 다시 싣는다', async () => {

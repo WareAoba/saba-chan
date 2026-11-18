@@ -498,7 +498,7 @@ pub struct App {
     pub areas: Areas,
 }
 
-use super::form::quote;
+use crate::shell::quote;
 
 impl App {
     pub fn new() -> Self {
@@ -1855,7 +1855,7 @@ mod tests {
     }
 
     fn parses(line: &str) -> bool {
-        parsed(&shlex::split(line).unwrap()).is_some()
+        parsed(&crate::shell::split(line).unwrap()).is_some()
     }
 
     fn settings_doc() -> Value {
@@ -1877,7 +1877,7 @@ mod tests {
                         continue;
                     }
                     for line in template.lines() {
-                        let mut words = shlex::split(&line.replace("{}", "x")).unwrap();
+                        let mut words = crate::shell::split(&line.replace("{}", "x")).unwrap();
                         // 채워 여는 버튼은 사용자가 마저 쓴다: 인자 하나를 더해 읽어 본다
                         if template.ends_with(' ') {
                             words.push("y=z".into());
@@ -2169,10 +2169,10 @@ mod tests {
         a.on_key(key(KeyCode::Enter));
         assert_eq!((a.page, a.wizard.as_ref().map(|w| w.module)), (Page::Servers, Some(1)));
         // 코어 업데이트 적용은 여전히 메뉴 밖에서
-        assert!(refuse(&shlex::split("update apply saba-core").unwrap()).is_some());
-        assert!(refuse(&shlex::split("update apply").unwrap()).is_some());
-        assert!(refuse(&shlex::split("update rollback").unwrap()).is_some());
-        assert!(refuse(&shlex::split("update repair").unwrap()).is_some());
+        assert!(refuse(&crate::shell::split("update apply saba-core").unwrap()).is_some());
+        assert!(refuse(&crate::shell::split("update apply").unwrap()).is_some());
+        assert!(refuse(&crate::shell::split("update rollback").unwrap()).is_some());
+        assert!(refuse(&crate::shell::split("update repair").unwrap()).is_some());
     }
 
     /// 찾기 결과에 보이는 화면의 같은 명령은 실제 명령이다
@@ -2376,7 +2376,7 @@ mod tests {
     #[test]
     fn commands_that_take_the_whole_screen_are_refused_or_adapted() {
         crate::i18n::init("ko");
-        let w = |s: &str| shlex::split(s).unwrap();
+        let w = |s: &str| crate::shell::split(s).unwrap();
         assert!(refuse(&w("shell")).is_some());
         assert!(refuse(&w("tui --server pal")).is_some());
         assert!(refuse(&w("gui")).is_some());
