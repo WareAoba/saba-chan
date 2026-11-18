@@ -1181,12 +1181,21 @@ pub struct Restored {
 /// 백업을 원래 자리로 돌려놓는다. 서버는 꺼져 있어야 한다 (호출자가 확인).
 /// 경로마다 기존 것을 옆으로 치워 두고 풀어 넣는다. 치워 둔 것은 모두 성공한 뒤에 지우고,
 /// 도중에 실패하면 이미 풀어 넣은 경로까지 거꾸로 모두 되돌린다
-pub fn restore(dir: &Path, name: &str) -> Result<Restored> {
+/// `moved`: 백업 뒤에 서버 폴더를 옮겼으면 옛 폴더 안의 경로를 지금 폴더로 바꿔 돌려놓는다
+pub fn restore(dir: &Path, name: &str, moved: Option<&Moved>) -> Result<Restored> {
     let lock = dir_lock(dir);
     let _held = lock.lock().unwrap_or_else(|e| e.into_inner());
     let mut opened = open(dir, name)?;
-    let entries: Vec<ManifestEntry> = opened.paths().to_vec();
-    let links: Vec<LinkEntry> = opened.links().to_vec();
+    let mut entries: Vec<ManifestEntry> = opened.paths().to_vec();
+    let mut links: Vec<LinkEntry> = opened.links().to_vec();
+    if let Some(moved) = moved {
+        for entry in &mut entries {
+            entry.path = moved.place(&entry.path)?;
+        }
+        for link in &mut links {
+            (link.path, link.target) = (moved.place(&link.path)?, moved.place(&link.target)?);
+        }
+    }
     // (경로, 기존 것을 치워 둔 곳). 실패하면 이 목록을 거꾸로 되돌린다
     let mut touched: Vec<(&Path, Option<PathBuf>)> = Vec::new();
     let mut failed = None;
@@ -1377,6 +1386,20 @@ pub struct Origin {
 pub struct Bases<'a> {
     pub server: &'a Path,
     pub instance: &'a Path,
+}
+
+/// 백업 뒤에 옮긴 서버 폴더: 백업에 적힌 옛 서버 폴더(`from`) 안의 경로를 지금 서버 폴더(`to`) 안으로 바꾼다
+#[derive(Clone)]
+pub struct Moved {
+    pub from: PathBuf,
+    pub to: PathBuf,
+    pub instance: PathBuf,
+}
+
+impl Moved {
+    pub fn place(&self, path: &Path) -> Result<PathBuf> {
+        Portable::of(path, &Bases { server: &self.from, instance: &self.instance }).at(&Bases { server: &self.to, instance: &self.instance })
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq)]
@@ -1683,7 +1706,7 @@ mod tests {
         files.sort();
         assert_eq!(files, ["level.dat", "region/r.0.0.mca"]);
         fs::remove_dir_all(&w).unwrap();
-        restore(&dir, &made.name).unwrap();
+        restore(&dir, &made.name, None).unwrap();
         assert!(w.join("region/r.0.0.mca").exists());
         assert!(!w.join("tmp-chunks").exists(), "a folder that was gone is not brought back empty");
     }
@@ -1717,7 +1740,7 @@ mod tests {
         let walked: Vec<String> = fs::read_dir(&w).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
         assert_eq!(backed_up_files(&dir, &made.name), walked);
         fs::remove_dir_all(&w).unwrap();
-        restore(&dir, &made.name).unwrap();
+        restore(&dir, &made.name, None).unwrap();
         assert_eq!(fs::read_dir(&w).unwrap().count(), 64);
     }
 
@@ -1781,7 +1804,7 @@ mod tests {
         std::os::unix::fs::symlink("level.dat", w.join("region/latest")).unwrap();
         let dir = tmp.path().join("backups");
         let b = create(&dir, BackupKind::Manual, std::slice::from_ref(&w)).unwrap();
-        restore(&dir, &b.name).unwrap();
+        restore(&dir, &b.name, None).unwrap();
         assert_eq!(fs::read_link(w.join("shared")).unwrap(), outside);
         assert_eq!(fs::read_link(w.join("region/latest")).unwrap(), Path::new("level.dat"));
         assert!(outside.is_dir(), "restoring a link never touches where it points");
@@ -1814,7 +1837,7 @@ mod tests {
             output.write_all(&serde_json::to_vec(&manifest).unwrap()).unwrap();
             output.finish().unwrap();
         }
-        let restored = restore(&dir, "20000101-000001-000-manual.zip").unwrap();
+        let restored = restore(&dir, "20000101-000001-000-manual.zip", None).unwrap();
         assert!(!outside.join("payload").exists());
         assert_eq!(fs::read(w.join("jump/payload")).unwrap(), b"content");
         assert_eq!(restored.links_missed, 1);
@@ -1846,7 +1869,7 @@ mod tests {
             std::io::Write::write_all(&mut out, &serde_json::to_vec(&manifest).unwrap()).unwrap();
             out.finish().unwrap();
         }
-        let done = restore(&dir, "20000101-000000-000-manual.zip").unwrap();
+        let done = restore(&dir, "20000101-000000-000-manual.zip", None).unwrap();
         assert_eq!(done.paths, vec![w.clone()]);
         assert_eq!(done.links_missed, 1);
         assert_eq!(fs::read_link(w.join("latest")).unwrap(), Path::new("level.dat"), "the other link still comes back");
@@ -1884,7 +1907,7 @@ mod tests {
         create_from(&dir, BackupKind::Snapshot, &[(snap.join("level.dat"), w.join("level.dat"))], &[]).unwrap();
         let live = create(&dir, BackupKind::PreRestore, std::slice::from_ref(&w)).unwrap();
         fs::write(w.join("level.dat"), b"other").unwrap();
-        restore(&dir, &live.name).unwrap();
+        restore(&dir, &live.name, None).unwrap();
         assert_eq!(fs::read(w.join("level.dat")).unwrap(), b"LIVE!");
     }
 
@@ -1900,7 +1923,7 @@ mod tests {
         fs::create_dir_all(&live).unwrap();
         let dir = tmp.path().join("backups");
         let b = create_from(&dir, BackupKind::Snapshot, &[(snap.clone(), live.clone())], &[]).unwrap();
-        let done = restore(&dir, &b.name).unwrap();
+        let done = restore(&dir, &b.name, None).unwrap();
         assert_eq!(done.links_missed, 0);
         assert!(fs::symlink_metadata(live.join("latest")).is_ok(), "the link comes back under the restore place");
     }
@@ -1951,7 +1974,7 @@ mod tests {
         fs::write(w.join("level.dat"), b"broken").unwrap();
         fs::write(w.join("new.dat"), b"x").unwrap();
         fs::write(&props, b"a=2").unwrap();
-        let restored = restore(&dir, &b.name).unwrap();
+        let restored = restore(&dir, &b.name, None).unwrap();
         assert_eq!(restored.paths.len(), 2);
         assert_eq!(fs::read(w.join("level.dat")).unwrap(), b"level");
         assert_eq!(fs::read(w.join("region/r.0.0.mca")).unwrap(), b"chunks");
@@ -1979,7 +2002,7 @@ mod tests {
         let b = create(&dir, BackupKind::Manual, std::slice::from_ref(&w)).unwrap();
 
         fs::write(&level, b"broken").unwrap();
-        restore(&dir, &b.name).unwrap();
+        restore(&dir, &b.name, None).unwrap();
         assert_eq!(fs::read(&level).unwrap(), b"level");
         assert_eq!(fs::metadata(&level).unwrap().modified().unwrap(), saved);
         #[cfg(unix)]
@@ -2005,7 +2028,7 @@ mod tests {
 
         fs::write(&level, b"played on").unwrap();
         create(&dir, BackupKind::PreRestore, std::slice::from_ref(&w)).unwrap();
-        restore(&dir, &a.name).unwrap();
+        restore(&dir, &a.name, None).unwrap();
         fs::write(&level, b"LEVEL").unwrap();
         stamp(saved);
         let after = create(&dir, BackupKind::Manual, std::slice::from_ref(&w)).unwrap();
@@ -2045,7 +2068,7 @@ mod tests {
         }
         fs::write(w.join("level.dat"), b"current").unwrap();
         fs::write(&props, b"a=2").unwrap();
-        assert!(restore(&dir, "20000101-000000-000-manual.zip").is_err());
+        assert!(restore(&dir, "20000101-000000-000-manual.zip", None).is_err());
         assert_eq!(fs::read(w.join("level.dat")).unwrap(), b"current", "the first path must be rolled back too");
         assert_eq!(fs::read(&props).unwrap(), b"a=2");
         assert!(!aside_path(&w).exists() && !aside_path(&props).exists());
@@ -2077,7 +2100,7 @@ mod tests {
         assert_eq!((got.size, got.created), (made.size, made.created));
         assert_eq!(list(&new_dir).len(), 1);
         assert_eq!(backed_up_paths(&new_dir, &got.name).unwrap(), [new.join("world")]);
-        restore(&new_dir, &got.name).unwrap();
+        restore(&new_dir, &got.name, None).unwrap();
         assert_eq!(fs::read(new.join("world/level.dat")).unwrap(), b"level");
         assert_eq!(fs::read(new.join("world/region/r.0.0.mca")).unwrap(), b"chunks");
     }
@@ -2214,7 +2237,7 @@ mod tests {
         fs::create_dir_all(&leftover).unwrap();
         fs::write(leftover.join("kept.txt"), b"original").unwrap();
         fs::write(w.join("level.dat"), b"changed").unwrap();
-        restore(&dir, &made).unwrap();
+        restore(&dir, &made, None).unwrap();
         assert_eq!(fs::read(w.join("level.dat")).unwrap(), b"level");
         assert_eq!(fs::read(leftover.join("kept.txt")).unwrap(), b"original");
     }
@@ -2298,7 +2321,7 @@ mod tests {
         assert!(removed.is_empty(), "keep=1 would drop the oldest auto backup, but it is the restore target");
         let left: Vec<_> = list(&dir).into_iter().map(|b| b.name).collect();
         assert!(left.contains(&oldest) && left.contains(&safety));
-        assert!(restore(&dir, &oldest).is_ok());
+        assert!(restore(&dir, &oldest, None).is_ok());
     }
 
     #[test]
@@ -2349,11 +2372,11 @@ mod tests {
         assert_eq!(objects(&dir).len(), 4);
 
         fs::remove_dir_all(w.join("empty")).unwrap();
-        restore(&dir, &first.name).unwrap();
+        restore(&dir, &first.name, None).unwrap();
         assert_eq!(fs::read(w.join("level.dat")).unwrap(), b"level");
         assert_eq!(fs::read(w.join("region/r.0.0.mca")).unwrap(), b"chunks");
         assert!(w.join("empty").is_dir(), "empty folders come back too");
-        restore(&dir, &third.name).unwrap();
+        restore(&dir, &third.name, None).unwrap();
         assert_eq!(fs::read(w.join("level.dat")).unwrap(), b"level 2");
         assert_eq!(fs::read(&props).unwrap(), b"a=1");
     }
@@ -2377,7 +2400,7 @@ mod tests {
         assert!(before.iter().filter(|h| after.contains(h)).count() == 1);
         assert!(!dir.join(OBJECTS).join(".tmp-left").exists());
         fs::write(w.join("level.dat"), b"broken").unwrap();
-        restore(&dir, &new).unwrap();
+        restore(&dir, &new, None).unwrap();
         assert_eq!(fs::read(w.join("level.dat")).unwrap(), b"level 2");
 
         fs::write(dir.join("20000101-000000-000-manual.zip"), b"not a zip").unwrap();
@@ -2402,7 +2425,7 @@ mod tests {
         fs::copy(dir.join(&second), dir.join(&first)).unwrap();
         delete(&dir, &second).unwrap();
         fs::write(w.join("level.dat"), b"broken").unwrap();
-        restore(&dir, &first).unwrap();
+        restore(&dir, &first, None).unwrap();
         assert_eq!(fs::read(w.join("level.dat")).unwrap(), b"level 2");
     }
 
@@ -2422,7 +2445,7 @@ mod tests {
         fs::write(object_path(&dir, props_hash).unwrap(), enc.finish().unwrap()).unwrap();
         fs::write(w.join("level.dat"), b"current").unwrap();
         fs::write(&props, b"a=2").unwrap();
-        assert!(restore(&dir, &b.name).is_err());
+        assert!(restore(&dir, &b.name, None).is_err());
         assert_eq!(fs::read(w.join("level.dat")).unwrap(), b"current");
         assert_eq!(fs::read(&props).unwrap(), b"a=2");
     }
@@ -2437,7 +2460,7 @@ mod tests {
         assert_eq!(b.size, b.stored);
         create(&dir, BackupKind::Manual, std::slice::from_ref(&w)).unwrap();
         fs::write(w.join("level.dat"), b"broken").unwrap();
-        restore(&dir, &b.name).unwrap();
+        restore(&dir, &b.name, None).unwrap();
         assert_eq!(fs::read(w.join("level.dat")).unwrap(), b"level");
         assert_eq!(backed_up_paths(&dir, &b.name).unwrap(), vec![w]);
     }
@@ -2475,7 +2498,7 @@ mod tests {
         fs::remove_file(dir.join(&first)).unwrap();
         fs::rename(&aside, dir.join(&first)).unwrap();
         fs::write(w.join("level.dat"), b"broken").unwrap();
-        restore(&dir, &first).unwrap();
+        restore(&dir, &first, None).unwrap();
         assert_eq!(fs::read(w.join("level.dat")).unwrap(), b"level");
     }
 
@@ -2495,7 +2518,7 @@ mod tests {
         let second = create(&dir, BackupKind::Manual, std::slice::from_ref(&w)).unwrap().name;
         for name in [&first, &second] {
             fs::write(w.join("level.dat"), b"broken").unwrap();
-            restore(&dir, name).unwrap();
+            restore(&dir, name, None).unwrap();
             assert_eq!(fs::read(w.join("level.dat")).unwrap(), b"level", "{name}");
         }
     }
@@ -2522,7 +2545,7 @@ mod tests {
             File::options().write(true).open(&object).unwrap().set_modified(later).unwrap();
             let second = create(&dir, BackupKind::Manual, std::slice::from_ref(&w)).unwrap().name;
             fs::write(w.join("level.dat"), b"broken").unwrap();
-            restore(&dir, &second).unwrap();
+            restore(&dir, &second, None).unwrap();
             assert_eq!(fs::read(w.join("level.dat")).unwrap(), b"level", "unchanged={unchanged}");
         }
     }
@@ -2546,7 +2569,7 @@ mod tests {
         let second = create(&dir, BackupKind::Manual, std::slice::from_ref(&w)).unwrap().name;
         assert_eq!(fs::read(&object).unwrap(), damaged, "the second backup took the content file as it was, without unpacking it");
         fs::write(w.join("level.dat"), b"current").unwrap();
-        assert!(restore(&dir, &second).is_err(), "restore still unpacks and refuses damaged content");
+        assert!(restore(&dir, &second, None).is_err(), "restore still unpacks and refuses damaged content");
         assert_eq!(fs::read(w.join("level.dat")).unwrap(), b"current");
     }
 
@@ -2572,7 +2595,7 @@ mod tests {
         let second = create(&dir, BackupKind::Manual, std::slice::from_ref(&w)).unwrap().name;
         assert_ne!(fs::read(&object).unwrap(), damaged, "the expired record made the backup unpack and replace the content file");
         fs::write(w.join("level.dat"), b"current").unwrap();
-        restore(&dir, &second).unwrap();
+        restore(&dir, &second, None).unwrap();
         assert_eq!(fs::read(w.join("level.dat")).unwrap(), b"level");
     }
 
