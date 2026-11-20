@@ -130,6 +130,31 @@ describe('화면 강조', () => {
         target.remove();
     });
 
+    it('자리를 찾은 뒤 위 내용이 늦게 그려져 밀려나면 다시 보이게 스크롤한다 (사용자가 스크롤한 것은 되돌리지 않는다)', async () => {
+        const pane = document.createElement('div');
+        Object.defineProperty(pane, 'scrollTop', { value: 0, writable: true });
+        const target = document.createElement('button');
+        target.dataset.spot = 'here';
+        let top = 100;
+        target.getBoundingClientRect = () => ({ left: 10, top: top - pane.scrollTop, width: 80, height: 30 }) as DOMRect;
+        const scroll = vi.fn();
+        target.scrollIntoView = scroll;
+        pane.appendChild(target);
+        document.body.appendChild(pane);
+        render(<Spotlight />);
+        act(() => startGuide('b'));
+        await act(async () => {});
+        expect(scroll).toHaveBeenCalledTimes(1);
+        // 백업 목록이 뒤늦게 그려져 버튼이 아래로 밀렸다
+        top = 1200;
+        await waitFor(() => expect(scroll).toHaveBeenCalledTimes(2));
+        // 사용자가 스크롤했다: 자리는 화면에서 움직였지만 내용 안의 자리는 그대로
+        pane.scrollTop = 300;
+        await act(async () => new Promise((r) => setTimeout(r, 100)));
+        expect(scroll).toHaveBeenCalledTimes(2);
+        pane.remove();
+    });
+
     it('숨겨 둔 탭 안의 자리는 짚지 않는다', async () => {
         const page = document.createElement('div');
         page.hidden = true;
