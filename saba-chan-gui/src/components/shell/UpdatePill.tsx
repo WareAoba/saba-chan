@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next';
 import { useServerStore } from '../../stores/useServerStore';
 import { useUpdateStore, watchUpdates } from '../../stores/useUpdateStore';
 import type { ApiBody } from '../../types/daemon';
-import { failed } from '../../utils/apiResult';
 import { safeShowToast } from '../../utils/helpers';
 import { Icon } from '../Icon';
 import { Dialog } from '../ui/Dialog';
@@ -85,7 +84,7 @@ export function patchNoteLines(notes: Record<string, string> | null | undefined,
 
 function readPhase(res: ApiBody | null): Phase | null {
     const p = res?.phase;
-    if (failed(res) || !p || typeof p !== 'object' || typeof p.state !== 'string') return null;
+    if (!res || res.success === false || !p || typeof p !== 'object' || typeof p.state !== 'string') return null;
     return p as Phase;
 }
 
