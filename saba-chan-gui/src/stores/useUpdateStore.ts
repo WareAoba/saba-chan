@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { ApiBody } from '../types/daemon';
+import { failed } from '../utils/apiResult';
 
 /**
  * 이 PC 데몬의 업데이트 상태 하나. 상단 바 알약과 사바 스토리지가 같이 읽는다.
@@ -34,7 +35,7 @@ export const useUpdateStore = create<UpdateStore>()((set) => ({
         } catch {
             return null;
         }
-        if (!res || res.success === false) return null;
+        if (failed(res)) return null;
         set({ status: res });
         return res;
     },

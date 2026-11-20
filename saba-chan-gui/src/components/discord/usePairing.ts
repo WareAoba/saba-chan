@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ApiBody } from '../../types/daemon';
+import { failed } from '../../utils/apiResult';
 import { startPoll } from '../../utils/poll';
 
 const POLL_MS = 3000;
@@ -98,7 +99,7 @@ export function usePairing({ relayUrl, onClaimed, beforeStart }: UsePairingOptio
             if (beforeStart && (await beforeStart()) === false) throw new Error('relay url not saved');
             const data = await window.api.relayInitiatePairing({ relayUrl });
             if (!live()) return;
-            if (!data || data.error) {
+            if (failed(data)) {
                 throw Object.assign(new Error(data?.error || 'no response'), { code: data?.error_code });
             }
             let settled = false;

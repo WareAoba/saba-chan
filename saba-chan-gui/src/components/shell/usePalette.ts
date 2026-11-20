@@ -363,7 +363,7 @@ export function usePalette(onClose: () => void, busyRef: MutableRefObject<boolea
                 command: picked.command.name,
                 args: commandArgs(picked.command.inputs, argValues()),
             });
-            if (failed(res) || res?.error) {
+            if (failed(res)) {
                 const text = commandErrorText(res, t as never) ?? errorText(res, tr);
                 remember('failure', text);
                 setError(text);
