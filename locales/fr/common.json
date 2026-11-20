@@ -47,16 +47,12 @@
     "list_failed": "Impossible de récupérer la liste des serveurs (HTTP {{status}}): {{error}}",
     "auth_failed": "Échec de l'authentification. Le jeton du démon a peut-être changé.",
     "start_failed": "Démarrage échoué: {{error}}",
-    "stop_failed": "Arrêt échoué: {{error}}",
     "status_check_failed": "Vérification du statut échouée (HTTP {{status}}): {{error}}",
     "module_not_found": "Module « {{module}} » introuvable",
-    "invalid_request": "Demande invalide: {{error}}",
     "not_found": "Serveur « {{name}} » introuvable",
     "already_running": "Serveur « {{name}} » déjà en cours d'exécution",
-    "missing_required_field": "Champ obligatoire « {{field}} » manquant",
     "creation_failed": "Impossible de créer l'instance: {{error}}",
     "delete_failed": "Impossible de supprimer l'instance: {{error}}",
-    "update_failed": "Impossible de mettre à jour l'instance: {{error}}",
     "settings_save_failed": "Impossible d'enregistrer les paramètres: {{error}}"
   },
   "network": {

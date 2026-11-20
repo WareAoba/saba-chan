@@ -47,16 +47,12 @@
     "list_failed": "Ошибка получения списка серверов (HTTP {{status}}): {{error}}",
     "auth_failed": "Ошибка аутентификации. Возможно, токен демона изменился.",
     "start_failed": "Ошибка запуска: {{error}}",
-    "stop_failed": "Ошибка остановки: {{error}}",
     "status_check_failed": "Ошибка проверки статуса (HTTP {{status}}): {{error}}",
     "module_not_found": "Модуль '{{module}}' не найден",
-    "invalid_request": "Недействительный запрос: {{error}}",
     "not_found": "Сервер '{{name}}' не найден",
     "already_running": "Сервер '{{name}}' уже запущен",
-    "missing_required_field": "Нет обязательного поля '{{field}}'",
     "creation_failed": "Ошибка создания экземпляра: {{error}}",
     "delete_failed": "Ошибка удаления экземпляра: {{error}}",
-    "update_failed": "Ошибка обновления экземпляра: {{error}}",
     "settings_save_failed": "Ошибка сохранения параметров: {{error}}"
   },
   "network": {

@@ -47,16 +47,12 @@
     "list_failed": "サーバーリストの取得に失敗しました (HTTP {{status}}): {{error}}",
     "auth_failed": "認証に失敗しました。デーモンのトークンが変わった可能性があります。",
     "start_failed": "起動に失敗しました: {{error}}",
-    "stop_failed": "停止に失敗しました: {{error}}",
     "status_check_failed": "ステータスチェックに失敗しました (HTTP {{status}}): {{error}}",
     "module_not_found": "モジュール '{{module}}' が見つかりません",
-    "invalid_request": "無効なリクエスト: {{error}}",
     "not_found": "サーバー '{{name}}' が見つかりません",
     "already_running": "サーバー '{{name}}' は既に実行中",
-    "missing_required_field": "必須項目 '{{field}}' がありません",
     "creation_failed": "インスタンスの作成に失敗しました: {{error}}",
     "delete_failed": "インスタンスの削除に失敗しました: {{error}}",
-    "update_failed": "インスタンスの更新に失敗しました: {{error}}",
     "settings_save_failed": "設定の保存に失敗しました: {{error}}"
   },
   "network": {

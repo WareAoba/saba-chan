@@ -47,16 +47,12 @@
     "list_failed": "无法获取服务器列表（HTTP {{status}}）：{{error}}",
     "auth_failed": "认证失败。守护进程令牌可能已更改。",
     "start_failed": "启动失败：{{error}}",
-    "stop_failed": "停止失败：{{error}}",
     "status_check_failed": "状态检查失败（HTTP {{status}}）：{{error}}",
     "module_not_found": "找不到模块“{{module}}”",
-    "invalid_request": "无效请求：{{error}}",
     "not_found": "找不到服务器“{{name}}”",
     "already_running": "服务器“{{name}}”已在运行",
-    "missing_required_field": "缺少必填项“{{field}}”",
     "creation_failed": "创建实例失败：{{error}}",
     "delete_failed": "删除实例失败：{{error}}",
-    "update_failed": "更新实例失败：{{error}}",
     "settings_save_failed": "保存设置失败：{{error}}"
   },
   "network": {

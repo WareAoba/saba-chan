@@ -47,16 +47,12 @@
     "list_failed": "Error al obtener lista de servidores (HTTP {{status}}): {{error}}",
     "auth_failed": "Falló la autenticación. Puede que el token del daemon haya cambiado.",
     "start_failed": "Error al iniciar: {{error}}",
-    "stop_failed": "Error al detener: {{error}}",
     "status_check_failed": "Error al verificar estado (HTTP {{status}}): {{error}}",
     "module_not_found": "Módulo '{{module}}' no encontrado",
-    "invalid_request": "Solicitud inválida: {{error}}",
     "not_found": "Servidor '{{name}}' no encontrado",
     "already_running": "El servidor '{{name}}' ya está en ejecución",
-    "missing_required_field": "Falta el campo obligatorio '{{field}}'",
     "creation_failed": "Error al crear instancia: {{error}}",
     "delete_failed": "Error al eliminar instancia: {{error}}",
-    "update_failed": "Error al actualizar instancia: {{error}}",
     "settings_save_failed": "Error al guardar configuración: {{error}}"
   },
   "network": {
