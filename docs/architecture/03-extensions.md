@@ -221,11 +221,11 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 - `GET /api/extensions/updates`: 업데이트 목록만 돌려준다(`handlers/extension.rs`).
 - `POST /api/extensions/:id/install` (body `{download_url?, sha256?}`): body가 없거나 `{}`이면 원격 목록(서명된 카탈로그)에서 URL과 sha256을 찾는다. `download_url`만 주면 그 id의 카탈로그 URL과 같을 때만 카탈로그 sha256으로 받고, 다르면 해시 확인 없이 받지 않고 `sha256_required`로 거부한다. 둘 다 주면 그대로 받되, 카탈로그의 URL·해시와 같을 때만 공식 설치로 기록한다(`install_source`, `handlers/extension.rs`). 받기·검사·압축 해제는 락 없이 `stage_package`로 하고(sha256(있으면), manifest 스키마, id, `min_app_version` 확인, `ext/remote.rs`), 폴더 교체만 write 락 안에서 `install_staged`로 한다. 이미 설치된 익스텐션을 바꿀 때는 버전 고르기·모듈 카탈로그 설치와 같은 판정을 쓴다(`service/extensions.rs` `install_from`): 켜진 서버가 쓰면(모듈 `requires_extensions`와 인스턴스가 더한 필수 익스텐션, 또는 값이 있는 instance_fields, `updates::servers_using`) 409 `in_use`(`related`: 서버 이름), 카탈로그 그대로가 아닌 폴더(손으로 고쳤거나 직접 넣은 것)면 409 `extension_modified`·`extension_unverified`(`updates::hand_modified`)로 받기 전에 거부한다. 받은 뒤에는 서버 시작을 막은 채(`AddonSwapGate::try_hold_starts`) 사용 여부를 다시 보고 바꾸며, 시작·설치가 진행 중이면 `in_use`다. 새로 설치하는 익스텐션에는 이 검사를 하지 않는다. 바꿀 폴더의 `manifest.json` id가 설치할 id와 다르면(`a-b`와 `a_b`처럼 같은 폴더 이름이 되는 다른 익스텐션) `folder_in_use`(`related`: 설치할 id, 폴더 주인 id)로 거부한다(extensions/에 둔 zip도 같다, `ensure_folder_is_free_for`). 옛 폴더는 새 폴더가 자리 잡은 뒤에 지우며 실패하면 되돌린다(`ext/discovery.rs`·`ext/remote.rs`). 빠진 익스텐션 의존성도 차례로 함께 설치한다(`handlers/extension.rs`). 원격 목록에서 받을 때 그 버전이 설치된 버전보다 낮으면 `older_than_installed`로 거부한다(예전 서명 manifest 재전송 방지).
 - 업데이터의 일괄 업데이트(`/api/updates/*`)는 설치된 `ext-*`만 비교하고, 적용 뒤 `rescan()`으로 다시 읽는다(`src/ipc/updates/`).
-- 배포: 익스텐션 저장소에는 릴리즈 워크플로도 생성된 `manifest.json`도 없다(CI는 pytest·ruff만, `E:.github/workflows/ci.yml`). 코어 릴리즈 워크플로가 `saba-chan-extensions`의 `main`을 checkout하고 `versions.py manifest --extensions-repo`가 `ext-<id>.zip`을 만들어 같은 릴리즈 manifest에 싣는다(`D:.github/workflows/publish.yml` `publish` 작업, `D:scripts/versions.py`). 지금 저장소에는 `steamcmd`, `ue4_ini`, `xna` 세 개가 있다.
+- 배포: 익스텐션 저장소에는 릴리즈 워크플로도 생성된 `manifest.json`도 없다(CI는 pytest·ruff만, `E:.github/workflows/ci.yml`). 코어 릴리즈 워크플로가 `saba-chan-extensions`의 `main`을 checkout하고 `versions.py manifest --extensions-repo`가 `ext-<id>.zip`을 만들어 같은 릴리즈 manifest에 싣는다(`D:.github/workflows/publish.yml` `publish` 작업, `D:scripts/versions.py`). 지금 저장소에는 `steamcmd`, `ue4_ini`, `xna`, `desktop_pet` 넷이 있다.
 
 ### 3.5 의존성 처리
 
-- 익스텐션 간 의존성: 현재 세 manifest 모두 `dependencies: {}`다.
+- 익스텐션 간 의존성: 현재 네 manifest 모두 `dependencies: {}`다.
 - node: 데몬에는 Node 런타임 관리가 없다. 익스텐션 manifest에도 node 의존성을 선언할 방법이 없다.
 - Python 의존성: 익스텐션별 requirements 선언이 없다. 공용 venv를 쓴다.
 
@@ -317,7 +317,7 @@ slot 이름·창·종류는 `SLOT_TABLE` 한 곳에 있다. 종류: `inline`은 
 | `run(instanceId, 'start'\|'stop'\|'restart')` | 넘겼으면 `true`, 하지 않았으면 `false`. 메인 창은 앱 버튼과 같은 `useServerStore` 액션(`startServer`·`stopServer`·`restartServer`)을 거친다: 정지·재시작은 확인 창을 띄우고 `true`를 돌려주므로, 사용자가 취소해도 `true`다(결과는 `on`으로 받는다). 트레이 팝업과 바탕화면 오버레이는 `instanceStart`·`instanceStop`·`instanceRestart`를 바로 부르고 데몬 답으로 `true`/`false`를 정한다. 이 PC 데몬이라고 확인한 때만 정지·재시작을 보내고, 원격 데몬이거나 아직 모르면 `false`(그 창들은 원격 정지를 두 번 눌러 확정한다) |
 | `openApp(route?)` | 메인 창: 상단 페이지(`servers`·`discord`·`activity`·`settings`·`ext:<id>`)로 옮기거나, `server:<인스턴스 id>`(영문·숫자·`-`·`_` 128자까지)면 그 서버를 연다. 그 밖의 값은 무시한다. 트레이 팝업: 메인 창을 연다. 바탕화면 오버레이: 메인 창을 열고, `server:<id>`면 셸이 그 서버를 연다(`app:openServer`, 메인 창이 막 뜨는 중이면 준비된 뒤). 앱 탭이면 그 탭을 연다(`app:openRoute`) |
 | `on(type, fn)` | 데몬 이벤트(`/api/events`, 01 문서) 구독. `type` `*`는 전부. 끊는 함수를 돌려준다. 트레이 팝업은 이벤트를 받지 않아 부르지 않는다 |
-| `assetUrl(path)` | manifest `gui.assets` 폴더의 파일(그 폴더 기준 이름, `/`로 나눈다)을 이 창에서 그릴 수 있는 URL(`blob:`)로 준다(`Promise<string \| null>`). 처음 부를 때 이 PC 데몬에서 받고(`extensionGuiAsset`), 그 창이 닫히거나 익스텐션을 내릴 때까지 같은 URL을 준다. 데몬 요청은 셸이 토큰을 붙여 대행하므로 번들에 주소를 그대로 주지 않고 받은 파일의 URL을 준다. 형식은 이름의 확장자로 붙인다(webp·png·jpg·gif·svg·avif). 받지 못하면 `null`이고 다음에 다시 받는다 (0.1.15-0) |
+| `assetUrl(path)` | manifest `gui.assets` 폴더의 파일(그 폴더 기준 이름, `/`로 나눈다)을 이 창에서 그릴 수 있는 URL(`blob:`)로 준다(`Promise<string \| null>`). 처음 부를 때 이 PC 데몬에서 받고(`extensionGuiAsset`), 그 창이 닫히거나 익스텐션을 내릴 때까지 같은 URL을 준다. 데몬 요청은 셸이 토큰을 붙여 대행하므로 번들에 주소를 그대로 주지 않고 받은 파일의 URL을 준다. 형식은 이름의 확장자로 붙인다(webp·png·jpg·gif·svg·avif). 받지 못하면 `null`이고 다음에 다시 받는다 (0.1.14-beta.2) |
 
 - 번들은 여전히 `window.api`에 손이 닿는다(4.1 보안). `host`는 그것을 쓰지 않아도 되게 하는 정해진 통로이고, 막는 장치는 아니다.
 
@@ -344,7 +344,8 @@ slot 이름·창·종류는 `SLOT_TABLE` 한 곳에 있다. 종류: `inline`은 
 
 ### 5.4 ue4-ini (디렉토리명 `ue4_ini`)
 
-- `parse_option_settings(ini_path, section)`와 `write_option_settings(ini_path, props, section, quoted_keys, bare_keys)`를 제공하는 **순수 Python 라이브러리**다(`ue4_ini.py`). `section`(대괄호는 있어도 없어도 된다)을 넘기면 그 섹션의 `OptionSettings` 줄만 읽고 쓴다. 넘기지 않으면(0.1.11까지의 호출) 파일의 첫 `OptionSettings` 줄을 읽고 그 줄이 든 섹션에 쓰며, 그런 줄이 없으면 쓰지 않고 False를 돌려준다. 특정 게임의 섹션 기본값은 없다(ue4-ini 0.1.12, palworld는 `[module.dependencies] ext-ue4-ini = ">=0.1.12"`). hook도 권한(`permissions`)도 선언하지 않는다. 쓰기는 데몬 공용 `atomic_write`(02-modules §2.5)를 그대로 쓴다(`min_app_version` 0.1.12): 같은 폴더 임시 파일에 쓰고 바꾸되, 격리 실행처럼 권한을 옮기지 못하거나 임시 파일을 만들 수 없으면 원래 파일을 제자리에서 덮어쓴다. 값의 따옴표는 기본으로 값 모양(True/False·숫자·괄호 목록은 그대로, 나머지는 따옴표)으로 정하고, 모듈이 형식을 아는 키는 `quoted_keys`(숫자처럼 보여도 문자열)·`bare_keys`(열거형·빈 목록)로 덮어쓴다. 줄바꿈이 든 값은 OptionSettings 줄을 깨므로 쓰지 않고 False를 돌려준다.
+- `parse_option_settings(ini_path, section)`와 `write_option_settings(ini_path, props, section, quoted_keys, bare_keys)`를 제공하는 **순수 Python 라이브러리**다(`ue4_ini.py`). `section`(대괄호는 있어도 없어도 된다)을 넘기면 그 섹션의 `OptionSettings` 줄만 읽고 쓴다. 넘기지 않으면(0.1.11까지의 호출) 파일의 첫 `OptionSettings` 줄을 읽고 그 줄이 든 섹션에 쓰며, 그런 줄이 없으면 쓰지 않고 False를 돌려준다. 특정 게임의 섹션 기본값은 없다(ue4-ini 0.1.12, palworld는 `[module.dependencies] ext-ue4-ini = ">=0.1.12"`). hook도 권한(`permissions`)도 선언하지 않는다. 쓰기는 데몬 공용 `atomic_write`(02-modules §2.5)를 그대로 쓴다: 같은 폴더 임시 파일에 쓰고 바꾸되, 격리 실행처럼 권한을 옮기지 못하거나 임시 파일을 만들 수 없으면 원래 파일을 제자리에서 덮어쓴다. 값의 따옴표는 기본으로 값 모양(True/False·숫자·괄호 목록은 그대로, 나머지는 따옴표)으로 정하고, 모듈이 형식을 아는 키는 `quoted_keys`(숫자처럼 보여도 문자열)·`bare_keys`(열거형·빈 목록)로 덮어쓴다. 줄바꿈이 든 값은 OptionSettings 줄을 깨므로 쓰지 않고 False를 돌려준다. `min_app_version`은 0.1.14-beta.4다.
+
 - palworld가 `requires_extensions = ["steamcmd", "ue4-ini"]`로 요구한다(`M:palworld/module.toml`). INI를 건드릴 때 공용 `load_extension`으로 import하고, 없으면 그 함수만 `extension_required`를 돌려준다. disable하면 import 가드가 import를 막는다(2.1).
 
 ### 5.5 module → extension 참조 방식
