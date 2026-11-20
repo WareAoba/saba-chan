@@ -97,6 +97,7 @@
 | --- | --- |
 | 데몬·CLI·업데이터 (Rust) | `cargo test --workspace -q` |
 | GUI | `cd saba-chan-gui && npx vitest run --reporter=dot` |
+| 웹 콘솔 | `cd saba-chan-web && npx vitest run --reporter=dot`, `npx vite build` |
 | 모듈·플러그인과의 연동 | `tests/e2e_cross_component.rs` 관련 테스트 |
 
 ## Code Review Rules (saba-chan)

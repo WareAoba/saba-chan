@@ -90,6 +90,7 @@ function ModuleCheck({ api, name }: { api: WebApi; name: string }) {
 
 function GameModules({ api }: { api: WebApi }) {
     const { t, i18n } = useTranslation();
+    const { t: tg } = useTranslation('gui');
     const toast = useApp((s) => s.toast);
     const { modules, setModules } = useData();
     const [catalog, setCatalog] = useState<CatalogModule[] | CatalogFailure | null>(null);
@@ -113,7 +114,12 @@ function GameModules({ api }: { api: WebApi }) {
     const fetchOne = async (id: string) => {
         const res = await api.moduleInstallFromManifest(id);
         if (!failed(res)) return null;
-        return res?.error_code === 'module_busy' ? t('modules.busy') : errorText(t, res);
+        // 켜진 서버가 쓰거나 손으로 고친 모듈은 데몬이 바꾸지 않는다: 앱과 같은 문구로 보인다
+        if (res?.error_code === 'module_busy') return t('modules.busy');
+        if (res?.error_code === 'module_in_use') return tg('saba_storage.module_in_use');
+        if (res?.error_code === 'module_modified' || res?.error_code === 'module_unverified')
+            return tg(`saba_storage.version_error.${res.error_code.replace('module_', '')}`);
+        return errorText(t, res);
     };
     const refresh = async () => {
         const list = await api.moduleRefresh();
@@ -223,9 +229,13 @@ function GameModules({ api }: { api: WebApi }) {
     );
 }
 
-/** 플러그인 오류: 켜진 서버가 쓰는 플러그인은 바꿔 끼우지 않는다 */
-const pluginError = (t: TFn, res: ApiBody | null | undefined) =>
-    res?.error_code === 'in_use' ? t('plugins.in_use') : errorText(t, res);
+/** 플러그인 오류: 켜진 서버가 쓰거나 손으로 고친 플러그인은 데몬이 바꿔 끼우지 않는다 — 모듈처럼 앱과 같은 문구로 보인다 */
+const pluginError = (t: TFn, tg: TFn, res: ApiBody | null | undefined) => {
+    if (res?.error_code === 'in_use') return t('plugins.in_use');
+    if (res?.error_code === 'extension_modified' || res?.error_code === 'extension_unverified')
+        return tg(`saba_storage.version_error.${res.error_code.replace('extension_', '')}`);
+    return errorText(t, res);
+};
 
 /** 플러그인 아이콘 (icon.png 를 데몬이 base64 로 준다). 없거나 못 받으면 이름 첫 글자 */
 function PluginIcon({ api, ext }: { api: WebApi; ext: ExtensionListItem }) {
@@ -252,6 +262,7 @@ function PluginIcon({ api, ext }: { api: WebApi; ext: ExtensionListItem }) {
 
 function Plugins({ api }: { api: WebApi }) {
     const { t, i18n } = useTranslation();
+    const { t: tg } = useTranslation('gui');
     const toast = useApp((s) => s.toast);
     // false: 설치된 목록을 읽지 못했다 (빈 목록으로 보이면 지워진 것으로 오해한다)
     const [list, setList] = useState<ExtensionListItem[] | false | null>(null);
@@ -278,7 +289,7 @@ function Plugins({ api }: { api: WebApi }) {
         setBusy(id);
         const res = await fn();
         setBusy(null);
-        if (failed(res)) return toast(pluginError(t, res), 'error');
+        if (failed(res)) return toast(pluginError(t, tg, res), 'error');
         toast(okText, 'ok');
         load();
     };
@@ -287,7 +298,7 @@ function Plugins({ api }: { api: WebApi }) {
         let error: string | null = null;
         for (const id of ids) {
             const res = await api.extensionInstall(id);
-            if (failed(res) && !error) error = pluginError(t, res);
+            if (failed(res) && !error) error = pluginError(t, tg, res);
         }
         setBusy(null);
         toast(error || t('plugins.updated'), error ? 'error' : 'ok');

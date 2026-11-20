@@ -8,7 +8,8 @@
 //!   5. POST /result/:id        — 채팅 처리기(`crate::chat`) 결과 반환
 //!   6. POST /events            — 디스코드 알림 채널에 띄울 이벤트 (`relay_event`)
 //!
-//! 인증은 노드 토큰(`config.json` `node.token`, sbn_<id>.<secret>) HMAC 서명입니다.
+//! 인증은 노드 토큰(`config.json` `node.token`, sbn_<id>.<secret>)을 `Authorization: Bearer`로 싣는 것입니다.
+//! 요청마다 붙이는 `x-request-*` 서명 머리는 릴레이가 검증하지 않습니다.
 //!   7. `web_session` 명령    — 사바쨩 웹 세션이 열렸다: `crate::remote::link`가 릴레이 웹소켓에 붙는다
 //!      `remote_tunnel` 명령  — 같은 주인의 PC가 터널을 열었다: `crate::remote_daemon::tunnel::accept`가 원격 포트에 잇는다
 //!

@@ -271,7 +271,7 @@ async fn find_base_python(data_dir: &Path) -> Result<String> {
 async fn download_portable_python(data_dir: &Path) -> Result<PathBuf> {
     runtime::install_portable(&Preparing, data_dir, &|_, _| {}).await.with_context(|| {
         format!(
-            "포터블 Python을 준비하지 못했습니다. 인터넷 연결을 확인하거나, Python {}.{} 이상을 수동 설치해 주세요.",
+            "Could not prepare portable Python; check the internet connection or install Python {}.{}+",
             MIN_PYTHON_VERSION.0, MIN_PYTHON_VERSION.1
         )
     })

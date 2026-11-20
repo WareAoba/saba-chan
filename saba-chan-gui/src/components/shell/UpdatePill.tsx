@@ -53,6 +53,24 @@ const WAIT_KEYS: Record<string, string> = {
     runner_format: 'update_pill.wait_server_stop',
 };
 
+/**
+ * "지금 다시 시작" 실패 이유: 데몬이 바로 적용하다 실패하면 errors(문자열 또는 {component, error})만 준다.
+ * 이때 셸이 채운 error는 실제 이유가 아니므로 errors를 먼저 보인다
+ */
+export function restartError(res: ApiBody | null | undefined): string {
+    const errors: unknown[] = Array.isArray(res?.errors) ? res.errors : [];
+    const lines = errors
+        .map((e) =>
+            typeof e === 'string'
+                ? e
+                : e && typeof e === 'object'
+                  ? [(e as ApiBody).component, (e as ApiBody).error].filter(Boolean).join(': ')
+                  : '',
+        )
+        .filter(Boolean);
+    return lines.length > 0 ? lines.join('; ') : res?.error || '-';
+}
+
 /** 이 언어의 패치노트 → 줄 목록 (글로만 그린다: HTML로 해석하지 않는다) */
 export function patchNoteLines(notes: Record<string, string> | null | undefined, lang: string): string[] {
     if (!notes) return [];
@@ -262,7 +280,7 @@ export function UpdatePill() {
             res = { ok: false, error: (e as Error)?.message };
         }
         if (res?.ok === false) {
-            safeShowToast(t('update_pill.restart_failed', { error: res.error || '-' }), 'error', 6000);
+            safeShowToast(t('update_pill.restart_failed', { error: restartError(res) }), 'error', 6000);
             return;
         }
         // 데몬이 그대로다 (받을 것이 없거나 모듈·익스텐션만 적용했다): 내려갔다 오기를 기다리지 않고 지금 상태를 읽는다

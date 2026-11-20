@@ -803,7 +803,7 @@
     "update_done": "Traitement des mises à jour terminé",
     "restart_required_title": "Redémarrage requis",
     "module_busy": "Autre installation ou suppression en cours pour ce module. Réessayez ensuite.",
-    "module_in_use": "Un serveur en cours utilise ce module. Arrêtez-le avant de supprimer le module.",
+    "module_in_use": "Un serveur en cours utilise ce module. Arrêtez-le puis réessayez.",
     "extensions_enabled": "Extensions utilisées par ce module activées : {{ids}}",
     "extension_failed": "Échec de la préparation de l'extension {{id}} : {{error}}",
     "remove_failed": "Échec de la suppression du module : {{error}}",

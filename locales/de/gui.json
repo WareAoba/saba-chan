@@ -803,7 +803,7 @@
     "update_done": "Update-Verarbeitung abgeschlossen",
     "restart_required_title": "Neustart erforderlich",
     "module_busy": "Für dieses Modul läuft bereits eine Installation oder Entfernung. Nach dem Ende erneut versuchen.",
-    "module_in_use": "Ein laufender Server verwendet dieses Modul. Server stoppen, dann entfernen.",
+    "module_in_use": "Ein laufender Server verwendet dieses Modul. Server stoppen und erneut versuchen.",
     "extensions_enabled": "Vom Modul verwendete Erweiterungen aktiviert: {{ids}}",
     "extension_failed": "Einrichtung der Erweiterung {{id}} fehlgeschlagen: {{error}}",
     "remove_failed": "Modulentfernung fehlgeschlagen: {{error}}",

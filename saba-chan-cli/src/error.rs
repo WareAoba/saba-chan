@@ -293,6 +293,8 @@ pub fn api_hint(code: &str, body: &Value) -> Option<String> {
         "component_version_unsatisfied" => update_required(body, "").map(|_| t!("err.hint.agent_too_old")),
         "module_busy" => Some(t!("err.hint.module_busy")),
         "module_in_use" => Some(t!("err.hint.module_in_use")),
+        // 켜진 서버가 쓰는 익스텐션은 바꾸거나 지우지 않는다 (`extension install`·`remove`)
+        "in_use" => Some(t!("err.hint.extension_in_use")),
         "port_check_busy" => Some(t!("err.hint.port_check_busy")),
         // 폴더 옮기기 (`/api/system/paths/move`)
         c if c.starts_with("paths_") => crate::i18n::try_t(&format!("err.hint.{}", c)),
@@ -468,7 +470,7 @@ mod tests {
     #[test]
     fn busy_modules_and_malformed_command_keys_get_a_hint() {
         crate::i18n::init("en");
-        for code in ["module_busy", "module_in_use", "invalid_command", "not_supported", "schedule_changed"] {
+        for code in ["module_busy", "module_in_use", "in_use", "invalid_command", "not_supported", "schedule_changed"] {
             let hint = api_hint(code, &json!({})).unwrap_or_default();
             assert!(!hint.is_empty() && !hint.contains("err.hint"), "{}: {}", code, hint);
         }

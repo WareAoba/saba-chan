@@ -924,7 +924,7 @@ pub(crate) async fn restore(state: &IPCServer, id: &str, name: String) -> Outcom
 pub(crate) async fn restore_held(state: &IPCServer, id: &str, name: &str, _guard: &InstanceLock, safety: bool) -> Result<Value, Failure> {
     let dir = backups_dir(state, id).await?;
     // 백업은 만들 때의 절대 경로로 돌아간다: 서버 폴더를 옮긴 뒤면 옛 폴더(이제 다른 인스턴스 것일 수 있다)에 쓰게 되니 거절한다
-    let (mut roots, boundary) = {
+    let (mut roots, boundary, instance_dir, base, home) = {
         let supervisor = state.supervisor.read().await;
         let Some(instance) = supervisor.instance_store.get(id) else {
             return Err(Failure::instance_not_found(id));
@@ -932,7 +932,9 @@ pub(crate) async fn restore_held(state: &IPCServer, id: &str, name: &str, _guard
         let instance_dir = supervisor.instance_store.instance_dir(id);
         let module = supervisor.module_loader.get_module(&instance.module_name).ok();
         let metadata = module.as_ref().map(|m| &*m.metadata);
-        (vec![server_base(instance, &instance_dir, metadata), instance_dir.clone()], crate::module_paths::Boundary::for_instance(instance, &instance_dir, metadata))
+        let base = server_base(instance, &instance_dir, metadata);
+        let home = server_base(&crate::instance::ServerInstance { working_dir: None, ..instance.clone() }, &instance_dir, metadata);
+        (vec![base.clone(), instance_dir.clone()], crate::module_paths::Boundary::for_instance(instance, &instance_dir, metadata), instance_dir, base, home)
     };
     // 모듈이 지금 백업하는 경로(훅·설정이 가리키는 서버 폴더 밖 데이터)도 이 인스턴스의 것이다. 지워진 폴더도 되살린다
     match plan(state, id).await {
@@ -940,22 +942,28 @@ pub(crate) async fn restore_held(state: &IPCServer, id: &str, name: &str, _guard
         Ok(None) => {}
         Err(r) => return Err(r),
     }
+    let outside = || Failure::coded(StatusCode::BAD_REQUEST, "restore_outside", "This backup was made for a different server folder; it can no longer be restored here");
+    // 서버 폴더가 기본 자리(인스턴스 폴더 안)를 떠났으면, 그 자리를 가리키는 백업 경로는 지금 서버 폴더로 바꿔 되돌린다
+    let left_home = !saba_chan_updater_lib::same_path(&home, &instance_dir) && !saba_chan_updater_lib::same_path(&home, &base);
+    let moved = left_home.then(|| backup::Moved { from: home.clone(), to: base, instance: instance_dir });
     let targets = match backup::backed_up_paths(&dir, name) {
         Ok(t) => t,
         Err(e) => return Err(restore_failed(e)),
     };
-    if targets.iter().any(|t| boundary.resolve(t).is_none() || !crate::module_paths::is_inside(t, &roots)) {
-        return Err(Failure::coded(
-            StatusCode::BAD_REQUEST,
-            "restore_outside",
-            "This backup was made for a different server folder; it can no longer be restored here",
-        ));
+    let targets = match &moved {
+        Some(moved) => targets.iter().map(|t| moved.place(t)).collect::<anyhow::Result<Vec<_>>>().map_err(|_| outside())?,
+        None => targets,
+    };
+    // 바꾸지 못하고 옛 자리에 남은 경로는 켜지는 서버가 읽지 않는다: 성공으로 답하지 않는다
+    let stale = |t: &PathBuf| left_home && crate::module_paths::is_inside(t, std::slice::from_ref(&home));
+    if targets.iter().any(|t| stale(t) || boundary.resolve(t).is_none() || !crate::module_paths::is_inside(t, &roots)) {
+        return Err(outside());
     }
     // 지금 상태를 먼저 남긴다: 잘못 고른 백업도 되돌릴 수 있게. 지금 설정이 가리키지 않아도 복원이 덮을 경로는 함께 담는다
     // 복원할 백업은 이 안전 백업의 정리 대상에서 뺀다
     let safety = if safety { take_backup_locked(state, id, BackupKind::PreRestore, Some(name.to_string()), &targets).await?.map(|b| b.name) } else { None };
     let (dir, name) = (dir, name.to_string());
-    match tokio::task::spawn_blocking(move || backup::restore(&dir, &name)).await {
+    match tokio::task::spawn_blocking(move || backup::restore(&dir, &name, moved.as_ref())).await {
         // 되살리지 못한 링크는 수만 알린다 (경로는 데몬 로그에 남는다)
         Ok(Ok(done)) => {
             // 되돌린 게임 설정 파일(포트 등)을 다시 읽어 인스턴스 값과 맞춘다. 실패해도 복원은 끝난 것이다
@@ -1648,6 +1656,41 @@ else:
         assert_eq!(std::fs::read(server.join("world/level.dat")).unwrap(), b"someone else");
     }
 
+    /// 기본 자리(인스턴스 폴더 안)의 서버 폴더를 밖으로 옮긴 뒤에는, 옮기기 전 백업도 지금 서버 폴더로 되돌린다
+    #[tokio::test]
+    async fn a_backup_made_before_the_server_folder_left_the_instance_folder_restores_into_the_new_folder() {
+        let toml = format!("{NO_BACKUP}\n[install]\nmethod = \"manual\"\n\n[backup]\npaths = [\"world\"]\n");
+        let (state, id, tmp) = server_with(&toml, None).await;
+        let update = |change: fn(&mut crate::instance::ServerInstance, &FsPath, &FsPath), from: PathBuf, to: PathBuf| {
+            let state = state.clone();
+            let id = id.clone();
+            async move {
+                let mut sup = state.supervisor.write().await;
+                let mut inst = sup.instance_store.get(&id).cloned().unwrap();
+                change(&mut inst, &from, &to);
+                sup.instance_store.update(&id, inst).unwrap();
+            }
+        };
+        let instance_dir = state.supervisor.read().await.instance_store.instance_dir(&id);
+        let (old, moved) = (instance_dir.join("server"), tmp.path().join("moved"));
+        update(|inst, _, _| inst.working_dir = None, old.clone(), moved.clone()).await;
+        std::fs::create_dir_all(old.join("world")).unwrap();
+        std::fs::write(old.join("world/level.dat"), b"old").unwrap();
+        let made = take_backup(&state, &id, BackupKind::Manual).await.unwrap().unwrap().name;
+
+        std::fs::rename(&old, &moved).unwrap();
+        update(crate::storage::rebase_instance, old.clone(), moved.clone()).await;
+        std::fs::write(moved.join("world/level.dat"), b"progress").unwrap();
+
+        let done = crate::ipc::internal::into_internal(restore_backup(Path((id.clone(), made)), State(state.clone())).await).await;
+        assert_eq!(done.body["success"], true, "{:?}", done.body);
+        assert_eq!(std::fs::read(moved.join("world/level.dat")).unwrap(), b"old", "the server that starts must get the backup");
+        assert!(!old.exists(), "nothing is written to the folder the server left");
+        assert_eq!(done.body["restored"], json!([moved.join("world")]));
+        let safety = done.body["pre_restore_backup"].as_str().expect("a safety backup").to_string();
+        assert!(backup::backed_up_paths(&instance_dir.join("backups"), &safety).unwrap().contains(&moved.join("world")), "the overwritten world must be kept");
+    }
+
     /// 게임이 스스로 만든 자동 백업(스냅샷)을 `[backup] snapshots`의 `backup_snapshots()`가 알려 준다.
     /// 백업 목록에 함께 보이고, 사바쨩 백업으로 보관할 수 있고, 바로 복원할 수 있다
     const SNAPSHOT_HOOK: &str = r#"import json, os, sys
@@ -2084,7 +2127,7 @@ print(json.dumps({'success': True, 'snapshots': [{'id': 'startup/backup_1', 'cre
     #[cfg(unix)]
     fn backed_up_level(state_dir: &FsPath, name: &str, work: &FsPath) -> String {
         std::fs::write(work.join("world/level.dat"), b"after").unwrap();
-        backup::restore(state_dir, name).unwrap();
+        backup::restore(state_dir, name, None).unwrap();
         std::fs::read_to_string(work.join("world/level.dat")).unwrap()
     }
 

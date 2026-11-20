@@ -21,6 +21,9 @@ fn setup_e2e_modules_dir() -> std::path::PathBuf {
     MODULES_DIR.get_or_init(create_e2e_modules_dir).clone()
 }
 
+/// `needs-ext-module`이 요구하는 익스텐션 id
+const REQUIRED_EXTENSION: &str = "e2e_required_ext";
+
 fn create_e2e_modules_dir() -> std::path::PathBuf {
     let tmp = std::env::temp_dir().join(format!("saba-e2e-modules-{}", std::process::id()));
     fs::create_dir_all(&tmp).expect("create e2e modules dir");
@@ -117,9 +120,19 @@ type = "password"
     .expect("write rest module.toml");
     fs::write(rest_mod.join("lifecycle.py"), "# minimal\n").expect("write rest lifecycle.py");
 
+    // 익스텐션을 `[install] requires_extensions`로 요구하는 모듈
+    let needs_ext = tmp.join("needs-ext-module");
+    fs::create_dir_all(&needs_ext).expect("create needs-ext-module dir");
+    fs::write(
+        needs_ext.join("module.toml"),
+        format!("[module]\nschema_version = 1\nname = \"needs-ext-module\"\nversion = \"0.0.1\"\nentry = \"lifecycle.py\"\n\n[install]\nrequires_extensions = [\"{REQUIRED_EXTENSION}\"]\n"),
+    )
+    .expect("write needs-ext module.toml");
+    fs::write(needs_ext.join("lifecycle.py"), "# minimal\n").expect("write needs-ext lifecycle.py");
+
     // edition 2024: 환경 변수 쓰기는 unsafe다. 테스트 준비에서만 쓴다
     unsafe { std::env::set_var("SABA_MODULES_PATH", tmp.to_str().unwrap()) };
-    for name in ["e2e-mock", "test-module", "rest-module"] {
+    for name in ["e2e-mock", "test-module", "rest-module", "needs-ext-module"] {
         saba_core::sandbox::set_consent(saba_core::sandbox::Consent::Unisolated, &format!("module-{name}"), true)
             .expect("consent to the copied test module");
     }
@@ -950,6 +963,46 @@ if __name__ == "__main__":
     assert_eq!((seen["data"]["instanceId"].as_str(), seen["data"]["ok"].as_bool()), (Some("probe-1"), Some(true)));
     assert!(seen["id"].is_u64() && seen["data"]["at"].is_u64(), "{}", seen);
 
+    task.abort();
+    cleanup_dirs(&m_dir, &i_dir, &d_dir);
+}
+
+/// 설치 API(`POST /api/extensions/{id}/install`): 모듈이 `requires_extensions`로 요구하는 익스텐션은
+/// 그 모듈의 서버가 켜져 있는 동안 409 `in_use`(`related`에 서버 이름)로 바꾸지 않고, 꺼지면 설치 단계로 넘어간다
+#[tokio::test]
+async fn extension_install_api_refuses_to_replace_an_extension_a_running_server_requires() {
+    let _extension_list = EXTENSION_LIST.lock().await;
+    let (base_url, sup, task, m_dir, i_dir, d_dir) = boot_e2e_ipc().await;
+    let client = saba_chan_updater_lib::tls::http_client_builder().build().unwrap();
+
+    let ext_dir = saba_chan_updater_lib::constants::resolve_extensions_dir().join(REQUIRED_EXTENSION);
+    fs::create_dir_all(&ext_dir).unwrap();
+    let manifest = ext_dir.join("manifest.json");
+    fs::write(&manifest, json!({ "schema_version": 1, "id": REQUIRED_EXTENSION, "name": "Required", "version": "0.0.1" }).to_string()).unwrap();
+    let key = format!("ext-{REQUIRED_EXTENSION}");
+    saba_chan_updater_lib::integrity::record_install(&key, &[manifest]).unwrap();
+    saba_chan_updater_lib::integrity::set_official(&key, true).unwrap();
+    client.post(format!("{}/api/extensions/rescan", base_url)).send().await.unwrap();
+
+    let instance = saba_core::instance::ServerInstance::new("needs-ext", "needs-ext-module");
+    let server = instance.id.clone();
+    sup.write().await.instance_store.add(instance).unwrap();
+    let install = || async {
+        let resp = client.post(format!("{}/api/extensions/{}/install", base_url, REQUIRED_EXTENSION)).send().await.unwrap();
+        (resp.status(), resp.json::<Value>().await.unwrap())
+    };
+
+    sup.read().await.tracker.track(&server, std::process::id());
+    let (status, body) = install().await;
+    assert_eq!((status, body["error_code"].as_str(), &body["related"]), (reqwest::StatusCode::CONFLICT, Some("in_use"), &json!(["needs-ext"])), "{body}");
+
+    // 꺼진 뒤에는 막지 않는다: 시험 익스텐션은 카탈로그에 없으니 받기 단계에서 끝난다
+    let _ = sup.read().await.tracker.untrack(&server);
+    let (status, body) = install().await;
+    assert_ne!(status, reqwest::StatusCode::CONFLICT, "{body}");
+    assert!(matches!(body["error_code"].as_str(), Some("not_in_manifest" | "manifest_fetch_failed")), "{body}");
+
+    let _ = fs::remove_dir_all(&ext_dir);
     task.abort();
     cleanup_dirs(&m_dir, &i_dir, &d_dir);
 }

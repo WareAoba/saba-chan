@@ -79,6 +79,26 @@ async fn install_from(
     };
     let refused = |(status, Json(body)): (StatusCode, Json<serde_json::Value>)| super::Failure::new(status, body);
 
+    // 이미 설치된 것을 바꾸는 것은 버전 고르기·모듈 설치와 같은 규칙: 켜진 서버가 쓰거나 손으로 고친 익스텐션은 바꾸지 않는다
+    let replacing = state.extension_manager.read().await.discovered(&ext_id).is_some();
+    let component = saba_chan_updater_lib::Component::Extension(ext_id.clone());
+    let in_use = |servers: Vec<String>| {
+        let error = format!("Extension '{}' is used by a running or starting server; stop it first", ext_id);
+        let mut refusal = super::Failure::coded(StatusCode::CONFLICT, "in_use", error);
+        refusal.body["related"] = json!(servers);
+        refusal
+    };
+    if replacing {
+        let servers = crate::ipc::updates::servers_using(&state.update_state, &component).await;
+        if !servers.is_empty() {
+            return Err(in_use(servers));
+        }
+        let key = component.manifest_key();
+        if let Some(code) = crate::ipc::updates::hand_modified(&key) {
+            return Err(super::Failure::coded(StatusCode::CONFLICT, &code, format!("{} was changed by hand; it is not replaced", key)));
+        }
+    }
+
     // 받아 검사한 패키지: (id, 폴더, 공식 설치인가). 실패하면 모두 지운다
     let mut staged: Vec<(String, std::path::PathBuf, bool)> = Vec::new();
     let discard = |staged: &[(String, std::path::PathBuf, bool)]| {
@@ -113,6 +133,19 @@ async fn install_from(
         staged.push((id, dir, official));
     }
 
+    // 바꿀 때까지 서버 시작을 막고 다시 본다 (받는 사이 켜졌을 수 있다). 시작·설치 중이면 그 서버가 쓰는 중이다
+    let _starts = if replacing {
+        let gate = state.supervisor.read().await.addon_gate();
+        let starts = gate.try_hold_starts();
+        let servers = crate::ipc::updates::servers_using(&state.update_state, &component).await;
+        if starts.is_none() || !servers.is_empty() {
+            discard(&staged);
+            return Err(in_use(servers));
+        }
+        starts
+    } else {
+        None
+    };
     let running = instance_ext_data(state, true).await;
     let refs: Vec<(&str, &std::collections::HashMap<String, serde_json::Value>)> =
         running.iter().map(|(n, d)| (n.as_str(), d)).collect();
@@ -440,5 +473,48 @@ mod tests {
             .filter(|name| name == "app" || name.starts_with(".staging"))
             .collect();
         assert!(left.is_empty(), "no package folders are left behind: {left:?}");
+    }
+
+    /// 이미 설치된 익스텐션은 켜진 서버가 모듈 요구로 쓰거나 손으로 고쳤으면 바꾸지 않는다 (버전 고르기·모듈 설치와 같은 판정)
+    #[tokio::test]
+    async fn an_installed_extension_is_not_replaced_while_a_running_server_needs_it_or_after_hand_edits() {
+        let id = format!("swap{}", std::process::id());
+        let key = format!("{}{id}", saba_chan_updater_lib::relay::EXTENSION_PREFIX);
+        let extensions = crate::plugin::resolve_extensions_dir();
+        let dir = extensions.join(&id);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("manifest.json"), json!({ "id": id, "name": "Swap", "version": "1.0.0" }).to_string()).unwrap();
+        saba_chan_updater_lib::integrity::record_install(&key, &[dir.join("manifest.json")]).unwrap();
+        saba_chan_updater_lib::integrity::set_official(&key, true).unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        let module = tmp.path().join("modules/game");
+        std::fs::create_dir_all(&module).unwrap();
+        std::fs::write(module.join("lifecycle.py"), "").unwrap();
+        let toml = format!("[module]\nschema_version = 1\nname = \"game\"\nversion = \"1.0.0\"\nentry = \"lifecycle.py\"\n\n[install]\nrequires_extensions = [\"{id}\"]\n");
+        std::fs::write(module.join("module.toml"), toml).unwrap();
+        let mut sup = crate::supervisor::Supervisor::new_with_instances_dir(tmp.path().join("modules").to_str().unwrap(), tmp.path().join("instances").to_str().unwrap());
+        sup.initialize().await.unwrap();
+        let mut mgr = ExtensionManager::new_isolated(extensions.to_str().unwrap());
+        mgr.discover().unwrap();
+        sup.extension_manager = Arc::new(RwLock::new(mgr));
+        let inst = crate::instance::ServerInstance::new("srv", "game");
+        let server = inst.id.clone();
+        sup.instance_store.add(inst).unwrap();
+        let state = IPCServer::new(Arc::new(RwLock::new(sup)), "127.0.0.1:0", crate::daemon_log::DaemonLogBuffer::new());
+        let remote: anyhow::Result<Vec<crate::extension::RemoteExtensionInfo>> = Ok(serde_json::from_value(json!([
+            { "id": id, "name": "Swap", "version": "1.1.0", "download_url": "http://127.0.0.1:9/swap.zip", "sha256": "00" },
+        ]))
+        .unwrap());
+
+        state.supervisor.read().await.tracker.track(&server, std::process::id());
+        let refused = install_from(&state, &id, None, None, &remote).await.unwrap_err();
+        assert_eq!((refused.status, refused.body["error_code"].as_str(), &refused.body["related"]), (StatusCode::CONFLICT, Some("in_use"), &json!(["srv"])));
+
+        let _ = state.supervisor.read().await.tracker.untrack(&server);
+        std::fs::write(dir.join("my-notes.txt"), "mine").unwrap();
+        let refused = install_from(&state, &id, None, None, &remote).await.unwrap_err();
+        assert_eq!((refused.status, refused.body["error_code"].as_str()), (StatusCode::CONFLICT, Some("extension_modified")));
+        assert!(dir.join("my-notes.txt").exists());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
