@@ -6,13 +6,12 @@
 ## 빠르게
 
 ```sh
-saba-chan-cli                      # 터미널에서 인자 없이 → 대화형 셸
+saba-chan-cli                      # 터미널에서 인자 없이 → 전체 화면 메뉴 (SABA_NO_TUI=1이면 대화형 셸)
 saba-chan-cli status               # 데몬·서버·디스코드·업데이트 한눈에
 saba-chan-cli server add           # 새 서버 (필요한 것을 물어봐요)
 saba-chan-cli start pal            # 이름은 일부만 적어도 돼요
 saba-chan-cli console pal          # 콘솔 보면서 입력 (:q 나가기, 서버는 계속 돌아요)
 saba-chan-cli run pal kick Steve   # 게임 명령 (모듈이 정의한 명령, 별명도 됨)
-saba-chan-cli chat 팰월드 시작      # 디스코드와 같은 채팅 처리
 ```
 
 데몬이 꺼져 있으면 켤지 물어봅니다. CLI를 닫아도 데몬과 서버는 계속 돕니다.
@@ -30,12 +29,14 @@ saba-chan-cli chat 팰월드 시작      # 디스코드와 같은 채팅 처리
 | `backup`, `schedule` | 백업 만들기·복원·지우기, 예약 작업 |
 | `remote` | 원격 데몬: 이 PC의 원격 연결, 같은 계정의 다른 PC와 짝 맺기·잊기 (아무 명령에나 `--daemon <이름>`) |
 | `sandbox` | 확인되지 않은 구성요소를 격리 없이 돌리는 동의 주기·보기·취소 |
-| `chat`, `audit`, `events`, `monitor` | 디스코드와 같은 채팅 처리, 활동 기록, 데몬 이벤트 따라가기, PC·서버별 사용량 |
-| `update` | 사바쨩 업데이트 확인·받기·적용·마지막 결과·무결성 확인·설정 |
-| `config` | 앱 설정 보기·바꾸기 (`cli.키`는 CLI 전용 칸) |
+| `audit`, `events`, `monitor`, `notice` | 활동 기록, 데몬 이벤트 따라가기, PC·서버별 사용량, 알림함 |
+| `update` | 사바쨩 업데이트 확인·받기·적용·마지막 결과·무결성 확인·고치기·되돌리기·모듈/익스텐션 버전 고정·설정 |
+| `config` | 앱 설정 보기·바꾸기 (`cli.키`는 CLI 전용 칸), 폴더 위치·옮기기, 자동 시작, 공개 주소 |
 | `daemon` | 데몬 켜기·끄기·다시 켜기·로그·붙은 앱 창(`clients`) |
 | `do` | 데몬 액션을 id로, 여러 단계는 `--steps`, 뒤에서 이어 가는 실행은 `--run` |
-| `shell`, `completions` | 대화형 셸, 셸 자동 완성 스크립트 (`completions --install`은 쓰는 셸이 읽는 자리에 설치) |
+| `tui`, `gui`, `shell`, `completions` | 전체 화면 메뉴, 앱으로 전환, 대화형 셸, 셸 자동 완성 스크립트 (`completions --install`은 쓰는 셸이 읽는 자리에 설치) |
+| `agent`, `mcp` | 이 PC의 AI 에이전트(Claude Code·Codex)에 로컬 MCP 등록·해제, MCP 서버 |
+| `install`, `uninstall` | 창 없이 설치·제거 |
 
 `saba-chan-cli <명령> --help`로 자세한 사용법을 볼 수 있습니다.
 
@@ -66,9 +67,11 @@ saba-chan-cli chat 팰월드 시작      # 디스코드와 같은 채팅 처리
 
 익스텐션 manifest의 `cli.slots`로 화면에 내용을 끼울 수 있습니다 (데이터만, 코드 실행 없음).
 
-- `InstanceList.badge` `{text, condition?}`: 서버 목록 이름 옆 표시. `condition`은 `instance.ext_data.<키>`.
-- `InstanceDetail.status` `[{label, value_from}]`: 서버 정보에 줄 추가.
-- `CreateInstance.options` `[{field, type, label, default?}]`: 서버를 추가할 때 묻고 `extension_data`에 저장.
+- `ServerCard.badge` `{text, condition?}`: 서버 목록 이름 옆 표시. `condition`은 `instance.ext_data.<키>`.
+- `ServerDetail.status` `[{label, value_from}]`: 서버 정보에 줄 추가.
+- `AddServer.options` `[{field, type, label, default?}]`: 서버를 추가할 때 묻고 `extension_data`에 저장.
+
+조건 판정과 값 찾기는 데몬이 하고, CLI는 `GET /api/servers`·`GET /api/extensions`의 `slots`를 그대로 보인다. 옛 이름(`InstanceList.badge`·`InstanceDetail.status`·`CreateInstance.options`)도 별칭으로 받는다.
 
 ## 빌드
 

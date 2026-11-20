@@ -14,7 +14,7 @@
 
 결과는 `<루트>/report-<시각>.md`, 시험마다 데몬 로그·콘솔·CLI 출력·GUI 스크린샷은 `<루트>/run-<시각>/<시험>/artifacts/`에 남는다. 루트는 `SABA_E2E_ROOT`(PC 기본 `C:\SabaE2E`, 리눅스 기본 `/tmp/saba-e2e`).
 
-형제 저장소 위치는 `SABA_E2E_MODULES_REPO`, `SABA_E2E_EXTENSIONS_REPO`, `SABA_E2E_SERVER_CHAN_REPO`(기본: 이 저장소 옆 폴더), 바이너리 위치는 `SABA_E2E_BIN_DIR`(기본 `target/debug`)로 바꾼다.
+형제 저장소 위치는 `SABA_E2E_MODULES_REPO`, `SABA_E2E_EXTENSIONS_REPO`, `SABA_E2E_SERVER_CHAN_REPO`(기본: 이 저장소 옆 폴더), 바이너리 위치는 `SABA_E2E_BIN_DIR`(기본 `target/debug`), 업데이트 시험용 mock 빌드는 `SABA_E2E_MOCK_CORE`·`SABA_E2E_MOCK_UPDATER`, 배포 빌드 GUI는 `SABA_E2E_GUI_RELEASE_EXE`로 바꾼다.
 
 ## 격리
 
@@ -33,6 +33,8 @@ Linux/macOS의 저장소 복사본 시험은 복사 후 각 구성요소의 현�
 | `test_daemon_boot.py` | L1 | 인자·인증·Host 검사·단일 인스턴스·종료·재기동 |
 | `test_server_run.py` | L1 | 가져오기, EULA, 시작·명령·정지, 크래시·자동 재시작·포기, 멈춤·강제 정지, 동시 실행·포트 충돌, 데몬 재시작 뒤 재연결, 콘솔 폭주 |
 | `test_backup_schedule.py` | L1 | 백업·복원·보관, 예약(공지·백업·재시작 예고) |
+| `test_events.py` | L1 | 이벤트 SSE(`/api/events`): 끊긴 뒤 이어 받기, 데몬 종료 때 스트림 끝남 |
+| `test_agreements.py` | L1·L2 | 모듈 약관 동의: 데몬이 대신 동의하지 않고, 디스코드·챗봇에서는 안내만 |
 | `test_cli.py` | L1c | 같은 흐름을 CLI로, 종료 코드 계약 |
 | `test_relay_agent.py` | L2a | 가짜 relay: 서명·heartbeat·명령 왕복·알림 이벤트·버전 하한·페어링·비밀값/경로 미노출 |
 | `test_relay_real.py` | L2b | 실제 relay-server(임시 PostgreSQL): 페어링·heartbeat·명령 왕복·/events·토큰 교체 |
