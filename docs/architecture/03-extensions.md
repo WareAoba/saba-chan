@@ -1,8 +1,8 @@
 # 03. 익스텐션(= 플러그인) 시스템 — 코드 기준 분석
 
-> 기준: saba-chan 저장소 (daemon, GUI, CLI) + saba-chan-extensions 저장소 (steamcmd, ue4_ini).
+> 기준: saba-chan 저장소 (daemon, GUI, CLI) + saba-chan-extensions 저장소 (steamcmd, ue4_ini, xna, desktop_pet).
 > 모든 내용은 코드에서 직접 추출했다. README와 그 밖의 문서는 참고하지 않았다(오래된 문서로 간주).
-> 경로 약어: `ext/` = `saba-chan/src/extension/` (`mod.rs` 매니저 구조체·목록, `manifest.rs` manifest 타입·검사·`FIRED_HOOKS`, `error.rs`, `discovery.rs` 탐색·마운트, `enable.rs` 켜기·끄기·지우기, `hooks.rs` hook·명령·slot·`HookPlan`, `remote.rs` 원격 목록·패키지 설치, `state.rs` 번역·설정 저장), `plg/` = `saba-chan/src/plugin/mod.rs`, `EXT/` = `saba-chan-extensions/`.
+> 경로 약어: `ext/` = `saba-chan/src/extension/` (`mod.rs` 매니저 구조체·목록, `manifest.rs` manifest 타입·검사·`FIRED_HOOKS`, `error.rs`, `discovery.rs` 탐색·마운트, `enable.rs` 켜기·끄기·지우기, `hooks.rs` hook·명령·slot·`HookPlan`, `event_hooks.rs` 이벤트 hook 디스패처, `remote.rs` 원격 목록·패키지 설치, `state.rs` 번역·설정 저장), `plg/` = `saba-chan/src/plugin/mod.rs`, `EXT/` = `saba-chan-extensions/`.
 
 ---
 
@@ -114,7 +114,7 @@
   - `PYTHONPATH = <import 가드 폴더>:<extensions_dir의 부모>:<data_dir>/python-shared:<기존 PYTHONPATH>`. extensions 디렉토리의 **부모**를 넣으므로 `import extensions.steamcmd`가 동작한다. `sitecustomize.py`는 표준 라이브러리 경로를 먼저 두고, 활성 익스텐션 외의 `extensions.<id>` import를 거부한다.
   - `SABA_ENABLED_EXTENSIONS=<콤마 목록>`: `config.json`의 `extensions.enabled`에서 읽고, 목록이 없으면 빈 값으로 항상 설정한다(`plg/`).
   - import 가드: 데이터 폴더의 `python-guard/sitecustomize.py`(`plg/`, `src/plugin/sitecustomize.py`)가 `SABA_ENABLED_EXTENSIONS`에 없는 `extensions.<이름>` import를 `ModuleNotFoundError`로 막는다(`-`와 `_`는 같게 본다).
-  - 공용 모듈 `i18n.py`, `daemon_rcon.py`를 modules 디렉토리에 내장본과 같게 맞춘다(`plg/`).
+  - 공용 파일(`i18n.py`, `daemon_rcon.py`, `common_locales.json`, `saba_audit.py`)을 `<data_dir>/python-shared`에 내장본과 같게 맞춘다(`plg/` `ensure_shared_modules`).
 - **확인되지 않은 익스텐션**: 플랫폼과 관계없이 모듈과 같은 거부·동의 정책을 따른다(02 문서 §2.1). Windows는 AppContainer를, 리눅스는 bubblewrap을 쓴다. `bwrap`을 쓸 수 없는 리눅스와 macOS는 격리할 수 없으므로 현재 파일 지문에 대한 동의가 없으면 `sandbox_unavailable`·`isolation_unsupported`와 `component`를 돌려준다. 모듈이 import하는 익스텐션도 각각 자기 동의가 있어야 격리 없이 실행할 수 있다. 모듈의 동의로 다른 익스텐션까지 승인하지 않는다.
   - hook은 확인된 모듈의 인스턴스에도 불리므로 config의 `instance_dir`·`working_dir`·`install_dir`은 읽기만 준다. 쓸 수 있는 곳은 그 실행의 뿌리 안 전용 폴더 `<data_dir>/sandbox-data/<꼬리표>/extension-data/<이름>`이고(공용 `extension-data/<이름>`이 아니다, 02 §2.1) 경로는 환경 변수 `SABA_EXTENSION_DATA_DIR`로 받는다. 모듈이 익스텐션을 import해 쓸 때(SteamCMD 등)는 `SABA_EXTENSION_DATA_ROOT/<id>`에 쓴다(격리된 모듈은 그 모듈만의 뿌리를 받는다, 02 §2.1). 이 경로는 공용 도우미 `daemon_rcon.extension_data_dir(<id>)`(saba-core 0.1.14-beta.2, 02 §2.5)로 얻는다: steamcmd의 포터블 SteamCMD 폴더와 xna의 받은 파일 보관 폴더가 쓴다. 인스턴스 폴더에 써야 하는 익스텐션은 비격리 동의가 있어야 한다. 데몬의 비밀 파일과 `backups/`는 상속을 끊어 두어 이 읽기 권한이 닿지 않는다(02 §2.1).
   - `server.pre_start`가 돌려준 `log_follower.program`도 모듈의 실행 대상과 같이 검사한다(인스턴스 폴더·사용자가 정한 서버 폴더 안, 셸 거부, `env_vars`의 `PATH`·`PATHEXT` 버림). 막히면 시작 결과가 `launch_outside_instance`다.
@@ -139,16 +139,16 @@
 | hook | 발화 위치 | 트리거 / 경로 | 동기성 · 타임아웃 | context 키 | 결과 사용 |
 |---|---|---|---|---|---|
 | `daemon.startup` | `src/main.rs` | daemon 기동 직후 | `tokio::spawn` 백그라운드, 120s | `{}` (+extension_config) | 결과마다 `success`(기본 true), `message`, `error` → `ExtensionInitTracker`(`/api/extensions/init-status`) |
-| `daemon.startup` (재발화) | `handlers/extension.rs` | `POST /api/extensions/:id/enable` 성공 후 | spawn, 120s | `{}` | `run_hook_to`로 **방금 켠 익스텐션에만** 보낸다. |
+| `daemon.startup` (재발화) | `service/extensions.rs` | `POST /api/extensions/:id/enable` 성공 후 | spawn, 120s | `{}` | `run_hook_to`로 **방금 켠 익스텐션에만** 보낸다. |
 | `daemon.shutdown` | `src/main.rs` | 종료 경로(Ctrl-C/SIGTERM, 종료 API, 워치독) | 동기(await), hook 120s, 전체 30s 상한 | `instances[] {id,name,module,extension_data,instance_dir}` | `handled` 여부를 로그로만 남긴다 |
 | `server.pre_start` | `supervisor/start.rs` `run_pre_start_hook` (non-managed start, managed start. 문맥은 `plan_start`) | 서버 시작, 시작 전 검사(이미 켜짐·모듈 의존성·필수 익스텐션·포트 충돌)를 통과한 뒤 | 동기, 120s | 공통 + `config`(시작 설정, 비밀 값은 `***`), `managed`(bool). 두 시작 방식이 같은 키를 받는다 | 결과는 `server.stop`·`server.status`와 같은 규칙(`extension::hook_answer`)으로 읽는다: `handled:true`인 답이 먼저, 없으면 익스텐션의 실패(호출 실패·예외·`success:false`)를 답으로 쓰고 데몬이 대신 띄우지 않는다. `handled:true` + `success!=true` → 에러를 반환한다. `success:true`이면 `log_follower{program,args,working_dir,description,interactive,strip_prefix,env_vars}`로 `ManagedProcess::spawn`(interactive) 또는 `spawn_log_follower`를 실행한다. 그 결과를 그대로 반환하고 기본 시작 로직을 건너뛴다. |
 | `server.stop` | `supervisor/stop.rs` `stop_server_inner` | `stop_server` 진입 직후, 정지 전 | 동기, 120s | 공통 | `handled:true`이면 cooldown을 기록하고 그대로 반환한다. 익스텐션이 Err이거나 `success:false`이면 실패를 반환한다(`extension::hook_answer`) |
 | `server.status` | `supervisor/status.rs` `get_server_status` | `GET /api/instance/:id/status` | 동기, 120s | 공통 | `handled:true`이면 그대로 반환한다. 맡은 답이 없고 익스텐션이 Err이거나 `success:false`이면 그 실패를 상태 답으로 준다(`extension::hook_answer`) |
-| `server.list_enrich` | `handlers/server.rs` `enrich_results` | `GET /api/servers`, `extension_data`가 비어 있지 않고 캐시에 답이 없는 인스턴스마다 **함께** 실행(한 번에 4개까지, `LIST_ENRICH_AT_ONCE`) | 동기, **10s**, 결과를 30s TTL 캐시(`ipc/mod.rs`) | `instance_id, instance_name, module, extension_data, instance_dir` | `handled`와 무관하게 첫 번째 Ok를 캐시한다(실패는 캐시하지 않음). `handled:true`이면 `status`와 `extension_status[<res.extension_id or "default">]`를 채운다. `handled:true` 결과의 `status_line`(짧은 한 줄, 경로·비밀값 금지)은 디스코드 `/사바쨩 상태`에 나간다(05 §4 heartbeat `statusLine`) |
+| `server.list_enrich` | `service/servers.rs` `enrich_results` | `GET /api/servers`, `extension_data`가 비어 있지 않고 캐시에 답이 없는 인스턴스마다 **함께** 실행(한 번에 4개까지, `LIST_ENRICH_AT_ONCE`) | 동기, **10s**, 결과를 30s TTL 캐시(`ipc/mod.rs`) | `instance_id, instance_name, module, extension_data, instance_dir` | `handled`와 무관하게 첫 번째 Ok를 캐시한다(실패는 캐시하지 않음). `handled:true`이면 `status`와 `extension_status[<res.extension_id or "default">]`를 채운다. `handled:true` 결과의 `status_line`(짧은 한 줄, 경로·비밀값 금지)은 디스코드 `/사바쨩 상태`에 나간다(05 §4 heartbeat `statusLine`) |
 | `server.post_create` | `service/instance/create.rs` `create` | 인스턴스 생성(`POST /api/instances`), `instance_store.add` 성공 직후 | `tokio::spawn` 백그라운드, 120s. 결과를 기다리지 않고 바로 네이티브 프로비저닝으로 넘어간다 | 공통 + `migration` | 결과를 버린다. 프로비저닝과 동시에 돈다 |
-| `server.pre_delete` | `handlers/instance/delete.rs` `pre_delete_hook` | 인스턴스 삭제 | 동기, 120s | 공통 | `handled`이면 2초 대기한다(파일 잠금 해제용) |
+| `server.pre_delete` | `service/instance/mod.rs` `pre_delete_hook` | 인스턴스 삭제 | 동기, 120s | 공통 | `handled`이면 2초 대기한다(파일 잠금 해제용) |
 | `server.settings_changed` | `service/instance/settings.rs` `update` | 인스턴스 설정 PATCH, `extension_data`가 비어 있지 않을 때 | 동기, 120s | 공통 + `module_extensions`(module.toml [extensions.*] 전체), `settings`(바꾼 설정, 비밀 값은 `***`) | 결과를 버린다(`_results`) |
-| `server.check_update` | `handlers/instance/update.rs` `server_update_status` | `GET /api/instance/:id/check-update`, 그리고 `/api/instance/:id/start`로 새로 켠 뒤 뒤에서(`update_available:true`면 `instance.update_notice {kind:"server"}`, `server.rs` `announce_updates`) | 동기(시작 뒤에는 spawn), 120s | 공통 + `install_dir, install, branch, app_id` | 설치 방식 익스텐션이 설치한 인스턴스에만 부른다(아니면 hook 없이 `{update_available:false, reason:"update_unsupported"}`, 모듈을 읽지 못했으면 판단하지 않고 아래로). 첫 번째 Ok를 그대로 응답한다. 모두 실패하면 오류 응답에 `update_available:false, reason:"check_failed"`를 붙인다(`update_status_from_hooks`). hook이 없으면 `{update_available:false, reason:"no_hook_handled"}`. `install`은 그 모듈 module.toml `[install]` 표 그대로(`method`, `app_id`, `anonymous`, `beta`, `download_size` 등, 없는 키는 빠진다)이고 인스턴스에 복사해 둔 값이 아니다: 모듈이 앱 ID를 바꾸면 기존 서버의 확인도 따라간다. `branch`는 사용자가 고른 브랜치(`extension_data["<방식>_beta"]`), 없으면 `[install].beta`, 그것도 없으면 null. `app_id`는 `install.app_id`와 같은 값으로, 0.1.14-beta.1까지의 익스텐션이 읽는다(`instance/update.rs` `check_update_context`, saba-core 0.1.14-beta.2). 결과에서 데몬과 화면이 읽는 키(모두 선택): `update_available`, `local_buildid`·`remote_buildid`(설치된 빌드와 새 빌드의 번호), `local_build_time`·`remote_build_time`(그 빌드를 받은 때·올라온 때, 유닉스 초), `reason`·`error`. 데몬은 `local_buildid`·`local_build_time`을 인스턴스 `server_build`에 적어 두고(01 인스턴스 필드), GUI는 새 버전 안내 줄과 정보 탭의 새 버전 줄에 `remote_*`를 보인다 |
+| `server.check_update` | `service/server_update/apply.rs` `server_update_status` | `GET /api/instance/:id/check-update`, 그리고 `/api/instance/:id/start`로 새로 켠 뒤 뒤에서(`update_available:true`면 `instance.update_notice {kind:"server"}`, `server.rs` `announce_updates`) | 동기(시작 뒤에는 spawn), 120s | 공통 + `install_dir, install, branch, app_id` | 설치 방식 익스텐션이 설치한 인스턴스에만 부른다(아니면 hook 없이 `{update_available:false, reason:"update_unsupported"}`, 모듈을 읽지 못했으면 판단하지 않고 아래로). 첫 번째 Ok를 그대로 응답한다. 모두 실패하면 오류 응답에 `update_available:false, reason:"check_failed"`를 붙인다(`update_status_from_hooks`). hook이 없으면 `{update_available:false, reason:"no_hook_handled"}`. `install`은 그 모듈 module.toml `[install]` 표 그대로(`method`, `app_id`, `anonymous`, `beta`, `download_size` 등, 없는 키는 빠진다)이고 인스턴스에 복사해 둔 값이 아니다: 모듈이 앱 ID를 바꾸면 기존 서버의 확인도 따라간다. `branch`는 사용자가 고른 브랜치(`extension_data["<방식>_beta"]`), 없으면 `[install].beta`, 그것도 없으면 null. `app_id`는 `install.app_id`와 같은 값으로, 0.1.14-beta.1까지의 익스텐션이 읽는다(`service/server_update/apply.rs` `check_update_context`, saba-core 0.1.14-beta.2). 결과에서 데몬과 화면이 읽는 키(모두 선택): `update_available`, `local_buildid`·`remote_buildid`(설치된 빌드와 새 빌드의 번호), `local_build_time`·`remote_build_time`(그 빌드를 받은 때·올라온 때, 유닉스 초), `reason`·`error`. 데몬은 `local_buildid`·`local_build_time`을 인스턴스 `server_build`에 적어 두고(01 인스턴스 필드), GUI는 새 버전 안내 줄과 정보 탭의 새 버전 줄에 `remote_*`를 보인다 |
 | `command.<name>` (익스텐션 명령) | `handlers/command.rs` | `POST /api/instance/:id/command`에서 모듈에 없는 명령 | 동기, 120s | 공통 + `running, args` | 결과를 명령 응답으로 돌려준다 |
 
 서버 hook(`server.pre_start`·`stop`·`status`·`post_create`·`pre_delete`·`settings_changed`·`check_update`)과 익스텐션 명령은 공통 문맥을 받는다(`extension::hook_context`, 0.1.14-beta.2부터): `instance_id, instance_name, instance_dir, module, extension_data, instance`. `instance`는 REST 비밀번호와 비밀 설정 값(모듈이 password로 선언했거나 이름에 pass·token·secret 같은 낱말이 든 것)을 `***`로 가린 인스턴스다(`extension::redact_for_hooks`). 표의 "+"는 그 hook만 더 받는 키다. `daemon.*`와 `server.list_enrich`는 공통 문맥을 받지 않는다.
@@ -174,7 +174,7 @@ manifest에 발화되지 않는 hook을 새로 선언하면 `parse_manifest`가 
 |---|---|---|
 | server.check_update | ● `check_update` | |
 
-ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ext_data.install_method_steamcmd`다.
+ue4-ini·xna·desktop-pet는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ext_data.install_method_steamcmd`다.
 
 ### 2.5 Python 쪽 엔트리포인트 호환성
 
@@ -182,6 +182,7 @@ ue4-ini는 hook을 선언하지 않는다. steamcmd의 condition은 `instance.ex
 |---|---|---|
 | `EXT/steamcmd/steamcmd.py` | `FUNCTIONS = check_update`. 진입점은 공용 `run_lifecycle`이다 | `check_update`는 `install.app_id`, `install_dir`, 브랜치는 `branch`(없으면 `"public"`)를 읽는다. daemon은 `install, branch, app_id, install_dir, extension_data`를 준다(위 hook 표). 원격 buildid를 읽지 못하면(SteamCMD 없음·`app_info_print` 실패·그 브랜치 buildid 없음) `reason:"check_failed", error`를 붙인다. OK |
 | `EXT/ue4_ini/ue4_ini.py` | **`__main__`가 없다.** 함수 시그니처도 `(ini_path, …)`라 hook 프로토콜과 맞지 않는다 | hook을 선언하지 않으므로 문제없다. module이 `from extensions.ue4_ini import …`로 쓰는 **순수 라이브러리**다 |
+| `EXT/xna/xna.py` | `__main__`가 없다 | hook을 선언하지 않는 **순수 라이브러리**다(terraria `validate`·`install_server`) |
 
 ---
 
@@ -298,7 +299,7 @@ slot 이름·창·종류는 `SLOT_TABLE` 한 곳에 있다. 종류: `inline`은 
 
 ### 4.3 i18n
 
-- 로더: `window.api.extensionI18n(id, lang)` → `GET /api/extensions/:id/i18n/:locale` → `i18n.addResourceBundle(lang, "ext_<id>", …)`(`ExtensionContext.tsx`). 현재 언어와 `en`을 로드한다. **언어가 바뀌어도 다시 로드하지 않는다**(effect 의존성이 `[extensions]`뿐,).
+- 로더: `window.api.extensionI18n(id, lang)` → `GET /api/extensions/:id/i18n/:locale` → `i18n.addResourceBundle(lang, "ext_<id>", …)`(`ExtensionContext.tsx`). 현재 언어와 `en`을 로드하고, 언어를 바꾸면 켜진 익스텐션의 그 언어 번역을 받아 화면을 다시 그린다(`loadI18nOnce`).
 
 ### 4.4 GUI에서 노출되지 않는 API
 
@@ -334,6 +335,10 @@ slot 이름·창·종류는 `SLOT_TABLE` 한 곳에 있다. 종류: `inline`은 
 
 ## 5. 익스텐션별 기능 요약 · module과의 연결
 
+### 5.1 desktop-pet (디렉토리명 `desktop_pet`)
+
+- Python 없이 GUI 번들만 있다: `gui.bundle` `gui/dist/desktop-pet.js`, `gui.styles` `gui/pet.css`, `gui.assets` `gui/sprites`, slot `Desktop.overlay`(4.6).
+
 ### 5.2 steamcmd
 
 - `SteamCMD` 클래스: 포터블 SteamCMD 탐색/설치, `install(...)`, `update`, buildid·브랜치 비교로 `check_update`. `check_update`는 설치된 빌드를 받은 때(appmanifest `LastUpdated`)와 그 브랜치의 빌드가 올라온 때(`app_info_print` branches의 `timeupdated`)를 `local_build_time`·`remote_build_time`으로 함께 답한다(Steam이 주지 않으면 `null`). 받은 SteamCMD 압축은 데몬 공용 `safe_extract`(02 §2.5)로 포터블 폴더에 바로 풀고, 풀기가 실패하면 실행 파일을 지워 다음 호출이 다시 받게 한다. 설치 시간 초과 때의 프로세스 트리 종료는 데몬 공용 `force_kill`이다. 포터블 SteamCMD를 받고 푸는 일은 포터블 폴더의 OS 파일 잠금으로 프로세스 사이에 한 번에 하나씩 하고, 기다린 쪽은 먼저 받은 쪽이 풀어 둔 SteamCMD를 쓴다. 설치(`app_update`)와 업데이트 확인(`app_info_print`)은 잠그지 않는다. `app_info_print`가 0이 아닌 코드로 끝나도 출력에 buildid가 있으면 그 출력을 쓴다(steamcmd 0.1.11).
@@ -341,6 +346,11 @@ slot 이름·창·종류는 `SLOT_TABLE` 한 곳에 있다. 종류: `inline`은 
 - `install_for_module(module_dir, install_dir, beta=None, executable=None)`: 모듈 module.toml `[install]`(`method = "steamcmd"`, `app_id`, `anonymous`, `beta`, `download_size`)을 읽어 SteamCMD를 준비하고 설치·업데이트한다. 앱 ID를 모듈 코드에 다시 적지 않는다. `[install]`에 steamcmd 앱 ID가 없으면 `ValueError`. `beta` 인자(인스턴스가 고른 브랜치, 02 §3.3 `list_versions`)가 있으면 `[install].beta`보다 먼저 쓴다. 반환은 `SteamCMD.install`과 같고, SteamCMD 준비·설치 중 오류도 예외 대신 공용 `errors.install_failed` 실패(`{success:false, message}`)로 답한다. `executable`(설치 폴더 기준 서버 실행 파일, steamcmd 0.1.11)을 주면 모듈 `install_server`가 그대로 돌려줄 `install_path`·`executable_path`(받은 파일이 없으면 `""`)를 붙인다. palworld·zomboid는 이것을 쓰고 `[module.dependencies] ext-steamcmd = ">=0.1.11"`이다.
 - 설치 진행률은 SteamCMD 출력의 `progress:` 줄 → 설치 폴더 appmanifest의 `BytesDownloaded`/`BytesToDownload`(`_manifest_progress`) → 늘어난 디스크 크기와 모듈이 적은 어림 총량(module.toml `[install] download_size`, `_disk_progress`) 순으로 읽는다. 앱 ID별 크기 같은 게임 지식은 그 게임의 module.toml에만 둔다. `download_size`가 없는 모듈은 디스크 크기로 어림하지 않는다. 출력은 파이프에서 버퍼에 묶이기 쉽다. 디스크 크기가 어림 총량을 넘으면(미리 잡은 파일 크기·받기 임시 파일) 진행률을 올리지 않고 직전 값을 유지한다.
 - instance_fields는 `install_method_steamcmd`(설치 방식 표시, hook 조건)와 `steamcmd_beta`(사용자가 고른 브랜치) 둘뿐이다. daemon이 module의 `[install] method`를 보고 **범용 규칙**(`install_method_<방식>`, `<방식>_beta`)으로 채운다(`ServerInstance::apply_install_extension_data`, `record_installed_version`). 앱 ID·익명 로그인·플랫폼 같은 모듈 값은 인스턴스에 복사하지 않아 `steamcmd_app_id`·`steamcmd_anonymous`·`steamcmd_platform` 필드는 지웠다(0.1.14-beta.2, `min_app_version` 0.1.14-beta.2). core에 steamcmd 이름은 없다.
+
+### 5.3 xna
+
+- hook을 선언하지 않는 **순수 Python 라이브러리**다(`xna.py`). `present(target_dir)`는 서버 폴더에 XNA Framework 4.0 재배포 파일이 있는지 보고, `install(target_dir)`는 SHA-256을 고정한 MSI를 받아(공용 `download`) 그 파일들을 서버 폴더에 넣는다. 받은 파일은 `extension_data_dir("xna")`에 둔다. 실패는 `XnaError`다. `permissions`는 `network`, `min_app_version` 0.1.14-beta.2.
+- terraria가 `requires_extensions = ["xna"]`로 요구하고, `validate`(`present`)와 `install_server`(`install`)에서 공용 `load_extension`으로 쓴다.
 
 ### 5.4 ue4-ini (디렉토리명 `ue4_ini`)
 
@@ -352,10 +362,6 @@ slot 이름·창·종류는 `SLOT_TABLE` 한 곳에 있다. 종류: `inline`은 
 1. `module.toml [install] requires_extensions = [...]`. 모듈을 설치하면(데몬 `POST /api/modules/manifest/:id/install`, 설치기) 요구하는 익스텐션을 받고 켠다(02-modules §5.2). 앱 업데이트로 모듈이 바뀌어도 새로 필요해진 것 중 없는 것을 받고 켠다(02-modules §5.3). 인스턴스에 복사하지 않는다: 인스턴스가 쓰는 익스텐션은 지금 모듈의 이 목록과 인스턴스 `required_extensions`(인스턴스가 더한 것, 예전 판이 만들 때 복사해 둔 모듈 목록도 그대로 읽는다)의 합이다(`Supervisor::effective_required_extensions`). 생성 시점에 검증하고(`service/instance/create.rs` `create`), 시작 시점에 관리형·비관리형 모두 다시 검증한다(`supervisor/start.rs` `plan_start` → `extension_required`, `installed_and_enabled_set`). module 기능 엔드포인트에서도 검사한다(`handlers/managed.rs`). `[module.dependencies]`의 `ext-<id>` 버전 요구도 시작 시 검사한다(`supervisor/start.rs` `unmet_module_dependencies`).
 2. `module.toml [extensions.<id>]` 섹션은 `metadata.extensions["<id>"]`로 그대로 파싱된다(`module_loader/raw.rs`). settings_changed context의 `module_extensions`로 전달된다.
 3. Python 레벨: 공용 `load_extension(i18n, "<id>")`(02 §2.5, `extensions.<pkg>`를 import한다). PYTHONPATH 주입과 import 가드에 의존한다. 모듈은 `SABA_ENABLED_EXTENSIONS`를 따로 읽지 않고, 그 익스텐션 import가 실패하면(없음·꺼짐, 가드의 `ModuleNotFoundError`) 받은 `extension_required` 답(`missing_extensions`)을 돌려준다(palworld·zomboid `install_server`, terraria `validate`·`install_server`). 익스텐션 안의 다른 import 실패는 '없음'으로 보지 않고 예외로 올린다.
-
----
-
-## 6. ext_process: 장기 실행 외부 프로세스 계약
 
 ---
 
@@ -372,7 +378,6 @@ slot 이름·창·종류는 `SLOT_TABLE` 한 곳에 있다. 종류: `inline`은 
 10. `get_extension_config` 핸들러 주석은 아직 `extensionConfig.json`이라고 적혀 있다.
 11. `saba-core`가 아닌 컴포넌트 의존성(버전을 쓴 것)을 선언하면 켤 수 없다. `saba-core`는 데몬 버전으로 검사한다(`ext/enable.rs`).
 15. GUI 번들을 Blob script로 무검증 실행하고, `window.api`에 전체 접근할 수 있다.
-16. GUI i18n이 언어 변경 시 다시 로드되지 않는다(`ExtensionContext.tsx`).
 
 ### 7.3 "daemon이 주인 / 플러그인은 자유롭게 커스터마이즈" 원칙 위반 (하드코딩된 플러그인 지식)
 

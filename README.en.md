@@ -28,7 +28,7 @@ The name is a pun: in Japanese, "server" (サーバー) sounds a lot like "macke
 **Running servers**
 
 - Create, start, and stop multiple game servers and watch their consoles from one screen. You can run several servers of the same game; each new one gets its own folder and a port that doesn't clash.
-- New servers are set up step by step: game, server type and version, install location, how it runs, then name and port. If the name or port collides with another server, you hear about it before anything is created.
+- Pick a game and one screen shows the server type and version, install location, how it runs, and name and port, already filled with recommended values. Check them and create the server. If the name or port collides with another server, you hear about it before anything is created.
 - Edit game settings field by field in the app instead of opening config files.
 - Servers that crash get restarted. Servers you stopped on purpose are left alone, and every stop is logged with the reason.
 - Each server has a small watcher process (`saba-runner`), so the server keeps running and the console picks up where it left off even if you restart Saba-chan.
@@ -133,7 +133,7 @@ sequenceDiagram
 |---|---|---|
 | Daemon `saba-core` | `src/` (Rust) | Everything: running servers, settings, the Discord connection |
 | App | `saba-chan-gui/` (Tauri + React) | Desktop app that drives the daemon |
-| CLI | `saba-chan-cli/` (Rust) | Command-line tool and interactive shell |
+| CLI | `saba-chan-cli/` (Rust) | Command-line tool and full-screen menu |
 | Web remote | `saba-chan-web/` | Screens for a phone browser |
 | Runner `saba-runner` | `runner/` (Rust) | Watcher process attached to each server |
 | Installer | `installer/`, `updater/` (shared library) | Install, apply updates, and uninstall in one program (`saba-chan-installer`) |
