@@ -705,7 +705,7 @@ mod tests {
     }
 
     /// 이 PC에서 빠진 서버(릴레이 목록에 없고 없는 노드 404)는 매번 실패로 남기지 않고 설정에서 지운다.
-    /// 목록에 있는 서버의 404, 다른 실패, 목록을 못 받았을 때는 그대로 둔다 (사용자 11-18)
+    /// 목록에 있는 서버의 404, 다른 실패, 목록을 못 받았을 때는 그대로 둔다
     #[test]
     fn guilds_gone_from_this_pc_are_forgotten_not_warned_every_sync() {
         let gone = || Ok((StatusCode::NOT_FOUND, json!({"error": "NODE_NOT_FOUND"})));

@@ -60,7 +60,7 @@ describe('백업 목록 용량', () => {
         expect(screen.queryByText(i18n.t('gui:maintenance.backups_empty'))).toBeNull();
     });
 
-    // 사용자 11-17: 탭을 오가도 백업 목록을 다시 불러오는 동안 비워 두지 않는다
+    // 탭을 오가도 백업 목록을 다시 불러오는 동안 비워 두지 않는다
     it('다시 열면 받아 둔 목록을 바로 보이고 새 목록은 뒤에서 받는다', async () => {
         const cached = { id: 'srv-cache', status: 'stopped' } as unknown as Server;
         window.api.instanceScheduleGet = vi.fn().mockResolvedValue({ success: true, schedule: [], backup_keep: 5, backup_supported: true, revision: 'r1' });

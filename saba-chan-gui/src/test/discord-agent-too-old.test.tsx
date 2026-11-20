@@ -1,5 +1,5 @@
 /**
- * 릴레이가 이 PC의 앱 버전을 받지 않으면 데몬이 lastErrorCode "agent_too_old"와 minVersion을 준다 (데몬 #468).
+ * 릴레이가 이 PC의 앱 버전을 받지 않으면 데몬이 lastErrorCode "agent_too_old"와 minVersion을 준다.
  * GUI는 연결 화면에 올릴 버전을 알리고 업데이트 화면으로 이어 준다.
  */
 import { fireEvent, render, screen } from '@testing-library/react';

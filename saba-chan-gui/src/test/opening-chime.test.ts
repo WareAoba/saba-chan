@@ -67,7 +67,7 @@ describe('PC 전환 (전환할 때는 오프닝 없음)', () => {
     });
 });
 
-// 오프닝 동안 다른 알림은 안 뜨게 (사용자 11-15): 셸의 소리·OS 알림은 붙잡고, 앱 안 알림은 끝난 뒤에 띄운다
+// 오프닝 동안 다른 알림은 안 뜨게: 셸의 소리·OS 알림은 붙잡고, 앱 안 알림은 끝난 뒤에 띄운다
 describe('opening quiet', () => {
     it('asks the shell to hold alerts and shows deferred in-app notices once the opening ends', () => {
         const soundHold = vi.fn();

@@ -27,7 +27,7 @@ pub struct Lifecycle {
     /// 이 GUI가 띄우지 않았지만 이미 떠 있어 붙은 데몬 (트레이가 꺼짐으로 보이지 않게)
     attached_daemon: AtomicBool,
     /// 이 GUI가 데몬을 띄운 적이 있다. 오프닝은 이 값으로 정한다: 붙은 데몬 표시(`attached_daemon`)는 heartbeat가
-    /// 닿을 때마다 켜므로, 첫 박자가 ready보다 먼저 닿으면 새로 띄운 기동도 붙은 것으로 보였다 (사용자 11-17)
+    /// 닿을 때마다 켜므로, 첫 박자가 ready보다 먼저 닿으면 새로 띄운 기동도 붙은 것으로 보였다
     launched_daemon: AtomicBool,
     /// 사용자가 트레이에서 데몬을 껐다: 데몬이 없어도 상주 GUI는 남아 다시 켤 수 있게 한다 (`TRAY_STOP_*`)
     stopped_from_tray: AtomicU8,
@@ -61,7 +61,7 @@ pub struct Lifecycle {
 
 /// 모듈·익스텐션 업데이트 OS 알림·소리를 낼지 정한다. 같은 목록은 한 번만 알리고,
 /// 이 GUI가 뜬 뒤 처음 읽은 상태(이미 있던 업데이트)는 소리 없이 기억만 한다: 창을 다시 열 때마다·오프닝 중에
-/// 같은 알림이 울리지 않게 (사용자 11-15). 그 업데이트는 앱 안 알림(상단 바·알림함)으로 보인다
+/// 같은 알림이 울리지 않게. 그 업데이트는 앱 안 알림(상단 바·알림함)으로 보인다
 #[derive(Default)]
 struct UpdateAlerts {
     last_key: Option<String>,
@@ -113,7 +113,7 @@ fn emit_status(app: &AppHandle, payload: Value) {
 }
 
 /// 초기화를 마쳤다는 `ready`. `opening`: 이번 기동에서 이 GUI가 데몬을 띄웠는가 (이미 떠 있던 데몬에 붙었으면 false).
-/// 렌더러는 데몬까지 모두 준비한 기동에서만 오프닝을 재생한다 (사용자 11-15)
+/// 렌더러는 데몬까지 모두 준비한 기동에서만 오프닝을 재생한다
 fn ready_status(message: &str, launched: bool) -> Value {
     json!({ "step": "ready", "message": message, "ts": chrono::Utc::now().timestamp_millis(), "opening": launched })
 }
@@ -1317,7 +1317,7 @@ mod tests {
     /// 오프닝은 이 GUI가 데몬을 띄운 기동의 첫 ready에서만. 새로 붙은 렌더러에 다시 보내는 ready는 오프닝 없이
     #[test]
     fn opening_only_for_the_startup_that_launched_the_daemon() {
-        // 이 GUI가 데몬을 띄웠다. ready 전에 heartbeat 첫 박자가 닿아도(붙은 데몬 표시가 켜져도) 오프닝은 그대로다 (사용자 11-17)
+        // 이 GUI가 데몬을 띄웠다. ready 전에 heartbeat 첫 박자가 닿아도(붙은 데몬 표시가 켜져도) 오프닝은 그대로다
         let launched = Lifecycle::default();
         launched.own_daemon_started();
         launched.note_reachable(true);

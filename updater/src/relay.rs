@@ -974,7 +974,7 @@ mod tests {
     #[tokio::test]
     async fn an_up_to_date_client_does_not_compare_against_its_version_from_a_channel_it_does_not_take() {
         // 같은 버전이 여러 채널에 있으면 버전만 든 manifest 주소는 다른 채널 것을 줄 수 있다.
-        // 고른 채널이 받지 않는 채널의 구성요소로 바꾸지 않는다: 받을 것이 없다 (외부 감사 10-23)
+        // 고른 채널이 받지 않는 채널의 구성요소로 바꾸지 않는다: 받을 것이 없다
         let base = fake_relay(r#"{"upToDate":true}"#.into(), PRODUCTION_0_1_1.into()).await;
         let got = RelayClient::new(&base).fetch_verified_release("custom", "windows-x64", "0.1.1", "t").await;
         assert!(matches!(got, Ok(None)), "{:?}", got.map(|r| r.map(|v| v.manifest.version)));

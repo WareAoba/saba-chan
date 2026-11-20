@@ -45,7 +45,7 @@ describe('인스턴스 화면 배치', () => {
         expect(container.querySelector('.server-detail.server-detail--fit > .detail-body')).toBeTruthy();
     });
 
-    // 사용자 11-17: 명령 탭도 콘솔 탭처럼 바깥이 스크롤하지 않는다
+    // 명령 탭도 콘솔 탭처럼 바깥이 스크롤하지 않는다
     it('명령 탭도 상세를 칸 높이에 맞춘다', () => {
         const { container } = open('commands', { ...mc, commands: { fields: [{ name: 'say' }] } });
         expect(container.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toContain(i18n.t('gui:shell.tab_commands'));

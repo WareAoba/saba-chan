@@ -141,8 +141,8 @@ function App() {
     const [patchNotes, setPatchNotes] = useState<Record<string, unknown> | null>(null);
     const [initFailed, setInitFailed] = useState<string | null>(null); // 데몬 기동 실패 문구
     const [initSeen, setInitSeen] = useState(0); // 받은 초기화 단계 수 (멈춤 감시를 다시 센다)
-    // 오프닝·기동음 없이 바로 여는 창: 데몬까지 모두 준비한 기동에서만 오프닝을 재생한다 (사용자 11-15).
-    // 다른 PC로 바꿔 다시 연 창(사용자 11-12), 데몬이 이미 떠 있던 창, 셸이 띄우지 않은 데몬에 붙은 기동
+    // 오프닝·기동음 없이 바로 여는 창: 데몬까지 모두 준비한 기동에서만 오프닝을 재생한다.
+    // 다른 PC로 바꿔 다시 연 창, 데몬이 이미 떠 있던 창, 셸이 띄우지 않은 데몬에 붙은 기동
     const [quickOpen, setQuickOpen] = useState(takeDaemonSwitch);
     // 로딩 화면이 걷힐 때 읽는다: 로딩 중에 바뀌어도 로딩 효과를 다시 돌려 맡은 소리를 지우지 않게
     const quickOpenRef = useRef(quickOpen);
@@ -271,7 +271,7 @@ function App() {
                 if (status && status.running) {
                     // 오프닝 여부는 셸의 ready(opening)로 정한다: 완전히 껐다 켠 기동에서도 셸이 띄운 데몬이 여기보다 먼저
                     // 응답할 수 있다. 다시 연 창·새로고침에는 셸이 지난 ready를 opening:false로 다시 보내고,
-                    // 이미 떠 있던 데몬에 새로 붙은 기동은 셸이 등록 등을 마친 뒤에 보낸다 (사용자 11-17, 리뷰 11-18)
+                    // 이미 떠 있던 데몬에 새로 붙은 기동은 셸이 등록 등을 마친 뒤에 보낸다
                     window.__sabaReadyReceived = true;
                     setDaemonAnswered(true);
                     setInitStatus(t('loading.step_done'));
@@ -578,7 +578,7 @@ function App() {
         const timer = setTimeout(() => setLoadingLeaving(false), LOADING_LEAVE_MS);
         return () => clearTimeout(timer);
     }, [showLoading]);
-    // 로딩 화면·오프닝 동안에는 다른 알림(효과음·OS 알림·토스트)을 붙잡고, 다 걷히면 놓는다 (사용자 11-15)
+    // 로딩 화면·오프닝 동안에는 다른 알림(효과음·OS 알림·토스트)을 붙잡고, 다 걷히면 놓는다
     useEffect(() => {
         if (openingPhase !== 'done' || loadingLeaving) beginOpeningQuiet();
         else endOpeningQuiet();

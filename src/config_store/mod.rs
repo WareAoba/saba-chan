@@ -83,7 +83,7 @@ pub struct GuiSettings {
     pub console_token_colors: HashMap<String, String>,
     /// 콘솔 글꼴: 글자마다 하나 (앱·웹에 함께 들어 있는 글꼴 중에서)
     pub console_fonts: ConsoleFonts,
-    /// 서버 페이지의 시스템 모니터 펼침 여부 (기본은 한 줄 요약, 사용자 11-06.
+    /// 서버 페이지의 시스템 모니터 펼침 여부 (기본은 한 줄 요약.
     /// 예전 `systemMonitorOpen`은 기본이 펼침이라 모두 한 번 요약으로 시작하도록 키를 바꿨다)
     pub system_monitor_expanded: bool,
     /// 게임 서버 탭: 포트·서버별 네트워크 사용량 (Windows ETW, `system_monitor::net_trace`). 펼친 모니터를 보는 동안만 센다
@@ -462,7 +462,7 @@ pub struct BotConfig {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct DmNotice {
-    /// DM 알림 전체 스위치. 꺼져 있으면 아래 종류와 백업 DM 모두 보내지 않는다 (사용자 2026-11-15, 기본 꺼짐)
+    /// DM 알림 전체 스위치. 꺼져 있으면 아래 종류와 백업 DM 모두 보내지 않는다 (기본 꺼짐)
     pub enabled: bool,
     /// 비정상 종료 (`instance.exit`)
     pub crash: bool,
@@ -531,7 +531,7 @@ impl DmNotice {
 pub enum BackupNotice {
     /// 성공·실패 모두
     All,
-    /// 실패만 (기본: 예약·업데이트 전 백업마다 DM이 가지 않게, 사용자 2026-11-15)
+    /// 실패만 (기본: 예약·업데이트 전 백업마다 DM이 가지 않게)
     #[default]
     Failures,
     /// 보내지 않는다
@@ -1471,7 +1471,7 @@ mod tests {
         assert!(s.validate().is_ok());
     }
 
-    /// 사용자 11-06 #26: 시스템 모니터는 처음엔 한 줄 요약이다. 예전 `systemMonitorOpen`(기본 펼침)은 읽지 않고,
+    /// 시스템 모니터는 처음엔 한 줄 요약이다. 예전 `systemMonitorOpen`(기본 펼침)은 읽지 않고,
     /// 펼침은 새 키 `systemMonitorExpanded`에 기억한다
     #[test]
     fn system_monitor_starts_as_summary() {

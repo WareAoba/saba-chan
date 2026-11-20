@@ -142,7 +142,7 @@ def test_checksum_mismatch_is_refused(mdaemon, mirror, game_ports):
     leftovers = [p.name for p in Path(inst["working_dir"]).rglob("*") if p.is_file()] if Path(inst["working_dir"]).exists() else []
     assert leftovers == [], f"설치 실패 뒤 남은 파일: {leftovers}"
     # 설치가 안 된 서버를 켜면 서버 오류(5xx)가 아니라 이유가 있는 거절.
-    # 모듈은 시작과 같은 경로(작업 폴더 + server.jar)를 받으므로 그 파일이 없다고 답한다 (#421)
+    # 모듈은 시작과 같은 경로(작업 폴더 + server.jar)를 받으므로 그 파일이 없다고 답한다
     r = mdaemon.api.post(f"/api/instance/{iid}/start")
     assert r.status_code == 409 and r.json().get("issue_code") == "JAR_NOT_FOUND", f"{r.status_code} {r.text}"
 

@@ -149,7 +149,7 @@ describe('useSettingsStore', () => {
         expect(state.refreshInterval).toBe(2000); // 기본값
     });
 
-    // CLI가 저장한 값(ipcPort·portConflictCheck)을 GUI가 들고 있던 옛 값으로 덮지 않는다 (외부 감사 10-21 #2)
+    // CLI가 저장한 값(ipcPort·portConflictCheck)을 GUI가 들고 있던 옛 값으로 덮지 않는다
     it('save() — 연 뒤 바꾼 칸만 보낸다', async () => {
         mockApi({ settingsLoad: vi.fn().mockResolvedValue({ ipcPort: 57474, portConflictCheck: true }) });
         await useSettingsStore.getState().load();
@@ -164,7 +164,7 @@ describe('useSettingsStore', () => {
         expect(vi.mocked(window.api.settingsSave).mock.calls[1][0]).toEqual({ fontScale: 120 });
     });
 
-    // 리뷰 11-18: 다른 창(콘솔 PIP)이 저장된 설정을 다시 읽을 수 있게 저장을 알린다
+    // 다른 창(콘솔 PIP)이 저장된 설정을 다시 읽을 수 있게 저장을 알린다
     it('save() — 저장에 성공하면 다른 창에 알릴 표식을 남긴다', async () => {
         localStorage.removeItem(SETTINGS_SAVED_KEY);
         useSettingsStore.setState({ settingsPath: '/mock/settings.json' });

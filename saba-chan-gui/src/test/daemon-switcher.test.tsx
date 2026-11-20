@@ -58,7 +58,7 @@ describe('상단 바: 다룰 데몬 고르기 (이 PC / 연결한 원격 데몬)
         expect(reload).toHaveBeenCalled();
     });
 
-    // 리뷰 11-18: 설정 › 연결의 같은 동작처럼 바꾸지 못한 이유를 알린다
+    // 설정 › 연결의 같은 동작처럼 바꾸지 못한 이유를 알린다
     it('대상을 바꾸지 못하면 이유를 토스트로 알리고 화면을 다시 읽지 않는다', async () => {
         vi.mocked(window.api.daemonTargetSet).mockResolvedValue({ error_code: 'remote_unreachable', error: 'x' });
         window.showToast = vi.fn() as never;

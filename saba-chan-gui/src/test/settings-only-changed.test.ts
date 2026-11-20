@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupSettingsStore } from './serverStore';
 
 // 창이 열린 동안 CLI·디스코드·익스텐션이 바꾼 값을, 손대지 않은 칸이 연 때의 값으로 되돌리지 않는다.
-// 인스턴스 설정 저장도 앱 설정(#509)처럼 바뀐 것만 보낸다
+// 인스턴스 설정 저장도 앱 설정처럼 바뀐 것만 보낸다
 const modules = [
     {
         name: 'pal',

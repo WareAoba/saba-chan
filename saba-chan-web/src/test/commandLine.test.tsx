@@ -47,7 +47,7 @@ describe('웹 명령 입력', () => {
             'tok-ok',
             'tok-bad',
         ]);
-        // 틀린 칸은 글자 기호 대신 x 아이콘(tone-bad)으로 알린다 (#944)
+        // 틀린 칸은 글자 기호 대신 x 아이콘(tone-bad)으로 알린다
         const status = screen.getByRole('status');
         expect(status.textContent).toBe('amount allows only 1–64. Got: 99');
         expect(status.classList.contains('tone-bad')).toBe(true);

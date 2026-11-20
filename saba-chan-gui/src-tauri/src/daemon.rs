@@ -315,7 +315,7 @@ impl DaemonClient {
     }
 
     /// 데몬 포트가 열려 있는가 (연결만 맺어 본다). Windows는 닫힌 포트로의 연결 거절에도 SYN을 다시 보내
-    /// 1초 넘게 걸리므로, 기다림을 짧게 끊는다: 열린 루프백 포트는 데몬이 바빠도 커널이 바로 받는다 (사용자 11-17)
+    /// 1초 넘게 걸리므로, 기다림을 짧게 끊는다: 열린 루프백 포트는 데몬이 바빠도 커널이 바로 받는다
     pub async fn listening(&self, timeout_ms: u64) -> bool {
         let Ok(url) = reqwest::Url::parse(&self.base()) else {
             return false;

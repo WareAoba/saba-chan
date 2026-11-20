@@ -82,13 +82,13 @@ def test_crash_alert_reaches_real_relay(paired, relay, fake_server):
 
 
 def test_relay_rejects_agent_after_token_rotation(paired, relay, sandbox):
-    """같은 방장이 다시 페어링하면 옛 토큰은 바로 끊긴다(invalidateCacheByNodeId). 에이전트는 교체를 알아채고 멈춘다(#101)."""
+    """같은 방장이 다시 페어링하면 옛 토큰은 바로 끊긴다(invalidateCacheByNodeId). 에이전트는 교체를 알아채고 멈춘다."""
     init = paired.api.ok("POST", "/api/relay/pair/initiate", {"relayUrl": relay.url})
     assert relay.claim(init["code"], OWNER, GUILD).get("ok")
     paired.api.ok("POST", "/api/relay/agent/stop")
     paired.api.ok("POST", "/api/relay/agent/start")
     status = wait_until(lambda: (s := paired.api.ok("GET", "/api/relay/agent")).get("lastError") and s, 90, "옛 토큰 거절")
-    # relay가 교체를 알리면 lastErrorCode token_replaced로 멈춘다(#101). GUI·CLI는 문구가 아니라 이 코드를 본다.
+    # relay가 교체를 알리면 lastErrorCode token_replaced로 멈춘다. GUI·CLI는 문구가 아니라 이 코드를 본다.
     # 알림 전에 거절이 먼저 오면 "node token rejected" 또는 "poll 401 … INVALID_TOKEN"
     err = status["lastError"].lower()
     assert status.get("lastErrorCode") == "token_replaced" or "reject" in err or "401" in err, status
@@ -107,7 +107,7 @@ def test_owner_discord_setting_runs_without_confirm_button(paired, relay):
 
 
 def test_heartbeat_cpu_ram_is_stored_by_real_relay(paired, relay, fake_server):
-    """데몬 heartbeat의 서버별 CPU·RAM(#86)이 relay 스키마를 지나 호스트 기록에 남는다 (/사바쨩 상태가 읽는 곳, relay 1605932)."""
+    """데몬 heartbeat의 서버별 CPU·RAM이 relay 스키마를 지나 호스트 기록에 남는다 (/사바쨩 상태가 읽는 곳, relay 1605932)."""
     folder, _ = fake_server("mc1")
     iid = paired.import_server("mc1", folder, module_settings={"ram": "256M"})
     paired.start_instance(iid)

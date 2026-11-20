@@ -535,7 +535,7 @@ describe('로딩 스크린 상태 머신', () => {
         expect(playSound).toHaveBeenCalledWith('startup');
     }, 20000);
 
-    // 리뷰 11-18: 봇 설정을 끝내 읽지 못했으면 릴레이를 모르는 것이다 (설정 안 함으로 보고 정상 기동음을 내지 않는다)
+    // 봇 설정을 끝내 읽지 못했으면 릴레이를 모르는 것이다 (설정 안 함으로 보고 정상 기동음을 내지 않는다)
     it('봇 설정을 읽지 못한 기동은 기동음 없이 연다', async () => {
         const playSound = vi.fn();
         const { container } = await coldBoot({ botConfigLoad: vi.fn().mockResolvedValue(null), playSound });
@@ -571,7 +571,7 @@ describe('로딩 스크린 상태 머신', () => {
         expect(soundHold.mock.calls).toEqual([[true], [false]]);
     }, 20000);
 
-    // 오프닝은 데몬까지 모두 준비한 기동에서만 (사용자 11-15)
+    // 오프닝은 데몬까지 모두 준비한 기동에서만
     it('데몬이 이미 떠 있던 창(인터페이스만 종료 뒤 다시 연 창)은 오프닝·기동음 없이 연다', async () => {
         const playSound = vi.fn();
         // 셸은 다시 연 창에 지난 ready를 opening:false로 다시 보내고, 브리지는 구독하는 즉시 그 마지막 상태를 넘긴다
@@ -588,7 +588,7 @@ describe('로딩 스크린 상태 머신', () => {
         expect(playSound).not.toHaveBeenCalled();
     }, 20000);
 
-    // 완전히 껐다 켠 기동: 셸이 띄운 데몬이 화면이 데몬을 묻기 전에 먼저 떠도 오프닝을 재생한다 (사용자 11-17)
+    // 완전히 껐다 켠 기동: 셸이 띄운 데몬이 화면이 데몬을 묻기 전에 먼저 떠도 오프닝을 재생한다
     it('창이 뜰 때 데몬이 이미 응답해도 셸이 데몬을 띄운 기동(ready opening:true)이면 오프닝·기동음과 함께 연다', async () => {
         const playSound = vi.fn();
         const { container } = await coldBoot({ daemonStatus: vi.fn().mockResolvedValue({ running: true }), playSound });
@@ -601,7 +601,7 @@ describe('로딩 스크린 상태 머신', () => {
         expect(playSound).toHaveBeenCalledWith('startup');
     }, 20000);
 
-    // 리뷰 11-18: 이미 떠 있던 데몬에 새 GUI 프로세스가 붙으면 셸의 ready는 등록 등을 마친 뒤에 온다. 그 전에 오프닝을 정하지 않는다
+    // 이미 떠 있던 데몬에 새 GUI 프로세스가 붙으면 셸의 ready는 등록 등을 마친 뒤에 온다. 그 전에 오프닝을 정하지 않는다
     it('창이 뜰 때 데몬이 이미 응답해도 셸의 ready가 오기 전에는 로딩 화면을 걷지 않는다', async () => {
         const playSound = vi.fn();
         window.api = createApiMock({
@@ -653,7 +653,7 @@ describe('로딩 스크린 상태 머신', () => {
     });
 });
 
-// 리뷰 11-18: PIP 창은 콘솔에 쓰는 것(설정·서버 목록·콘솔)만 읽고 메인 창 전용 기동 작업을 되풀이하지 않는다
+// PIP 창은 콘솔에 쓰는 것(설정·서버 목록·콘솔)만 읽고 메인 창 전용 기동 작업을 되풀이하지 않는다
 describe('콘솔 PIP 창의 기동 작업', () => {
     it('디스코드 상태·알림함·업데이트 결과·익스텐션 초기화 조회를 돌리지 않는다', async () => {
         const before = window.location.href;
