@@ -19,7 +19,7 @@ pub(super) async fn action_request(server: &crate::ipc::IPCServer, action: &str,
             let view = crate::actions::plan(server, id, instance, &input, caller).await?;
             auto_run(server, payload, view, caller).await
         }
-        // 확인을 묻기 전의 권한 검사: 계획을 남기지 않는다 (`check_first`)
+        // 확인을 묻기 전의 권한 검사: 계획을 남기지 않는다
         "check" if payload.get("text").is_some() => crate::actions::check_text(server, payload["text"].as_str().unwrap_or_default(), caller).await,
         "check" => crate::actions::check(server, id, instance, &input, caller).await,
         "run_plan" => {

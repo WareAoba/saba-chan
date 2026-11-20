@@ -1106,7 +1106,7 @@ impl ModuleToml {
     }
 }
 
-/// `[extensions.saba-core]`의 정규식 목록 하나를 읽는다 (`{이름}`은 `[patterns]` 조각으로 바꾼다). `needs_name`이면 `(?P<name>…)`이 없는 항목도 버린다
+/// `[extensions.saba-core]`의 정규식 목록 하나를 읽는다 (`{이름}`은 `[patterns]` 조각으로 바꾼다). `groups`의 이름 묶음(`(?P<name>…)` 등)이 하나라도 없는 항목은 버린다
 fn read_pattern_list(
     table: &serde_json::Value,
     key: &str,
