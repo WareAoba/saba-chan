@@ -558,7 +558,7 @@ fn spawn_background_tasks(
             }
             
             // Phase 1: write lock 밖에서 프로세스 목록을 한 번 스캔 (비용이 큰 sysinfo 호출)
-            let taken_at = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+            let taken_at = crate::utils::now_secs();
             // 인스턴스가 없으면 맞춰 볼 대상이 없다: 전체 프로세스 조회를 건너뛴다 (죽은 프로세스 정리는 그대로 한다)
             let has_instances = !supervisor_monitor.read().await.instance_store.list().is_empty();
             let process_snapshot = if has_instances { process_monitor::get_running_processes_async().await } else { Vec::new() };

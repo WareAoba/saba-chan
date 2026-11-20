@@ -67,6 +67,14 @@ describe('업데이트 알약', () => {
         expect(container.querySelector(`.appbar-pill.tone-${state}`)).not.toBeNull();
     });
 
+    it('마지막 업데이트 확인이 실패해 상태에 error가 있어도 단계는 보인다', async () => {
+        status.mockResolvedValue({ ...phase('ready'), error: 'Relay check failed: timeout' });
+        render(<UpdatePill />);
+        expect(await screen.findByText('Update ready')).toBeTruthy();
+        await announce({ ...phase('applying'), error: 'Relay check failed: timeout' });
+        expect(await screen.findByText('Applying update...')).toBeTruthy();
+    });
+
     it('적용 중을 누르면 바뀌는 버전과 패치노트를 보인다', async () => {
         status.mockResolvedValue(phase('applying'));
         render(<UpdatePill />);

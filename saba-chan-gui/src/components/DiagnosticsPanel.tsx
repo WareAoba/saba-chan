@@ -1,5 +1,6 @@
 import { type ReactNode, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { failed } from '../utils/apiResult';
 import { Icon } from './Icon';
 
 /** GET /api/diagnostics 응답 (데몬이 싣는 칸) */
@@ -33,7 +34,7 @@ export function DiagnosticsPanel() {
         setError(null);
         try {
             const res = await window.api.daemonDiagnostics();
-            if (!res || res.error) setError(res?.error || t('diagnostics.failed'));
+            if (failed(res)) setError(res?.error || t('diagnostics.failed'));
             else setData(res as Diagnostics);
         } catch (err) {
             setError((err as Error).message);

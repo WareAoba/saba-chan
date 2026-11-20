@@ -802,7 +802,7 @@ impl<'a, D: DaemonApi> Ctx<'a, D> {
 
     /// 켜진 시간 ("켜진 지 1시간 2분"). 시작 시각이 앞날이면 None
     fn uptime(&self, started: u64) -> Option<Text> {
-        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).ok()?.as_secs();
+        let now = crate::utils::now_secs();
         let mins = now.checked_sub(started)? / 60;
         let (h, m) = ((mins / 60).to_string(), (mins % 60).to_string());
         Some(match mins >= 60 {

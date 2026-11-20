@@ -195,7 +195,7 @@ export function BotSettingsTab({ node, section = 'bot', sampleModuleWord = '' }:
         setError(null);
         try {
             const res = await window.api.discordSettingsGet(guildId);
-            if (failed(res) || res.error) setError(botSettingsErrorText(res, t));
+            if (failed(res)) setError(botSettingsErrorText(res, t));
             else {
                 setSettings(res);
                 setSync(res.sync || null);

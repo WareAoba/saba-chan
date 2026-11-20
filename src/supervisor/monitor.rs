@@ -208,10 +208,7 @@ impl Supervisor {
                                     self.runtime.with(&instance.id, |r| r.stop_cooldown = Some(Instant::now()));
 
                                     // 이벤트 기록 (GUI 폴링에서 읽어감) — 충돌마다 개별 이벤트 생성
-                                    let ts = std::time::SystemTime::now()
-                                        .duration_since(std::time::UNIX_EPOCH)
-                                        .map(|d| d.as_millis() as u64)
-                                        .unwrap_or(0);
+                                    let ts = crate::utils::now_ms();
                                     // 알림함에도 (`crate::notices`)
                                     for conflict in &conflicts {
                                         crate::events::emit(

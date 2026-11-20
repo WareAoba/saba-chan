@@ -327,7 +327,7 @@ impl Storage {
                 let mut state = shared.lock().unwrap_or_else(|e| e.into_inner());
                 state.measured = Measured {
                     items,
-                    at_ms: Some(now_ms()),
+                    at_ms: Some(crate::utils::now_ms()),
                 };
                 if state.generation == generation {
                     state.measured_at = Some(Instant::now());
@@ -379,13 +379,6 @@ impl Storage {
     pub fn canceled(&self) -> bool {
         self.cancel.load(std::sync::atomic::Ordering::SeqCst)
     }
-}
-
-fn now_ms() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0)
 }
 
 /// 폴더 이름으로 쓸 서버 이름 (글자·숫자·`-`·`_`만, 나머지는 `-`). 비면 id

@@ -34,6 +34,7 @@ export const useUpdateStore = create<UpdateStore>()((set) => ({
         } catch {
             return null;
         }
+        // failed()를 쓰지 않는다: 상태 본문의 error는 마지막 업데이트 확인의 실패이지 이 조회의 실패가 아니다
         if (!res || res.success === false) return null;
         set({ status: res });
         return res;

@@ -353,6 +353,16 @@ pub fn dir_size(path: &std::path::Path) -> u64 {
     total
 }
 
+/// 지금 시각 (유닉스 초). 시계가 1970년보다 앞서면 0
+pub fn now_secs() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs())
+}
+
+/// 지금 시각 (유닉스 밀리초). 시계가 1970년보다 앞서면 0
+pub fn now_ms() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64)
+}
+
 /// 0부터 `max`까지의 흔들림. 여러 PC가 같은 순간에 같은 곳에 묻지 않게 지금 시각의 밀리초로 고른다
 pub fn jitter(max: std::time::Duration) -> std::time::Duration {
     let millis = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.subsec_millis());

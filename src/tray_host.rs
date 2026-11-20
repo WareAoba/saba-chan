@@ -128,13 +128,6 @@ impl Respawn {
     }
 }
 
-fn unix_now() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
-}
-
 /// 트레이를 든 GUI가 살아 있는가: 등록된 GUI 중 프로세스가 살아 있는 것, 또는 이 감독이 띄운 그 프로세스
 /// (`started`: PID와 띄운 시각. 등록 전이거나 등록을 잃었어도 센다. 같은 PID를 다른 프로세스가 받았으면 세지 않는다)
 async fn host_alive(registry: &crate::ipc::ClientRegistry, started: Option<(u32, u64)>) -> bool {
@@ -198,7 +191,7 @@ pub async fn run(server: crate::ipc::IPCServer) {
                 Ok(pid) => {
                     tracing::info!("[Tray] Started the tray app (pid {})", pid);
                     state.did_spawn(pid, now);
-                    started = Some((pid, unix_now()));
+                    started = Some((pid, crate::utils::now_secs()));
                 }
                 Err(e) => {
                     tracing::warn!("[Tray] Could not start the tray app: {}", e);
@@ -269,7 +262,7 @@ mod tests {
         let registry = crate::ipc::ClientRegistry::new();
         let me = std::process::id();
         // 등록하지 못했거나(토큰 어긋남) 레지스트리에서 빠졌어도(절전 뒤) 살아 있으면 또 띄우지 않는다
-        assert!(host_alive(&registry, Some((me, unix_now()))).await);
+        assert!(host_alive(&registry, Some((me, crate::utils::now_secs()))).await);
         // 그 PID를 나중에 다른 프로세스가 받았으면(시작 시각이 띄운 때보다 늦다) 없는 것이다
         assert!(!host_alive(&registry, Some((me, 0))).await);
         assert!(!host_alive(&registry, None).await);

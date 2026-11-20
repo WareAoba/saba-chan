@@ -9,6 +9,7 @@ import { useDiscordStore } from '../../stores/useDiscordStore';
 import { useUIStore } from '../../stores/useUIStore';
 import type { ModuleAliases, Server } from '../../stores/useServerStore';
 import type { ApiBody, ModuleInfo } from '../../types/daemon';
+import { failed } from '../../utils/apiResult';
 import { safeShowToast } from '../../utils/helpers';
 import { screenFallbackNotice } from '../../utils/openScreen';
 import { Icon } from '../Icon';
@@ -253,7 +254,7 @@ export function DiscordPage({
                     const current = useDiscordStore.getState().nodeSettings as P.NodeSettings;
                     const next = P.nodeConfig(fn(current || {}), guildId).allowedInstances;
                     const res = await window.api.guildAllowedInstancesSave(guildId, Array.isArray(next) ? next : null);
-                    if (!res || res.error || res.error_code) throw new Error(res?.error || res?.error_code || '-');
+                    if (failed(res)) throw new Error(res?.error || res?.error_code || '-');
                     useDiscordStore
                         .getState()
                         .applySavedNodeValue(guildId, 'allowedInstances', res.allowedInstances ?? null);
@@ -276,7 +277,7 @@ export function DiscordPage({
             try {
                 const save = key === 'fullNotice' ? window.api.guildFullNoticeSave : window.api.guildStartNoticeSave;
                 const res = await save(serverId, guildId, enabled);
-                if (!res || res.error || res.error_code) throw new Error(res?.error || res?.error_code || '-');
+                if (failed(res)) throw new Error(res?.error || res?.error_code || '-');
                 const list = Array.isArray(res.instances) ? res.instances : [];
                 useDiscordStore.getState().applySavedNodeValue(guildId, key, list.length ? list : null);
                 setSaveState('saved');

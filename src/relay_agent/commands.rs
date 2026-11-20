@@ -145,7 +145,7 @@ pub(super) async fn permission_action(server: &crate::ipc::IPCServer, who: &crat
         Ok(Ok(node)) => {
             // 저장을 마친 뒤의 시각: 릴레이는 이보다 먼저 읽은 heartbeat 권한을 버린다
             let mut data = permission_entry(&Value::Object(node), &remote_targets(server).await);
-            data["permissionsAt"] = json!(now_ms());
+            data["permissionsAt"] = json!(crate::utils::now_ms());
             json!({ "success": true, "data": data })
         }
         Ok(Err(code)) => fail(&code.to_uppercase()),

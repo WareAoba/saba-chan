@@ -139,7 +139,7 @@ impl Session {
                 let seen = self.friend_address(relay_seen_address(&data)).await;
                 let mut seen_changed = false;
                 self.agent.update(self.generation, |s| {
-                    s.last_heartbeat_at = Some(now_ms());
+                    s.last_heartbeat_at = Some(crate::utils::now_ms());
                     s.last_error = None;
                     s.last_error_code = None;
                     s.min_version = None;
@@ -251,7 +251,7 @@ impl Session {
         .unwrap_or_else(|e| if e.is_panic() { std::panic::resume_unwind(e.into_panic()) } else { Vec::new() });
 
         // 권한을 읽기 직전의 시각 (권한 변경 응답의 `permissionsAt`과 같은 PC 시계)
-        let permissions_at = now_ms();
+        let permissions_at = crate::utils::now_ms();
         let bot = self.server.config_store.get_bot_config().await;
 
         let mut meta = json!({

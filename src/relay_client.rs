@@ -248,10 +248,7 @@ pub(crate) fn signed_headers_with(
 ) -> Option<Vec<(String, String)>> {
     let (_, secret) = parse_node_token(token)?;
 
-    let ts = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
+    let ts = crate::utils::now_secs();
     let nonce = uuid::Uuid::new_v4().to_string();
     let body_str = body.unwrap_or("");
 

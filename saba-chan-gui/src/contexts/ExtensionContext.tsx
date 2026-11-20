@@ -206,7 +206,7 @@ async function localExtensions(): Promise<ExtensionListItem[] | null> {
     const current = await window.api.daemonTarget();
     if (!current?.target) return null;
     const local = await window.api.extensionList({ local: true });
-    if (!local || local.error || !Array.isArray(local.extensions)) {
+    if (failed(local) || !Array.isArray(local?.extensions)) {
         throw new Error(local?.error || 'local extension list unavailable');
     }
     return local.extensions;
@@ -302,7 +302,7 @@ export function ExtensionProvider({ children, surface = 'main' }: { children: Re
     const fetchExtensions = useCallback(async () => {
         try {
             const data = await window.api.extensionList(surface === 'desktop' ? { local: true } : undefined);
-            if (!data || data.error || !Array.isArray(data.extensions)) {
+            if (failed(data) || !Array.isArray(data?.extensions)) {
                 throw new Error(data?.error || 'extension list unavailable');
             }
             // 원격 데몬 목록의 gui_allowed는 그 PC의 허락이다: 이 PC에 있는 익스텐션은 이 PC의 허락으로 바꿔 둔다.
