@@ -282,7 +282,7 @@ describe('설정 > 연결: 원격 데몬 (/api/remote/*)', () => {
         }
     });
 
-    // 리뷰 11-18: 진행 읽기가 실패해도(데몬 재시작·연결 끊김) 멈추지 않고 다시 묻는다. 계속 실패하면 이유를 보인다
+    // 진행 읽기가 실패해도(데몬 재시작·연결 끊김) 멈추지 않고 다시 묻는다. 계속 실패하면 이유를 보인다
     it('리눅스에 설치: 진행 읽기가 실패해도 계속 묻고, 연달아 실패하면 이유를 보인다', async () => {
         vi.mocked(window.api.remoteInstallStart).mockResolvedValue({ id: 'i1' });
         vi.mocked(window.api.remoteInstall).mockResolvedValue({ error: 'connection refused' });

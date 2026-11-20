@@ -488,7 +488,7 @@ mod tests {
         }
     }
 
-    /// RCON만 받는 서버의 명령 실패(데몬 #457)는 데몬 영어 문구만 남기지 않고 할 일을 알려 준다
+    /// RCON만 받는 서버의 명령 실패는 데몬 영어 문구만 남기지 않고 할 일을 알려 준다
     #[test]
     fn rcon_failures_say_what_to_do() {
         crate::i18n::init("en");
@@ -522,7 +522,7 @@ mod tests {
         assert_eq!(api.exit_code(), 1);
     }
 
-    /// 설치 전 백업을 못 해 설치하지 않았으면 어느 파일인지, 되돌리지 못한 파일은 남긴 사본 이름을 알린다 (데몬 #533)
+    /// 설치 전 백업을 못 해 설치하지 않았으면 어느 파일인지, 되돌리지 못한 파일은 남긴 사본 이름을 알린다
     #[test]
     fn a_failed_install_names_the_file_it_could_not_back_up_or_put_back() {
         crate::i18n::init("en");

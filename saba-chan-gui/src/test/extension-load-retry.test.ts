@@ -4,7 +4,7 @@ import { ExtensionProvider, useExtensions } from '../contexts/ExtensionContext';
 
 const docker = { id: 'docker', enabled: true, version: '1.0.0', gui: { bundle: 'x.js' }, gui_allowed: true };
 
-// 번들을 한 번 받지 못했다고 로드됨으로 기억하면, 목록을 다시 받아도 다시 요청하지 않아 칸이 빈 채로 남는다 (외부 감사 10-21 #6)
+// 번들을 한 번 받지 못했다고 로드됨으로 기억하면, 목록을 다시 받아도 다시 요청하지 않아 칸이 빈 채로 남는다
 describe('익스텐션 GUI 번들을 받지 못했을 때', () => {
     beforeEach(() => {
         window.showToast = vi.fn();

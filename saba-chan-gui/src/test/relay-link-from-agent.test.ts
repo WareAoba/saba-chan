@@ -76,7 +76,7 @@ describe('릴레이 연결은 데몬 에이전트가 안다', () => {
         expect(s.discordBotStatus).toBe('connecting');
     });
 
-    // 오프닝은 첫 확인이 끝날 때까지 기다린다: 연결 중·한 번 실패는 아직 확인이 끝난 것이 아니다 (사용자 11-18)
+    // 오프닝은 첫 확인이 끝날 때까지 기다린다: 연결 중·한 번 실패는 아직 확인이 끝난 것이 아니다
     it('막 켠 봇이 연결 중이거나 한 번만 실패했으면 아직 확인이 끝나지 않았고, 붙거나 실패가 정해지면 끝난다', async () => {
         vi.mocked(window.api.discordBotStatus).mockResolvedValue(link(false, '', false) as never);
         await useDiscordStore.getState().checkStatus();

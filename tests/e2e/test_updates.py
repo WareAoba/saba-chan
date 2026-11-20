@@ -123,7 +123,7 @@ def test_release_build_does_not_trust_mock_key(sandbox, updates, daemon_factory)
 
 
 def test_daemon_started_update_relaunches_the_open_gui_once(sandbox, updates, daemon_factory, xdisplay):
-    """CLI·자동 업데이트처럼 GUI가 아닌 쪽이 업데이터를 띄우면, 데몬이 떠 있는 GUI를 끄고 업데이터가 그 GUI를 한 번만 다시 띄운다 (#141)."""
+    """CLI·자동 업데이트처럼 GUI가 아닌 쪽이 업데이터를 띄우면, 데몬이 떠 있는 GUI를 끄고 업데이터가 그 GUI를 한 번만 다시 띄운다."""
     for exe in (MOCK_UPDATER, GUI_EXE):
         if not exe.exists():
             pytest.skip(f"없습니다: {exe}")

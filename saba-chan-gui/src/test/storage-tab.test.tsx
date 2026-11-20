@@ -154,7 +154,7 @@ describe('설정 > 저장 공간', () => {
         expect(window.api.systemPaths).toHaveBeenCalledTimes(2);
     });
 
-    // 리뷰 11-18: 진행 읽기가 한 번 실패해도 조회를 멈추지 않고, 계속 실패하면 이유를 보이고 창을 닫을 수 있게 한다
+    // 진행 읽기가 한 번 실패해도 조회를 멈추지 않고, 계속 실패하면 이유를 보이고 창을 닫을 수 있게 한다
     it('옮기는 중 진행 읽기가 실패해도 계속 묻고, 연달아 실패하면 오류 줄과 닫기를 보인다', async () => {
         const job = (phase: string) => ({
             kind: 'server',

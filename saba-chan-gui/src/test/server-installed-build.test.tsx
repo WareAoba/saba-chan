@@ -84,7 +84,7 @@ describe('설치된 빌드 표시', () => {
         expect(instanceApplyUpdate).toHaveBeenCalledWith('pal-1');
     });
 
-    // 리뷰 11-18: 안내 줄의 업데이트도 알림함과 같이 거절 이유를 알린다
+    // 안내 줄의 업데이트도 알림함과 같이 거절 이유를 알린다
     it('안내 줄의 업데이트를 데몬이 거절하면 이유를 토스트로 알리고 안내 줄을 남긴다', async () => {
         window.api = {
             ...window.api,

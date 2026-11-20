@@ -1,6 +1,6 @@
 /**
  * DM 알림 카드 (사바쨩 설정 맨 아래) — PC 주인에게 가는 디스코드 DM을 전체·종류별로 켜고 끈다 (데몬 봇 설정 `dmNotice`·`backupNotice`).
- * 사용자 11-15: 연결 화면에서 사바쨩 설정으로 옮겼고, 말하는 사바쨩을 쓸 수 없는 PC에서도 보인다
+ * 연결 화면에서 사바쨩 설정으로 옮겼고, 말하는 사바쨩을 쓸 수 없는 PC에서도 보인다
  */
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -26,7 +26,7 @@ describe('DM 알림 카드', () => {
         expect(screen.getByRole('heading', { name: 'DM alerts' })).toBeTruthy();
     });
 
-    // 사용자 11-15: DM 알림 전체 스위치, 기본 꺼짐. 꺼져 있으면 종류별 칸을 보이지 않는다
+    // DM 알림 전체 스위치, 기본 꺼짐. 꺼져 있으면 종류별 칸을 보이지 않는다
     it('DM 알림은 기본 꺼짐이라 종류가 보이지 않고, 켜면 enabled 만 저장한다', async () => {
         await act(() => useDiscordStore.getState().loadConfig());
         useDiscordStore.setState({ _settingsReady: true });
@@ -39,13 +39,13 @@ describe('DM 알림 카드', () => {
         await waitFor(() => expect(window.api.botConfigSave).toHaveBeenCalledWith({ dmNotice: { enabled: true } }));
     });
 
-    // 사용자 11-08: DM 알림 종류별 켜고 끄기 (PC마다, 데몬 봇 설정 backupNotice·dmNotice)
+    // DM 알림 종류별 켜고 끄기 (PC마다, 데몬 봇 설정 backupNotice·dmNotice)
     it('백업 DM 범위를 고르면 backupNotice 만 저장한다', async () => {
         window.api.botConfigLoad = vi.fn().mockResolvedValue({ dmNotice: { enabled: true } });
         await act(() => useDiscordStore.getState().loadConfig());
         useDiscordStore.setState({ _settingsReady: true });
         render(<ChatbotView nodes={[]} />);
-        // 기본은 실패만 (사용자 11-15: 예약 백업마다 DM 이 가지 않게)
+        // 기본은 실패만 (예약 백업마다 DM 이 가지 않게)
         expect(screen.getByRole('tab', { name: 'Failures' })).toHaveAttribute('aria-selected', 'true');
         fireEvent.click(screen.getByRole('tab', { name: 'Off' }));
         await waitFor(() => expect(window.api.botConfigSave).toHaveBeenCalledWith({ backupNotice: 'off' }));
@@ -79,7 +79,7 @@ describe('DM 알림 카드', () => {
         expect(screen.getByRole('tab', { name: 'Failures' })).toHaveAttribute('aria-selected', 'true');
     });
 
-    // 사용자 11-12: PC 연결 끊김 알림은 옵션이고 기본은 꺼짐
+    // PC 연결 끊김 알림은 옵션이고 기본은 꺼짐
     it('PC 연결 끊김 알림은 꺼진 채로 보이고, 켜면 dmNotice 의 그 칸만 저장한다', async () => {
         window.api.botConfigLoad = vi.fn().mockResolvedValue({ dmNotice: { enabled: true } });
         await act(() => useDiscordStore.getState().loadConfig());

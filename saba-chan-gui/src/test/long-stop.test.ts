@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { setupServerStore } from './serverStore';
 import type { Server } from '../stores/useServerStore';
 
-// 데몬은 정지 요청에 stop_timeout(최대 3600초)까지 기다린 뒤 답한다(#458). 그동안 목록은 running으로 온다.
+// 데몬은 정지 요청에 stop_timeout(최대 3600초)까지 기다린 뒤 답한다. 그동안 목록은 running으로 온다.
 // 요청이 끝나기 전에는 카드가 '정지 중'을 지키고, 그사이 꺼져도 GUI가 한 정지라 '예기치 않게 종료'로 알리지 않는다
 describe('오래 걸리는 정지', () => {
     afterEach(() => vi.useRealTimers());

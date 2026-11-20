@@ -607,7 +607,7 @@ describe('권한 화면', () => {
         expect(screen.queryByRole('listitem', { name: 'Lv -1 · Banned' })).toBeNull();
     });
 
-    // 리뷰 11-18: 즉시 저장(되묻기 단계)이 계단을 다시 읽어도 저장하지 않은 옮김이 남는다
+    // 즉시 저장(되묻기 단계)이 계단을 다시 읽어도 저장하지 않은 옮김이 남는다
     it('명령 계단: 옮겨 둔 칩은 되묻기 단계를 바꿔도 남고, 저장해 같아지면 사라진다', async () => {
         await openCommands();
         fireEvent.click(within(step('Lv 0 · Guest')).getByRole('button', { name: /^Say$/ }));

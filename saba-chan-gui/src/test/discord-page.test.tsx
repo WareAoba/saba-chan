@@ -144,7 +144,7 @@ describe('DiscordPage', () => {
         delete (window.api as Partial<typeof window.api>).chatbotGet;
     });
 
-    // 사용자 11-15: DM 알림 카드가 사바쨩 설정에 있으므로, 말하는 사바쨩을 쓸 수 없는 PC 에도 메뉴가 보인다
+    // DM 알림 카드가 사바쨩 설정에 있으므로, 말하는 사바쨩을 쓸 수 없는 PC 에도 메뉴가 보인다
     it('말하는 사바쨩 브리지가 없어도 사바쨩 설정 메뉴가 있고, DM 알림 카드만 보인다', async () => {
         useDiscordStore.setState({ _botConfigLoaded: true });
         await act(async () => render(<Harness save={vi.fn()} />));

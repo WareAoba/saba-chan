@@ -3,7 +3,7 @@
 //! 원본은 데몬 config.json `chatbot`이다. 바뀔 때마다, 그리고 릴레이 에이전트가 연결될 때 이 호스트의
 //! 길드마다 릴레이에 PUT 해서 맞춘다 (멱등). API 키는 데몬과 릴레이만 안다: 클라이언트에는 `hasApiKey`만.
 //!
-//! 릴레이 PUT은 받은 키만 합치므로 데몬은 늘 전체 설정을 보낸다: 지운 키(null)는 `RELAY_DEFAULTS` 값으로.
+//! 릴레이 PUT은 받은 키만 합치므로 데몬은 늘 전체 설정을 보낸다: 지운 키(null)는 `relay_defaults()` 값으로.
 //! 릴레이에 새 설정이 생기면 그 기본값을 이 표에 한 줄 더한다
 //!
 //! 공통(`settings`)에는 모델만 둔다. 켜기(`enabled`)·켠 도구(`tools`)·답변 깊이·끼어들기·기억·되묻기·메모는 서버마다 둔다
@@ -705,7 +705,7 @@ mod tests {
     }
 
     /// 이 PC에서 빠진 서버(릴레이 목록에 없고 없는 노드 404)는 매번 실패로 남기지 않고 설정에서 지운다.
-    /// 목록에 있는 서버의 404, 다른 실패, 목록을 못 받았을 때는 그대로 둔다 (사용자 11-18)
+    /// 목록에 있는 서버의 404, 다른 실패, 목록을 못 받았을 때는 그대로 둔다
     #[test]
     fn guilds_gone_from_this_pc_are_forgotten_not_warned_every_sync() {
         let gone = || Ok((StatusCode::NOT_FOUND, json!({"error": "NODE_NOT_FOUND"})));

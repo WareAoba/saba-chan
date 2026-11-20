@@ -242,8 +242,8 @@ def test_heartbeat_carries_cpu_and_ram_only_for_running_servers(paired, relay, f
 
 
 def test_text_command_replies_in_the_guild_language(paired, relay):
-    """디스코드 텍스트 명령 답: 데몬은 문장 대신 문구 키·값을 싣고, 릴레이가 그것을 길드 언어 문장으로 만든다
-    (saba-chan #991, server-chan #516). 데몬 GUI 언어 문장이 섞여 나가지 않는다."""
+    """디스코드 텍스트 명령 답: 데몬은 문장 대신 문구 키·값을 싣고, 릴레이가 그것을 길드 언어 문장으로 만든다.
+    데몬 GUI 언어 문장이 섞여 나가지 않는다."""
     def keys(reply):
         return [seg.get("key") for seg in reply["data"]["text"] if isinstance(seg, dict)]
 

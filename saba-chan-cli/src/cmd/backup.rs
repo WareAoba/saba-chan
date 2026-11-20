@@ -293,7 +293,7 @@ mod tests {
         assert!(!seen.lock().unwrap().iter().any(|l| l.starts_with("POST")), "{:?}", seen.lock().unwrap());
     }
 
-    /// 열리지 않는 백업(`readable:false`, 데몬 #533)은 크기 대신 표시하고, 몇 개인지와 지우는 명령을 알린다
+    /// 열리지 않는 백업(`readable:false`)은 크기 대신 표시하고, 몇 개인지와 지우는 명령을 알린다
     #[test]
     fn backups_that_cannot_be_opened_are_marked_with_a_way_to_delete_them() {
         crate::i18n::init("en");

@@ -111,7 +111,7 @@ export function takeOpeningSound(): OpeningSound | null {
 }
 
 /*
- * 로딩 화면·오프닝 동안에는 다른 알림이 끼어들지 않게 한다 (사용자 11-15). 셸은 효과음(서버 켜짐 등)을 내지 않고
+ * 로딩 화면·오프닝 동안에는 다른 알림이 끼어들지 않게 한다. 셸은 효과음(서버 켜짐 등)을 내지 않고
  * OS 알림을 모아 두며(`soundHold`), 앱 안 알림(토스트)은 끝난 뒤에 띄운다. 오프닝 자신의 소리(`playSound`)는 막지 않는다.
  */
 let quietQueue: (() => void)[] | null = null;

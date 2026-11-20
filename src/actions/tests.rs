@@ -1630,7 +1630,7 @@ async fn an_mcp_owner_reaches_app_actions_but_not_pc_only_ones() {
     assert!(ran.is_ok(), "{ran:?}");
 }
 
-/// 원격 MCP는 사용 모드·전용 멤버 명단·자동 강퇴 목록을 바꾼다 (사용자 2026-11-15: 원격·웹 콘솔에서도 설정).
+/// 원격 MCP는 사용 모드·전용 멤버 명단·자동 강퇴 목록을 바꾼다 (원격·웹 콘솔에서도 설정).
 /// 디스코드·말하는 사바쨩은 그대로 못 바꾼다 (2026-11-08)
 #[tokio::test]
 async fn an_mcp_owner_sets_the_access_lists_but_discord_cannot() {

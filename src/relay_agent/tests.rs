@@ -440,7 +440,7 @@ async fn run_unsent(session: &Session, wait: Duration, done: impl Fn() -> bool) 
     });
 }
 
-/// 외부 감사 10-23: 결과 전송이 여섯 번 다 실패하면 결과를 버렸다. ack한 명령이라 릴레이가 다시 보내 주지 않는다.
+/// 결과 전송이 여섯 번 다 실패하면 결과를 버렸다. ack한 명령이라 릴레이가 다시 보내 주지 않는다.
 /// 받지 않은 결과는 남겨 두고, 릴레이가 살아나면 명령을 다시 실행하지 않고 같은 결과를 보낸다
 #[tokio::test]
 async fn a_result_kept_after_every_retry_failed_is_sent_once_the_relay_recovers() {
@@ -1397,7 +1397,7 @@ fn dm_notice_is_sent_only_when_something_is_off() {
     dm_notice_meta(&mut meta, &bot);
     assert_eq!(meta, json!({ "backupNotice": "off", "dmOff": ["crash", "unresponsive", "chatbotUsage"] }));
 
-    // 모두 받기 (사용자 2026-11-15: 기본은 실패만)
+    // 모두 받기 (기본은 실패만)
     bot.backup_notice = BackupNotice::All;
     let mut meta = json!({});
     dm_notice_meta(&mut meta, &bot);
@@ -1409,7 +1409,7 @@ fn dm_notice_is_sent_only_when_something_is_off() {
     dm_notice_meta(&mut meta, &bot);
     assert_eq!(meta, json!({ "backupNotice": "failures", "dmOn": ["offline"] }));
 
-    // DM 알림 전체 스위치는 기본 꺼짐, 켜면 `dmOn`의 `all` (사용자 2026-11-15)
+    // DM 알림 전체 스위치는 기본 꺼짐, 켜면 `dmOn`의 `all`
     assert!(!BotConfig::default().dm_notice.enabled);
     let bot: BotConfig = serde_json::from_value(json!({ "dmNotice": { "enabled": true, "offline": true } })).unwrap();
     let mut meta = json!({});

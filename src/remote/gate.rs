@@ -293,7 +293,7 @@ pub static ROUTES: &[Route] = &[
     allow("GET", "/api/chatbot/guilds/{guild}"),
     allow("PATCH", "/api/chatbot/guilds/{guild}"),
     // ── 릴레이 연결: 웹이 타고 있는 연결 자체다. 채널 배정은 웹이 릴레이 API(/relay/guilds/:g/channels)로 한다 ──
-    // 봇 연결 상태 읽기: 짝 맺은 PC의 GUI가 고른 PC의 디스코드 탭에 쓴다 (사용자 11-12, 읽기만. 켜고 끄기는 그 PC에서)
+    // 봇 연결 상태 읽기: 짝 맺은 PC의 GUI가 고른 PC의 디스코드 탭에 쓴다 (읽기만. 켜고 끄기는 그 PC에서)
     not_on_web("GET", "/api/relay/host/{host_id}/status"),
     deny("GET", "/api/relay/node/{guild_id}/channels"),
     deny("PUT", "/api/relay/node/{guild_id}/channels"),

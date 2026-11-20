@@ -47,16 +47,12 @@
     "list_failed": "Failed to fetch server list (HTTP {{status}}): {{error}}",
     "auth_failed": "Authentication failed. Daemon token may have changed.",
     "start_failed": "Failed to start: {{error}}",
-    "stop_failed": "Failed to stop: {{error}}",
     "status_check_failed": "Status check failed (HTTP {{status}}): {{error}}",
     "module_not_found": "Module '{{module}}' not found",
-    "invalid_request": "Invalid request: {{error}}",
     "not_found": "Server '{{name}}' not found",
     "already_running": "Server '{{name}}' is already running",
-    "missing_required_field": "Missing required field '{{field}}'",
     "creation_failed": "Failed to create instance: {{error}}",
     "delete_failed": "Failed to delete instance: {{error}}",
-    "update_failed": "Failed to update instance: {{error}}",
     "settings_save_failed": "Failed to save settings: {{error}}"
   },
   "network": {

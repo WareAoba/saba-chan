@@ -44,7 +44,7 @@ pub(crate) fn install_source(
 }
 
 /// 익스텐션 하나를 (없는 의존 익스텐션과 함께) 받아 설치한다. 돌려주는 값은 설치한 id들.
-/// 부르는 쪽이 `components_in_use`를 쥐고 있어야 한다
+/// 부르는 쪽이 `component_lock::in_use()`를 쥐고 있어야 한다
 pub(crate) async fn install_with_dependencies(
     state: &IPCServer,
     ext_id: &str,
@@ -208,7 +208,7 @@ async fn stage_one(
 }
 
 /// 모듈을 설치한 뒤 그 모듈이 요구하는 익스텐션을 맞춘다: 없으면 카탈로그에서 받고, 켠다 (`ExtensionManager::enable_for_module`).
-/// 모듈 설치는 이미 끝났으므로 실패는 `failed`로만 알린다. 부르는 쪽이 `components_in_use`를 쥐고 있어야 한다
+/// 모듈 설치는 이미 끝났으므로 실패는 `failed`로만 알린다. 부르는 쪽이 `component_lock::in_use()`를 쥐고 있어야 한다
 pub(crate) async fn prepare_for_module(
     state: &IPCServer,
     required: &[String],

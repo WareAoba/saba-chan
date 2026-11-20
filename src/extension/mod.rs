@@ -145,9 +145,8 @@ impl ExtensionManager {
         self.enabled.contains(ext_id)
     }
 
-    /// 활성화되어 있고 **디스크에 실제로 설치된** 익스텐션 ID 집합을 반환합니다.
-    /// `enabled_set()`과 달리, `discover()`로 발견된 익스텐션만 포함합니다.
-    /// 모듈 필수 익스텐션 검증 시 이 메서드를 사용하세요.
+    /// 활성화되어 있고 **디스크에 실제로 설치된** 익스텐션 ID 집합 (켜 둔 기록만 있고 `discover()`가 찾지 못한 것은 뺀다).
+    /// 모듈 필수 익스텐션 검증에 쓴다
     pub fn installed_and_enabled_set(&self) -> HashSet<String> {
         self.enabled
             .iter()

@@ -1418,7 +1418,7 @@ mod tests {
         assert_eq!(row(&old, "bot.tts_speed"), Some(t!("bot.tts_speed_value", value = "1")));
     }
 
-    /// 권한 키는 봇 설정 저장으로 바뀌지 않는다(데몬 #469). 데몬이 `ignored`로 알린 키는 저장했다고 말하지 않고
+    /// 권한 키는 봇 설정 저장으로 바뀌지 않는다. 데몬이 `ignored`로 알린 키는 저장했다고 말하지 않고
     /// 실패로 끝내 그 키와 권한 명령을 보인다. 목록이 없거나 비면 저장한 것이다
     #[test]
     fn permission_keys_the_daemon_kept_are_not_reported_as_saved() {
