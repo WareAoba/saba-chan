@@ -5,7 +5,7 @@ use super::*;
 /// 결과를 다시 보내기 전 기다림: 1·2·4·8·16초 (시험에서는 짧게)
 pub(super) fn result_retry_delay(attempt: u32) -> Duration {
     let unit = if cfg!(test) { Duration::from_millis(10) } else { Duration::from_secs(1) };
-    unit * 2u32.pow(attempt.saturating_sub(1).min(4))
+    crate::utils::exp_backoff(unit, unit * 16, attempt)
 }
 
 impl Session {

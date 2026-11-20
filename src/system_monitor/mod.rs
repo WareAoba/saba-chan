@@ -17,7 +17,7 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 use sysinfo::{Disks, Networks, Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 
 mod hardware;
@@ -298,10 +298,6 @@ pub fn host_memory_bytes() -> Option<u64> {
     })
 }
 
-fn now_ms() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
-}
-
 fn per_sec(bytes: u64, window: Duration) -> u64 {
     let secs = window.as_secs_f64();
     if secs <= 0.0 {
@@ -514,7 +510,7 @@ impl SystemMonitor {
             let sizes = measure_dirs_once(jobs, crate::utils::dir_size);
             let mut state = shared.lock().unwrap_or_else(|e| e.into_inner());
             state.sizes = sizes;
-            state.measured_at = Some((Instant::now(), now_ms()));
+            state.measured_at = Some((Instant::now(), crate::utils::now_ms()));
             state.running = false;
         });
     }
@@ -646,7 +642,7 @@ fn build_snapshot(
     let hw = &sampler.hw;
 
     MetricsSnapshot {
-        sampled_at_ms: now_ms(),
+        sampled_at_ms: crate::utils::now_ms(),
         window_ms: window.as_millis() as u64,
         cpu: CpuMetrics {
             cores,

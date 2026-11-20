@@ -187,7 +187,7 @@ impl ManagedProcess {
         let token = uuid::Uuid::new_v4().to_string();
         saba_atomic_file::write(&run.join(TOKEN_FILE), token.as_bytes(), saba_atomic_file::Mode::Secret)?;
 
-        let log = sessions_dir(instance_dir).join(format!("{}.log", saba_runner::session_stamp(current_timestamp())));
+        let log = sessions_dir(instance_dir).join(format!("{}.log", saba_runner::session_stamp(crate::utils::now_secs())));
         std::fs::create_dir_all(sessions_dir(instance_dir))?;
         prune_sessions(instance_dir, keep_sessions.saturating_sub(1), SESSION_LOGS_MAX_BYTES);
 

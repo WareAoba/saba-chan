@@ -3,7 +3,6 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
 use std::path::{Path, PathBuf};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command as TokioCommand;
@@ -114,7 +113,7 @@ const ECHO_WINDOW: std::time::Duration = std::time::Duration::from_secs(2);
 /// 버퍼 세대: 만든 시각(밀리초). 데몬을 다시 켜도 앞 세대보다 크고, 한 프로세스 안에서도 겹치지 않는다
 pub(crate) fn next_epoch() -> u64 {
     static LAST: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
+    let now = crate::utils::now_ms();
     let mut last = LAST.load(std::sync::atomic::Ordering::Relaxed);
     loop {
         let next = now.max(last + 1);
@@ -186,7 +185,7 @@ impl LogBuffer {
     }
 
     fn push(&mut self, source: LogSource, content: String, level: LogLevel) -> LogLine {
-        let line = self.push_at(current_timestamp(), source, content, level);
+        let line = self.push_at(crate::utils::now_secs(), source, content, level);
         self.append_own(&line);
         line
     }
@@ -198,7 +197,7 @@ impl LogBuffer {
 
     /// 보낸 명령 한 줄과 시킨 쪽
     fn push_input(&mut self, command: &str, by: InputBy) -> LogLine {
-        let line = self.push_line(current_timestamp(), LogSource::Input, command.to_string(), LogLevel::Info, Some(by));
+        let line = self.push_line(crate::utils::now_secs(), LogSource::Input, command.to_string(), LogLevel::Info, Some(by));
         self.append_own(&line);
         line
     }
@@ -230,7 +229,7 @@ impl LogBuffer {
                 // GUI에 표시될 시스템 경고 라인 삽입
                 let warn_line = LogLine {
                     id: self.next_id,
-                    timestamp: current_timestamp(),
+                    timestamp: crate::utils::now_secs(),
                     source: LogSource::System,
                     content: "⚠ Log file writer stopped — disk logs may be incomplete. Check disk space.".to_string(),
                     level: LogLevel::Warn,
@@ -323,10 +322,6 @@ async fn futures_join(handles: Vec<tokio::task::JoinHandle<()>>) {
     }
 }
 
-fn unix_now() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs()
-}
-
 impl Drop for ManagedProcess {
     fn drop(&mut self) {
         if let Some(handle) = self.poller_handle.take() {
@@ -399,7 +394,7 @@ impl ManagedProcess {
         instance_dir: Option<&Path>,
     ) -> Result<Self> {
         let exit: Arc<std::sync::Mutex<Option<ProcessExit>>> = Default::default();
-        let started_at = unix_now();
+        let started_at = crate::utils::now_secs();
         let mut cmd = TokioCommand::new(program);
         cmd.args(args)
             .current_dir(working_dir)
@@ -626,7 +621,7 @@ impl ManagedProcess {
             poller_handle: None,
             stdin_available: false, // log follower has no stdin
             exit: Default::default(),
-            started_at: unix_now(),
+            started_at: crate::utils::now_secs(),
             reattached: false,
             working_dir: Some(working_dir.to_path_buf()),
             log_follower: true,
@@ -734,7 +729,7 @@ impl ManagedProcess {
             poller_handle: Some(poller_handle),
             stdin_available: false, // reattached stub — stdio pipes lost
             exit: Default::default(),
-            started_at: unix_now(),
+            started_at: crate::utils::now_secs(),
             reattached: true,
             working_dir: None,
             log_follower: false,
@@ -835,13 +830,6 @@ fn parse_log_level(line: &str, pattern: Option<&Regex>) -> LogLevel {
         }
     }
     LogLevel::Info
-}
-
-fn current_timestamp() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
 }
 
 // ─── Disk Persistence Helpers ────────────────────────────────
@@ -1113,7 +1101,7 @@ fn parse_disk_log_line(id: u64, raw: &str) -> LogLine {
         if raw.starts_with('[') {
             parse_structured_disk_line(raw)
         } else {
-            (current_timestamp(), LogSource::Stdout, LogLevel::Info, raw.to_string())
+            (crate::utils::now_secs(), LogSource::Stdout, LogLevel::Info, raw.to_string())
         };
 
     LogLine { id, timestamp, source, content, level, by: None }
@@ -1149,13 +1137,13 @@ fn parse_structured_disk_line(raw: &str) -> (u64, LogSource, LogLevel, String) {
 
             let dt_str = raw.get(1..dt_end).unwrap_or("");
             let timestamp = parse_datetime_to_unix(dt_str)
-                .unwrap_or_else(current_timestamp);
+                .unwrap_or_else(crate::utils::now_secs);
 
             return (timestamp, source, level, content);
         }
     }
 
-    (current_timestamp(), LogSource::Stdout, LogLevel::Info, raw.to_string())
+    (crate::utils::now_secs(), LogSource::Stdout, LogLevel::Info, raw.to_string())
 }
 
 // ─── Tests ───────────────────────────────────────────────────

@@ -4,7 +4,6 @@ use std::collections::VecDeque;
 use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 use tracing::field::{Field, Visit};
@@ -59,10 +58,7 @@ impl DaemonLogBuffer {
     }
 
     pub fn push(&self, level: String, target: String, message: String) {
-        let timestamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64;
+        let timestamp = crate::utils::now_ms();
 
         // 번호는 잠금 안에서 매긴다: 버퍼 순서와 번호 순서가 같아야 since 폴링이 줄을 건너뛰지 않는다
         let mut buf = self.inner.lock().unwrap_or_else(|e| e.into_inner());

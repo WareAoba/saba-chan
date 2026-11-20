@@ -67,10 +67,7 @@ impl ClientRegistry {
     /// 데몬이 CLI를 띄웠다 (GUI의 CLI로 전환). 새 터미널로 띄우는 길이 아직 Windows·리눅스뿐이다
     #[cfg_attr(not(any(windows, target_os = "linux")), allow(dead_code))]
     pub fn note_launched_cli(&self, pid: u32) {
-        let at = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
+        let at = crate::utils::now_secs();
         self.launched_clis.lock().unwrap().push((pid, at));
     }
 
@@ -476,10 +473,7 @@ impl ApiActionTracker {
 
     /// 인스턴스 id에 대한 API 액션 타임스탬프 기록 (epoch millis)
     pub fn record(&self, instance_id: &str) {
-        let ts = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64;
+        let ts = crate::utils::now_ms();
         if let Ok(mut map) = self.inner.lock() {
             map.insert(instance_id.to_string(), ts);
         }
@@ -684,10 +678,7 @@ impl ExtensionInitTracker {
     pub async fn mark_finished(&self, ext_id: &str, success: bool, message: &str) {
         let mut state = self.inner.write().await;
         state.in_progress.remove(ext_id);
-        let ts = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
+        let ts = crate::utils::now_secs();
         state.completed.push(ExtensionInitResult {
             ext_id: ext_id.to_string(),
             success,

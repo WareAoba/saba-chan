@@ -247,7 +247,7 @@ async fn a_heartbeat_the_relay_refuses_reports_which_value_was_refused() {
 /// 화면은 릴레이에 따로 묻지 않고 이 값으로 붙었는지 본다 (예전에는 5초마다 릴레이에 다녀왔다)
 #[test]
 fn connected_means_a_recent_heartbeat_with_no_failure_since() {
-    let now = now_ms();
+    let now = crate::utils::now_ms();
     let heard = |ago: u64| AgentStatus { running: true, last_heartbeat_at: Some(now - ago), ..Default::default() };
     assert!(connected(&heard(1_000), now));
     assert!(!connected(&AgentStatus { running: true, ..Default::default() }, now), "never heard back");
@@ -650,11 +650,11 @@ async fn a_permission_change_reports_when_it_was_saved() {
         confirmed_by: None,
         guild_owner_id: None,
     };
-    let before = now_ms();
+    let before = crate::utils::now_ms();
     let res = permission_action(&server, &who, &json!({ "op": "default_level", "level": 1 })).await;
     assert_eq!(res["success"], true, "{res}");
     let at = res["data"]["permissionsAt"].as_u64().unwrap_or_else(|| panic!("no permissionsAt: {res}"));
-    assert!(at >= before && at <= now_ms());
+    assert!(at >= before && at <= crate::utils::now_ms());
     // 응답은 heartbeat `permissions[guild]`와 같은 모양이다
     for key in ["defaultLevel", "members", "chatbotCap", "levels", "commandLevels", "ladder", "required"] {
         assert!(res["data"].get(key).is_some(), "no {key}: {res}");

@@ -194,7 +194,7 @@ impl RelayAgent {
         status.agent_version = AGENT_VERSION;
         // GUI가 5초마다 부른다: 설정 파일이 그대로면 다시 읽지 않는다
         status.has_token = crate::relay_client::peek_node_token().as_deref().and_then(parse_node_token).is_some();
-        status.connected = connected(&status, now_ms());
+        status.connected = connected(&status, crate::utils::now_ms());
         status.state = agent_state(&status);
         status
     }
@@ -587,10 +587,6 @@ fn semver_lt(a: &str, b: &str) -> bool {
         }
     }
     false
-}
-
-fn now_ms() -> u64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
 }
 
 #[cfg(test)]

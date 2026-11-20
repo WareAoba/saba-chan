@@ -217,10 +217,7 @@ pub async fn export(State(state): State<IPCServer>, Json(req): Json<ExportReques
     } else {
         None
     };
-    let created_at = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
+    let created_at = crate::utils::now_secs();
     let bundle = Bundle {
         meta: json!({
             "format": FORMAT,

@@ -72,7 +72,7 @@ pub struct PortConflictStops {
 
 impl PortConflictStops {
     fn forget_old(&mut self) {
-        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
+        let now = crate::utils::now_ms();
         self.events.retain(|e| now.saturating_sub(e.timestamp_ms) <= PORT_CONFLICT_STOPS_TTL_MS);
         let over = self.events.len().saturating_sub(PORT_CONFLICT_STOPS_KEPT);
         self.events.drain(..over);

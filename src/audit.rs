@@ -235,10 +235,7 @@ impl AuditLog {
     }
 
     pub fn record(&self, origin: &Origin, event: &Event<'_>) {
-        let ts = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
+        let ts = crate::utils::now_secs();
         let mut line = json!({
             "ts": ts,
             "source": origin.source,
@@ -364,7 +361,7 @@ pub fn spawn_retention(config: std::sync::Arc<crate::config_store::ConfigStore>,
         loop {
             let days = config.get_gui_settings().await.audit_keep_days;
             if days > 0 {
-                let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+                let now = crate::utils::now_secs();
                 let cutoff = now.saturating_sub(u64::from(days) * 86_400);
                 let dropped = tokio::task::spawn_blocking(move || log().prune_before(cutoff)).await.unwrap_or(0);
                 if dropped > 0 {

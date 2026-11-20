@@ -36,16 +36,12 @@ pub fn remember_check(id: &str, status: &Value) {
     let shown = |v: &Value| (v.get("update_available").cloned(), v.get("reason").cloned(), v.get("remote_buildid").cloned(), v.get("error").cloned());
     let mut kept = status.clone();
     if let Some(map) = kept.as_object_mut() {
-        map.insert("checked_at".into(), json!(unix_secs()));
+        map.insert("checked_at".into(), json!(crate::utils::now_secs()));
     }
     let before = checks().lock().unwrap_or_else(|e| e.into_inner()).insert(id.to_string(), kept);
     if before.as_ref().map(shown) != Some(shown(status)) {
         crate::events::emit_live("instance.update_checked", json!({ "instanceId": id }));
     }
-}
-
-fn unix_secs() -> u64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
 
 /// 마지막 확인 결과 (목록의 `update_check`). 확인하지 않았으면 없다

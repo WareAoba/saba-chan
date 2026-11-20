@@ -1,4 +1,3 @@
-use std::time::{SystemTime, UNIX_EPOCH};
 use std::collections::HashMap;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use anyhow::Result;
@@ -176,7 +175,7 @@ impl ProcessTracker {
     }
 
     pub fn track(&self, server_name: &str, pid: u32) {
-        self.track_since(server_name, pid, current_timestamp())
+        self.track_since(server_name, pid, crate::utils::now_secs())
     }
 
     /// 이미 돌던 서버를 다시 붙일 때: 실제로 시작한 시각(유닉스 초)을 그대로 쓴다
@@ -190,7 +189,7 @@ impl ProcessTracker {
         self.lock()
             .entry(server_name.to_string())
             .and_modify(|info| info.pid = pid)
-            .or_insert_with(|| ProcessInfo { pid, start_time: current_timestamp() });
+            .or_insert_with(|| ProcessInfo { pid, start_time: crate::utils::now_secs() });
     }
 
     pub fn get_pid(&self, server_name: &str) -> Option<u32> {
@@ -267,13 +266,6 @@ impl LaunchedExit {
     }
 }
 
-fn current_timestamp() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -319,7 +311,7 @@ mod tests {
     #[test]
     fn a_pid_reused_after_the_record_is_not_the_same_process() {
         let me = std::process::id();
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+        let now = crate::utils::now_secs();
         assert!(is_same_process(me, now), "the recording process itself");
         let started = process_start_time(me).expect("own start time");
         assert!(!is_same_process(me, started.saturating_sub(3600)), "started an hour after the record");
