@@ -94,7 +94,7 @@ windows = { version = "0.62", features = [
 ] }
 
 [target.'cfg(unix)'.dependencies]
-nix = { version = "0.31", features = ["signal"] }
+nix = { version = "0.32", features = ["signal"] }
 
 [dependencies.tower]
 version = "0.5"
